@@ -1,0 +1,428 @@
+erDiagram
+
+    DEPARTMENTS {
+        bigint department_id PK
+        text department_name UK
+        text description
+        timestamptz created_at
+    }
+
+    EMPLOYEES {
+        bigint employee_id PK
+        bigint department_id FK
+        text name
+        text position
+        text employment_status
+        timestamptz created_at
+    }
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint employee_id FK
+        bigint reseller_id FK
+        text name
+        text email UK
+        text password_hash
+        boolean is_active
+        timestamptz created_at
+    }
+
+    ACCOUNT_2FA_CODES {
+        bigint two_factor_code_id PK
+        bigint account_id FK
+        text code_hash
+        text purpose
+        timestamptz expires_at
+        timestamptz used_at
+        timestamptz created_at
+    }
+
+    ACCOUNT_SESSIONS {
+        bigint session_id PK
+        bigint account_id FK
+        timestamptz login_at
+        timestamptz logout_at
+        timestamptz expires_at
+        inet ip_address
+        text user_agent
+    }
+
+    ACTIVITY_LOGS {
+        bigint activity_log_id PK
+        bigint account_id FK
+        text action
+        text entity_type
+        bigint entity_id
+        inet ip_address
+        text user_agent
+        timestamptz created_at
+    }
+
+    DEPARTMENT_LEADERS {
+        bigint department_leader_id PK
+        bigint department_id FK
+        bigint team_leader_employee_id FK
+        bigint team_leader_account_id FK
+        date started_on
+        date ended_on
+        timestamptz created_at
+    }
+
+    INQUIRIES {
+        bigint inquiry_id PK
+        text name
+        text contact_number
+        text email
+        text business_name
+        text message
+        text status
+        bigint assigned_team_leader_account_id FK
+        bigint reviewed_by_account_id FK
+        timestamptz reviewed_at
+        timestamptz created_at
+    }
+
+    INQUIRY_MESSAGES {
+        bigint inquiry_message_id PK
+        bigint inquiry_id FK
+        text sender_type
+        bigint sender_account_id FK
+        text message
+        text ai_intent
+        numeric ai_confidence
+        timestamptz created_at
+    }
+
+    RESELLERS {
+        bigint reseller_id PK
+        bigint inquiry_id FK,UK
+        text business_name
+        text contact_person
+        text email UK
+        text contact_number
+        text address
+        text reseller_status
+        bigint approved_by_account_id FK
+        timestamptz approved_at
+        timestamptz created_at
+    }
+
+    MEAT_TYPES {
+        bigint meat_type_id PK
+        text name UK
+        text description
+    }
+
+    RAW_MATERIALS {
+        bigint raw_material_id PK
+        bigint meat_type_id FK
+        text name UK
+        text unit
+        numeric reorder_level
+        timestamptz created_at
+    }
+
+    RAW_MATERIAL_BATCHES {
+        bigint raw_material_batch_id PK
+        bigint raw_material_id FK
+        text batch_code UK
+        numeric quantity_received
+        numeric quantity_available
+        text unit
+        numeric cost_per_unit
+        date received_date
+        date expiry_date
+        text quality_status
+        bigint received_by_account_id FK
+        timestamptz created_at
+    }
+
+    PRODUCTS {
+        bigint product_id PK
+        bigint meat_type_id FK
+        text name UK
+        text description
+        text unit
+        numeric base_price
+        numeric reorder_level
+        boolean is_active
+        timestamptz created_at
+    }
+
+    PRODUCT_RECIPES {
+        bigint recipe_id PK
+        bigint product_id FK
+        bigint raw_material_id FK
+        numeric quantity_required
+        text unit
+    }
+
+    PRODUCTION_RUNS {
+        bigint production_id PK
+        bigint product_id FK
+        bigint created_by_account_id FK
+        numeric quantity_planned
+        numeric quantity_produced
+        text status
+        date production_date
+        timestamptz created_at
+    }
+
+    PRODUCTION_USAGE {
+        bigint usage_id PK
+        bigint production_id FK
+        bigint raw_material_batch_id FK
+        numeric quantity_used
+        text unit
+        timestamptz created_at
+    }
+
+    PRODUCT_BATCHES {
+        bigint product_batch_id PK
+        bigint product_id FK
+        bigint production_id FK
+        text batch_code UK
+        text source_type
+        numeric quantity_received
+        numeric quantity_available
+        text unit
+        date production_date
+        date received_date
+        date expiry_date
+        text quality_status
+        bigint received_by_account_id FK
+        timestamptz created_at
+    }
+
+    INVENTORY_TRANSACTIONS {
+        bigint transaction_id PK
+        text inventory_scope
+        bigint raw_material_batch_id FK
+        bigint product_batch_id FK
+        text transaction_type
+        numeric quantity
+        text unit
+        text reason
+        bigint performed_by_account_id FK
+        timestamptz occurred_at
+    }
+
+    PRODUCT_PRICE_HISTORY {
+        bigint price_history_id PK
+        bigint product_id FK
+        numeric price
+        timestamptz effective_from
+        timestamptz effective_to
+        bigint changed_by_account_id FK
+        text reason
+    }
+
+    PRODUCT_BATCH_PRICE_ADJUSTMENTS {
+        bigint adjustment_id PK
+        bigint product_batch_id FK
+        text adjustment_type
+        numeric discount_percent
+        numeric adjusted_price
+        text reason
+        timestamptz starts_at
+        timestamptz ends_at
+        bigint created_by_account_id FK
+        timestamptz created_at
+    }
+
+    ORDERS {
+        bigint order_id PK
+        text order_type
+        bigint reseller_id FK
+        bigint created_by_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz approved_at
+        timestamptz order_date
+        text status
+        timestamptz fulfilled_at
+        numeric total_amount
+        text notes
+    }
+
+    ORDER_ITEMS {
+        bigint order_item_id PK
+        bigint order_id FK
+        bigint product_id FK
+        numeric quantity
+        text unit
+        numeric unit_price
+        numeric line_total
+    }
+
+    ORDER_BATCH_ALLOCATIONS {
+        bigint allocation_id PK
+        bigint order_item_id FK
+        bigint product_batch_id FK
+        numeric quantity_allocated
+        timestamptz allocated_at
+    }
+
+    SALES_REPORTS {
+        bigint sales_report_id PK
+        text report_source
+        bigint submitted_by_account_id FK
+        bigint reseller_id FK
+        bigint department_id FK
+        date period_start
+        date period_end
+        numeric total_sales
+        int total_orders
+        text notes
+        timestamptz submitted_at
+    }
+
+    EMPLOYEE_ATTENDANCE {
+        bigint attendance_id PK
+        bigint employee_id FK
+        date work_date
+        text status
+        time time_in
+        time time_out
+        bigint recorded_by_account_id FK
+        text notes
+        timestamptz created_at
+    }
+
+    EMPLOYEE_TASKS {
+        bigint task_id PK
+        bigint employee_id FK
+        bigint assigned_by_account_id FK
+        text title
+        text description
+        date due_date
+        text status
+        timestamptz completed_at
+        timestamptz created_at
+    }
+
+    EMPLOYEE_MERIT_EVALUATIONS {
+        bigint evaluation_id PK
+        bigint employee_id FK
+        bigint evaluator_account_id FK
+        date period_start
+        date period_end
+        int attendance_score
+        int task_score
+        int behavior_score
+        numeric overall_score
+        text feedback
+        timestamptz created_at
+    }
+
+    ALERTS {
+        bigint alert_id PK
+        text alert_type
+        text severity
+        bigint product_id FK
+        bigint product_batch_id FK
+        bigint raw_material_id FK
+        bigint raw_material_batch_id FK
+        text message
+        text status
+        timestamptz triggered_at
+        bigint acknowledged_by_account_id FK
+        timestamptz acknowledged_at
+        timestamptz resolved_at
+    }
+
+    FORECAST_RUNS {
+        bigint forecast_run_id PK
+        bigint run_by_account_id FK
+        text model_name
+        date input_period_start
+        date input_period_end
+        int forecast_horizon_days
+        text status
+        timestamptz started_at
+        timestamptz completed_at
+        text notes
+    }
+
+    FORECAST_RESULTS {
+        bigint forecast_result_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+        date forecast_date
+        numeric predicted_quantity
+        numeric confidence_lower
+        numeric confidence_upper
+        timestamptz created_at
+    }
+
+    DEPARTMENTS ||--o{ EMPLOYEES : contains
+    EMPLOYEES ||--o| ACCOUNTS : "team_leader login"
+    RESELLERS ||--o| ACCOUNTS : "reseller login"
+    ACCOUNTS ||--o{ ACCOUNT_2FA_CODES : receives
+    ACCOUNTS ||--o{ ACCOUNT_SESSIONS : opens
+    ACCOUNTS ||--o{ ACTIVITY_LOGS : records
+
+    DEPARTMENTS ||--o{ DEPARTMENT_LEADERS : has
+    EMPLOYEES ||--o{ DEPARTMENT_LEADERS : leads
+    ACCOUNTS ||--o{ DEPARTMENT_LEADERS : authorizes
+
+    ACCOUNTS ||--o{ INQUIRIES : assigned
+    ACCOUNTS ||--o{ INQUIRIES : reviews
+    INQUIRIES ||--o{ INQUIRY_MESSAGES : contains
+    ACCOUNTS |o--o{ INQUIRY_MESSAGES : sends
+    INQUIRIES |o--o| RESELLERS : becomes
+    ACCOUNTS |o--o{ RESELLERS : approves
+
+    MEAT_TYPES ||--o{ RAW_MATERIALS : categorizes
+    MEAT_TYPES |o--o{ PRODUCTS : categorizes
+    RAW_MATERIALS ||--o{ RAW_MATERIAL_BATCHES : stocked_as
+    ACCOUNTS |o--o{ RAW_MATERIAL_BATCHES : receives
+
+    PRODUCTS ||--o{ PRODUCT_RECIPES : has
+    RAW_MATERIALS ||--o{ PRODUCT_RECIPES : required_by
+
+    PRODUCTS ||--o{ PRODUCTION_RUNS : produced_in
+    ACCOUNTS |o--o{ PRODUCTION_RUNS : creates
+    PRODUCTION_RUNS ||--o{ PRODUCTION_USAGE : consumes
+    RAW_MATERIAL_BATCHES ||--o{ PRODUCTION_USAGE : used_in
+    PRODUCTS ||--o{ PRODUCT_BATCHES : stocked_as
+    PRODUCTION_RUNS |o--o{ PRODUCT_BATCHES : outputs
+    ACCOUNTS |o--o{ PRODUCT_BATCHES : receives
+
+    RAW_MATERIAL_BATCHES |o--o{ INVENTORY_TRANSACTIONS : logs
+    PRODUCT_BATCHES |o--o{ INVENTORY_TRANSACTIONS : logs
+    ACCOUNTS |o--o{ INVENTORY_TRANSACTIONS : performs
+
+    PRODUCTS ||--o{ PRODUCT_PRICE_HISTORY : prices
+    ACCOUNTS |o--o{ PRODUCT_PRICE_HISTORY : changes
+    PRODUCT_BATCHES ||--o{ PRODUCT_BATCH_PRICE_ADJUSTMENTS : discounted_by
+    ACCOUNTS |o--o{ PRODUCT_BATCH_PRICE_ADJUSTMENTS : creates
+
+    RESELLERS |o--o{ ORDERS : places
+    ACCOUNTS |o--o{ ORDERS : creates
+    ACCOUNTS |o--o{ ORDERS : approves
+    ORDERS ||--o{ ORDER_ITEMS : contains
+    PRODUCTS ||--o{ ORDER_ITEMS : ordered_as
+    ORDER_ITEMS ||--o{ ORDER_BATCH_ALLOCATIONS : allocated_to
+    PRODUCT_BATCHES ||--o{ ORDER_BATCH_ALLOCATIONS : supplies
+
+    ACCOUNTS |o--o{ SALES_REPORTS : submits
+    RESELLERS |o--o{ SALES_REPORTS : reports
+    DEPARTMENTS |o--o{ SALES_REPORTS : reports
+
+    EMPLOYEES ||--o{ EMPLOYEE_ATTENDANCE : has
+    EMPLOYEES ||--o{ EMPLOYEE_TASKS : assigned
+    EMPLOYEES ||--o{ EMPLOYEE_MERIT_EVALUATIONS : evaluated
+    ACCOUNTS |o--o{ EMPLOYEE_ATTENDANCE : records
+    ACCOUNTS |o--o{ EMPLOYEE_TASKS : assigns
+    ACCOUNTS |o--o{ EMPLOYEE_MERIT_EVALUATIONS : evaluates
+
+    PRODUCTS |o--o{ ALERTS : triggers
+    PRODUCT_BATCHES |o--o{ ALERTS : triggers
+    RAW_MATERIALS |o--o{ ALERTS : triggers
+    RAW_MATERIAL_BATCHES |o--o{ ALERTS : triggers
+    ACCOUNTS |o--o{ ALERTS : acknowledges
+
+    ACCOUNTS |o--o{ FORECAST_RUNS : starts
+    FORECAST_RUNS ||--o{ FORECAST_RESULTS : produces
+    PRODUCTS ||--o{ FORECAST_RESULTS : forecasted

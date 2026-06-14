@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Portal Login | MEATTRACK</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
+</head>
+<body class="auth-page">
+    <main class="auth-shell">
+        <section class="auth-panel">
+            <a class="brand auth-brand" href="/">
+                <span class="brand-mark">BP</span>
+                <span>
+                    <strong>Batangas Premium</strong>
+                    <small>MEATTRACK portal</small>
+                </span>
+            </a>
+
+            {% if message or error %}
+                <aside class="notice {{ 'error' if error else 'success' }}">
+                    {{ error or message }}
+                </aside>
+            {% endif %}
+
+            <h1>Portal sign in</h1>
+            <p class="muted">
+                Enter your registered Batangas Premium portal account. The system opens the correct dashboard for your role after login.
+            </p>
+
+            <form class="form-panel bare" action="/login" method="post">
+                <label>
+                    Email
+                    <input required type="email" name="email" placeholder="name@batangaspremium.test" autocomplete="email">
+                </label>
+                <label>
+                    Password
+                    <input required type="password" name="password" minlength="4" autocomplete="current-password">
+                </label>
+                <button class="button primary full" type="submit">
+                    <i data-lucide="log-in"></i>
+                    Sign in
+                </button>
+            </form>
+
+            <a class="back-link" href="/">
+                <i data-lucide="arrow-left"></i>
+                Back to website
+            </a>
+        </section>
+        <section class="auth-image" aria-label="MEATTRACK portal preview">
+            <img src="{{ url_for('static', path='img/hero-meat-counter.png') }}" alt="Meat counter and batch tracking visual">
+            <div class="auth-caption">
+                <strong>One secure sign-in for Batangas Premium operations.</strong>
+                <span>Your account role determines whether you see the reseller, team leader, or owner dashboard.</span>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+</body>
+</html>

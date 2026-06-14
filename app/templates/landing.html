@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Batangas Premium | Frozen Meat Products</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='css/styles.css') }}"
+    />
+  </head>
+  <body class="site">
+    <header class="site-header">
+      <a class="brand" href="/">
+        <span class="brand-mark">BP</span>
+        <span>
+          <strong>Batangas Premium</strong>
+          <small>Frozen meat products</small>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Public navigation">
+        <a href="#store">Store</a>
+        <a href="#business">About</a>
+        <a href="#city-outlet">City Outlet</a>
+        <a href="#reseller-inquiry">Inquiry</a>
+        <a href="/login">Portal login</a>
+      </nav>
+    </header>
+
+    <main>
+      <section
+        class="hero hero-business"
+        aria-label="Batangas Premium frozen food operations"
+      >
+        <div class="hero-copy">
+          <span class="eyebrow">Meat processing and distribution company</span>
+          <h1>Batangas Premium</h1>
+          <p>
+            Quality processed meats with Batangas flavor, made for family
+            tables, resellers, distributors, and city outlet partners.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#store">
+              <i data-lucide="shopping-bag"></i>
+              View products
+            </a>
+            <a class="button primary" href="#reseller-inquiry">
+              <i data-lucide="store"></i>
+              Partner with us
+            </a>
+            <a class="button ghost-on-dark" href="/login">
+              <i data-lucide="log-in"></i>
+              Open portal
+            </a>
+          </div>
+        </div>
+        <div class="hero-status" aria-label="Business highlights">
+          <span>Longganisa, tapa, tocino, ham, bacon, and sausages</span>
+          <span>City outlet and reseller partnership opportunities</span>
+          <span>Manufacturing and main office in Padre Garcia, Batangas</span>
+        </div>
+      </section>
+
+      {% if message or error %}
+      <aside class="notice {{ 'error' if error else 'success' }}">
+        {{ error or message }}
+      </aside>
+      {% endif %}
+
+      <section class="section intro-band" id="business">
+        <div class="section-heading">
+          <span class="eyebrow">Know our story</span>
+          <h2>From pandemic beginnings to a growing frozen food network.</h2>
+        </div>
+        <div class="intro-grid">
+          <article>
+            <i data-lucide="badge-check"></i>
+            <h3>Established in 2020</h3>
+            <p>
+              Batangas Premium started during the pandemic and grew from
+              skinless longganisa into a broader processed meat brand.
+            </p>
+          </article>
+          <article>
+            <i data-lucide="shopping-bag"></i>
+            <h3>Quality and taste first</h3>
+            <p>
+              The business is known for processed meats such as longganisa,
+              tapa, tocino, ham, bacon, sausages, and other frozen goods.
+            </p>
+          </article>
+          <article>
+            <i data-lucide="handshake"></i>
+            <h3>Distributor community</h3>
+            <p>
+              The official story highlights thousands of active distributors
+              across Luzon and Visayas, with partner growth as a core identity.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section store-section" id="store">
+        <div>
+          <span class="eyebrow">Featured store products</span>
+          <h2>Ala Eh favorites for home buyers and local sellers.</h2>
+          <p class="lead">
+            A storefront-style selection based on Batangas Premium's public
+            product lineup. Prices are store references and may change.
+          </p>
+          <div class="store-grid">
+            {% for product in products %}
+            <article class="store-card">
+              <span>{{ product.category }}</span>
+              <strong>{{ product.name }}</strong>
+              <p>{{ product.description }}</p>
+              <em>{{ product.base_price|currency }}</em>
+            </article>
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <section class="section split-section">
+        <div>
+          <span class="eyebrow">Product families</span>
+          <h2>Premium Line, Gold Line, and seasonal products.</h2>
+          <p class="lead">
+            Longganisa, tocino, tapa, ham, bacon, sausage, deli beef, and
+            rebusado products give partners a wide frozen food assortment for
+            household and community buyers.
+          </p>
+        </div>
+        <img
+          class="feature-image"
+          src="{{ url_for('static', path='img/batch-flow.png') }}"
+          alt="Illustration of Batangas Premium store product families"
+        />
+      </section>
+
+      <section
+        class="section split-section reseller-section"
+        id="city-outlet"
+      >
+        <img
+          class="feature-image"
+          src="{{ url_for('static', path='img/reseller-card.png') }}"
+          alt="City outlet partnership summary"
+        />
+        <div>
+          <span class="eyebrow">City outlet partnership</span>
+          <h2>Be the exclusive outlet partner in a specific area.</h2>
+          <p class="lead">
+            The city outlet program is positioned around visibility,
+            credibility, and profitability. Partners are expected to operate a
+            physical outlet, handle area clients, and support product delivery.
+          </p>
+        </div>
+      </section>
+
+      <section class="section split-section inquiry-section" id="reseller-inquiry">
+        <div>
+          <span class="eyebrow">Partner inquiry</span>
+          <h2>Apply as a reseller or city outlet applicant.</h2>
+          <p class="lead">
+            Submit your business details and preferred area. A Batangas Premium
+            representative can review your inquiry and follow up with the next
+            steps.
+          </p>
+          <form class="form-panel" action="/inquiries" method="post">
+            <label>
+              Contact person
+              <input
+                required
+                name="name"
+                autocomplete="name"
+                placeholder="Juan Dela Cruz"
+                minlength="2"
+              />
+            </label>
+            <label>
+              Business name
+              <input
+                required
+                name="business_name"
+                placeholder="Lipa Fresh Mart"
+                minlength="2"
+              />
+            </label>
+            <div class="form-grid">
+              <label>
+                Email
+                <input
+                  required
+                  type="email"
+                  name="email"
+                  placeholder="orders@example.com"
+                />
+              </label>
+              <label>
+                Contact number
+                <input
+                  required
+                  name="contact_number"
+                  placeholder="09XX XXX XXXX"
+                  minlength="7"
+                />
+              </label>
+            </div>
+            <label>
+              Inquiry details
+              <textarea
+                required
+                name="message"
+                rows="4"
+                minlength="10"
+                placeholder="Tell us your location, expected order frequency, and interest in longganisa, tapa, tocino, sausages, or reseller packages."
+              ></textarea>
+            </label>
+            <button class="button primary" type="submit">
+              <i data-lucide="send"></i>
+              Submit inquiry
+            </button>
+          </form>
+        </div>
+        <div class="partner-notes">
+          <article>
+            <strong>Reseller benefit</strong>
+            <span>Discounted rates are available for qualified reseller orders.</span>
+          </article>
+          <article>
+            <strong>Distributor path</strong>
+            <span>Distributor programs support broader area selling and growth.</span>
+          </article>
+          <article>
+            <strong>City outlet goal</strong>
+            <span>Bring products nearer to customers through visible local outlets.</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="section contact-band" id="contact">
+        <div>
+          <span class="eyebrow">Business contact</span>
+          <h2>Ala Eh! Pagkakasarap-sarap nire!</h2>
+          <p>Manufacturing and Main Office: Pansol, Padre Garcia, Batangas</p>
+        </div>
+        <div class="contact-list">
+          <span><i data-lucide="phone"></i> 0917 555 0148</span>
+          <span
+            ><i data-lucide="mail"></i> operations@batangaspremium.test</span
+          >
+          <span
+            ><i data-lucide="clock"></i> Monday to Saturday, 7:00 AM - 5:00
+            PM</span
+          >
+        </div>
+      </section>
+    </main>
+
+    <aside class="chatbot-widget" data-chatbot>
+      <button
+        class="chatbot-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="chatbot-panel"
+      >
+        <i data-lucide="message-circle"></i>
+        Ask Batangas Premium
+      </button>
+      <section class="chatbot-panel" id="chatbot-panel" hidden>
+        <header>
+          <div>
+            <strong>Batangas Premium Assistant</strong>
+            <span>Products, prices, ordering, delivery, and reseller FAQs</span>
+          </div>
+          <button class="icon-button" type="button" data-chatbot-close aria-label="Close chat">
+            <i data-lucide="x"></i>
+          </button>
+        </header>
+        <div class="chatbot-messages" data-chatbot-messages>
+          <div class="chatbot-message bot">
+            Hello. I can help with Batangas Premium products, prices, ordering, delivery, and reseller inquiries.
+          </div>
+        </div>
+        <form class="chatbot-form" data-chatbot-form>
+          <input
+            name="message"
+            autocomplete="off"
+            placeholder="Ask about prices or reseller process"
+            required
+          />
+          <button class="icon-button" type="submit" aria-label="Send chatbot message">
+            <i data-lucide="send"></i>
+          </button>
+        </form>
+      </section>
+    </aside>
+
+    <footer class="footer">
+      <span>Batangas Premium</span>
+      <span>Frozen meat products, reseller inquiries, and city outlet partnerships</span>
+    </footer>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+  </body>
+</html>
