@@ -109,6 +109,40 @@ async def landing(request: Request, message: str = "", error: str = ""):
     )
 
 
+@app.get("/products")
+async def products(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "products.html",
+        {
+            "request": request,
+            "products": data.products,
+        },
+    )
+
+
+@app.get("/about")
+async def about(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "about.html",
+        {
+            "request": request,
+        },
+    )
+
+
+@app.get("/partnerships")
+async def partnerships(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "partnerships.html",
+        {
+            "request": request,
+        },
+    )
+
+
 @app.post("/inquiries")
 async def create_public_inquiry(
     name: str = Form(...),
@@ -284,29 +318,9 @@ async def reseller_message(message: str = Form(...)):
     if len(message.strip()) < 3:
         return redirect_to(safe_portal_path("reseller", "messages", error="Message is too short."))
     inquiry_id = data.inquiries[0]["inquiry_id"] if data.inquiries else 1
-    data.inquiry_messages.insert(
-        0,
-        {
-            "inquiry_message_id": next(data.ids["message"]),
-            "inquiry_id": inquiry_id,
-            "sender_type": "potential_reseller",
-            "sender": "Lipa Fresh Mart",
-            "message": message.strip(),
-            "created_at": datetime.now(),
-        },
-    )
+    data.add_inquiry_message(inquiry_id, "potential_reseller", "Lipa Fresh Mart", message.strip())
     reply = ask_chatbot(message)
-    data.inquiry_messages.insert(
-        0,
-        {
-            "inquiry_message_id": next(data.ids["message"]),
-            "inquiry_id": inquiry_id,
-            "sender_type": "chatbot",
-            "sender": "Batangas Premium Assistant",
-            "message": reply,
-            "created_at": datetime.now(),
-        },
-    )
+    data.add_inquiry_message(inquiry_id, "chatbot", "Batangas Premium Assistant", reply)
     data.add_log("Lipa Fresh Mart", "sent_reseller_message", f"Inquiry #{inquiry_id}")
     return redirect_to(safe_portal_path("reseller", "messages", message="Message sent."))
 
@@ -388,18 +402,10 @@ async def team_report(
 async def team_attendance(employee: str = Form(...), work_date: date = Form(...), attendance_status: str = Form(...), time_in: str = Form("")):
     if attendance_status not in {"present", "absent", "late", "excused"}:
         return redirect_to(safe_portal_path("team-leader", "employees", error="Invalid attendance status."))
-    data.attendance.insert(
-        0,
-        {
-            "attendance_id": next(data.ids["attendance"]),
-            "employee": employee,
-            "work_date": work_date,
-            "status": attendance_status,
-            "time_in": time_in,
-            "time_out": "",
-        },
-    )
-    data.add_log("Maria Santos", "recorded_attendance", employee)
+    try:
+        data.add_attendance(employee, work_date, attendance_status, time_in)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "employees", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "employees", message="Attendance recorded."))
 
 
@@ -407,17 +413,10 @@ async def team_attendance(employee: str = Form(...), work_date: date = Form(...)
 async def team_task(employee: str = Form(...), title: str = Form(...), due_date: date = Form(...)):
     if len(title.strip()) < 4:
         return redirect_to(safe_portal_path("team-leader", "employees", error="Task title is too short."))
-    data.tasks.insert(
-        0,
-        {
-            "task_id": next(data.ids["task"]),
-            "employee": employee,
-            "title": title.strip(),
-            "status": "assigned",
-            "due_date": due_date,
-        },
-    )
-    data.add_log("Maria Santos", "assigned_employee_task", employee)
+    try:
+        data.add_task(employee, title.strip(), due_date)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "employees", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "employees", message="Task assigned."))
 
 
@@ -433,21 +432,10 @@ async def team_merit(
     scores = [attendance_score, task_score, behavior_score]
     if any(score < 1 or score > 5 for score in scores):
         return redirect_to(safe_portal_path("team-leader", "employees", error="Scores must be from 1 to 5."))
-    overall = round(sum(scores) / len(scores), 2)
-    data.evaluations.insert(
-        0,
-        {
-            "evaluation_id": next(data.ids["evaluation"]),
-            "employee": employee,
-            "period": period.strip() or "Current period",
-            "attendance_score": attendance_score,
-            "task_score": task_score,
-            "behavior_score": behavior_score,
-            "overall_score": overall,
-            "feedback": feedback.strip(),
-        },
-    )
-    data.add_log("Maria Santos", "submitted_merit_evaluation", employee)
+    try:
+        data.add_evaluation(employee, period, attendance_score, task_score, behavior_score, feedback)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "employees", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "employees", message="Merit evaluation submitted."))
 
 
@@ -459,9 +447,7 @@ async def owner_product(product_id: int = Form(...), base_price: float = Form(..
         product = data.product_by_id(product_id)
         if product is None:
             raise ValueError("Unknown product.")
-        product["base_price"] = base_price
-        product["reorder_level"] = reorder_level
-        data.add_log("Owner", "updated_product_price", product["name"])
+        data.update_product_price(product_id, base_price, reorder_level)
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "products", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "products", message="Product pricing updated."))
@@ -473,18 +459,10 @@ async def owner_price_adjustment(batch_code: str = Form(...), adjustment_type: s
         return redirect_to(safe_portal_path("owner", "products", error="Invalid adjustment type."))
     if len(batch_code.strip()) < 4 or len(value.strip()) < 1 or len(reason.strip()) < 4:
         return redirect_to(safe_portal_path("owner", "products", error="Complete the price adjustment fields."))
-    data.price_adjustments.insert(
-        0,
-        {
-            "adjustment_id": next(data.ids["adjustment"]),
-            "batch_code": batch_code.strip().upper(),
-            "adjustment_type": adjustment_type,
-            "value": value.strip(),
-            "reason": reason.strip(),
-            "starts_at": date.today(),
-        },
-    )
-    data.add_log("Owner", "created_batch_price_adjustment", batch_code.strip().upper())
+    try:
+        data.add_price_adjustment(batch_code, adjustment_type, value, reason)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("owner", "products", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "products", message="Batch price adjustment created."))
 
 
@@ -496,18 +474,9 @@ async def owner_account(account_type: str = Form(...), name: str = Form(...), em
         if len(name.strip()) < 2:
             raise ValueError("Account name is required.")
         email = require_email(email)
+        data.add_account(account_type, name, email)
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
-    data.accounts.append(
-        {
-            "account_id": next(data.ids["account"]),
-            "account_type": account_type,
-            "name": name.strip(),
-            "email": email,
-            "status": "active",
-        }
-    )
-    data.add_log("Owner", "created_account", email)
     return redirect_to(safe_portal_path("owner", "accounts", message="Account created."))
 
 
@@ -517,16 +486,8 @@ async def owner_forecast(model_name: str = Form(...), forecast_horizon_days: int
         return redirect_to(safe_portal_path("owner", "forecasts", error="Model name is required."))
     if forecast_horizon_days <= 0:
         return redirect_to(safe_portal_path("owner", "forecasts", error="Forecast horizon must be greater than zero."))
-    for product in data.products:
-        data.forecasts.insert(
-            0,
-            {
-                "forecast_result_id": next(data.ids["forecast"]),
-                "product": product["name"],
-                "forecast_date": date.today() + timedelta(days=forecast_horizon_days),
-                "predicted_quantity": max(1, round(product["available"] * 0.42, 1)),
-                "confidence": "demo range",
-            },
-        )
-    data.add_log("Owner", "forecast_completed", model_name.strip())
+    try:
+        data.add_forecast(model_name, forecast_horizon_days)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("owner", "forecasts", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "forecasts", message="Forecast run completed."))

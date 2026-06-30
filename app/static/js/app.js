@@ -46,7 +46,7 @@
 
     function addMessage(text, type) {
         const bubble = document.createElement("div");
-        bubble.className = `chatbot-message ${type}`;
+        bubble.className = `message ${type === 'user' ? 'user-message' : 'bot-message'}`;
         bubble.textContent = text;
         messages.appendChild(bubble);
         messages.scrollTop = messages.scrollHeight;

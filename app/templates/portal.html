@@ -248,7 +248,7 @@
                         <div class="stack-item alert {{ alert.severity }}">
                             <strong>{{ alert.subject }}</strong>
                             <span>{{ alert.message }}</span>
-                            <em>{{ alert.status }}</em>
+                            <span class="status-badge {{ alert.status }}">{{ alert.status }}</span>
                         </div>
                         {% endfor %}
                     </div>
@@ -522,7 +522,7 @@
                 </article>
                 <article class="panel">
                     <h2>Management exceptions</h2>
-                    <div class="stack-list">{% for alert in alerts %}<div class="stack-item alert {{ alert.severity }}"><strong>{{ alert.subject }}</strong><span>{{ alert.message }}</span><em>{{ alert.status }}</em></div>{% endfor %}</div>
+                    <div class="stack-list">{% for alert in alerts %}<div class="stack-item alert {{ alert.severity }}"><strong>{{ alert.subject }}</strong><span>{{ alert.message }}</span><span class="status-badge {{ alert.status }}">{{ alert.status }}</span></div>{% endfor %}</div>
                 </article>
             </section>
             {% elif section == "products" %}

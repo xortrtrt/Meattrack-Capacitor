@@ -9,255 +9,157 @@
       href="{{ url_for('static', path='css/styles.css') }}"
     />
   </head>
-  <body class="site">
-    <header class="site-header">
-      <a class="brand" href="/">
-        <span class="brand-mark">BP</span>
-        <span>
-          <strong>Batangas Premium</strong>
-          <small>Frozen meat products</small>
-        </span>
-      </a>
-      <nav class="site-nav" aria-label="Public navigation">
-        <a href="#store">Store</a>
-        <a href="#business">About</a>
-        <a href="#city-outlet">City Outlet</a>
-        <a href="#reseller-inquiry">Inquiry</a>
-        <a href="/login">Portal login</a>
-      </nav>
-    </header>
+  <body class="landing-page">
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="nav-container">
+        <a href="/" class="logo">
+          <img
+            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            alt="Batangas Premium"
+            class="logo-img"
+          />
+        </a>
+        <ul class="nav-links">
+          <li><a href="/products">Our Products</a></li>
+          <li><a href="/about">About Us</a></li>
+          <li><a href="/partnerships">Partnerships</a></li>
+          <li><a href="#inquiry">Contact</a></li>
+          <li><a href="/login" class="btn-portal">Portal Login</a></li>
+        </ul>
+      </div>
+    </nav>
 
-    <main>
-      <section
-        class="hero hero-business"
-        aria-label="Batangas Premium frozen food operations"
-      >
-        <div class="hero-copy">
-          <span class="eyebrow">Meat processing and distribution company</span>
+    <!-- Hero Section -->
+    <section
+      class="hero"
+      style="background-image: url('{{ url_for('static', path='img/background.jpg') }}')"
+    >
+      <div class="hero-overlay"></div>
+      <div class="hero-content">
+        <div class="hero-center">
+          <img
+            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            alt="Batangas Premium Logo"
+            class="hero-logo"
+          />
           <h1>Batangas Premium</h1>
-          <p>
-            Quality processed meats with Batangas flavor, made for family
-            tables, resellers, distributors, and city outlet partners.
-          </p>
-          <div class="hero-actions">
-            <a class="button primary" href="#store">
-              <i data-lucide="shopping-bag"></i>
-              View products
-            </a>
-            <a class="button primary" href="#reseller-inquiry">
-              <i data-lucide="store"></i>
-              Partner with us
-            </a>
-            <a class="button ghost-on-dark" href="/login">
-              <i data-lucide="log-in"></i>
-              Open portal
-            </a>
+          <p class="tagline">Authentic Filipino Flavor, Premium Quality</p>
+          <div class="hero-buttons">
+            <a href="/products" class="btn btn-primary">Explore Products</a>
+            <a href="#inquiry" class="btn btn-secondary">Become a Partner</a>
           </div>
         </div>
-        <div class="hero-status" aria-label="Business highlights">
-          <span>Longganisa, tapa, tocino, ham, bacon, and sausages</span>
-          <span>City outlet and reseller partnership opportunities</span>
-          <span>Manufacturing and main office in Padre Garcia, Batangas</span>
-        </div>
-      </section>
+      </div>
+    </section>
 
-      {% if message or error %}
-      <aside class="notice {{ 'error' if error else 'success' }}">
-        {{ error or message }}
-      </aside>
-      {% endif %}
+    {% if message or error %}
+    <div class="alert {{ 'alert-error' if error else 'alert-success' }}">
+      {{ error or message }}
+    </div>
+    {% endif %}
 
-      <section class="section intro-band" id="business">
-        <div class="section-heading">
-          <span class="eyebrow">Know our story</span>
-          <h2>From pandemic beginnings to a growing frozen food network.</h2>
-        </div>
-        <div class="intro-grid">
-          <article>
-            <i data-lucide="badge-check"></i>
-            <h3>Established in 2020</h3>
-            <p>
-              Batangas Premium started during the pandemic and grew from
-              skinless longganisa into a broader processed meat brand.
-            </p>
-          </article>
-          <article>
-            <i data-lucide="shopping-bag"></i>
-            <h3>Quality and taste first</h3>
-            <p>
-              The business is known for processed meats such as longganisa,
-              tapa, tocino, ham, bacon, sausages, and other frozen goods.
-            </p>
-          </article>
-          <article>
-            <i data-lucide="handshake"></i>
-            <h3>Distributor community</h3>
-            <p>
-              The official story highlights thousands of active distributors
-              across Luzon and Visayas, with partner growth as a core identity.
-            </p>
-          </article>
-        </div>
-      </section>
+    <!-- Inquiry Section -->
+    <section id="inquiry" class="inquiry-section">
+      <div class="container">
+        <h2>Let's Connect</h2>
+        <p class="inquiry-intro">
+          Interested in our products or partnership opportunities? Reach out to
+          us.
+        </p>
 
-      <section class="section store-section" id="store">
-        <div>
-          <span class="eyebrow">Featured store products</span>
-          <h2>Ala Eh favorites for home buyers and local sellers.</h2>
-          <p class="lead">
-            A storefront-style selection based on Batangas Premium's public
-            product lineup. Prices are store references and may change.
-          </p>
-          <div class="store-grid">
-            {% for product in products %}
-            <article class="store-card">
-              <span>{{ product.category }}</span>
-              <strong>{{ product.name }}</strong>
-              <p>{{ product.description }}</p>
-              <em>{{ product.base_price|currency }}</em>
-            </article>
-            {% endfor %}
-          </div>
-        </div>
-      </section>
-
-      <section class="section split-section">
-        <div>
-          <span class="eyebrow">Product families</span>
-          <h2>Premium Line, Gold Line, and seasonal products.</h2>
-          <p class="lead">
-            Longganisa, tocino, tapa, ham, bacon, sausage, deli beef, and
-            rebusado products give partners a wide frozen food assortment for
-            household and community buyers.
-          </p>
-        </div>
-        <img
-          class="feature-image"
-          src="{{ url_for('static', path='img/batch-flow.png') }}"
-          alt="Illustration of Batangas Premium store product families"
-        />
-      </section>
-
-      <section
-        class="section split-section reseller-section"
-        id="city-outlet"
-      >
-        <img
-          class="feature-image"
-          src="{{ url_for('static', path='img/reseller-card.png') }}"
-          alt="City outlet partnership summary"
-        />
-        <div>
-          <span class="eyebrow">City outlet partnership</span>
-          <h2>Be the exclusive outlet partner in a specific area.</h2>
-          <p class="lead">
-            The city outlet program is positioned around visibility,
-            credibility, and profitability. Partners are expected to operate a
-            physical outlet, handle area clients, and support product delivery.
-          </p>
-        </div>
-      </section>
-
-      <section class="section split-section inquiry-section" id="reseller-inquiry">
-        <div>
-          <span class="eyebrow">Partner inquiry</span>
-          <h2>Apply as a reseller or city outlet applicant.</h2>
-          <p class="lead">
-            Submit your business details and preferred area. A Batangas Premium
-            representative can review your inquiry and follow up with the next
-            steps.
-          </p>
-          <form class="form-panel" action="/inquiries" method="post">
-            <label>
-              Contact person
+        <div class="inquiry-wrapper">
+          <form class="inquiry-form" action="/inquiries" method="post">
+            <div class="form-group">
+              <label for="name">Your Name</label>
               <input
                 required
+                id="name"
+                type="text"
                 name="name"
-                autocomplete="name"
                 placeholder="Juan Dela Cruz"
                 minlength="2"
               />
-            </label>
-            <label>
-              Business name
+            </div>
+
+            <div class="form-group">
+              <label for="business_name">Business Name</label>
               <input
                 required
+                id="business_name"
+                type="text"
                 name="business_name"
-                placeholder="Lipa Fresh Mart"
+                placeholder="Your Business"
                 minlength="2"
               />
-            </label>
-            <div class="form-grid">
-              <label>
-                Email
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="email">Email Address</label>
                 <input
                   required
+                  id="email"
                   type="email"
                   name="email"
-                  placeholder="orders@example.com"
+                  placeholder="your@email.com"
                 />
-              </label>
-              <label>
-                Contact number
+              </div>
+
+              <div class="form-group">
+                <label for="contact_number">Contact Number</label>
                 <input
                   required
+                  id="contact_number"
+                  type="tel"
                   name="contact_number"
                   placeholder="09XX XXX XXXX"
                   minlength="7"
                 />
-              </label>
+              </div>
             </div>
-            <label>
-              Inquiry details
+
+            <div class="form-group">
+              <label for="message">Tell Us More</label>
               <textarea
                 required
+                id="message"
                 name="message"
-                rows="4"
+                rows="5"
                 minlength="10"
-                placeholder="Tell us your location, expected order frequency, and interest in longganisa, tapa, tocino, sausages, or reseller packages."
+                placeholder="Share your location, business interests, and which products interest you..."
               ></textarea>
-            </label>
-            <button class="button primary" type="submit">
-              <i data-lucide="send"></i>
-              Submit inquiry
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-large">
+              Send Inquiry
             </button>
           </form>
-        </div>
-        <div class="partner-notes">
-          <article>
-            <strong>Reseller benefit</strong>
-            <span>Discounted rates are available for qualified reseller orders.</span>
-          </article>
-          <article>
-            <strong>Distributor path</strong>
-            <span>Distributor programs support broader area selling and growth.</span>
-          </article>
-          <article>
-            <strong>City outlet goal</strong>
-            <span>Bring products nearer to customers through visible local outlets.</span>
-          </article>
-        </div>
-      </section>
 
-      <section class="section contact-band" id="contact">
-        <div>
-          <span class="eyebrow">Business contact</span>
-          <h2>Ala Eh! Pagkakasarap-sarap nire!</h2>
-          <p>Manufacturing and Main Office: Pansol, Padre Garcia, Batangas</p>
+          <div class="contact-info">
+            <h3>Contact Details</h3>
+            <div class="info-item">
+              <strong>Address</strong>
+              <p>Pansol, Padre Garcia<br />Batangas, Philippines</p>
+            </div>
+            <div class="info-item">
+              <strong>Phone</strong>
+              <p>0935 335 6483</p>
+            </div>
+            <div class="info-item">
+              <strong>Email</strong>
+              <p>batangas.premium@yahoo.com</p>
+            </div>
+            <div class="info-item">
+              <strong>Hours</strong>
+              <p>Monday - Saturday<br />7:00 AM - 5:00 PM</p>
+            </div>
+          </div>
         </div>
-        <div class="contact-list">
-          <span><i data-lucide="phone"></i> 0917 555 0148</span>
-          <span
-            ><i data-lucide="mail"></i> operations@batangaspremium.test</span
-          >
-          <span
-            ><i data-lucide="clock"></i> Monday to Saturday, 7:00 AM - 5:00
-            PM</span
-          >
-        </div>
-      </section>
-    </main>
+      </div>
+    </section>
 
+    <!-- Chatbot Widget -->
     <aside class="chatbot-widget" data-chatbot>
       <button
         class="chatbot-toggle"
@@ -265,41 +167,68 @@
         aria-expanded="false"
         aria-controls="chatbot-panel"
       >
-        <i data-lucide="message-circle"></i>
-        Ask Batangas Premium
+        <span class="chat-text">Chat with us</span>
       </button>
       <section class="chatbot-panel" id="chatbot-panel" hidden>
-        <header>
+        <header class="chatbot-header">
           <div>
-            <strong>Batangas Premium Assistant</strong>
-            <span>Products, prices, ordering, delivery, and reseller FAQs</span>
+            <strong>Batangas Premium</strong>
+            <span>Questions about products, ordering, or partnerships?</span>
           </div>
-          <button class="icon-button" type="button" data-chatbot-close aria-label="Close chat">
-            <i data-lucide="x"></i>
+          <button
+            class="close-btn"
+            type="button"
+            data-chatbot-close
+            aria-label="Close chat"
+          >
+            ×
           </button>
         </header>
         <div class="chatbot-messages" data-chatbot-messages>
-          <div class="chatbot-message bot">
-            Hello. I can help with Batangas Premium products, prices, ordering, delivery, and reseller inquiries.
+          <div class="message bot-message">
+            Welcome to Batangas Premium. How can I help you today?
           </div>
         </div>
         <form class="chatbot-form" data-chatbot-form>
           <input
             name="message"
+            type="text"
             autocomplete="off"
-            placeholder="Ask about prices or reseller process"
+            placeholder="Ask us anything..."
             required
           />
-          <button class="icon-button" type="submit" aria-label="Send chatbot message">
-            <i data-lucide="send"></i>
-          </button>
+          <button type="submit" aria-label="Send message">➤</button>
         </form>
       </section>
     </aside>
 
+    <!-- Footer -->
     <footer class="footer">
-      <span>Batangas Premium</span>
-      <span>Frozen meat products, reseller inquiries, and city outlet partnerships</span>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <h4>Batangas Premium</h4>
+            <p>Quality frozen meat products crafted with tradition and care.</p>
+          </div>
+          <div class="footer-section">
+            <h4>Quick Links</h4>
+            <ul>
+              <li><a href="/products">Products</a></li>
+              <li><a href="/partnerships">Partnerships</a></li>
+              <li><a href="#inquiry">Contact</a></li>
+              <li><a href="/login">Portal</a></li>
+            </ul>
+          </div>
+          <div class="footer-section">
+            <h4>Get In Touch</h4>
+            <p>0935 335 6483</p>
+            <p>batangas.premium@yahoo.com</p>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>&copy; 2020 Batangas Premium. All rights reserved.</p>
+        </div>
+      </div>
     </footer>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>

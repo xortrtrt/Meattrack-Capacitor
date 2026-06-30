@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Our Products | Batangas Premium</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='css/styles.css') }}"
+    />
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="nav-container">
+        <a href="/" class="logo">
+          <img
+            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            alt="Batangas Premium"
+            class="logo-img"
+          />
+        </a>
+        <ul class="nav-links">
+          <li><a href="/products">Our Products</a></li>
+          <li><a href="/about">About Us</a></li>
+          <li><a href="/partnerships">Partnerships</a></li>
+          <li><a href="/#inquiry">Contact</a></li>
+          <li><a href="/login" class="btn-portal">Portal Login</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- Products Section -->
+    <section id="products" class="products-section" style="margin-top: 80px">
+      <div class="container">
+        <div class="section-header">
+          <h2>Our Premium Selection</h2>
+          <p>Carefully crafted frozen meat products for your table</p>
+        </div>
+        <div class="products-grid">
+          {% for product in products %}
+          <div class="product-card">
+            <div class="product-category">{{ product.category }}</div>
+            <h3>{{ product.name }}</h3>
+            <p>{{ product.description }}</p>
+            <div class="product-price">{{ product.base_price|currency }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <!-- Chatbot Widget -->
+    <aside class="chatbot-widget" data-chatbot>
+      <button
+        class="chatbot-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="chatbot-panel"
+      >
+        <span class="chat-text">Chat with us</span>
+      </button>
+      <section class="chatbot-panel" id="chatbot-panel" hidden>
+        <header class="chatbot-header">
+          <div>
+            <strong>Batangas Premium</strong>
+            <span>Questions about products, ordering, or partnerships?</span>
+          </div>
+          <button
+            class="close-btn"
+            type="button"
+            data-chatbot-close
+            aria-label="Close chat"
+          >
+            ×
+          </button>
+        </header>
+        <div class="chatbot-messages" data-chatbot-messages>
+          <div class="message bot-message">
+            Welcome to Batangas Premium. How can I help you today?
+          </div>
+        </div>
+        <form class="chatbot-form" data-chatbot-form>
+          <input
+            name="message"
+            type="text"
+            autocomplete="off"
+            placeholder="Ask us anything..."
+            required
+          />
+          <button type="submit" aria-label="Send message">➤</button>
+        </form>
+      </section>
+    </aside>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <h4>Get In Touch</h4>
+            <p>0935 335 6483</p>
+            <p>batangas.premium@yahoo.com</p>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>&copy; 2020 Batangas Premium. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+  </body>
+</html>

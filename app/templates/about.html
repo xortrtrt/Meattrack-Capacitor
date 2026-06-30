@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About Us | Batangas Premium</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='css/styles.css') }}"
+    />
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="nav-container">
+        <a href="/" class="logo">
+          <img
+            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            alt="Batangas Premium"
+            class="logo-img"
+          />
+        </a>
+        <ul class="nav-links">
+          <li><a href="/products">Our Products</a></li>
+          <li><a href="/about">About Us</a></li>
+          <li><a href="/partnerships">Partnerships</a></li>
+          <li><a href="/#inquiry">Contact</a></li>
+          <li><a href="/login" class="btn-portal">Portal Login</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- About Section -->
+    <section id="about" class="about-section" style="margin-top: 80px">
+      <div class="container">
+        <div class="about-content">
+          <div class="about-text">
+            <h2>From Engineers to Entrepreneurs</h2>
+            <p>
+              Batangas Premium was founded on June 22, 2020, by Nicko Jay
+              Landicho and Weng Opena, two mechanical engineers with backgrounds
+              in major projects including Okada Manila, IKEA, and UCC Cafes.
+              When COVID-19 lockdowns disrupted their careers, they pivoted to a
+              new vision: quality frozen meat products.
+            </p>
+            <p>
+              Starting with just skinless longganisa and 2 employees, we've
+              grown into a trusted meat processing and distribution company
+              serving over 5,000 active distributors across 10 regions in Luzon
+              and Visayas. Today, with around 60 dedicated employees and
+              commercial-grade equipment, Batangas Premium combines
+              entrepreneurial spirit with uncompromising quality standards.
+            </p>
+            <div class="about-stats">
+              <div class="stat">
+                <span class="stat-value">June 2020</span>
+                <span class="stat-label">Founded</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">5,000+</span>
+                <span class="stat-label">Active Distributors</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">10 Regions</span>
+                <span class="stat-label">Luzon & Visayas</span>
+              </div>
+            </div>
+          </div>
+          <div class="about-features">
+            <div class="feature-box">
+              <span class="feature-icon">MEATS</span>
+              <h4>Premium Products</h4>
+              <p>Longganisa, tapa, tocino, ham, and specialty meat products</p>
+            </div>
+            <div class="feature-box">
+              <span class="feature-icon">CHECK</span>
+              <h4>Quality Standards</h4>
+              <p>Commercial-grade processing with strict quality control</p>
+            </div>
+            <div class="feature-box">
+              <span class="feature-icon">SHIP</span>
+              <h4>Wide Reach</h4>
+              <p>Serving over 5,000 distributors across 10 regions</p>
+            </div>
+            <div class="feature-box">
+              <span class="feature-icon">TEAM</span>
+              <h4>Distributor Growth</h4>
+              <p>Supporting entrepreneurs through our distributor network</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Chatbot Widget -->
+    <aside class="chatbot-widget" data-chatbot>
+      <button
+        class="chatbot-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="chatbot-panel"
+      >
+        <span class="chat-text">Chat with us</span>
+      </button>
+      <section class="chatbot-panel" id="chatbot-panel" hidden>
+        <header class="chatbot-header">
+          <div>
+            <strong>Batangas Premium</strong>
+            <span>Questions about products, ordering, or partnerships?</span>
+          </div>
+          <button
+            class="close-btn"
+            type="button"
+            data-chatbot-close
+            aria-label="Close chat"
+          >
+            ×
+          </button>
+        </header>
+        <div class="chatbot-messages" data-chatbot-messages>
+          <div class="message bot-message">
+            Welcome to Batangas Premium. How can I help you today?
+          </div>
+        </div>
+        <form class="chatbot-form" data-chatbot-form>
+          <input
+            name="message"
+            type="text"
+            autocomplete="off"
+            placeholder="Ask us anything..."
+            required
+          />
+          <button type="submit" aria-label="Send message">➤</button>
+        </form>
+      </section>
+    </aside>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <h4>Get In Touch</h4>
+            <p>0935 335 6483</p>
+            <p>batangas.premium@yahoo.com</p>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>&copy; 2020 Batangas Premium. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+  </body>
+</html>
