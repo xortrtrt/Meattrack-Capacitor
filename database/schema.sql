@@ -10,22 +10,10 @@ CREATE TABLE departments (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE employees (
-    employee_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    department_id bigint NOT NULL REFERENCES departments(department_id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    name text NOT NULL,
-    position text NOT NULL,
-    employment_status text NOT NULL DEFAULT 'active'
-        CHECK (employment_status IN ('active', 'inactive')),
-    is_department_leader boolean NOT NULL DEFAULT false,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE TABLE accounts (
     account_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_type text NOT NULL
         CHECK (account_type IN ('owner', 'team_leader', 'reseller')),
-    employee_id bigint REFERENCES employees(employee_id) ON UPDATE CASCADE ON DELETE SET NULL,
     reseller_id bigint,
     name text NOT NULL,
     email text NOT NULL,
@@ -80,70 +68,49 @@ ALTER TABLE accounts
     ON UPDATE CASCADE
     ON DELETE SET NULL;
 
-CREATE TABLE raw_materials (
-    raw_material_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+CREATE TABLE inventory_items (
+    item_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_type text NOT NULL CHECK (item_type IN ('raw_material', 'finished_product')),
     category text,
-    name text NOT NULL UNIQUE,
-    unit text NOT NULL DEFAULT 'kg',
-    reorder_level numeric(12,3) NOT NULL DEFAULT 0 CHECK (reorder_level >= 0),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (btrim(unit) <> '')
-);
-
-CREATE TABLE raw_material_batches (
-    raw_material_batch_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    raw_material_id bigint NOT NULL REFERENCES raw_materials(raw_material_id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    batch_code text NOT NULL UNIQUE,
-    quantity_received numeric(12,3) NOT NULL CHECK (quantity_received > 0),
-    quantity_available numeric(12,3) NOT NULL CHECK (quantity_available >= 0),
-    unit text NOT NULL,
-    received_date date NOT NULL DEFAULT CURRENT_DATE,
-    expiry_date date,
-    quality_status text NOT NULL DEFAULT 'approved'
-        CHECK (quality_status IN ('pending', 'approved', 'rejected', 'expired', 'spoiled')),
-    created_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (quantity_available <= quantity_received),
-    CHECK (expiry_date IS NULL OR expiry_date >= received_date),
-    CHECK (btrim(unit) <> '')
-);
-
-CREATE TABLE products (
-    product_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    category text,
-    name text NOT NULL UNIQUE,
+    name text NOT NULL,
     description text,
-    unit text NOT NULL DEFAULT 'pack',
+    unit text NOT NULL,
     base_price numeric(12,2) NOT NULL DEFAULT 0 CHECK (base_price >= 0),
-    reorder_level numeric(12,3) NOT NULL DEFAULT 0 CHECK (reorder_level >= 0),
+    quantity_available numeric(12,3) NOT NULL DEFAULT 0 CHECK (quantity_available >= 0),
     is_active boolean NOT NULL DEFAULT true,
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (item_type, name),
+    CHECK (btrim(unit) <> ''),
+    CHECK (item_type = 'finished_product' OR base_price = 0),
+    CHECK (item_type = 'raw_material' OR quantity_available = 0)
 );
 
-CREATE TABLE product_batches (
-    product_batch_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    product_id bigint NOT NULL REFERENCES products(product_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+CREATE TABLE inventory_batches (
+    batch_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
     batch_code text NOT NULL UNIQUE,
     source_type text NOT NULL DEFAULT 'direct_received'
         CHECK (source_type IN ('direct_received', 'production')),
     quantity_received numeric(12,3) NOT NULL CHECK (quantity_received > 0),
     quantity_available numeric(12,3) NOT NULL CHECK (quantity_available >= 0),
-    unit text NOT NULL DEFAULT 'pack',
+    unit text NOT NULL,
     received_date date NOT NULL DEFAULT CURRENT_DATE,
     expiry_date date NOT NULL,
     quality_status text NOT NULL DEFAULT 'approved'
         CHECK (quality_status IN ('pending', 'approved', 'rejected', 'expired', 'spoiled')),
     created_at timestamptz NOT NULL DEFAULT now(),
     CHECK (quantity_available <= quantity_received),
-    CHECK (expiry_date >= received_date)
+    CHECK (expiry_date >= received_date),
+    CHECK (btrim(unit) <> '')
 );
 
 CREATE TABLE product_recipes (
     recipe_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    product_id bigint NOT NULL REFERENCES products(product_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    raw_material_id bigint NOT NULL REFERENCES raw_materials(raw_material_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    product_item_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    material_item_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
     quantity_required numeric(12,3) NOT NULL CHECK (quantity_required > 0),
     unit text NOT NULL,
-    UNIQUE (product_id, raw_material_id),
+    UNIQUE (product_item_id, material_item_id),
     CHECK (btrim(unit) <> '')
 );
 
@@ -166,7 +133,7 @@ CREATE TABLE orders (
 CREATE TABLE order_items (
     order_item_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     order_id bigint NOT NULL REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    product_id bigint NOT NULL REFERENCES products(product_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
     quantity numeric(12,3) NOT NULL CHECK (quantity > 0),
     unit text NOT NULL DEFAULT 'pack',
     unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0),
@@ -189,59 +156,15 @@ CREATE TABLE sales_reports (
     CHECK (period_end >= period_start)
 );
 
-CREATE TABLE employee_attendance (
-    attendance_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    employee_id bigint NOT NULL REFERENCES employees(employee_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    work_date date NOT NULL,
-    status text NOT NULL
-        CHECK (status IN ('present', 'absent', 'late', 'excused')),
-    time_in time,
-    time_out time,
-    recorded_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
-    notes text,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (employee_id, work_date)
-);
-
-CREATE TABLE employee_tasks (
-    task_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    employee_id bigint NOT NULL REFERENCES employees(employee_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    assigned_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
-    title text NOT NULL,
-    description text,
-    due_date date,
-    status text NOT NULL DEFAULT 'assigned'
-        CHECK (status IN ('assigned', 'in_progress', 'completed', 'cancelled')),
-    completed_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE employee_merit_evaluations (
-    evaluation_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    employee_id bigint NOT NULL REFERENCES employees(employee_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    evaluator_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
-    period_start date NOT NULL,
-    period_end date NOT NULL,
-    attendance_score integer NOT NULL CHECK (attendance_score BETWEEN 1 AND 5),
-    task_score integer NOT NULL CHECK (task_score BETWEEN 1 AND 5),
-    behavior_score integer NOT NULL CHECK (behavior_score BETWEEN 1 AND 5),
-    overall_score numeric(4,2) NOT NULL CHECK (overall_score BETWEEN 1 AND 5),
-    feedback text,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (employee_id, period_start, period_end),
-    CHECK (period_end >= period_start)
-);
-
 CREATE TABLE alerts (
     alert_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     alert_type text NOT NULL
         CHECK (alert_type IN ('low_stock', 'near_expiry', 'expired_batch', 'forecast')),
     severity text NOT NULL DEFAULT 'warning'
         CHECK (severity IN ('info', 'warning', 'critical')),
-    product_id bigint REFERENCES products(product_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    product_batch_id bigint REFERENCES product_batches(product_batch_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    raw_material_id bigint REFERENCES raw_materials(raw_material_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    raw_material_batch_id bigint REFERENCES raw_material_batches(raw_material_batch_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    product_id bigint REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    product_batch_id bigint REFERENCES inventory_batches(batch_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    raw_material_id bigint REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE CASCADE,
     message text NOT NULL,
     status text NOT NULL DEFAULT 'open'
         CHECK (status IN ('open', 'acknowledged', 'resolved')),
@@ -250,7 +173,6 @@ CREATE TABLE alerts (
         product_id IS NOT NULL
         OR product_batch_id IS NOT NULL
         OR raw_material_id IS NOT NULL
-        OR raw_material_batch_id IS NOT NULL
     )
 );
 
@@ -272,7 +194,7 @@ CREATE TABLE forecast_runs (
 CREATE TABLE forecast_results (
     forecast_result_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     forecast_run_id bigint NOT NULL REFERENCES forecast_runs(forecast_run_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    product_id bigint NOT NULL REFERENCES products(product_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE CASCADE,
     forecast_date date NOT NULL,
     predicted_quantity numeric(12,3) NOT NULL CHECK (predicted_quantity >= 0),
     confidence_lower numeric(12,3) CHECK (confidence_lower IS NULL OR confidence_lower >= 0),
@@ -284,10 +206,9 @@ CREATE TABLE forecast_results (
 
 CREATE UNIQUE INDEX ux_accounts_email_lower ON accounts (lower(email));
 CREATE UNIQUE INDEX ux_resellers_email_lower ON resellers (lower(email));
-CREATE INDEX ix_employees_department ON employees (department_id);
-CREATE INDEX ix_raw_material_batches_fefo ON raw_material_batches (raw_material_id, expiry_date, quantity_available)
-    WHERE quality_status = 'approved' AND quantity_available > 0;
-CREATE INDEX ix_product_batches_fefo ON product_batches (product_id, expiry_date, quantity_available)
+CREATE UNIQUE INDEX ux_inventory_items_type_name_lower ON inventory_items (item_type, lower(name));
+CREATE INDEX ix_inventory_items_type_name ON inventory_items (item_type, name);
+CREATE INDEX ix_inventory_batches_fefo ON inventory_batches (item_id, expiry_date, quantity_available)
     WHERE quality_status = 'approved' AND quantity_available > 0;
 CREATE INDEX ix_orders_reseller_status ON orders (reseller_id, status);
 CREATE INDEX ix_activity_logs_account_created ON activity_logs (account_id, created_at DESC);

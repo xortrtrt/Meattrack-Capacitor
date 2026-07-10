@@ -5,7 +5,7 @@
             <section class="metric-grid">
                 <article class="metric-card"><span>Open alerts</span><strong>{{ metrics.open_alerts }}</strong><small>Stock or expiry warnings</small></article>
                 <article class="metric-card"><span>Pending reseller orders</span><strong>{{ metrics.pending_reseller_orders }}</strong><small>Need team leader action</small></article>
-                <article class="metric-card"><span>Team merit average</span><strong>{{ metrics.employee_average }}</strong><small>Latest evaluation score</small></article>
+                <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }}</strong><small>Finished packs available</small></article>
             </section>
             <section class="content-grid two">
                 <article class="panel">
@@ -72,24 +72,100 @@
             {% elif section == "inventory" %}
             <section class="content-grid two">
                 <article class="panel">
-                    <h2>Receive raw material</h2>
-                    <form class="form-panel bare" action="/portal/team-leader/raw-materials" method="post">
-                        <label>Raw material
+                    <h2>Raw inventory</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/inventory-items" method="post">
+                        <h3>Create item</h3>
+                        <div class="form-grid">
+                            <label>Item name <input required name="name" placeholder="Chicken"></label>
+                            <label>Category
+                                <select name="category" required>
+                                    {% for category in raw_material_categories %}
+                                    <option value="{{ category }}">{{ category.replace("_", " ")|title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>Unit
+                                <select name="unit" required>
+                                    {% for unit in stock_units %}
+                                    <option value="{{ unit }}">{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
+                        </div>
+                        <button class="button primary" type="submit"><i data-lucide="package-plus"></i> Add item</button>
+                    </form>
+                    <form class="form-panel bare" action="/portal/team-leader/inventory-items/quantity" method="post">
+                        <h3>Add quantity</h3>
+                        <label>Inventory item
                             <select name="raw_material_id" required>
                                 {% for material in raw_materials %}
                                 <option value="{{ material.raw_material_id }}">{{ material.name }} - {{ material.available|number }} {{ material.unit }}</option>
                                 {% endfor %}
                             </select>
                         </label>
-                        <div class="form-grid">
-                            <label>Batch code <input required name="batch_code" placeholder="PORK-0710-A"></label>
-                            <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
-                        </div>
-                        <label>Expiry date <input required type="date" name="expiry_date"></label>
-                        <button class="button primary" type="submit"><i data-lucide="package-plus"></i> Receive material</button>
+                        <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
+                        <button class="button primary" type="submit"><i data-lucide="plus"></i> Add quantity</button>
                     </form>
                 </article>
                 <article class="panel">
+                    <h2>Create product recipe</h2>
+                    <form class="form-panel bare" id="product-recipe-form" action="/portal/team-leader/products" method="post">
+                        <div class="form-grid">
+                            <label>Product name <input required name="name" placeholder="Tocino"></label>
+                            <label>Category
+                                <select name="category" required>
+                                    {% for category in product_categories %}
+                                    <option value="{{ category }}">{{ category }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>Contents per pack <input required type="number" min="0.001" step="0.001" name="pack_size" placeholder="500"></label>
+                            <label>Contents unit
+                                <select name="pack_size_unit" required>
+                                    {% for unit in content_units %}
+                                    <option value="{{ unit }}">{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>Stock counted as <input value="1 pack" disabled></label>
+                            <input type="hidden" name="unit" value="pack">
+                            <label>Price per pack <input type="number" min="0" step="0.01" name="base_price" placeholder="0.00"></label>
+                        </div>
+                        <div class="recipe-rows" id="recipe-rows">
+                            <div class="ingredient-row" data-recipe-row>
+                                <label>Ingredient
+                                    <select name="material_item_id[]" required>
+                                        {% for material in raw_materials %}
+                                        <option value="{{ material.raw_material_id }}">{{ material.name }} - {{ material.category }} - {{ material.available|number }} {{ material.unit }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>Required per pack <input required type="number" min="0.001" step="0.001" name="quantity_required[]" placeholder="500"></label>
+                                <label>Input unit
+                                    <select name="quantity_required_unit[]" required>
+                                        {% for unit in recipe_units %}
+                                        <option value="{{ unit }}">{{ unit }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <button class="icon-button danger" type="button" data-remove-ingredient title="Remove ingredient"><i data-lucide="x"></i></button>
+                            </div>
+                        </div>
+                        <div class="button-row">
+                            <button class="button subtle" type="button" id="add-ingredient"><i data-lucide="plus"></i> Add ingredient</button>
+                            <button class="button primary" type="submit"><i data-lucide="plus-circle"></i> Create recipe</button>
+                        </div>
+                    </form>
+                </article>
+            </section>
+            <section class="panel">
                     <h2>Produce product</h2>
                     <form class="form-panel bare" action="/portal/team-leader/production" method="post">
                         <label>Product
@@ -101,43 +177,84 @@
                         </label>
                         <div class="form-grid">
                             <label>Output batch <input required name="batch_code" placeholder="PGL-0710-A"></label>
-                            <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
+                            <label>Packs produced <input required type="number" min="1" step="1" name="quantity"></label>
                         </div>
                         <label>Expiry date <input required type="date" name="expiry_date"></label>
                         <button class="button primary" type="submit"><i data-lucide="factory"></i> Produce product</button>
                     </form>
-                </article>
             </section>
             <section class="content-grid two">
                 <article class="panel">
-                    <h2>Raw material stock</h2>
-                    <div class="table-wrap">
-                        <table>
-                            <thead><tr><th>Material</th><th>Category</th><th>Available</th><th>Reorder</th></tr></thead>
-                            <tbody>
-                            {% for material in raw_materials %}
-                            <tr>
-                                <td>{{ material.name }}</td>
-                                <td>{{ material.category }}</td>
-                                <td>{{ material.available|number }} {{ material.unit }}</td>
-                                <td>{{ material.reorder_level|number }} {{ material.unit }}</td>
-                            </tr>
-                            {% endfor %}
-                            </tbody>
-                        </table>
+                    <h2>Inventory items</h2>
+                    <div class="inventory-groups">
+                        <div class="inventory-group">
+                            <h3>Meat</h3>
+                            <div class="table-wrap">
+                                <table class="compact-table">
+                                    <thead><tr><th>Item</th><th>Available</th></tr></thead>
+                                    <tbody>
+                                    {% for item in inventory_items if item.item_type == "raw_material" and item.category|lower == "meat" %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.available|number }} {{ item.unit }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="2">No meat inventory.</td></tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="inventory-group">
+                            <h3>Raw materials</h3>
+                            <div class="table-wrap">
+                                <table class="compact-table">
+                                    <thead><tr><th>Item</th><th>Available</th></tr></thead>
+                                    <tbody>
+                                    {% for item in inventory_items if item.item_type == "raw_material" and item.category|lower|replace(" ", "_") == "raw_material" %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.available|number }} {{ item.unit }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="2">No raw material inventory.</td></tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="inventory-group">
+                            <h3>Finished products</h3>
+                            <div class="table-wrap">
+                                <table class="compact-table">
+                                    <thead><tr><th>Product</th><th>Category</th><th>Available</th></tr></thead>
+                                    <tbody>
+                                    {% for item in inventory_items if item.item_type == "finished_product" %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.category }}</td>
+                                        <td>{{ item.available|number }} {{ item.unit }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="3">No finished products yet.</td></tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </article>
                 <article class="panel">
                     <h2>Finished product batches</h2>
                     <div class="table-wrap">
                         <table>
-                            <thead><tr><th>Batch</th><th>Product</th><th>Available</th><th>Expiry</th><th>Source</th></tr></thead>
+                            <thead><tr><th>Batch</th><th>Type</th><th>Item</th><th>Available</th><th>Expiry</th><th>Source</th></tr></thead>
                             <tbody>
-                            {% for batch in product_batches %}
-                            {% set product = products | selectattr("product_id", "equalto", batch.product_id) | first %}
+                            {% for batch in inventory_batches %}
                             <tr>
                                 <td>{{ batch.batch_code }}</td>
-                                <td>{{ product.name if product else "Product" }}</td>
+                                <td>{{ batch.item_type_label }}</td>
+                                <td>{{ batch.item_name }}</td>
                                 <td>{{ batch.quantity_available|number }} {{ batch.unit }}</td>
                                 <td>{{ batch.expiry_date|nice_date }}</td>
                                 <td><span class="status-badge {{ batch.source_type }}">{{ batch.source_type.replace("_", " ") }}</span></td>
@@ -148,42 +265,47 @@
                     </div>
                 </article>
             </section>
-            <section class="content-grid two">
-                <article class="panel">
-                    <h2>Raw material batches</h2>
+            <section class="panel">
+                    <h2>Product recipe</h2>
                     <div class="table-wrap">
-                        <table>
-                            <thead><tr><th>Batch</th><th>Material</th><th>Available</th><th>Expiry</th></tr></thead>
+                        <table class="compact-table">
+                            <thead><tr><th>Product</th><th>Recipe</th></tr></thead>
                             <tbody>
-                            {% for batch in raw_material_batches %}
+                            {% for product in products %}
+                            {% set recipe_rows = product_recipes | selectattr("product_id", "equalto", product.product_id) | list %}
                             <tr>
-                                <td>{{ batch.batch_code }}</td>
-                                <td>{{ batch.raw_material }}</td>
-                                <td>{{ batch.quantity_available|number }} {{ batch.unit }}</td>
-                                <td>{{ batch.expiry_date|nice_date }}</td>
+                                <td>
+                                    <strong>{{ product.name }}</strong>
+                                    <span class="muted">{{ product.description }}</span>
+                                </td>
+                                <td>
+                                    <details class="recipe-details">
+                                        <summary>{{ recipe_rows|length }} ingredient{{ "" if recipe_rows|length == 1 else "s" }}</summary>
+                                        {% if recipe_rows %}
+                                        <div class="recipe-lines">
+                                            <div class="recipe-line header"><span>Ingredient</span><span>Category</span><span>Required per pack</span></div>
+                                            {% for recipe in recipe_rows %}
+                                            <div class="recipe-line">
+                                                <span>{{ recipe.raw_material_name }}</span>
+                                                <span>{{ recipe.raw_material_category.replace("_", " ")|title }}</span>
+                                                <span>{{ recipe.quantity_required|number }} {{ recipe.unit }}</span>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% else %}
+                                        <span class="muted">No recipe</span>
+                                        {% endif %}
+                                    </details>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="2">No finished products yet.</td>
                             </tr>
                             {% endfor %}
                             </tbody>
                         </table>
                     </div>
-                </article>
-                <article class="panel">
-                    <h2>Product recipes</h2>
-                    <div class="table-wrap">
-                        <table>
-                            <thead><tr><th>Product</th><th>Raw material</th><th>Required</th></tr></thead>
-                            <tbody>
-                            {% for recipe in product_recipes %}
-                            <tr>
-                                <td>{{ recipe.product_name }}</td>
-                                <td>{{ recipe.raw_material_name }}</td>
-                                <td>{{ recipe.quantity_required|number }} {{ recipe.unit }}</td>
-                            </tr>
-                            {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </article>
             </section>
             <section class="panel">
                 <h2>Low-stock and expiry alerts</h2>
@@ -197,6 +319,53 @@
                     {% endfor %}
                 </div>
             </section>
+            <script>
+                (function () {
+                    const rows = document.getElementById("recipe-rows");
+                    const addButton = document.getElementById("add-ingredient");
+                    if (!rows || !addButton) {
+                        return;
+                    }
+
+                    function updateRemoveButtons() {
+                        const recipeRows = rows.querySelectorAll("[data-recipe-row]");
+                        recipeRows.forEach((row) => {
+                            const button = row.querySelector("[data-remove-ingredient]");
+                            if (button) {
+                                button.disabled = recipeRows.length === 1;
+                            }
+                        });
+                    }
+
+                    rows.addEventListener("click", (event) => {
+                        const removeButton = event.target.closest("[data-remove-ingredient]");
+                        if (!removeButton) {
+                            return;
+                        }
+                        const recipeRows = rows.querySelectorAll("[data-recipe-row]");
+                        if (recipeRows.length <= 1) {
+                            return;
+                        }
+                        removeButton.closest("[data-recipe-row]").remove();
+                        updateRemoveButtons();
+                    });
+
+                    addButton.addEventListener("click", () => {
+                        const sourceRow = rows.querySelector("[data-recipe-row]");
+                        const newRow = sourceRow.cloneNode(true);
+                        newRow.querySelectorAll("input").forEach((input) => {
+                            input.value = "";
+                        });
+                        rows.appendChild(newRow);
+                        updateRemoveButtons();
+                        if (window.lucide) {
+                            window.lucide.createIcons();
+                        }
+                    });
+
+                    updateRemoveButtons();
+                })();
+            </script>
             {% elif section == "inquiries" %}
             <section class="panel">
                 <div class="panel-heading">
@@ -250,65 +419,6 @@
                         </tbody>
                     </table>
                 </div>
-            </section>
-            {% elif section == "employees" %}
-            <section class="content-grid three">
-                <article class="panel">
-                    <h2>Attendance</h2>
-                    <form class="form-panel bare" action="/portal/team-leader/attendance" method="post">
-                        <label>Employee
-                            <select name="employee">{% for employee in employees %}<option>{{ employee.name }}</option>{% endfor %}</select>
-                        </label>
-                        <label>Work date <input required type="date" name="work_date"></label>
-                        <label>Status
-                            <select name="attendance_status">
-                                <option value="present">Present</option>
-                                <option value="late">Late</option>
-                                <option value="absent">Absent</option>
-                                <option value="excused">Excused</option>
-                            </select>
-                        </label>
-                        <label>Time in <input type="time" name="time_in"></label>
-                        <button class="button primary" type="submit">Save attendance</button>
-                    </form>
-                </article>
-                <article class="panel">
-                    <h2>Task completion</h2>
-                    <form class="form-panel bare" action="/portal/team-leader/tasks" method="post">
-                        <label>Employee
-                            <select name="employee">{% for employee in employees %}<option>{{ employee.name }}</option>{% endfor %}</select>
-                        </label>
-                        <label>Task title <input required name="title" placeholder="Prepare pickup packs"></label>
-                        <label>Due date <input required type="date" name="due_date"></label>
-                        <button class="button primary" type="submit">Assign task</button>
-                    </form>
-                </article>
-                <article class="panel">
-                    <h2>Merit evaluation</h2>
-                    <form class="form-panel bare" action="/portal/team-leader/merit" method="post">
-                        <label>Employee
-                            <select name="employee">{% for employee in employees %}<option>{{ employee.name }}</option>{% endfor %}</select>
-                        </label>
-                        <label>Period <input required name="period" placeholder="June Week 3"></label>
-                        <div class="score-grid">
-                            <label>Attendance <input required type="number" min="1" max="5" name="attendance_score"></label>
-                            <label>Tasks <input required type="number" min="1" max="5" name="task_score"></label>
-                            <label>Behavior <input required type="number" min="1" max="5" name="behavior_score"></label>
-                        </div>
-                        <label>Feedback <textarea name="feedback" rows="3"></textarea></label>
-                        <button class="button primary" type="submit">Submit score</button>
-                    </form>
-                </article>
-            </section>
-            <section class="content-grid two">
-                <article class="panel">
-                    <h2>Current tasks</h2>
-                    <div class="stack-list">{% for task in tasks %}<div class="stack-item"><strong>{{ task.title }}</strong><span>{{ task.employee }} - due {{ task.due_date|nice_date }}</span><em>{{ task.status }}</em></div>{% endfor %}</div>
-                </article>
-                <article class="panel">
-                    <h2>Merit records</h2>
-                    <div class="stack-list">{% for eval in evaluations %}<div class="stack-item"><strong>{{ eval.employee }} - {{ eval.overall_score }}</strong><span>{{ eval.period }}</span><em>{{ eval.feedback }}</em></div>{% endfor %}</div>
-                </article>
             </section>
             {% elif section == "reports" %}
             <section class="content-grid two">

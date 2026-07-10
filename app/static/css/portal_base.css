@@ -1,14 +1,15 @@
 :root {
-  --gold: #d4af37;
-  --gold-light: #e8c547;
-  --cream: #faf8f5;
-  --text: #2d2620;
-  --text-light: #5a524a;
+  --text: #202326;
+  --text-light: #62666b;
   --white: #ffffff;
-  --success: #27ae60;
-  --error: #e74c3c;
-  --primary: #2d2620;
-  --primary-dark: #1a1410;
+  --success: #2f6f4e;
+  --error: #b23b35;
+  --primary: #25282c;
+  --primary-dark: #121416;
+  --border: #d8d3cc;
+  --surface: #ffffff;
+  --surface-muted: #f8f7f5;
+  --sidebar: #242321;
 }
 
 * {
@@ -43,7 +44,7 @@ button {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
-  background: #f3eee6;
+  background: #f3f2ef;
   color: var(--text);
 }
 
@@ -59,8 +60,8 @@ button {
   flex-direction: column;
   gap: 24px;
   padding: 22px;
-  background: #1f1814;
-  color: #fff8ea;
+  background: var(--sidebar);
+  color: #f7f4ef;
   overflow-y: auto;
 }
 
@@ -77,7 +78,7 @@ button {
   justify-content: center;
   width: 50px;
   height: 50px;
-  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-light) 100%);
+  background: #e6e0d7;
   border-radius: 8px;
   color: var(--primary);
   font-size: 1.5rem;
@@ -86,7 +87,7 @@ button {
 
 .portal-brand {
   min-height: 58px;
-  color: #fff8ea;
+  color: #f7f4ef;
 }
 
 .portal-brand strong,
@@ -95,7 +96,7 @@ button {
 }
 
 .portal-brand small {
-  color: #dbc8a8;
+  color: #c9c4bd;
 }
 
 .portal-nav {
@@ -110,7 +111,7 @@ button {
   gap: 10px;
   padding: 0 12px;
   border-radius: 8px;
-  color: #e7d8c3;
+  color: #ddd8d0;
   font-weight: 750;
 }
 
@@ -124,7 +125,7 @@ button {
 
 .portal-nav a:hover,
 .portal-nav a.active {
-  background: #fff8ea;
+  background: #f7f4ef;
   color: var(--primary);
 }
 
@@ -141,13 +142,13 @@ button {
 }
 
 .portal-user small {
-  color: #d3c1a8;
+  color: #c9c4bd;
   overflow-wrap: anywhere;
 }
 
 .portal-user a {
   margin-top: 8px;
-  color: var(--gold-light);
+  color: #f7f4ef;
   font-weight: 850;
 }
 
@@ -170,14 +171,14 @@ button {
 .portal-topbar h1 {
   margin: 0;
   color: var(--primary);
-  font-size: clamp(2rem, 4vw, 3.7rem);
+  font-size: clamp(1.75rem, 3vw, 2.65rem);
   line-height: 1;
 }
 
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  color: #8a5f16;
+  color: var(--text-light);
   font-size: 0.78rem;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -218,15 +219,15 @@ button {
 }
 
 .button.subtle {
-  background: #fffdf8;
+  background: var(--surface);
   color: var(--primary);
-  border: 1px solid #dfc880;
+  border: 1px solid var(--border);
 }
 
 .button.danger,
 .icon-button.danger {
-  background: #b44438;
-  color: #fff;
+  background: var(--error);
+  color: var(--white);
 }
 
 .button.small {
@@ -243,8 +244,8 @@ button {
 .icon-button {
   width: 40px;
   height: 40px;
-  border: 1px solid #dfc880;
-  background: #fffdf8;
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--primary);
 }
 
@@ -295,10 +296,10 @@ button {
 .panel,
 .inquiry-card,
 .alert-card {
-  border: 1px solid #dfc880;
-  border-radius: 10px;
-  background: #fffdf8;
-  box-shadow: 0 12px 28px rgba(32, 25, 20, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px rgba(32, 35, 38, 0.06);
 }
 
 .metric-card {
@@ -315,7 +316,7 @@ button {
 }
 
 .metric-card strong {
-  color: #7e211d;
+  color: var(--primary);
   font-size: clamp(1.8rem, 3vw, 2.6rem);
   line-height: 1;
 }
@@ -335,6 +336,12 @@ button {
   font-size: 1.35rem;
 }
 
+.panel h3 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 1rem;
+}
+
 .panel-heading {
   display: flex;
   align-items: flex-start;
@@ -348,7 +355,7 @@ button {
 }
 
 .panel-heading a {
-  color: #8a5f16;
+  color: var(--primary);
   font-weight: 850;
 }
 
@@ -364,27 +371,86 @@ button {
 
 .portal-body table {
   width: 100%;
-  min-width: 640px;
+  min-width: 560px;
   border-collapse: collapse;
 }
 
 .portal-body th,
 .portal-body td {
   padding: 12px 10px;
-  border-bottom: 1px solid #ead9a5;
+  border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
 }
 
 .portal-body th {
-  color: #64594b;
+  color: var(--text-light);
   font-size: 0.78rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .portal-body td {
-  color: #2b241f;
+  color: var(--text);
+}
+
+.inventory-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.inventory-group {
+  display: grid;
+  gap: 8px;
+}
+
+.inventory-group h3 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 0.98rem;
+}
+
+.portal-body table.compact-table {
+  min-width: 0;
+}
+
+.recipe-details {
+  max-width: 620px;
+}
+
+.recipe-details summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 850;
+}
+
+.recipe-lines {
+  display: grid;
+  gap: 0;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.recipe-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.55fr) minmax(130px, 0.45fr);
+  gap: 12px;
+  padding: 9px 11px;
+  background: var(--surface);
+}
+
+.recipe-line + .recipe-line {
+  border-top: 1px solid var(--border);
+}
+
+.recipe-line.header {
+  background: var(--surface-muted);
+  color: var(--text-light);
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
 }
 
 .status-badge {
@@ -393,8 +459,8 @@ button {
   align-items: center;
   padding: 0 9px;
   border-radius: 999px;
-  background: #eee3d4;
-  color: #4d4036;
+  background: #eceef0;
+  color: var(--text);
   font-size: 0.78rem;
   font-weight: 850;
   text-transform: capitalize;
@@ -403,8 +469,8 @@ button {
 .status-badge.pending,
 .status-badge.assigned,
 .status-badge.contacted {
-  background: #fff2c8;
-  color: #7a5310;
+  background: #eceef0;
+  color: var(--text);
 }
 
 .status-badge.approved,
@@ -412,15 +478,15 @@ button {
 .status-badge.active,
 .status-badge.present {
   background: #dff0df;
-  color: #245234;
+  color: var(--success);
 }
 
 .status-badge.rejected,
 .status-badge.expired,
 .status-badge.cancelled,
 .status-badge.absent {
-  background: #f7d7d0;
-  color: #7a221c;
+  background: #f5dfdc;
+  color: var(--error);
 }
 
 .stack-list {
@@ -433,9 +499,9 @@ button {
   gap: 4px;
   min-height: 70px;
   padding: 13px;
-  border: 1px solid #ead9a5;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fffefb;
+  background: var(--surface-muted);
 }
 
 .stack-item strong {
@@ -450,14 +516,14 @@ button {
 
 .stack-item.alert.critical,
 .alert-card.critical {
-  border-color: #e5a198;
-  background: #fff0ed;
+  border-color: #d8c6c3;
+  background: var(--surface);
 }
 
 .stack-item.alert.warning,
 .alert-card.warning {
-  border-color: #e7ca76;
-  background: #fff8db;
+  border-color: var(--border);
+  background: var(--surface);
 }
 
 .stock-line {
@@ -466,7 +532,7 @@ button {
   gap: 12px;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid #ead9a5;
+  border-bottom: 1px solid var(--border);
 }
 
 .stock-line span {
@@ -498,11 +564,11 @@ button {
   align-items: center;
   min-height: 58px;
   padding: 12px 0;
-  border-bottom: 1px solid #ead9a5;
+  border-bottom: 1px solid var(--border);
 }
 
 .product-row span {
-  color: #8a5f16;
+  color: var(--text-light);
   font-size: 0.84rem;
   font-weight: 850;
   text-transform: uppercase;
@@ -537,7 +603,7 @@ button {
   display: block;
   width: 100%;
   padding: 12px 15px;
-  border: 1px solid var(--gold-light);
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--white);
   color: var(--text);
@@ -548,7 +614,7 @@ button {
 .form-panel select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 10px rgba(45, 38, 32, 0.1);
+  box-shadow: 0 0 0 3px rgba(37, 40, 44, 0.1);
 }
 
 .form-grid,
@@ -556,6 +622,18 @@ button {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recipe-rows {
+  display: grid;
+  gap: 12px;
+}
+
+.ingredient-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.35fr) minmax(110px, 0.3fr) 40px;
+  gap: 12px;
+  align-items: end;
 }
 
 .score-grid {
@@ -597,9 +675,9 @@ button {
   gap: 10px;
   align-items: end;
   padding: 13px;
-  border: 1px solid #ead9a5;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fffefb;
+  background: var(--surface-muted);
 }
 
 .inline-edit label {
@@ -612,7 +690,7 @@ button {
 .inline-edit input {
   min-height: 40px;
   padding: 10px 11px;
-  border: 1px solid #c8b792;
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
@@ -632,7 +710,7 @@ button {
   height: 12px;
   overflow: hidden;
   border-radius: 999px;
-  background: #eadfcf;
+  background: #e2e3e5;
 }
 
 .bar-row b {
@@ -640,7 +718,7 @@ button {
   height: 100%;
   max-width: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #7e211d, var(--gold));
+  background: var(--primary);
 }
 
 .timeline {
@@ -653,8 +731,8 @@ button {
   grid-template-columns: 170px 180px 1fr;
   gap: 12px;
   padding: 14px 0 14px 18px;
-  border-left: 2px solid #dfc880;
-  border-bottom: 1px solid #ead9a5;
+  border-left: 2px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .timeline article::before {
@@ -665,7 +743,7 @@ button {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #7e211d;
+  background: var(--primary);
 }
 
 .timeline span,
@@ -690,6 +768,8 @@ button {
   .portal-sidebar {
     position: static;
     height: auto;
+    gap: 16px;
+    padding: 16px;
   }
 
   .portal-nav {
@@ -697,7 +777,8 @@ button {
   }
 
   .portal-main {
-    padding: 22px 16px 44px;
+    gap: 16px;
+    padding: 20px 14px 42px;
   }
 
   .portal-topbar {
@@ -727,16 +808,60 @@ button {
   .button-row .button {
     flex: 1 1 auto;
   }
+
+  .panel,
+  .metric-card,
+  .alert-card,
+  .inquiry-card {
+    padding: 16px;
+  }
+
+  .portal-body table {
+    min-width: 520px;
+  }
+
+  .portal-body table.compact-table {
+    min-width: 0;
+  }
 }
 
 @media (max-width: 560px) {
+  body {
+    font-size: 15px;
+  }
+
   .portal-nav,
   .form-grid,
+  .ingredient-row,
+  .recipe-line,
   .score-grid {
     grid-template-columns: 1fr;
   }
 
+  .portal-nav {
+    gap: 6px;
+  }
+
+  .portal-nav a {
+    min-height: 40px;
+    padding: 0 10px;
+  }
+
   .portal-topbar h1 {
     font-size: 2rem;
+  }
+
+  .panel h2 {
+    font-size: 1.18rem;
+  }
+
+  .button-row .button,
+  .topbar-actions .button {
+    width: 100%;
+  }
+
+  .portal-body th,
+  .portal-body td {
+    padding: 10px 8px;
   }
 }

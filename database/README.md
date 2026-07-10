@@ -26,13 +26,13 @@ For local development, the reset-and-seed script applies this schema automatical
 The schema keeps the tables used by the current screens:
 
 - identity and access: `accounts`, `activity_logs`;
-- staff data: `departments`, `employees`, `employee_attendance`, `employee_tasks`, `employee_merit_evaluations`;
+- department references: `departments`;
 - reseller onboarding: `inquiries`, `resellers`;
-- catalog and inventory: `products`, `product_batches`, `raw_materials`, `raw_material_batches`, `product_recipes`, `alerts`;
+- catalog and inventory: `inventory_items`, `inventory_batches`, `product_recipes`, `alerts`;
 - sales flow: `orders`, `order_items`, `sales_reports`;
 - forecasting: `forecast_runs`, `forecast_results`.
 
-The inventory model keeps raw materials and product recipes because product production must deduct material stock correctly. Shipment, production-run, production-batch, production-material, and inventory-ledger tables are intentionally omitted; product batch source is stored directly in `product_batches.source_type`.
+The inventory model uses one item catalog for both raw materials and finished products. `inventory_items.item_type` separates `raw_material` rows from `finished_product` rows, while `category` keeps business labels such as Pork, Beef, Chicken, or product family. Raw-material stock is stored directly on `inventory_items.quantity_available`; finished product batches live in `inventory_batches`. Shipment, production-run, production-batch, production-material, raw-material batch, and inventory-ledger tables are intentionally omitted; finished product batch source is stored directly in `inventory_batches.source_type`.
 
 ## Application Responsibilities
 
@@ -40,8 +40,8 @@ The database keeps basic referential integrity and simple status/value checks. T
 
 - choosing product batches by FEFO order;
 - checking product recipes before production;
-- deducting `raw_material_batches.quantity_available` by FEFO when product batches are produced;
-- decrementing `product_batches.quantity_available` after fulfilled sales;
+- deducting raw-material `inventory_items.quantity_available` when product batches are produced;
+- decrementing finished-product `inventory_batches.quantity_available` after fulfilled sales;
 - calculating order totals before inserting `orders` and `order_items`;
 - creating `alerts` for low stock or near-expiry batches;
 - writing `activity_logs` for user actions.

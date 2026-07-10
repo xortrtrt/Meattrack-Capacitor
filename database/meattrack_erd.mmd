@@ -7,20 +7,9 @@ erDiagram
         timestamptz created_at
     }
 
-    EMPLOYEES {
-        bigint employee_id PK
-        bigint department_id FK
-        text name
-        text position
-        text employment_status
-        boolean is_department_leader
-        timestamptz created_at
-    }
-
     ACCOUNTS {
         bigint account_id PK
         text account_type
-        bigint employee_id FK
         bigint reseller_id FK
         text name
         text email UK
@@ -66,51 +55,22 @@ erDiagram
         timestamptz created_at
     }
 
-    RAW_MATERIALS {
-        bigint raw_material_id PK
+    INVENTORY_ITEMS {
+        bigint item_id PK
+        text item_type
         text category
-        text name UK
-        text unit
-        numeric reorder_level
-        timestamptz created_at
-    }
-
-    RAW_MATERIAL_BATCHES {
-        bigint raw_material_batch_id PK
-        bigint raw_material_id FK
-        text batch_code UK
-        numeric quantity_received
-        numeric quantity_available
-        text unit
-        date received_date
-        date expiry_date
-        text quality_status
-        timestamptz created_at
-    }
-
-    PRODUCTS {
-        bigint product_id PK
-        text category
-        text name UK
+        text name
         text description
         text unit
         numeric base_price
-        numeric reorder_level
+        numeric quantity_available
         boolean is_active
         timestamptz created_at
     }
 
-    PRODUCT_RECIPES {
-        bigint recipe_id PK
-        bigint product_id FK
-        bigint raw_material_id FK
-        numeric quantity_required
-        text unit
-    }
-
-    PRODUCT_BATCHES {
-        bigint product_batch_id PK
-        bigint product_id FK
+    INVENTORY_BATCHES {
+        bigint batch_id PK
+        bigint item_id FK
         text batch_code UK
         text source_type
         numeric quantity_received
@@ -120,6 +80,14 @@ erDiagram
         date expiry_date
         text quality_status
         timestamptz created_at
+    }
+
+    PRODUCT_RECIPES {
+        bigint recipe_id PK
+        bigint product_item_id FK
+        bigint material_item_id FK
+        numeric quantity_required
+        text unit
     }
 
     ORDERS {
@@ -160,44 +128,6 @@ erDiagram
         timestamptz submitted_at
     }
 
-    EMPLOYEE_ATTENDANCE {
-        bigint attendance_id PK
-        bigint employee_id FK
-        date work_date
-        text status
-        time time_in
-        time time_out
-        bigint recorded_by_account_id FK
-        text notes
-        timestamptz created_at
-    }
-
-    EMPLOYEE_TASKS {
-        bigint task_id PK
-        bigint employee_id FK
-        bigint assigned_by_account_id FK
-        text title
-        text description
-        date due_date
-        text status
-        timestamptz completed_at
-        timestamptz created_at
-    }
-
-    EMPLOYEE_MERIT_EVALUATIONS {
-        bigint evaluation_id PK
-        bigint employee_id FK
-        bigint evaluator_account_id FK
-        date period_start
-        date period_end
-        int attendance_score
-        int task_score
-        int behavior_score
-        numeric overall_score
-        text feedback
-        timestamptz created_at
-    }
-
     ALERTS {
         bigint alert_id PK
         text alert_type
@@ -205,7 +135,6 @@ erDiagram
         bigint product_id FK
         bigint product_batch_id FK
         bigint raw_material_id FK
-        bigint raw_material_batch_id FK
         text message
         text status
         timestamptz triggered_at
@@ -235,8 +164,6 @@ erDiagram
         timestamptz created_at
     }
 
-    DEPARTMENTS ||--o{ EMPLOYEES : contains
-    EMPLOYEES |o--o| ACCOUNTS : "team leader login"
     RESELLERS |o--o| ACCOUNTS : "reseller login"
     ACCOUNTS |o--o{ ACTIVITY_LOGS : records
 
@@ -245,32 +172,22 @@ erDiagram
     INQUIRIES |o--o| RESELLERS : becomes
     ACCOUNTS |o--o{ RESELLERS : approves
 
-    RAW_MATERIALS ||--o{ RAW_MATERIAL_BATCHES : stocked_as
-    PRODUCTS ||--o{ PRODUCT_RECIPES : has
-    RAW_MATERIALS ||--o{ PRODUCT_RECIPES : required_by
-    PRODUCTS ||--o{ PRODUCT_BATCHES : stocked_as
-    PRODUCT_BATCHES |o--o{ ALERTS : triggers
-    PRODUCTS |o--o{ ALERTS : triggers
-    RAW_MATERIAL_BATCHES |o--o{ ALERTS : triggers
-    RAW_MATERIALS |o--o{ ALERTS : triggers
+    INVENTORY_ITEMS ||--o{ INVENTORY_BATCHES : stocked_as
+    INVENTORY_ITEMS ||--o{ PRODUCT_RECIPES : "finished product"
+    INVENTORY_ITEMS ||--o{ PRODUCT_RECIPES : "raw material"
+    INVENTORY_BATCHES |o--o{ ALERTS : triggers
+    INVENTORY_ITEMS |o--o{ ALERTS : triggers
 
     RESELLERS |o--o{ ORDERS : places
     ACCOUNTS |o--o{ ORDERS : creates
     ACCOUNTS |o--o{ ORDERS : approves
     ORDERS ||--o{ ORDER_ITEMS : contains
-    PRODUCTS ||--o{ ORDER_ITEMS : ordered_as
+    INVENTORY_ITEMS ||--o{ ORDER_ITEMS : ordered_as
 
     ACCOUNTS |o--o{ SALES_REPORTS : submits
     RESELLERS |o--o{ SALES_REPORTS : reports
     DEPARTMENTS |o--o{ SALES_REPORTS : reports
 
-    EMPLOYEES ||--o{ EMPLOYEE_ATTENDANCE : has
-    EMPLOYEES ||--o{ EMPLOYEE_TASKS : assigned
-    EMPLOYEES ||--o{ EMPLOYEE_MERIT_EVALUATIONS : evaluated
-    ACCOUNTS |o--o{ EMPLOYEE_ATTENDANCE : records
-    ACCOUNTS |o--o{ EMPLOYEE_TASKS : assigns
-    ACCOUNTS |o--o{ EMPLOYEE_MERIT_EVALUATIONS : evaluates
-
     ACCOUNTS |o--o{ FORECAST_RUNS : starts
     FORECAST_RUNS ||--o{ FORECAST_RESULTS : produces
-    PRODUCTS ||--o{ FORECAST_RESULTS : forecasted
+    INVENTORY_ITEMS ||--o{ FORECAST_RESULTS : forecasted

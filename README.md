@@ -62,7 +62,7 @@ Passwords are stored in `accounts.password_hash`. The seed script stores PBKDF2 
 
 - Public landing page for Batangas Premium.
 - Reseller Portal: dashboard, ordering, order history, sales reports, messages.
-- Team Leader Portal: daily dashboard, walk-in sales, raw material receiving, recipe-based production, alerts, reseller inquiry approval/rejection, reseller order handling, employee attendance/tasks/merit forms, reports.
+- Team Leader Portal: daily dashboard, walk-in sales, recipe-based production, alerts, reseller inquiry approval/rejection, reseller order handling, reports.
 - Owner Portal: executive dashboard, product pricing, reports, forecasts, account management, audit logs.
 - Portal pages use `app/templates/portals/base.html` plus one role template per portal: `reseller.html`, `team_leader.html`, and `owner.html`.
 - CSS is split by surface: `public.css` for public pages, `login.css` for login, `portal_base.css` for shared portal layout, and `app/static/css/portals/` for role-specific portal overrides.

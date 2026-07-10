@@ -7,6 +7,6 @@ __pycache__/
 .ruff_cache/
 .env
 .env.*
-!.env.example
+.env.example
 pg_data/
 pg_log.txt

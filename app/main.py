@@ -258,8 +258,11 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
     if section not in nav_sections:
         raise HTTPException(status_code=404)
 
-    selected_product_id = int(request.query_params.get("product_id", data.products[0]["product_id"]))
-    selected_product = data.product_by_id(selected_product_id) or data.products[0]
+    products = data.products
+    selected_product = products[0] if products else None
+    if products and request.query_params.get("product_id"):
+        selected_product_id = int(request.query_params["product_id"])
+        selected_product = data.product_by_id(selected_product_id) or products[0]
 
     return templates.TemplateResponse(
         request,
@@ -275,21 +278,23 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
             "error": error,
             "metrics": data.current_metrics(),
             "departments": data.departments,
-            "employees": data.employees,
             "resellers": data.resellers,
-            "products": data.products,
+            "products": products,
             "selected_product": selected_product,
+            "inventory_items": data.inventory_items,
+            "inventory_batches": data.inventory_batches,
             "product_batches": data.product_batches,
             "raw_materials": data.raw_materials,
-            "raw_material_batches": data.raw_material_batches,
+            "raw_material_categories": data.raw_material_categories,
+            "product_categories": data.product_categories,
+            "stock_units": data.stock_units,
+            "content_units": data.content_units,
+            "recipe_units": data.recipe_units,
             "product_recipes": data.product_recipes,
             "inquiries": data.inquiries,
             "orders": data.orders,
             "sales_reports": data.sales_reports,
             "alerts": data.alerts,
-            "tasks": data.tasks,
-            "attendance": data.attendance,
-            "evaluations": data.evaluations,
             "forecasts": data.forecasts,
             "accounts": data.accounts,
             "activity_logs": data.activity_logs,
@@ -350,27 +355,67 @@ async def team_walk_in_sale(request: Request, product_id: int = Form(...), quant
     return redirect_to(safe_portal_path("team-leader", "sales", message="Walk-in sale recorded and inventory updated."))
 
 
-@app.post("/portal/team-leader/raw-materials")
-async def team_raw_material_batch(
+@app.post("/portal/team-leader/inventory-items")
+async def team_inventory_item(
     request: Request,
-    raw_material_id: int = Form(...),
-    batch_code: str = Form(...),
+    name: str = Form(...),
+    category: str = Form(...),
+    unit: str = Form(...),
     quantity: float = Form(...),
-    expiry_date: date = Form(...),
 ):
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
     try:
-        if len(batch_code.strip()) < 4:
-            raise ValueError("Batch code is too short.")
         require_positive_number(quantity, "Quantity")
-        if expiry_date < date.today():
-            raise ValueError("Expiry date cannot be in the past.")
-        data.add_raw_material_batch(raw_material_id, batch_code.strip().upper(), quantity, expiry_date)
+        data.add_raw_inventory_item(name, category, unit, quantity)
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
-    return redirect_to(safe_portal_path("team-leader", "inventory", message="Raw material batch received."))
+    return redirect_to(safe_portal_path("team-leader", "inventory", message="Raw inventory updated."))
+
+
+@app.post("/portal/team-leader/inventory-items/quantity")
+async def team_inventory_item_quantity(
+    request: Request,
+    raw_material_id: int = Form(...),
+    quantity: float = Form(...),
+):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    try:
+        require_positive_number(quantity, "Quantity")
+        data.add_raw_inventory_quantity(raw_material_id, quantity)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
+    return redirect_to(safe_portal_path("team-leader", "inventory", message="Raw inventory quantity added."))
+
+
+@app.post("/portal/team-leader/products")
+async def team_product(request: Request):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+
+    form = await request.form()
+    material_item_ids = [value for value in form.getlist("material_item_id[]") if str(value).strip()]
+    quantity_required = [value for value in form.getlist("quantity_required[]") if str(value).strip()]
+    quantity_required_units = [value for value in form.getlist("quantity_required_unit[]") if str(value).strip()]
+
+    try:
+        data.create_product_with_recipe(
+            str(form.get("name", "")),
+            str(form.get("category", "")),
+            form.get("base_price", "0"),
+            material_item_ids,
+            quantity_required,
+            quantity_required_units,
+            form.get("pack_size", ""),
+            str(form.get("pack_size_unit", "")),
+        )
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
+    return redirect_to(safe_portal_path("team-leader", "inventory", message="Product recipe created."))
 
 
 @app.post("/portal/team-leader/production")
@@ -388,41 +433,14 @@ async def team_production(
         if len(batch_code.strip()) < 4:
             raise ValueError("Batch code is too short.")
         require_positive_number(quantity, "Quantity")
+        if quantity != int(quantity):
+            raise ValueError("Produced quantity must be a whole number of packs.")
         if expiry_date < date.today():
             raise ValueError("Expiry date cannot be in the past.")
         data.produce_product(product_id, batch_code.strip().upper(), quantity, expiry_date)
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "inventory", message="Product produced and raw materials deducted."))
-
-
-@app.post("/portal/team-leader/inventory")
-async def team_inventory_batch(
-    request: Request,
-    product_id: int = Form(...),
-    batch_code: str = Form(...),
-    quantity: float = Form(...),
-    expiry_date: date = Form(...),
-    source_type: str = Form(...),
-):
-    guard = require_portal_session(request, "team-leader")
-    if guard:
-        return guard
-    try:
-        if source_type not in {"direct_received", "production"}:
-            raise ValueError("Choose a valid batch source.")
-        if len(batch_code.strip()) < 4:
-            raise ValueError("Batch code is too short.")
-        require_positive_number(quantity, "Quantity")
-        if expiry_date < date.today():
-            raise ValueError("Expiry date cannot be in the past.")
-        if source_type == "production":
-            data.produce_product(product_id, batch_code.strip().upper(), quantity, expiry_date)
-        else:
-            data.add_product_batch(product_id, batch_code.strip().upper(), quantity, expiry_date, source_type)
-    except ValueError as exc:
-        return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
-    return redirect_to(safe_portal_path("team-leader", "inventory", message="Inventory batch registered."))
 
 
 @app.post("/portal/team-leader/inquiries/{inquiry_id}/{decision}")
@@ -476,69 +494,17 @@ async def team_report(
     return redirect_to(safe_portal_path("team-leader", "reports", message="Team leader report submitted."))
 
 
-@app.post("/portal/team-leader/attendance")
-async def team_attendance(request: Request, employee: str = Form(...), work_date: date = Form(...), attendance_status: str = Form(...), time_in: str = Form("")):
-    guard = require_portal_session(request, "team-leader")
-    if guard:
-        return guard
-    if attendance_status not in {"present", "absent", "late", "excused"}:
-        return redirect_to(safe_portal_path("team-leader", "employees", error="Invalid attendance status."))
-    try:
-        data.add_attendance(employee, work_date, attendance_status, time_in)
-    except ValueError as exc:
-        return redirect_to(safe_portal_path("team-leader", "employees", error=str(exc)))
-    return redirect_to(safe_portal_path("team-leader", "employees", message="Attendance recorded."))
-
-
-@app.post("/portal/team-leader/tasks")
-async def team_task(request: Request, employee: str = Form(...), title: str = Form(...), due_date: date = Form(...)):
-    guard = require_portal_session(request, "team-leader")
-    if guard:
-        return guard
-    if len(title.strip()) < 4:
-        return redirect_to(safe_portal_path("team-leader", "employees", error="Task title is too short."))
-    try:
-        data.add_task(employee, title.strip(), due_date)
-    except ValueError as exc:
-        return redirect_to(safe_portal_path("team-leader", "employees", error=str(exc)))
-    return redirect_to(safe_portal_path("team-leader", "employees", message="Task assigned."))
-
-
-@app.post("/portal/team-leader/merit")
-async def team_merit(
-    request: Request,
-    employee: str = Form(...),
-    period: str = Form(...),
-    attendance_score: int = Form(...),
-    task_score: int = Form(...),
-    behavior_score: int = Form(...),
-    feedback: str = Form(""),
-):
-    guard = require_portal_session(request, "team-leader")
-    if guard:
-        return guard
-    scores = [attendance_score, task_score, behavior_score]
-    if any(score < 1 or score > 5 for score in scores):
-        return redirect_to(safe_portal_path("team-leader", "employees", error="Scores must be from 1 to 5."))
-    try:
-        data.add_evaluation(employee, period, attendance_score, task_score, behavior_score, feedback)
-    except ValueError as exc:
-        return redirect_to(safe_portal_path("team-leader", "employees", error=str(exc)))
-    return redirect_to(safe_portal_path("team-leader", "employees", message="Merit evaluation submitted."))
-
-
 @app.post("/portal/owner/products")
-async def owner_product(request: Request, product_id: int = Form(...), base_price: float = Form(...), reorder_level: float = Form(...)):
+async def owner_product(request: Request, product_id: int = Form(...), base_price: float = Form(...)):
     guard = require_portal_session(request, "owner")
     if guard:
         return guard
     try:
         require_nonnegative_number(base_price, "Base price")
-        require_nonnegative_number(reorder_level, "Reorder level")
         product = data.product_by_id(product_id)
         if product is None:
             raise ValueError("Unknown product.")
-        data.update_product_price(product_id, base_price, reorder_level)
+        data.update_product_price(product_id, base_price)
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "products", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "products", message="Product pricing updated."))
