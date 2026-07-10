@@ -3,7 +3,9 @@ from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 
-DSN = "postgresql://meattrack:meattrack@127.0.0.1:5433/meattrack"
+from app.config import DATABASE_URL
+
+DSN = DATABASE_URL
 
 # Initialize thread-safe connection pool
 pool = ThreadedConnectionPool(1, 10, DSN)
@@ -16,6 +18,19 @@ def get_db_cursor():
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             yield cur
             conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        pool.putconn(conn)
+
+@contextmanager
+def get_transaction_cursor():
+    conn = pool.getconn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            yield cur
+        conn.commit()
     except Exception as e:
         conn.rollback()
         raise e
@@ -51,4 +66,3 @@ def clean_row(row):
         else:
             new_row[k] = v
     return new_row
-

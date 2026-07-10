@@ -1,0 +1,4 @@
+/* Team leader portal-only overrides belong here. */
+.role-team-leader .portal-topbar h1 {
+  max-width: 760px;
+}

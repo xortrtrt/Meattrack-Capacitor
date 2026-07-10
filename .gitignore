@@ -8,3 +8,5 @@ __pycache__/
 .env
 .env.*
 !.env.example
+pg_data/
+pg_log.txt

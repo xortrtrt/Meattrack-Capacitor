@@ -1,66 +1,72 @@
 <!doctype html>
 <html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portal Login | Batangas Premium</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
-</head>
-<body class="login-page">
-    <div class="login-bg" style="background-image: url('{{ url_for('static', path='img/background.jpg') }}')"></div>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='css/login.css') }}"
+    />
+  </head>
+  <body class="login-page">
+    <div
+      class="login-bg"
+      style="background-image: url('{{ url_for('static', path='img/background.jpg') }}')"
+    ></div>
     <div class="login-overlay"></div>
 
     <main class="login-wrapper">
-        <div class="login-card">
-            <a href="/" class="login-brand">
-                <img
-                    src="{{ url_for('static', path='img/batangas_premium.png') }}"
-                    alt="Batangas Premium"
-                    class="login-logo"
-                >
-            </a>
+      <div class="login-card">
+        <a href="/" class="login-brand">
+          <img
+            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            alt="Batangas Premium"
+            class="login-logo"
+          />
+        </a>
 
-            <h1>Portal Sign In</h1>
-            <p class="login-subtitle">Access your Batangas Premium dashboard</p>
+        <h1>Portal Sign In</h1>
+        <p class="login-subtitle">Access your Batangas Premium dashboard</p>
 
-            {% if message or error %}
-                <aside class="notice {{ 'error' if error else 'success' }}">
-                    {{ error or message }}
-                </aside>
-            {% endif %}
+        {% if message or error %}
+        <aside class="notice {{ 'error' if error else 'success' }}">
+          {{ error or message }}
+        </aside>
+        {% endif %}
 
-            <form class="login-form" action="/login" method="post">
-                <div class="login-field">
-                    <label for="login-email">Email</label>
-                    <input
-                        required
-                        id="login-email"
-                        type="email"
-                        name="email"
-                        placeholder="name@batangaspremium.test"
-                        autocomplete="email"
-                    >
-                </div>
-                <div class="login-field">
-                    <label for="login-password">Password</label>
-                    <input
-                        required
-                        id="login-password"
-                        type="password"
-                        name="password"
-                        minlength="4"
-                        placeholder="Enter your password"
-                        autocomplete="current-password"
-                    >
-                </div>
-                <button class="login-btn" type="submit">Sign In</button>
-            </form>
+        <form class="login-form" action="/login" method="post">
+          <div class="login-field">
+            <label for="login-email">Email</label>
+            <input
+              required
+              id="login-email"
+              type="email"
+              name="email"
+              placeholder="name@gmail.com"
+              autocomplete="email"
+            />
+          </div>
+          <div class="login-field">
+            <label for="login-password">Password</label>
+            <input
+              required
+              id="login-password"
+              type="password"
+              name="password"
+              minlength="4"
+              placeholder="Enter your password"
+              autocomplete="current-password"
+            />
+          </div>
+          <button class="login-btn" type="submit">Sign In</button>
+        </form>
 
-            <a class="login-back" href="/">← Back to website</a>
-        </div>
+        <a class="login-back" href="/">&larr; Back to website</a>
+      </div>
     </main>
 
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="{{ url_for('static', path='js/app.js') }}"></script>
-</body>
+  </body>
 </html>

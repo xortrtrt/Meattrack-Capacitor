@@ -1,6 +1,10 @@
 from __future__ import annotations
 from datetime import date, datetime, timedelta
-from app.database import fetch_all, fetch_one, execute_write, clean_row
+from decimal import Decimal
+
+from app.database import fetch_all, fetch_one, execute_write, clean_row, get_transaction_cursor
+from app.config import DEFAULT_ACCOUNT_PASSWORD, RESELLER_PASSWORD
+from app.security import hash_password, password_needs_rehash, verify_password
 
 today = date.today()
 
@@ -8,8 +12,8 @@ roles = {
     "owner": {
         "label": "Owner",
         "account_type": "owner",
-        "name": "Patricia Manalo",
-        "email": "owner@batangaspremium.test",
+        "name": "Patric Mapa",
+        "email": "patric.mapa@gmail.com",
         "default_section": "dashboard",
     },
     "team-leader": {
@@ -34,7 +38,6 @@ portal_nav = {
         ("order", "Place Order", "shopping-basket"),
         ("history", "Order History", "clipboard-list"),
         ("reports", "Sales Reports", "file-up"),
-        ("messages", "Messages", "messages-square"),
     ],
     "team-leader": [
         ("dashboard", "Dashboard", "layout-dashboard"),
@@ -62,8 +65,7 @@ def __getattr__(name: str):
         return clean_row(fetch_all("""
             SELECT d.department_id, d.department_name, e.name AS leader
             FROM departments d
-            LEFT JOIN department_leaders dl ON dl.department_id = d.department_id AND dl.ended_on IS NULL
-            LEFT JOIN employees e ON e.employee_id = dl.team_leader_employee_id
+            LEFT JOIN employees e ON e.department_id = d.department_id AND e.is_department_leader = true
             ORDER BY d.department_id;
         """))
     elif name == "employees":
@@ -88,12 +90,12 @@ def __getattr__(name: str):
     elif name == "products":
         return clean_row(fetch_all("""
             SELECT p.product_id, p.name, p.description, p.unit, p.base_price, p.reorder_level, p.is_active,
-                   mt.name AS category,
+                   p.category,
+                   (SELECT COUNT(*) FROM product_recipes pr WHERE pr.product_id = p.product_id) AS recipe_count,
                    COALESCE(SUM(pb.quantity_available) FILTER (WHERE pb.quality_status = 'approved' AND pb.expiry_date >= CURRENT_DATE), 0) AS available
             FROM products p
-            LEFT JOIN meat_types mt ON mt.meat_type_id = p.meat_type_id
             LEFT JOIN product_batches pb ON pb.product_id = p.product_id
-            GROUP BY p.product_id, p.name, p.description, p.unit, p.base_price, p.reorder_level, p.is_active, mt.name
+            GROUP BY p.product_id, p.name, p.description, p.unit, p.base_price, p.reorder_level, p.is_active, p.category
             ORDER BY p.product_id;
         """))
     elif name == "product_batches":
@@ -103,6 +105,37 @@ def __getattr__(name: str):
             FROM product_batches pb
             ORDER BY pb.product_batch_id DESC;
         """))
+    elif name == "raw_materials":
+        return clean_row(fetch_all("""
+            SELECT rm.raw_material_id, rm.category, rm.name, rm.unit, rm.reorder_level,
+                   COALESCE(SUM(rmb.quantity_available) FILTER (
+                       WHERE rmb.quality_status = 'approved'
+                         AND (rmb.expiry_date IS NULL OR rmb.expiry_date >= CURRENT_DATE)
+                   ), 0) AS available
+            FROM raw_materials rm
+            LEFT JOIN raw_material_batches rmb ON rmb.raw_material_id = rm.raw_material_id
+            GROUP BY rm.raw_material_id, rm.category, rm.name, rm.unit, rm.reorder_level
+            ORDER BY rm.category, rm.name;
+        """))
+    elif name == "raw_material_batches":
+        return clean_row(fetch_all("""
+            SELECT rmb.raw_material_batch_id, rmb.raw_material_id, rm.name AS raw_material,
+                   rmb.batch_code, rmb.quantity_received, rmb.quantity_available,
+                   rmb.unit, rmb.received_date, rmb.expiry_date, rmb.quality_status
+            FROM raw_material_batches rmb
+            JOIN raw_materials rm ON rm.raw_material_id = rmb.raw_material_id
+            ORDER BY rmb.raw_material_batch_id DESC;
+        """))
+    elif name == "product_recipes":
+        return clean_row(fetch_all("""
+            SELECT pr.recipe_id, pr.product_id, p.name AS product_name,
+                   pr.raw_material_id, rm.name AS raw_material_name,
+                   pr.quantity_required, pr.unit
+            FROM product_recipes pr
+            JOIN products p ON p.product_id = pr.product_id
+            JOIN raw_materials rm ON rm.raw_material_id = pr.raw_material_id
+            ORDER BY p.name, rm.name;
+        """))
     elif name == "inquiries":
         return clean_row(fetch_all("""
             SELECT i.inquiry_id, i.name, i.contact_number, i.email, i.business_name, i.message, i.status,
@@ -111,20 +144,7 @@ def __getattr__(name: str):
             LEFT JOIN accounts a ON a.account_id = i.assigned_team_leader_account_id
             ORDER BY i.inquiry_id DESC;
         """))
-    elif name == "inquiry_messages":
-        return clean_row(fetch_all("""
-            SELECT im.inquiry_message_id, im.inquiry_id, im.sender_type,
-                   (CASE 
-                       WHEN im.sender_type = 'chatbot' THEN 'MEATTRACK Assistant'
-                       WHEN im.sender_type = 'potential_reseller' THEN inq.name
-                       ELSE COALESCE(a.name, 'MEATTRACK Assistant')
-                    END) AS sender,
-                   im.message, im.created_at
-            FROM inquiry_messages im
-            LEFT JOIN accounts a ON a.account_id = im.sender_account_id
-            LEFT JOIN inquiries inq ON inq.inquiry_id = im.inquiry_id
-            ORDER BY im.inquiry_message_id DESC;
-        """))
+
     elif name == "orders":
         orders = fetch_all("""
             SELECT o.order_id, o.order_type, o.reseller_id,
@@ -229,26 +249,16 @@ def __getattr__(name: str):
             LEFT JOIN accounts a ON a.account_id = al.account_id
             ORDER BY al.activity_log_id DESC;
         """))
-    elif name == "price_adjustments":
-        return clean_row(fetch_all("""
-            SELECT pa.adjustment_id, pb.batch_code, pa.adjustment_type,
-                   (CASE 
-                       WHEN pa.adjustment_type = 'discount_percent' THEN pa.discount_percent || '%%'
-                       WHEN pa.adjustment_type = 'fixed_price' THEN 'PHP ' || pa.adjusted_price || '/pack'
-                    END) AS value,
-                   pa.reason, pa.starts_at
-            FROM product_batch_price_adjustments pa
-            JOIN product_batches pb ON pb.product_batch_id = pa.product_batch_id
-            ORDER BY pa.adjustment_id DESC;
-        """))
+
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 def __dir__():
     return [
         "departments", "employees", "resellers", "products", "product_batches",
-        "inquiries", "inquiry_messages", "orders", "sales_reports", "alerts",
+        "raw_materials", "raw_material_batches", "product_recipes",
+        "inquiries", "orders", "sales_reports", "alerts",
         "tasks", "attendance", "evaluations", "forecasts", "accounts",
-        "activity_logs", "price_adjustments", "roles", "portal_nav", "today"
+        "activity_logs", "roles", "portal_nav", "today"
     ]
 
 # ----------------- Write operations / Database modifiers -----------------
@@ -256,15 +266,50 @@ def __dir__():
 def product_by_id(product_id: int) -> dict | None:
     res = fetch_one("""
         SELECT p.product_id, p.name, p.description, p.unit, p.base_price, p.reorder_level, p.is_active,
-               mt.name AS category,
+               p.category,
+               (SELECT COUNT(*) FROM product_recipes pr WHERE pr.product_id = p.product_id) AS recipe_count,
                COALESCE(SUM(pb.quantity_available) FILTER (WHERE pb.quality_status = 'approved' AND pb.expiry_date >= CURRENT_DATE), 0) AS available
         FROM products p
-        LEFT JOIN meat_types mt ON mt.meat_type_id = p.meat_type_id
         LEFT JOIN product_batches pb ON pb.product_id = p.product_id
         WHERE p.product_id = %s
-        GROUP BY p.product_id, p.name, p.description, p.unit, p.base_price, p.reorder_level, p.is_active, mt.name;
+        GROUP BY p.product_id, p.name, p.description, p.unit, p.base_price, p.reorder_level, p.is_active, p.category;
     """, (product_id,))
     return clean_row(res)
+
+
+def role_key_for_account_type(account_type: str) -> str | None:
+    if account_type == "team_leader":
+        return "team-leader"
+    if account_type in {"owner", "reseller"}:
+        return account_type
+    return None
+
+
+def authenticate_account(email: str, password: str) -> dict | None:
+    account = fetch_one(
+        """
+        SELECT account_id, account_type, name, email, password_hash, is_active
+        FROM accounts
+        WHERE lower(email) = lower(%s)
+        LIMIT 1;
+        """,
+        (email,),
+    )
+    if account is None or not account["is_active"]:
+        return None
+
+    if not verify_password(password, account["password_hash"]):
+        return None
+
+    if password_needs_rehash(account["password_hash"]):
+        execute_write(
+            "UPDATE accounts SET password_hash = %s WHERE account_id = %s;",
+            (hash_password(password), account["account_id"]),
+        )
+
+    clean = clean_row(account)
+    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    return clean if clean["role_key"] else None
 
 def current_metrics() -> dict:
     sales_res = fetch_one("SELECT COALESCE(SUM(total_amount), 0) AS val FROM orders WHERE status = 'fulfilled';")
@@ -318,11 +363,6 @@ def add_inquiry(name: str, business_name: str, email: str, contact_number: str, 
     
     inq = clean_row(inq)
     
-    execute_write("""
-        INSERT INTO inquiry_messages (inquiry_id, sender_type, sender_account_id, message, created_at)
-        VALUES (%s, 'chatbot', NULL, 'Inquiry received. Maria Santos will review this reseller application.', %s);
-    """, (inq['inquiry_id'], datetime.now()))
-    
     add_log("MEATTRACK", "created_inquiry", f"Inquiry #{inq['inquiry_id']}")
     return inq
 
@@ -349,13 +389,8 @@ def add_reseller_from_inquiry(inquiry_id: int) -> dict | None:
     
     execute_write("""
         INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
-        VALUES ('reseller', %s, %s, %s, 'demo1234', true);
-    """, (res["reseller_id"], res["business_name"], res["email"]))
-    
-    execute_write("""
-        INSERT INTO inquiry_messages (inquiry_id, sender_type, sender_account_id, message, created_at)
-        VALUES (%s, 'team_leader', %s, 'Your reseller application is approved. Account onboarding is ready.', %s);
-    """, (inquiry_id, leader_id, datetime.now()))
+        VALUES ('reseller', %s, %s, %s, %s, true);
+    """, (res["reseller_id"], res["business_name"], res["email"], hash_password(RESELLER_PASSWORD)))
     
     add_log("Maria Santos", "approved_reseller_inquiry", f"Inquiry #{inquiry_id}")
     return res
@@ -371,15 +406,12 @@ def reject_inquiry(inquiry_id: int) -> bool:
         WHERE inquiry_id = %s;
     """, (datetime.now(), inquiry_id))
     
-    execute_write("""
-        INSERT INTO inquiry_messages (inquiry_id, sender_type, sender_account_id, message, created_at)
-        VALUES (%s, 'team_leader', %s, 'Inquiry reviewed and rejected for now. Applicant may contact the team for clarification.', %s);
-    """, (inquiry_id, inq["assigned_team_leader_account_id"], datetime.now()))
+
     
     add_log("Maria Santos", "rejected_reseller_inquiry", f"Inquiry #{inquiry_id}")
     return True
 
-def allocate_stock_fefo(order_item_id: int, product_id: int, quantity: float):
+def deduct_stock_fefo(product_id: int, quantity: float):
     batches = fetch_all("""
         SELECT product_batch_id, quantity_available
         FROM product_batches
@@ -387,14 +419,13 @@ def allocate_stock_fefo(order_item_id: int, product_id: int, quantity: float):
         ORDER BY expiry_date ASC, product_batch_id ASC;
     """, (product_id,))
     
-    allocated = 0.0
+    remaining = quantity
     for b in batches:
-        if allocated >= quantity:
+        if remaining <= 0:
             break
         b_id = b["product_batch_id"]
         b_avail = float(b["quantity_available"])
-        needed = quantity - allocated
-        take = min(b_avail, needed)
+        take = min(b_avail, remaining)
         
         execute_write("""
             UPDATE product_batches
@@ -402,12 +433,7 @@ def allocate_stock_fefo(order_item_id: int, product_id: int, quantity: float):
             WHERE product_batch_id = %s;
         """, (take, b_id))
         
-        execute_write("""
-            INSERT INTO order_batch_allocations (order_item_id, product_batch_id, quantity_allocated)
-            VALUES (%s, %s, %s);
-        """, (order_item_id, b_id, take))
-        
-        allocated += take
+        remaining -= take
 
 def create_order(role: str, product_id: int, quantity: float, notes: str = "") -> dict:
     product = product_by_id(product_id)
@@ -453,7 +479,7 @@ def create_order(role: str, product_id: int, quantity: float, notes: str = "") -
     order_item_id = oi["order_item_id"]
     
     if status == "fulfilled":
-        allocate_stock_fefo(order_item_id, product_id, quantity)
+        deduct_stock_fefo(product_id, quantity)
         add_log("Maria Santos", "created_walk_in_sale", f"Order #{order_id}")
     else:
         add_log(created_by_name, "created_reseller_order", f"Order #{order_id}")
@@ -491,9 +517,9 @@ def decide_order(order_id: int, decision: str) -> bool:
             WHERE order_id = %s;
         """, (datetime.now(), order_id))
         
-        items = fetch_all("SELECT order_item_id, product_id, quantity FROM order_items WHERE order_id = %s;", (order_id,))
+        items = fetch_all("SELECT product_id, quantity FROM order_items WHERE order_id = %s;", (order_id,))
         for item in items:
-            allocate_stock_fefo(item["order_item_id"], item["product_id"], float(item["quantity"]))
+            deduct_stock_fefo(item["product_id"], float(item["quantity"]))
             
         add_log("Maria Santos", "fulfilled_reseller_order", f"Order #{order_id}")
     else:
@@ -522,28 +548,166 @@ def add_sales_report(source: str, submitted_by: str, period_start: date, period_
     add_log(submitted_by, "submitted_sales_report", f"Report #{rep['sales_report_id']}")
     return clean_row(rep)
 
+def raw_material_by_id(raw_material_id: int) -> dict | None:
+    res = fetch_one("""
+        SELECT raw_material_id, category, name, unit, reorder_level
+        FROM raw_materials
+        WHERE raw_material_id = %s;
+    """, (raw_material_id,))
+    return clean_row(res)
+
+
+def add_raw_material_batch(raw_material_id: int, batch_code: str, quantity: float, expiry_date: date) -> dict:
+    material = raw_material_by_id(raw_material_id)
+    if material is None:
+        raise ValueError("Unknown raw material")
+    if fetch_one("SELECT raw_material_batch_id FROM raw_material_batches WHERE batch_code = %s;", (batch_code,)):
+        raise ValueError("Batch code already exists.")
+
+    batch = execute_write("""
+        INSERT INTO raw_material_batches (raw_material_id, batch_code, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'approved')
+        RETURNING raw_material_batch_id, raw_material_id, batch_code, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
+    """, (raw_material_id, batch_code, quantity, quantity, material["unit"], date.today(), expiry_date), returning=True)
+
+    batch = clean_row(batch)
+
+    days = (expiry_date - date.today()).days
+    if days <= 7:
+        execute_write("""
+            INSERT INTO alerts (alert_type, severity, raw_material_id, raw_material_batch_id, message, status, triggered_at)
+            VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
+        """, (
+            'warning' if days > 2 else 'critical',
+            raw_material_id, batch["raw_material_batch_id"],
+            f"{quantity:g} {material['unit']} expires in {days} day(s).",
+            datetime.now()
+        ))
+
+    add_log("Maria Santos", "registered_raw_material_batch", batch_code)
+    return batch
+
+
+def produce_product(product_id: int, batch_code: str, quantity: float, expiry_date: date) -> dict:
+    produced_quantity = Decimal(str(quantity)).quantize(Decimal("0.001"))
+    if produced_quantity <= 0:
+        raise ValueError("Quantity must be greater than zero.")
+
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            SELECT product_id, name, unit
+            FROM products
+            WHERE product_id = %s AND is_active = true;
+        """, (product_id,))
+        product = cur.fetchone()
+        if product is None:
+            raise ValueError("Unknown product")
+
+        cur.execute("SELECT product_batch_id FROM product_batches WHERE batch_code = %s;", (batch_code,))
+        if cur.fetchone() is not None:
+            raise ValueError("Batch code already exists.")
+
+        cur.execute("""
+            SELECT pr.raw_material_id, pr.quantity_required, pr.unit AS recipe_unit,
+                   rm.name AS raw_material_name, rm.unit AS material_unit
+            FROM product_recipes pr
+            JOIN raw_materials rm ON rm.raw_material_id = pr.raw_material_id
+            WHERE pr.product_id = %s
+            ORDER BY pr.recipe_id;
+        """, (product_id,))
+        recipe_rows = cur.fetchall()
+        if not recipe_rows:
+            raise ValueError("No recipe is configured for this product.")
+
+        requirements = []
+        for row in recipe_rows:
+            if row["recipe_unit"] != row["material_unit"]:
+                raise ValueError(f"{row['raw_material_name']} recipe unit must match its stock unit.")
+            required = (Decimal(row["quantity_required"]) * produced_quantity).quantize(Decimal("0.001"))
+            requirements.append({
+                "raw_material_id": row["raw_material_id"],
+                "name": row["raw_material_name"],
+                "unit": row["material_unit"],
+                "required": required,
+            })
+
+        allocations_by_material = []
+        for requirement in requirements:
+            cur.execute("""
+                SELECT raw_material_batch_id, batch_code, quantity_available
+                FROM raw_material_batches
+                WHERE raw_material_id = %s
+                  AND quality_status = 'approved'
+                  AND quantity_available > 0
+                  AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+                ORDER BY expiry_date ASC NULLS LAST, raw_material_batch_id ASC
+                FOR UPDATE;
+            """, (requirement["raw_material_id"],))
+            batches = cur.fetchall()
+            remaining = requirement["required"]
+            available = Decimal("0.000")
+            allocations = []
+
+            for batch in batches:
+                batch_available = Decimal(batch["quantity_available"])
+                available += batch_available
+                if remaining <= 0:
+                    continue
+                take = min(batch_available, remaining)
+                if take > 0:
+                    allocations.append((batch["raw_material_batch_id"], take))
+                    remaining -= take
+
+            if remaining > 0:
+                raise ValueError(
+                    f"Not enough {requirement['name']}. "
+                    f"Required {requirement['required']:g} {requirement['unit']}, "
+                    f"available {available:g} {requirement['unit']}."
+                )
+
+            allocations_by_material.append(allocations)
+
+        for allocations in allocations_by_material:
+            for raw_material_batch_id, used_quantity in allocations:
+                cur.execute("""
+                    UPDATE raw_material_batches
+                    SET quantity_available = quantity_available - %s
+                    WHERE raw_material_batch_id = %s;
+                """, (used_quantity, raw_material_batch_id))
+
+        cur.execute("""
+            INSERT INTO product_batches (product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
+            VALUES (%s, %s, 'production', %s, %s, %s, %s, %s, 'approved')
+            RETURNING product_batch_id, product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
+        """, (product_id, batch_code, produced_quantity, produced_quantity, product["unit"], date.today(), expiry_date))
+        batch = cur.fetchone()
+
+        days = (expiry_date - date.today()).days
+        if days <= 7:
+            cur.execute("""
+                INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
+                VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
+            """, (
+                'warning' if days > 2 else 'critical',
+                product_id, batch["product_batch_id"],
+                f"{quantity:g} {product['unit']} expires in {days} day(s).",
+                datetime.now()
+            ))
+
+    add_log("Maria Santos", "produced_product_batch", batch_code)
+    return clean_row(batch)
+
+
 def add_product_batch(product_id: int, batch_code: str, quantity: float, expiry_date: date, source_type: str) -> dict:
     product = product_by_id(product_id)
     if product is None:
         raise ValueError("Unknown product")
-        
-    leader = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'team_leader' LIMIT 1;")
-    leader_id = leader["account_id"] if leader else None
-    
-    prod_run_id = None
-    if source_type == "production":
-        run = execute_write("""
-            INSERT INTO production_runs (product_id, created_by_account_id, quantity_planned, quantity_produced, status, production_date)
-            VALUES (%s, %s, %s, %s, 'completed', %s)
-            RETURNING production_id;
-        """, (product_id, leader_id, quantity, quantity, date.today()), returning=True)
-        prod_run_id = run["production_id"]
-        
+
     batch = execute_write("""
-        INSERT INTO product_batches (product_id, production_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status, received_by_account_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'approved', %s)
+        INSERT INTO product_batches (product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'approved')
         RETURNING product_batch_id, product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
-    """, (product_id, prod_run_id, batch_code, source_type, quantity, quantity, product["unit"], date.today(), expiry_date, leader_id), returning=True)
+    """, (product_id, batch_code, source_type, quantity, quantity, product["unit"], date.today(), expiry_date), returning=True)
     
     batch = clean_row(batch)
     
@@ -563,15 +727,6 @@ def add_product_batch(product_id: int, batch_code: str, quantity: float, expiry_
     return batch
 
 # ----------------- Write helpers for direct insertions -----------------
-
-def add_inquiry_message(inquiry_id: int, sender_type: str, sender: str, message: str) -> None:
-    acc = fetch_one("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (sender,))
-    acc_id = acc["account_id"] if acc else None
-    
-    execute_write("""
-        INSERT INTO inquiry_messages (inquiry_id, sender_type, sender_account_id, message, created_at)
-        VALUES (%s, %s, %s, %s, %s);
-    """, (inquiry_id, sender_type, acc_id, message, datetime.now()))
 
 def add_attendance(employee_name: str, work_date: date, status: str, time_in: str) -> None:
     emp = fetch_one("SELECT employee_id FROM employees WHERE name = %s LIMIT 1;", (employee_name,))
@@ -626,29 +781,7 @@ def add_evaluation(employee_name: str, period_name: str, attendance_score: int, 
     """, (emp["employee_id"], leader_id, period_start, period_end, attendance_score, task_score, behavior_score, overall, feedback))
     add_log("Maria Santos", "submitted_merit_evaluation", employee_name)
 
-def add_price_adjustment(batch_code: str, adjustment_type: str, value: str, reason: str) -> None:
-    pb = fetch_one("SELECT product_batch_id FROM product_batches WHERE batch_code = %s LIMIT 1;", (batch_code,))
-    if not pb:
-        raise ValueError(f"Unknown batch {batch_code}")
-        
-    owner = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'owner' LIMIT 1;")
-    owner_id = owner["account_id"] if owner else None
-    
-    discount_percent = None
-    adjusted_price = None
-    
-    if adjustment_type == "discount_percent":
-        clean_val = "".join(c for c in value if c.isdigit() or c == ".")
-        discount_percent = float(clean_val) if clean_val else 10.0
-    else:
-        clean_val = "".join(c for c in value if c.isdigit() or c == ".")
-        adjusted_price = float(clean_val) if clean_val else 50.0
-        
-    execute_write("""
-        INSERT INTO product_batch_price_adjustments (product_batch_id, adjustment_type, discount_percent, adjusted_price, reason, starts_at, created_by_account_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s);
-    """, (pb["product_batch_id"], adjustment_type, discount_percent, adjusted_price, reason, date.today(), owner_id))
-    add_log("Owner", "created_batch_price_adjustment", batch_code)
+
 
 def add_account(account_type: str, name: str, email: str) -> None:
     reseller_id = None
@@ -665,8 +798,8 @@ def add_account(account_type: str, name: str, email: str) -> None:
             
     execute_write("""
         INSERT INTO accounts (account_type, employee_id, reseller_id, name, email, password_hash, is_active)
-        VALUES (%s, %s, %s, %s, %s, 'demo1234', true);
-    """, (account_type, employee_id, reseller_id, name, email))
+        VALUES (%s, %s, %s, %s, %s, %s, true);
+    """, (account_type, employee_id, reseller_id, name, email, hash_password(DEFAULT_ACCOUNT_PASSWORD)))
     add_log("Owner", "created_account", email)
 
 def add_forecast(model_name: str, forecast_horizon_days: int) -> None:

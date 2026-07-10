@@ -13,6 +13,7 @@ erDiagram
         text name
         text position
         text employment_status
+        boolean is_department_leader
         timestamptz created_at
     }
 
@@ -28,44 +29,12 @@ erDiagram
         timestamptz created_at
     }
 
-    ACCOUNT_2FA_CODES {
-        bigint two_factor_code_id PK
-        bigint account_id FK
-        text code_hash
-        text purpose
-        timestamptz expires_at
-        timestamptz used_at
-        timestamptz created_at
-    }
-
-    ACCOUNT_SESSIONS {
-        bigint session_id PK
-        bigint account_id FK
-        timestamptz login_at
-        timestamptz logout_at
-        timestamptz expires_at
-        inet ip_address
-        text user_agent
-    }
-
     ACTIVITY_LOGS {
         bigint activity_log_id PK
         bigint account_id FK
         text action
         text entity_type
         bigint entity_id
-        inet ip_address
-        text user_agent
-        timestamptz created_at
-    }
-
-    DEPARTMENT_LEADERS {
-        bigint department_leader_id PK
-        bigint department_id FK
-        bigint team_leader_employee_id FK
-        bigint team_leader_account_id FK
-        date started_on
-        date ended_on
         timestamptz created_at
     }
 
@@ -83,17 +52,6 @@ erDiagram
         timestamptz created_at
     }
 
-    INQUIRY_MESSAGES {
-        bigint inquiry_message_id PK
-        bigint inquiry_id FK
-        text sender_type
-        bigint sender_account_id FK
-        text message
-        text ai_intent
-        numeric ai_confidence
-        timestamptz created_at
-    }
-
     RESELLERS {
         bigint reseller_id PK
         bigint inquiry_id FK,UK
@@ -108,15 +66,9 @@ erDiagram
         timestamptz created_at
     }
 
-    MEAT_TYPES {
-        bigint meat_type_id PK
-        text name UK
-        text description
-    }
-
     RAW_MATERIALS {
         bigint raw_material_id PK
-        bigint meat_type_id FK
+        text category
         text name UK
         text unit
         numeric reorder_level
@@ -130,17 +82,15 @@ erDiagram
         numeric quantity_received
         numeric quantity_available
         text unit
-        numeric cost_per_unit
         date received_date
         date expiry_date
         text quality_status
-        bigint received_by_account_id FK
         timestamptz created_at
     }
 
     PRODUCTS {
         bigint product_id PK
-        bigint meat_type_id FK
+        text category
         text name UK
         text description
         text unit
@@ -158,76 +108,17 @@ erDiagram
         text unit
     }
 
-    PRODUCTION_RUNS {
-        bigint production_id PK
-        bigint product_id FK
-        bigint created_by_account_id FK
-        numeric quantity_planned
-        numeric quantity_produced
-        text status
-        date production_date
-        timestamptz created_at
-    }
-
-    PRODUCTION_USAGE {
-        bigint usage_id PK
-        bigint production_id FK
-        bigint raw_material_batch_id FK
-        numeric quantity_used
-        text unit
-        timestamptz created_at
-    }
-
     PRODUCT_BATCHES {
         bigint product_batch_id PK
         bigint product_id FK
-        bigint production_id FK
         text batch_code UK
         text source_type
         numeric quantity_received
         numeric quantity_available
         text unit
-        date production_date
         date received_date
         date expiry_date
         text quality_status
-        bigint received_by_account_id FK
-        timestamptz created_at
-    }
-
-    INVENTORY_TRANSACTIONS {
-        bigint transaction_id PK
-        text inventory_scope
-        bigint raw_material_batch_id FK
-        bigint product_batch_id FK
-        text transaction_type
-        numeric quantity
-        text unit
-        text reason
-        bigint performed_by_account_id FK
-        timestamptz occurred_at
-    }
-
-    PRODUCT_PRICE_HISTORY {
-        bigint price_history_id PK
-        bigint product_id FK
-        numeric price
-        timestamptz effective_from
-        timestamptz effective_to
-        bigint changed_by_account_id FK
-        text reason
-    }
-
-    PRODUCT_BATCH_PRICE_ADJUSTMENTS {
-        bigint adjustment_id PK
-        bigint product_batch_id FK
-        text adjustment_type
-        numeric discount_percent
-        numeric adjusted_price
-        text reason
-        timestamptz starts_at
-        timestamptz ends_at
-        bigint created_by_account_id FK
         timestamptz created_at
     }
 
@@ -253,14 +144,6 @@ erDiagram
         text unit
         numeric unit_price
         numeric line_total
-    }
-
-    ORDER_BATCH_ALLOCATIONS {
-        bigint allocation_id PK
-        bigint order_item_id FK
-        bigint product_batch_id FK
-        numeric quantity_allocated
-        timestamptz allocated_at
     }
 
     SALES_REPORTS {
@@ -326,9 +209,6 @@ erDiagram
         text message
         text status
         timestamptz triggered_at
-        bigint acknowledged_by_account_id FK
-        timestamptz acknowledged_at
-        timestamptz resolved_at
     }
 
     FORECAST_RUNS {
@@ -356,55 +236,29 @@ erDiagram
     }
 
     DEPARTMENTS ||--o{ EMPLOYEES : contains
-    EMPLOYEES ||--o| ACCOUNTS : "team_leader login"
-    RESELLERS ||--o| ACCOUNTS : "reseller login"
-    ACCOUNTS ||--o{ ACCOUNT_2FA_CODES : receives
-    ACCOUNTS ||--o{ ACCOUNT_SESSIONS : opens
-    ACCOUNTS ||--o{ ACTIVITY_LOGS : records
+    EMPLOYEES |o--o| ACCOUNTS : "team leader login"
+    RESELLERS |o--o| ACCOUNTS : "reseller login"
+    ACCOUNTS |o--o{ ACTIVITY_LOGS : records
 
-    DEPARTMENTS ||--o{ DEPARTMENT_LEADERS : has
-    EMPLOYEES ||--o{ DEPARTMENT_LEADERS : leads
-    ACCOUNTS ||--o{ DEPARTMENT_LEADERS : authorizes
-
-    ACCOUNTS ||--o{ INQUIRIES : assigned
-    ACCOUNTS ||--o{ INQUIRIES : reviews
-    INQUIRIES ||--o{ INQUIRY_MESSAGES : contains
-    ACCOUNTS |o--o{ INQUIRY_MESSAGES : sends
+    ACCOUNTS |o--o{ INQUIRIES : assigned
+    ACCOUNTS |o--o{ INQUIRIES : reviews
     INQUIRIES |o--o| RESELLERS : becomes
     ACCOUNTS |o--o{ RESELLERS : approves
 
-    MEAT_TYPES ||--o{ RAW_MATERIALS : categorizes
-    MEAT_TYPES |o--o{ PRODUCTS : categorizes
     RAW_MATERIALS ||--o{ RAW_MATERIAL_BATCHES : stocked_as
-    ACCOUNTS |o--o{ RAW_MATERIAL_BATCHES : receives
-
     PRODUCTS ||--o{ PRODUCT_RECIPES : has
     RAW_MATERIALS ||--o{ PRODUCT_RECIPES : required_by
-
-    PRODUCTS ||--o{ PRODUCTION_RUNS : produced_in
-    ACCOUNTS |o--o{ PRODUCTION_RUNS : creates
-    PRODUCTION_RUNS ||--o{ PRODUCTION_USAGE : consumes
-    RAW_MATERIAL_BATCHES ||--o{ PRODUCTION_USAGE : used_in
     PRODUCTS ||--o{ PRODUCT_BATCHES : stocked_as
-    PRODUCTION_RUNS |o--o{ PRODUCT_BATCHES : outputs
-    ACCOUNTS |o--o{ PRODUCT_BATCHES : receives
-
-    RAW_MATERIAL_BATCHES |o--o{ INVENTORY_TRANSACTIONS : logs
-    PRODUCT_BATCHES |o--o{ INVENTORY_TRANSACTIONS : logs
-    ACCOUNTS |o--o{ INVENTORY_TRANSACTIONS : performs
-
-    PRODUCTS ||--o{ PRODUCT_PRICE_HISTORY : prices
-    ACCOUNTS |o--o{ PRODUCT_PRICE_HISTORY : changes
-    PRODUCT_BATCHES ||--o{ PRODUCT_BATCH_PRICE_ADJUSTMENTS : discounted_by
-    ACCOUNTS |o--o{ PRODUCT_BATCH_PRICE_ADJUSTMENTS : creates
+    PRODUCT_BATCHES |o--o{ ALERTS : triggers
+    PRODUCTS |o--o{ ALERTS : triggers
+    RAW_MATERIAL_BATCHES |o--o{ ALERTS : triggers
+    RAW_MATERIALS |o--o{ ALERTS : triggers
 
     RESELLERS |o--o{ ORDERS : places
     ACCOUNTS |o--o{ ORDERS : creates
     ACCOUNTS |o--o{ ORDERS : approves
     ORDERS ||--o{ ORDER_ITEMS : contains
     PRODUCTS ||--o{ ORDER_ITEMS : ordered_as
-    ORDER_ITEMS ||--o{ ORDER_BATCH_ALLOCATIONS : allocated_to
-    PRODUCT_BATCHES ||--o{ ORDER_BATCH_ALLOCATIONS : supplies
 
     ACCOUNTS |o--o{ SALES_REPORTS : submits
     RESELLERS |o--o{ SALES_REPORTS : reports
@@ -416,12 +270,6 @@ erDiagram
     ACCOUNTS |o--o{ EMPLOYEE_ATTENDANCE : records
     ACCOUNTS |o--o{ EMPLOYEE_TASKS : assigns
     ACCOUNTS |o--o{ EMPLOYEE_MERIT_EVALUATIONS : evaluates
-
-    PRODUCTS |o--o{ ALERTS : triggers
-    PRODUCT_BATCHES |o--o{ ALERTS : triggers
-    RAW_MATERIALS |o--o{ ALERTS : triggers
-    RAW_MATERIAL_BATCHES |o--o{ ALERTS : triggers
-    ACCOUNTS |o--o{ ALERTS : acknowledges
 
     ACCOUNTS |o--o{ FORECAST_RUNS : starts
     FORECAST_RUNS ||--o{ FORECAST_RESULTS : produces

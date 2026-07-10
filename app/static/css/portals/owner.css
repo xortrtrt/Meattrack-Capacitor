@@ -1,0 +1,4 @@
+/* Owner portal-only overrides belong here. */
+.role-owner .portal-topbar h1 {
+  max-width: 760px;
+}

@@ -1,0 +1,130 @@
+{% extends "portals/base.html" %}
+
+{% block portal_content %}
+            {% if section == "dashboard" %}
+            <section class="metric-grid">
+                <article class="metric-card"><span>Fulfilled sales</span><strong>{{ metrics.fulfilled_sales|currency }}</strong><small>Recorded transactions</small></article>
+                <article class="metric-card"><span>Active resellers</span><strong>{{ metrics.active_resellers }}</strong><small>Approved external accounts</small></article>
+                <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }} packs</strong><small>Approved available products</small></article>
+                <article class="metric-card"><span>Open alerts</span><strong>{{ metrics.open_alerts }}</strong><small>Needs attention</small></article>
+            </section>
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Sales and stock pulse</h2>
+                    <div class="bar-list">
+                        {% for product in products %}
+                        <div class="bar-row">
+                            <span>{{ product.name }}</span>
+                            <div><b style="width: {{ [product.available, 100] | min }}%"></b></div>
+                            <em>{{ product.available|number }} {{ product.unit }}</em>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </article>
+                <article class="panel">
+                    <h2>Management exceptions</h2>
+                    <div class="stack-list">{% for alert in alerts %}<div class="stack-item alert {{ alert.severity }}"><strong>{{ alert.subject }}</strong><span>{{ alert.message }}</span><span class="status-badge {{ alert.status }}">{{ alert.status }}</span></div>{% endfor %}</div>
+                </article>
+            </section>
+            {% elif section == "products" %}
+            <section class="panel">
+                <h2>Product and price management</h2>
+                <div class="stack-list">
+                    {% for product in products %}
+                    <form class="inline-edit" action="/portal/owner/products" method="post">
+                        <input type="hidden" name="product_id" value="{{ product.product_id }}">
+                        <strong>{{ product.name }}</strong>
+                        <label>Price <input type="number" step="0.01" min="0" name="base_price" value="{{ product.base_price }}"></label>
+                        <label>Reorder <input type="number" step="1" min="0" name="reorder_level" value="{{ product.reorder_level }}"></label>
+                        <button class="icon-button" type="submit" title="Save"><i data-lucide="save"></i></button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </section>
+            {% elif section == "reports" %}
+            <section class="panel">
+                <div class="panel-heading"><h2>Daily and monthly report source</h2><span class="hint">Reports are stored separately from actual order records.</span></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Source</th><th>Submitted by</th><th>Period</th><th>Sales</th><th>Orders</th><th>Notes</th></tr></thead>
+                        <tbody>
+                        {% for report in sales_reports %}
+                        <tr>
+                            <td>{{ report.report_source.replace("_", " ") }}</td>
+                            <td>{{ report.submitted_by }}</td>
+                            <td>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</td>
+                            <td>{{ report.total_sales|currency }}</td>
+                            <td>{{ report.total_orders }}</td>
+                            <td>{{ report.notes }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {% elif section == "forecasts" %}
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Demand forecast run</h2>
+                    <form class="form-panel bare" action="/portal/owner/forecasts" method="post">
+                        <label>Model name <input required name="model_name" value="Historical sales baseline"></label>
+                        <label>Forecast horizon days <input required type="number" min="1" name="forecast_horizon_days" value="7"></label>
+                        <button class="button primary" type="submit"><i data-lucide="play"></i> Run forecast</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Forecast results</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Product</th><th>Date</th><th>Predicted qty</th><th>Range</th></tr></thead>
+                            <tbody>
+                            {% for forecast in forecasts[:10] %}
+                            <tr><td>{{ forecast.product }}</td><td>{{ forecast.forecast_date|nice_date }}</td><td>{{ forecast.predicted_quantity|number }} packs</td><td>{{ forecast.confidence }}</td></tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+            {% elif section == "accounts" %}
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Account lifecycle</h2>
+                    <form class="form-panel bare" action="/portal/owner/accounts" method="post">
+                        <label>Account type
+                            <select name="account_type">
+                                <option value="owner">Owner</option>
+                                <option value="team_leader">Team leader</option>
+                                <option value="reseller">Reseller</option>
+                            </select>
+                        </label>
+                        <label>Name <input required name="name"></label>
+                        <label>Email <input required type="email" name="email"></label>
+                        <button class="button primary" type="submit">Create account</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Active accounts</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Name</th><th>Type</th><th>Email</th><th>Status</th></tr></thead>
+                            <tbody>{% for account in accounts %}<tr><td>{{ account.name }}</td><td>{{ account.account_type.replace("_", " ") }}</td><td>{{ account.email }}</td><td><span class="status-badge active">{{ account.status }}</span></td></tr>{% endfor %}</tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+            {% elif section == "logs" %}
+            <section class="panel">
+                <div class="panel-heading"><h2>Activity logs and audit trail</h2><span class="hint">Sensitive account, price, inventory, and reseller actions are recorded.</span></div>
+                <div class="timeline">
+                    {% for log in activity_logs %}
+                    <article>
+                        <span>{{ log.created_at|nice_date }}</span>
+                        <strong>{{ log.actor }}</strong>
+                        <p>{{ log.action.replace("_", " ") }} - {{ log.entity }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+{% endblock %}

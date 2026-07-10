@@ -2,7 +2,41 @@
 
 FastAPI prototype for Batangas Premium's MEATTRACK public website and role-based portals.
 
+## Framework and Stack
+
+- Backend framework: FastAPI
+- Template engine: Jinja2 server-rendered HTML
+- Frontend: HTML, CSS, and vanilla JavaScript
+- Database: PostgreSQL
+- Database driver: psycopg2
+- Local app server: Uvicorn
+- Local database runtime: Docker PostgreSQL container
+
+This project is not using React, Vue, Angular, Laravel, Django, or Node.js for the main app.
+
 ## Run Locally
+
+Start the PostgreSQL Docker container first. The current local database connection expects:
+
+```text
+postgresql://meattrack:meattrack@127.0.0.1:5433/meattrack
+```
+
+Create your local environment file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Then edit `.env` and fill in local secrets such as `DATABASE_URL`, `POSTGRES_PASSWORD`, `SESSION_SECRET_KEY`, `OPENROUTER_API_KEY`, and demo account passwords. The real `.env` file is ignored by Git.
+
+If the database is empty or needs a reset, run:
+
+```powershell
+.venv\Scripts\python.exe tools\seed_database.py
+```
+
+Then start FastAPI:
 
 ```powershell
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -16,21 +50,24 @@ http://127.0.0.1:8000
 
 ## Demo Logins
 
-The login form has one email/password flow. The submitted account email determines which dashboard opens.
+The login form has one email/password flow. Credentials are verified against the `accounts` table in PostgreSQL, and the account type determines which dashboard opens.
 
-- Owner: `owner@batangaspremium.test`
-- Team Leader: `leader@batangaspremium.test`
-- Reseller: `reseller@lipafresh.test`
-- Demo password: `demo1234`
+- Owner: `patric.mapa@gmail.com` / `demo123`
+- Team Leader: `leader@batangaspremium.test` / `demo1234`
+- Reseller: `reseller@lipafresh.test` / `demo1234`
+
+Passwords are stored in `accounts.password_hash`. The seed script stores PBKDF2 password hashes, and old plain-text local demo passwords are upgraded to hashes after a successful login.
 
 ## Current Implementation
 
 - Public landing page for Batangas Premium.
 - Reseller Portal: dashboard, ordering, order history, sales reports, messages.
-- Team Leader Portal: daily dashboard, walk-in sales, inventory receiving, alerts, reseller inquiry approval/rejection, reseller order handling, employee attendance/tasks/merit forms, reports.
-- Owner Portal: executive dashboard, product pricing, batch price adjustments, reports, forecasts, account management, audit logs.
-- Seed/demo data is held in memory for immediate UI use.
-- PostgreSQL schema remains in `database/schema.sql`; persistence wiring is the next implementation step.
+- Team Leader Portal: daily dashboard, walk-in sales, raw material receiving, recipe-based production, alerts, reseller inquiry approval/rejection, reseller order handling, employee attendance/tasks/merit forms, reports.
+- Owner Portal: executive dashboard, product pricing, reports, forecasts, account management, audit logs.
+- Portal pages use `app/templates/portals/base.html` plus one role template per portal: `reseller.html`, `team_leader.html`, and `owner.html`.
+- CSS is split by surface: `public.css` for public pages, `login.css` for login, `portal_base.css` for shared portal layout, and `app/static/css/portals/` for role-specific portal overrides.
+- `app/repositories.py` reads and writes PostgreSQL data for the current UI flows.
+- PostgreSQL schema lives in `database/schema.sql` and is intentionally simplified to the portal workflows currently implemented.
 
 ## Chatbot Configuration
 

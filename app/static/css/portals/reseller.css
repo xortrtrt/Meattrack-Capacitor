@@ -1,0 +1,4 @@
+/* Reseller portal-only overrides belong here. */
+.role-reseller .portal-topbar h1 {
+  max-width: 720px;
+}

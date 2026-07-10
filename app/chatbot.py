@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import os
 import re
 
 from openai import OpenAI
 
-
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+from app.config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
 
 UNRELATED_REPLY = "Sorry, I can only assist with Batangas Premium-related concerns."
 CONTACT_REPLY = "Please contact Batangas Premium directly for complete details."

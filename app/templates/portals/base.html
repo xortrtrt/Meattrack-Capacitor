@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/portal_base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}">
+</head>
+<body class="portal-body role-{{ role_key }}">
+    <aside class="portal-sidebar">
+        <a class="brand portal-brand" href="/">
+            <span class="brand-mark">BP</span>
+            <span>
+                <strong>MEATTRACK</strong>
+                <small>{{ role.label }} portal</small>
+            </span>
+        </a>
+        <nav class="portal-nav" aria-label="{{ role.label }} navigation">
+            {% for slug, label, icon in nav %}
+            <a class="{{ 'active' if section == slug else '' }}" href="/portal/{{ role_key }}/{{ slug }}">
+                <i data-lucide="{{ icon }}"></i>
+                {{ label }}
+            </a>
+            {% endfor %}
+        </nav>
+        <div class="portal-user">
+            <span>{{ role.name }}</span>
+            <small>{{ role.email }}</small>
+            <a href="/logout">Sign out</a>
+        </div>
+    </aside>
+
+    <main class="portal-main">
+        <header class="portal-topbar">
+            <div>
+                <span class="eyebrow">{{ role.label }} workspace</span>
+                <h1>{{ section_title }}</h1>
+            </div>
+            <div class="topbar-actions">
+                <a class="button subtle" href="/">
+                    <i data-lucide="globe"></i>
+                    Website
+                </a>
+                <a class="button primary" href="/logout">
+                    <i data-lucide="log-out"></i>
+                    Sign out
+                </a>
+            </div>
+        </header>
+
+        {% if message or error %}
+            <aside class="notice {{ 'error' if error else 'success' }}">
+                {{ error or message }}
+            </aside>
+        {% endif %}
+
+        {% block portal_content %}{% endblock %}
+    </main>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+</body>
+</html>

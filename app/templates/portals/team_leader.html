@@ -1,0 +1,334 @@
+{% extends "portals/base.html" %}
+
+{% block portal_content %}
+            {% if section == "dashboard" %}
+            <section class="metric-grid">
+                <article class="metric-card"><span>Open alerts</span><strong>{{ metrics.open_alerts }}</strong><small>Stock or expiry warnings</small></article>
+                <article class="metric-card"><span>Pending reseller orders</span><strong>{{ metrics.pending_reseller_orders }}</strong><small>Need team leader action</small></article>
+                <article class="metric-card"><span>Team merit average</span><strong>{{ metrics.employee_average }}</strong><small>Latest evaluation score</small></article>
+            </section>
+            <section class="content-grid two">
+                <article class="panel">
+                    <div class="panel-heading"><h2>Priority alerts</h2><a href="/portal/team-leader/inventory">Inventory</a></div>
+                    <div class="stack-list">
+                        {% for alert in alerts %}
+                        <div class="stack-item alert {{ alert.severity }}">
+                            <strong>{{ alert.subject }}</strong>
+                            <span>{{ alert.message }}</span>
+                            <span class="status-badge {{ alert.status }}">{{ alert.status }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </article>
+                <article class="panel">
+                    <div class="panel-heading"><h2>Assigned inquiries</h2><a href="/portal/team-leader/inquiries">Review</a></div>
+                    <div class="stack-list">
+                        {% for inquiry in inquiries[:4] %}
+                        <div class="stack-item">
+                            <strong>{{ inquiry.business_name }}</strong>
+                            <span>{{ inquiry.name }} - {{ inquiry.contact_number }}</span>
+                            <em>{{ inquiry.status }}</em>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </article>
+            </section>
+            {% elif section == "sales" %}
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Record walk-in sale</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/sales" method="post">
+                        <label>Product
+                            <select name="product_id" required>
+                                {% for product in products %}
+                                <option value="{{ product.product_id }}">{{ product.name }} - {{ product.base_price|currency }}/{{ product.unit }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>Quantity in packs <input required type="number" min="1" step="1" name="quantity" value="5"></label>
+                        <label>Notes <textarea name="notes" rows="4" placeholder="Counter sale notes"></textarea></label>
+                        <button class="button primary" type="submit"><i data-lucide="receipt"></i> Record sale</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Recent counter transactions</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Order</th><th>Product</th><th>Status</th><th>Total</th></tr></thead>
+                            <tbody>
+                            {% for order in orders if order.order_type == "walk_in" %}
+                            <tr>
+                                <td>#{{ order.order_id }}</td>
+                                <td>{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}</td>
+                                <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+                                <td>{{ order.total_amount|currency }}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+            {% elif section == "inventory" %}
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Receive raw material</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/raw-materials" method="post">
+                        <label>Raw material
+                            <select name="raw_material_id" required>
+                                {% for material in raw_materials %}
+                                <option value="{{ material.raw_material_id }}">{{ material.name }} - {{ material.available|number }} {{ material.unit }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <div class="form-grid">
+                            <label>Batch code <input required name="batch_code" placeholder="PORK-0710-A"></label>
+                            <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
+                        </div>
+                        <label>Expiry date <input required type="date" name="expiry_date"></label>
+                        <button class="button primary" type="submit"><i data-lucide="package-plus"></i> Receive material</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Produce product</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/production" method="post">
+                        <label>Product
+                            <select name="product_id" required>
+                                {% for product in products %}
+                                <option value="{{ product.product_id }}">{{ product.name }}{% if product.recipe_count == 0 %} (no recipe){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <div class="form-grid">
+                            <label>Output batch <input required name="batch_code" placeholder="PGL-0710-A"></label>
+                            <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
+                        </div>
+                        <label>Expiry date <input required type="date" name="expiry_date"></label>
+                        <button class="button primary" type="submit"><i data-lucide="factory"></i> Produce product</button>
+                    </form>
+                </article>
+            </section>
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Raw material stock</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Material</th><th>Category</th><th>Available</th><th>Reorder</th></tr></thead>
+                            <tbody>
+                            {% for material in raw_materials %}
+                            <tr>
+                                <td>{{ material.name }}</td>
+                                <td>{{ material.category }}</td>
+                                <td>{{ material.available|number }} {{ material.unit }}</td>
+                                <td>{{ material.reorder_level|number }} {{ material.unit }}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+                <article class="panel">
+                    <h2>Finished product batches</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Batch</th><th>Product</th><th>Available</th><th>Expiry</th><th>Source</th></tr></thead>
+                            <tbody>
+                            {% for batch in product_batches %}
+                            {% set product = products | selectattr("product_id", "equalto", batch.product_id) | first %}
+                            <tr>
+                                <td>{{ batch.batch_code }}</td>
+                                <td>{{ product.name if product else "Product" }}</td>
+                                <td>{{ batch.quantity_available|number }} {{ batch.unit }}</td>
+                                <td>{{ batch.expiry_date|nice_date }}</td>
+                                <td><span class="status-badge {{ batch.source_type }}">{{ batch.source_type.replace("_", " ") }}</span></td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Raw material batches</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Batch</th><th>Material</th><th>Available</th><th>Expiry</th></tr></thead>
+                            <tbody>
+                            {% for batch in raw_material_batches %}
+                            <tr>
+                                <td>{{ batch.batch_code }}</td>
+                                <td>{{ batch.raw_material }}</td>
+                                <td>{{ batch.quantity_available|number }} {{ batch.unit }}</td>
+                                <td>{{ batch.expiry_date|nice_date }}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+                <article class="panel">
+                    <h2>Product recipes</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Product</th><th>Raw material</th><th>Required</th></tr></thead>
+                            <tbody>
+                            {% for recipe in product_recipes %}
+                            <tr>
+                                <td>{{ recipe.product_name }}</td>
+                                <td>{{ recipe.raw_material_name }}</td>
+                                <td>{{ recipe.quantity_required|number }} {{ recipe.unit }}</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+            <section class="panel">
+                <h2>Low-stock and expiry alerts</h2>
+                <div class="operations-grid slim">
+                    {% for alert in alerts %}
+                    <article class="alert-card {{ alert.severity }}">
+                        <strong>{{ alert.subject }}</strong>
+                        <p>{{ alert.message }}</p>
+                        <span>{{ alert.triggered_at|nice_date }}</span>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% elif section == "inquiries" %}
+            <section class="panel">
+                <div class="panel-heading">
+                    <h2>Assigned reseller inquiries</h2>
+                    <span class="hint">Approvals are handled by the assigned team leader.</span>
+                </div>
+                <div class="inquiry-grid">
+                    {% for inquiry in inquiries %}
+                    <article class="inquiry-card">
+                        <div>
+                            <span class="status-badge {{ inquiry.status }}">{{ inquiry.status }}</span>
+                            <h3>{{ inquiry.business_name }}</h3>
+                            <p>{{ inquiry.message }}</p>
+                            <small>{{ inquiry.name }} - {{ inquiry.email }} - {{ inquiry.contact_number }}</small>
+                        </div>
+                        <div class="button-row">
+                            <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/approve" method="post">
+                                <button class="button primary small" type="submit"><i data-lucide="check"></i> Approve</button>
+                            </form>
+                            <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/reject" method="post">
+                                <button class="button danger small" type="submit"><i data-lucide="x"></i> Reject</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% elif section == "orders" %}
+            <section class="panel">
+                <div class="panel-heading"><h2>Reseller order review</h2><span class="hint">Approve, reject, or mark prepared orders fulfilled.</span></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Status</th><th>Total</th><th>Action</th></tr></thead>
+                        <tbody>
+                        {% for order in orders if order.order_type == "reseller" %}
+                            <tr>
+                                <td>#{{ order.order_id }}</td>
+                                <td>{{ order.reseller }}</td>
+                                <td>{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}</td>
+                                <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+                                <td>{{ order.total_amount|currency }}</td>
+                                <td>
+                                    <div class="table-actions">
+                                        <form action="/portal/team-leader/orders/{{ order.order_id }}/approve" method="post"><button class="icon-button" title="Approve"><i data-lucide="check"></i></button></form>
+                                        <form action="/portal/team-leader/orders/{{ order.order_id }}/reject" method="post"><button class="icon-button danger" title="Reject"><i data-lucide="x"></i></button></form>
+                                        <form action="/portal/team-leader/orders/{{ order.order_id }}/fulfill" method="post"><button class="icon-button" title="Fulfill"><i data-lucide="package-check"></i></button></form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {% elif section == "employees" %}
+            <section class="content-grid three">
+                <article class="panel">
+                    <h2>Attendance</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/attendance" method="post">
+                        <label>Employee
+                            <select name="employee">{% for employee in employees %}<option>{{ employee.name }}</option>{% endfor %}</select>
+                        </label>
+                        <label>Work date <input required type="date" name="work_date"></label>
+                        <label>Status
+                            <select name="attendance_status">
+                                <option value="present">Present</option>
+                                <option value="late">Late</option>
+                                <option value="absent">Absent</option>
+                                <option value="excused">Excused</option>
+                            </select>
+                        </label>
+                        <label>Time in <input type="time" name="time_in"></label>
+                        <button class="button primary" type="submit">Save attendance</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Task completion</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/tasks" method="post">
+                        <label>Employee
+                            <select name="employee">{% for employee in employees %}<option>{{ employee.name }}</option>{% endfor %}</select>
+                        </label>
+                        <label>Task title <input required name="title" placeholder="Prepare pickup packs"></label>
+                        <label>Due date <input required type="date" name="due_date"></label>
+                        <button class="button primary" type="submit">Assign task</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Merit evaluation</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/merit" method="post">
+                        <label>Employee
+                            <select name="employee">{% for employee in employees %}<option>{{ employee.name }}</option>{% endfor %}</select>
+                        </label>
+                        <label>Period <input required name="period" placeholder="June Week 3"></label>
+                        <div class="score-grid">
+                            <label>Attendance <input required type="number" min="1" max="5" name="attendance_score"></label>
+                            <label>Tasks <input required type="number" min="1" max="5" name="task_score"></label>
+                            <label>Behavior <input required type="number" min="1" max="5" name="behavior_score"></label>
+                        </div>
+                        <label>Feedback <textarea name="feedback" rows="3"></textarea></label>
+                        <button class="button primary" type="submit">Submit score</button>
+                    </form>
+                </article>
+            </section>
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Current tasks</h2>
+                    <div class="stack-list">{% for task in tasks %}<div class="stack-item"><strong>{{ task.title }}</strong><span>{{ task.employee }} - due {{ task.due_date|nice_date }}</span><em>{{ task.status }}</em></div>{% endfor %}</div>
+                </article>
+                <article class="panel">
+                    <h2>Merit records</h2>
+                    <div class="stack-list">{% for eval in evaluations %}<div class="stack-item"><strong>{{ eval.employee }} - {{ eval.overall_score }}</strong><span>{{ eval.period }}</span><em>{{ eval.feedback }}</em></div>{% endfor %}</div>
+                </article>
+            </section>
+            {% elif section == "reports" %}
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Submit team sales report</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/reports" method="post">
+                        <div class="form-grid"><label>Start <input required type="date" name="period_start"></label><label>End <input required type="date" name="period_end"></label></div>
+                        <div class="form-grid"><label>Total sales <input required type="number" min="0" step="0.01" name="total_sales"></label><label>Total orders <input required type="number" min="0" name="total_orders"></label></div>
+                        <label>Notes <textarea name="notes" rows="4"></textarea></label>
+                        <button class="button primary" type="submit">Submit report</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Team reports</h2>
+                    <div class="stack-list">
+                    {% for report in sales_reports if report.report_source == "team_leader" %}
+                        <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency }} - {{ report.total_orders }} orders</em></div>
+                    {% endfor %}
+                    </div>
+                </article>
+            </section>
+            {% endif %}
+{% endblock %}

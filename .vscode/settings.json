@@ -1,0 +1,14 @@
+{
+  "sqltools.connections": [
+    {
+      "name": "MEATTRACK Local PostgreSQL",
+      "driver": "PostgreSQL",
+      "server": "127.0.0.1",
+      "port": 5433,
+      "database": "meattrack",
+      "username": "meattrack",
+      "askForPassword": true,
+      "previewLimit": 50
+    }
+  ]
+}
