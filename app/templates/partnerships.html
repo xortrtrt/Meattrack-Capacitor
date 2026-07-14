@@ -10,18 +10,17 @@
     />
   </head>
   <body>
-    <!-- Navigation -->
     <nav class="navbar">
       <div class="nav-container">
         <a href="/" class="logo">
           <img
-            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            src="{{ 'batangas_premium.png'|media_url }}"
             alt="Batangas Premium"
             class="logo-img"
           />
         </a>
         <ul class="nav-links">
-          <li><a href="/products">Our Products</a></li>
+          <li><a href="/products">Store</a></li>
           <li><a href="/about">About Us</a></li>
           <li><a href="/partnerships">Partnerships</a></li>
           <li><a href="/#inquiry">Contact</a></li>
@@ -30,12 +29,17 @@
       </div>
     </nav>
 
-    <!-- Partnerships Section -->
-    <section
-      id="partnerships"
-      class="partnerships-section"
-      style="margin-top: 80px"
-    >
+    <header class="catalog-hero">
+      <div class="container">
+        <h1>Partnerships</h1>
+        <p>
+          Business paths for resellers, city outlets, and distributors carrying
+          the Batangas Premium product line.
+        </p>
+      </div>
+    </header>
+
+    <section id="partnerships" class="partnerships-section">
       <div class="container">
         <h2>Partnership Opportunities</h2>
         <div class="partnership-grid">
@@ -54,11 +58,11 @@
           <div class="partnership-card featured">
             <h3>City Outlet</h3>
             <p>
-              Become an exclusive outlet partner in your area and bring
-              authentic Filipino flavors closer to customers.
+              Become an outlet partner in your area and bring premium frozen
+              products closer to local buyers.
             </p>
             <ul class="benefits-list">
-              <li>Territory exclusivity</li>
+              <li>Area-focused selling</li>
               <li>Higher margins</li>
               <li>Business guidance</li>
             </ul>
@@ -66,8 +70,8 @@
           <div class="partnership-card">
             <h3>Distributor Network</h3>
             <p>
-              Join our growing distribution network and expand your business
-              with premium frozen products.
+              Join the wider distribution network and expand your business with
+              volume-based frozen product supply.
             </p>
             <ul class="benefits-list">
               <li>Volume discounts</li>
@@ -76,10 +80,12 @@
             </ul>
           </div>
         </div>
+        <div class="button-row center-actions">
+          <a class="btn btn-primary" href="/#inquiry">Send Partnership Inquiry</a>
+        </div>
       </div>
     </section>
 
-    <!-- Chatbot Widget -->
     <aside class="chatbot-widget" data-chatbot>
       <button
         class="chatbot-toggle"
@@ -101,7 +107,7 @@
             data-chatbot-close
             aria-label="Close chat"
           >
-            ×
+            x
           </button>
         </header>
         <div class="chatbot-messages" data-chatbot-messages>
@@ -117,14 +123,33 @@
             placeholder="Ask us anything..."
             required
           />
-          <button type="submit" aria-label="Send message">➤</button>
+          <button type="submit" aria-label="Send message">Send</button>
         </form>
       </section>
     </aside>
 
-    <!-- Footer -->
     <footer class="footer">
       <div class="container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <h4>Batangas Premium</h4>
+            <p>Quality frozen meat products crafted with tradition and care.</p>
+          </div>
+          <div class="footer-section">
+            <h4>Quick Links</h4>
+            <ul>
+              <li><a href="/products">Store</a></li>
+              <li><a href="/about">About Us</a></li>
+              <li><a href="/#inquiry">Contact</a></li>
+              <li><a href="/login">Portal</a></li>
+            </ul>
+          </div>
+          <div class="footer-section">
+            <h4>Get In Touch</h4>
+            <p>0935 335 6483</p>
+            <p>batangas.premium@yahoo.com</p>
+          </div>
+        </div>
         <div class="footer-bottom">
           <p>&copy; 2020 Batangas Premium. All rights reserved.</p>
         </div>

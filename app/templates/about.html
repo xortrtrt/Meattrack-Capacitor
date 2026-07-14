@@ -10,18 +10,17 @@
     />
   </head>
   <body>
-    <!-- Navigation -->
     <nav class="navbar">
       <div class="nav-container">
         <a href="/" class="logo">
           <img
-            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            src="{{ 'batangas_premium.png'|media_url }}"
             alt="Batangas Premium"
             class="logo-img"
           />
         </a>
         <ul class="nav-links">
-          <li><a href="/products">Our Products</a></li>
+          <li><a href="/products">Store</a></li>
           <li><a href="/about">About Us</a></li>
           <li><a href="/partnerships">Partnerships</a></li>
           <li><a href="/#inquiry">Contact</a></li>
@@ -30,8 +29,17 @@
       </div>
     </nav>
 
-    <!-- About Section -->
-    <section id="about" class="about-section" style="margin-top: 80px">
+    <header class="catalog-hero">
+      <div class="container">
+        <h1>Know Our Story</h1>
+        <p>
+          Batangas Premium grew from a pandemic-era food idea into a meat
+          processing and distribution business with thousands of sellers.
+        </p>
+      </div>
+    </header>
+
+    <section id="about" class="about-section">
       <div class="container">
         <div class="about-content">
           <div class="about-text">
@@ -44,12 +52,10 @@
               new vision: quality frozen meat products.
             </p>
             <p>
-              Starting with just skinless longganisa and 2 employees, we've
-              grown into a trusted meat processing and distribution company
-              serving over 5,000 active distributors across 10 regions in Luzon
-              and Visayas. Today, with around 60 dedicated employees and
-              commercial-grade equipment, Batangas Premium combines
-              entrepreneurial spirit with uncompromising quality standards.
+              Starting with skinless longganisa and 2 employees, the company
+              grew into a trusted meat processing and distribution brand serving
+              active distributors across Luzon and Visayas. Today, commercial
+              equipment and dedicated teams support a broader product line.
             </p>
             <div class="about-stats">
               <div class="stat">
@@ -62,7 +68,7 @@
               </div>
               <div class="stat">
                 <span class="stat-value">10 Regions</span>
-                <span class="stat-label">Luzon & Visayas</span>
+                <span class="stat-label">Luzon and Visayas</span>
               </div>
             </div>
           </div>
@@ -70,29 +76,28 @@
             <div class="feature-box">
               <span class="feature-icon">MEATS</span>
               <h4>Premium Products</h4>
-              <p>Longganisa, tapa, tocino, ham, and specialty meat products</p>
+              <p>Longganisa, tapa, tocino, ham, and specialty meat products.</p>
             </div>
             <div class="feature-box">
-              <span class="feature-icon">CHECK</span>
+              <span class="feature-icon">QC</span>
               <h4>Quality Standards</h4>
-              <p>Commercial-grade processing with strict quality control</p>
+              <p>Commercial processing and consistent product handling.</p>
             </div>
             <div class="feature-box">
-              <span class="feature-icon">SHIP</span>
+              <span class="feature-icon">REACH</span>
               <h4>Wide Reach</h4>
-              <p>Serving over 5,000 distributors across 10 regions</p>
+              <p>Distribution activity across major Luzon and Visayas regions.</p>
             </div>
             <div class="feature-box">
               <span class="feature-icon">TEAM</span>
               <h4>Distributor Growth</h4>
-              <p>Supporting entrepreneurs through our distributor network</p>
+              <p>Supporting resellers and outlet partners with business programs.</p>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Chatbot Widget -->
     <aside class="chatbot-widget" data-chatbot>
       <button
         class="chatbot-toggle"
@@ -114,7 +119,7 @@
             data-chatbot-close
             aria-label="Close chat"
           >
-            ×
+            x
           </button>
         </header>
         <div class="chatbot-messages" data-chatbot-messages>
@@ -130,15 +135,27 @@
             placeholder="Ask us anything..."
             required
           />
-          <button type="submit" aria-label="Send message">➤</button>
+          <button type="submit" aria-label="Send message">Send</button>
         </form>
       </section>
     </aside>
 
-    <!-- Footer -->
     <footer class="footer">
       <div class="container">
         <div class="footer-content">
+          <div class="footer-section">
+            <h4>Batangas Premium</h4>
+            <p>Quality frozen meat products crafted with tradition and care.</p>
+          </div>
+          <div class="footer-section">
+            <h4>Quick Links</h4>
+            <ul>
+              <li><a href="/products">Store</a></li>
+              <li><a href="/partnerships">Partnerships</a></li>
+              <li><a href="/#inquiry">Contact</a></li>
+              <li><a href="/login">Portal</a></li>
+            </ul>
+          </div>
           <div class="footer-section">
             <h4>Get In Touch</h4>
             <p>0935 335 6483</p>

@@ -31,6 +31,21 @@ CREATE TABLE activity_logs (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE media_assets (
+    media_asset_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    filename text NOT NULL UNIQUE,
+    content_type text NOT NULL,
+    content bytea NOT NULL,
+    size_bytes integer NOT NULL CHECK (size_bytes >= 0),
+    checksum_sha256 text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(filename) <> ''),
+    CHECK (filename !~ '[\\/]'),
+    CHECK (btrim(content_type) <> ''),
+    CHECK (length(checksum_sha256) = 64)
+);
+
 CREATE TABLE inquiries (
     inquiry_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name text NOT NULL,

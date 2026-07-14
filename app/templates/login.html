@@ -12,7 +12,7 @@
   <body class="login-page">
     <div
       class="login-bg"
-      style="background-image: url('{{ url_for('static', path='img/background.jpg') }}')"
+      style="background-image: url('{{ 'background.jpg'|media_url }}')"
     ></div>
     <div class="login-overlay"></div>
 
@@ -20,7 +20,7 @@
       <div class="login-card">
         <a href="/" class="login-brand">
           <img
-            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            src="{{ 'batangas_premium.png'|media_url }}"
             alt="Batangas Premium"
             class="login-logo"
           />

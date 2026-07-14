@@ -3,25 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Our Products | Batangas Premium</title>
+    <title>Store | Batangas Premium</title>
     <link
       rel="stylesheet"
       href="{{ url_for('static', path='css/public.css') }}"
     />
   </head>
   <body>
-    <!-- Navigation -->
     <nav class="navbar">
       <div class="nav-container">
         <a href="/" class="logo">
           <img
-            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            src="{{ 'batangas_premium.png'|media_url }}"
             alt="Batangas Premium"
             class="logo-img"
           />
         </a>
         <ul class="nav-links">
-          <li><a href="/products">Our Products</a></li>
+          <li><a href="/products">Store</a></li>
           <li><a href="/about">About Us</a></li>
           <li><a href="/partnerships">Partnerships</a></li>
           <li><a href="/#inquiry">Contact</a></li>
@@ -30,27 +29,55 @@
       </div>
     </nav>
 
-    <!-- Products Section -->
-    <section id="products" class="products-section" style="margin-top: 80px">
+    <header class="catalog-hero">
       <div class="container">
+        <h1>Store</h1>
+        <p>
+          Premium frozen products for retail buyers, resellers, and outlet
+          partners.
+        </p>
+      </div>
+    </header>
+
+    <section id="products" class="products-section">
+      <div class="container">
+        <div class="category-tabs" aria-label="Product categories">
+          <span>All</span>
+          <span>Promos</span>
+          <span>Retail</span>
+          <span>Reseller Packages</span>
+        </div>
+
         <div class="section-header">
           <h2>Our Premium Selection</h2>
-          <p>Carefully crafted frozen meat products for your table</p>
+          <p>Square product cards match the visual rhythm of the official store.</p>
         </div>
+
         <div class="products-grid">
           {% for product in products %}
-          <div class="product-card">
-            <div class="product-category">{{ product.category }}</div>
-            <h3>{{ product.name }}</h3>
-            <p>{{ product.description }}</p>
-            <div class="product-price">{{ product.base_price|currency }}</div>
-          </div>
+          <article class="product-card">
+            <a class="product-media" href="/#inquiry">
+              <img
+                src="{{ product.name|product_image|media_url }}"
+                alt="{{ product.name }}"
+                loading="lazy"
+              />
+            </a>
+            <div class="product-card-body">
+              <span class="product-category">{{ product.category }}</span>
+              <h3>{{ product.name }}</h3>
+              <p>{{ product.description }}</p>
+              <div class="product-meta">
+                <strong class="product-price">{{ product.base_price|currency }}</strong>
+                <a class="product-cta" href="/#inquiry">Inquire</a>
+              </div>
+            </div>
+          </article>
           {% endfor %}
         </div>
       </div>
     </section>
 
-    <!-- Chatbot Widget -->
     <aside class="chatbot-widget" data-chatbot>
       <button
         class="chatbot-toggle"
@@ -72,7 +99,7 @@
             data-chatbot-close
             aria-label="Close chat"
           >
-            ×
+            x
           </button>
         </header>
         <div class="chatbot-messages" data-chatbot-messages>
@@ -88,15 +115,27 @@
             placeholder="Ask us anything..."
             required
           />
-          <button type="submit" aria-label="Send message">➤</button>
+          <button type="submit" aria-label="Send message">Send</button>
         </form>
       </section>
     </aside>
 
-    <!-- Footer -->
     <footer class="footer">
       <div class="container">
         <div class="footer-content">
+          <div class="footer-section">
+            <h4>Batangas Premium</h4>
+            <p>Quality frozen meat products crafted with tradition and care.</p>
+          </div>
+          <div class="footer-section">
+            <h4>Quick Links</h4>
+            <ul>
+              <li><a href="/">Home</a></li>
+              <li><a href="/partnerships">Partnerships</a></li>
+              <li><a href="/#inquiry">Contact</a></li>
+              <li><a href="/login">Portal</a></li>
+            </ul>
+          </div>
           <div class="footer-section">
             <h4>Get In Touch</h4>
             <p>0935 335 6483</p>

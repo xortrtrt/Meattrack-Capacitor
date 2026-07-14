@@ -68,6 +68,41 @@ stock_units = ["kg", "g", "ml"]
 content_units = ["g", "kg", "ml"]
 recipe_units = ["g", "kg", "ml"]
 
+MEDIA_ASSETS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS media_assets (
+    media_asset_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    filename text NOT NULL UNIQUE,
+    content_type text NOT NULL,
+    content bytea NOT NULL,
+    size_bytes integer NOT NULL CHECK (size_bytes >= 0),
+    checksum_sha256 text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(filename) <> ''),
+    CHECK (filename !~ '[\\\\/]'),
+    CHECK (btrim(content_type) <> ''),
+    CHECK (length(checksum_sha256) = 64)
+);
+"""
+
+
+def ensure_media_assets_table() -> None:
+    execute_write(MEDIA_ASSETS_TABLE_SQL)
+
+
+def media_asset_by_filename(filename: str):
+    ensure_media_assets_table()
+    row = fetch_one("""
+        SELECT filename, content_type, content, size_bytes, checksum_sha256, updated_at
+        FROM media_assets
+        WHERE filename = %s;
+    """, (filename,))
+    if row is None:
+        return None
+    cleaned = clean_row(row)
+    cleaned["content"] = bytes(cleaned["content"])
+    return cleaned
+
 
 def require_inventory_choice(value: object, choices: list[str], label: str) -> str:
     cleaned = normalize_inventory_text(str(value), label)
@@ -604,6 +639,8 @@ def decide_order(order_id: int, decision: str) -> bool:
     ord_res = fetch_one("SELECT * FROM orders WHERE order_id = %s;", (order_id,))
     if not ord_res or ord_res["order_type"] != "reseller":
         return False
+    if ord_res["status"] in {"fulfilled", "rejected"}:
+        return False
     
     leader = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'team_leader' LIMIT 1;")
     leader_id = leader["account_id"] if leader else None
@@ -639,6 +676,71 @@ def decide_order(order_id: int, decision: str) -> bool:
     else:
         return False
     return True
+
+
+def team_sales_report_totals(period_start: date, period_end: date) -> dict:
+    totals = fetch_one("""
+        SELECT COALESCE(SUM(oi.line_total), 0) AS total_sales,
+               COUNT(DISTINCT o.order_id) AS total_orders
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN inventory_items p ON p.item_id = oi.product_id
+        WHERE o.status = 'fulfilled'
+          AND p.item_type = 'finished_product'
+          AND COALESCE(o.fulfilled_at, o.order_date)::date BETWEEN %s AND %s;
+    """, (period_start, period_end))
+    totals = clean_row(totals)
+    return {
+        "total_sales": float(totals["total_sales"] or 0),
+        "total_orders": int(totals["total_orders"] or 0),
+    }
+
+
+def team_sales_report_entries() -> list[dict]:
+    entries = clean_row(fetch_all("""
+        SELECT COALESCE(o.fulfilled_at, o.order_date)::date AS sale_date,
+               o.order_id,
+               COALESCE(r.business_name, 'Retail counter') AS customer,
+               p.name AS product,
+               oi.quantity,
+               oi.unit,
+               oi.line_total AS total_sales
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN inventory_items p ON p.item_id = oi.product_id
+        LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
+        WHERE o.status = 'fulfilled'
+          AND p.item_type = 'finished_product'
+        ORDER BY sale_date DESC, o.order_id DESC, p.name;
+    """))
+    for entry in entries:
+        entry["sale_date"] = entry["sale_date"].isoformat()
+    return entries
+
+
+def team_rejected_order_entries() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT o.order_id,
+               COALESCE(r.business_name, 'Retail counter') AS reseller,
+               COALESCE(o.approved_at, o.order_date) AS rejected_at,
+               o.total_amount,
+               o.notes,
+               STRING_AGG(
+                   TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM oi.quantity::text)) || ' ' || oi.unit || ' ' || p.name,
+                   ', '
+                   ORDER BY p.name
+               ) AS items
+        FROM orders o
+        LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN inventory_items p ON p.item_id = oi.product_id
+        WHERE o.order_type = 'reseller'
+          AND o.status = 'rejected'
+          AND p.item_type = 'finished_product'
+        GROUP BY o.order_id, r.business_name, o.approved_at, o.order_date, o.total_amount, o.notes
+        ORDER BY rejected_at DESC, o.order_id DESC;
+    """))
+
 
 def add_sales_report(source: str, submitted_by: str, period_start: date, period_end: date, total_sales: float, total_orders: int, notes: str) -> dict:
     acc = fetch_one("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (submitted_by,))

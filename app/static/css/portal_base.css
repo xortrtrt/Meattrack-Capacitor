@@ -1,15 +1,20 @@
+@import url("https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;700;800&display=swap");
+
 :root {
-  --text: #202326;
-  --text-light: #62666b;
+  --text: #241f19;
+  --text-light: #6f675d;
   --white: #ffffff;
   --success: #2f6f4e;
   --error: #b23b35;
-  --primary: #25282c;
-  --primary-dark: #121416;
-  --border: #d8d3cc;
+  --primary: #0d0c0b;
+  --primary-dark: #050504;
+  --gold: #d7b621;
+  --gold-deep: #aa8616;
+  --cream: #f6ecd0;
+  --border: #d7c99a;
   --surface: #ffffff;
-  --surface-muted: #f8f7f5;
-  --sidebar: #242321;
+  --surface-muted: #fbf7ec;
+  --sidebar: #0d0c0b;
 }
 
 * {
@@ -18,7 +23,7 @@
 
 body {
   margin: 0;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Rubik", "Segoe UI", Arial, sans-serif;
   font-size: 16px;
   line-height: 1.6;
 }
@@ -44,7 +49,9 @@ button {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
-  background: #f3f2ef;
+  background:
+    linear-gradient(180deg, rgba(246, 236, 208, 0.76), rgba(251, 247, 236, 0.96)),
+    #f7f2e4;
   color: var(--text);
 }
 
@@ -60,8 +67,11 @@ button {
   flex-direction: column;
   gap: 24px;
   padding: 22px;
-  background: var(--sidebar);
+  background:
+    linear-gradient(180deg, rgba(68, 22, 18, 0.42), rgba(13, 12, 11, 0) 44%),
+    var(--sidebar);
   color: #f7f4ef;
+  border-right: 1px solid rgba(215, 182, 33, 0.38);
   overflow-y: auto;
 }
 
@@ -76,13 +86,18 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 50px;
+  width: 68px;
   height: 50px;
-  background: #e6e0d7;
-  border-radius: 8px;
-  color: var(--primary);
-  font-size: 1.5rem;
-  font-weight: 900;
+  padding: 5px;
+  background: #050504;
+  border: 1px solid rgba(215, 182, 33, 0.46);
+  border-radius: 6px;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .portal-brand {
@@ -96,7 +111,7 @@ button {
 }
 
 .portal-brand small {
-  color: #c9c4bd;
+  color: #d9cfaa;
 }
 
 .portal-nav {
@@ -110,8 +125,8 @@ button {
   align-items: center;
   gap: 10px;
   padding: 0 12px;
-  border-radius: 8px;
-  color: #ddd8d0;
+  border-radius: 6px;
+  color: #eee6d2;
   font-weight: 750;
 }
 
@@ -125,7 +140,7 @@ button {
 
 .portal-nav a:hover,
 .portal-nav a.active {
-  background: #f7f4ef;
+  background: var(--gold);
   color: var(--primary);
 }
 
@@ -134,7 +149,7 @@ button {
   display: grid;
   gap: 3px;
   padding-top: 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  border-top: 1px solid rgba(215, 182, 33, 0.24);
 }
 
 .portal-user span {
@@ -142,13 +157,13 @@ button {
 }
 
 .portal-user small {
-  color: #c9c4bd;
+  color: #d9cfaa;
   overflow-wrap: anywhere;
 }
 
 .portal-user a {
   margin-top: 8px;
-  color: #f7f4ef;
+  color: var(--gold);
   font-weight: 850;
 }
 
@@ -157,7 +172,7 @@ button {
   display: grid;
   align-content: start;
   gap: 20px;
-  padding: 28px clamp(18px, 3vw, 40px) 56px;
+  padding: 28px 36px 56px;
 }
 
 .portal-topbar {
@@ -166,19 +181,21 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(170, 134, 22, 0.28);
 }
 
 .portal-topbar h1 {
   margin: 0;
   color: var(--primary);
-  font-size: clamp(1.75rem, 3vw, 2.65rem);
+  font-size: 2.35rem;
   line-height: 1;
 }
 
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  color: var(--text-light);
+  color: var(--gold-deep);
   font-size: 0.78rem;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -200,7 +217,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  border-radius: 8px;
+  border-radius: 6px;
   font-weight: 800;
 }
 
@@ -210,12 +227,12 @@ button {
 }
 
 .button.primary {
-  background: var(--primary);
-  color: var(--white);
+  background: var(--gold);
+  color: var(--primary);
 }
 
 .button.primary:hover {
-  background: var(--primary-dark);
+  background: #e8c64a;
 }
 
 .button.subtle {
@@ -238,6 +255,13 @@ button {
 
 .button.is-loading {
   opacity: 0.7;
+  pointer-events: none;
+}
+
+.button:disabled,
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
   pointer-events: none;
 }
 
@@ -299,7 +323,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
-  box-shadow: 0 8px 20px rgba(32, 35, 38, 0.06);
+  box-shadow: 0 12px 28px rgba(13, 12, 11, 0.08);
 }
 
 .metric-card {
@@ -308,6 +332,7 @@ button {
   align-content: start;
   gap: 7px;
   padding: 20px;
+  border-top: 4px solid var(--gold);
 }
 
 .metric-card span {
@@ -317,7 +342,7 @@ button {
 
 .metric-card strong {
   color: var(--primary);
-  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-size: 2.25rem;
   line-height: 1;
 }
 
@@ -355,7 +380,7 @@ button {
 }
 
 .panel-heading a {
-  color: var(--primary);
+  color: var(--gold-deep);
   font-weight: 850;
 }
 
@@ -384,6 +409,7 @@ button {
 }
 
 .portal-body th {
+  background: var(--surface-muted);
   color: var(--text-light);
   font-size: 0.78rem;
   letter-spacing: 0.05em;
@@ -447,7 +473,7 @@ button {
 
 .recipe-line.header {
   background: var(--surface-muted);
-  color: var(--text-light);
+  color: var(--gold-deep);
   font-size: 0.76rem;
   font-weight: 850;
   text-transform: uppercase;
@@ -459,7 +485,7 @@ button {
   align-items: center;
   padding: 0 9px;
   border-radius: 999px;
-  background: #eceef0;
+  background: #eee8d5;
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 850;
@@ -469,7 +495,7 @@ button {
 .status-badge.pending,
 .status-badge.assigned,
 .status-badge.contacted {
-  background: #eceef0;
+  background: #eee8d5;
   color: var(--text);
 }
 
@@ -500,7 +526,7 @@ button {
   min-height: 70px;
   padding: 13px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface-muted);
 }
 
@@ -516,14 +542,14 @@ button {
 
 .stack-item.alert.critical,
 .alert-card.critical {
-  border-color: #d8c6c3;
-  background: var(--surface);
+  border-color: #d9a29c;
+  background: #fff7f5;
 }
 
 .stack-item.alert.warning,
 .alert-card.warning {
-  border-color: var(--border);
-  background: var(--surface);
+  border-color: var(--gold);
+  background: #fffbef;
 }
 
 .stock-line {
@@ -604,7 +630,7 @@ button {
   width: 100%;
   padding: 12px 15px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--white);
   color: var(--text);
 }
@@ -613,8 +639,8 @@ button {
 .form-panel textarea:focus,
 .form-panel select:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 40, 44, 0.1);
+  border-color: var(--gold-deep);
+  box-shadow: 0 0 0 3px rgba(215, 182, 33, 0.18);
 }
 
 .form-grid,
@@ -622,6 +648,12 @@ button {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.report-order-items {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
 }
 
 .recipe-rows {
@@ -691,7 +723,7 @@ button {
   min-height: 40px;
   padding: 10px 11px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .bar-list {
@@ -710,7 +742,7 @@ button {
   height: 12px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e2e3e5;
+  background: #e8dcc1;
 }
 
 .bar-row b {
@@ -718,7 +750,7 @@ button {
   height: 100%;
   max-width: 100%;
   border-radius: inherit;
-  background: var(--primary);
+  background: linear-gradient(90deg, var(--gold), var(--gold-deep));
 }
 
 .timeline {
@@ -743,7 +775,7 @@ button {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--gold);
 }
 
 .timeline span,

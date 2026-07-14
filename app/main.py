@@ -3,10 +3,10 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -18,12 +18,47 @@ from app.config import SESSION_SECRET_KEY
 
 BASE_DIR = Path(__file__).resolve().parent
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+MEDIA_FILENAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 app = FastAPI(title="MEATTRACK", version="0.1.0")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+PRODUCT_IMAGE_FILENAMES = {
+    "bacon smoked": "bacon_smoked.jpg",
+    "beef longganisa": "beef_longganisa.jpg",
+    "beef tapa ala eh": "beef_tapa_ala_eh.jpg",
+    "cheesy overload sausage": "cheesy_overload_sausage.jpg",
+    "chicken rebusado": "chicken_rebusado.jpg",
+    "chicken tocino": "chicken_tocino.jpg",
+    "deli beef": "deli_beef.jpg",
+    "hamon ala eh": "hamon_ala_eh.jpg",
+    "hungarian sausage": "hungarian_sausage.jpg",
+    "pork garlic longganisa": "pork_garlic_longganisa.jpg",
+    "pork rebusado": "pork_rebusado.jpg",
+    "pork tapa": "pork_tapa.jpg",
+    "spicy garlic longganisa": "spicy_garlic_longganisa.jpg",
+    "tocino ala eh": "tocino_ala_eh.jpg",
+    "trial package": "trial_package.jpg",
+    "resellers package": "reseller_package.jpg",
+    "area distributors package": "area_distributor_package.jpg",
+    "triple garlic longganisa": "triple_garlic_longganisa.jpg",
+}
+
+PRODUCT_IMAGE_KEYWORDS = [
+    ("bacon", "bacon_smoked.jpg"),
+    ("tocino", "tocino_ala_eh.jpg"),
+    ("longganisa", "pork_garlic_longganisa.jpg"),
+    ("sausage", "hungarian_sausage.jpg"),
+    ("tapa", "beef_tapa_ala_eh.jpg"),
+    ("rebusado", "pork_rebusado.jpg"),
+    ("ham", "hamon_ala_eh.jpg"),
+    ("beef", "deli_beef.jpg"),
+    ("chicken", "chicken_tocino.jpg"),
+    ("pork", "pork_tapa.jpg"),
+]
 
 
 def currency(value: float | int) -> str:
@@ -44,9 +79,25 @@ def nice_date(value: date | datetime | str) -> str:
     return str(value)
 
 
+def product_image(value: str) -> str:
+    key = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+    if key in PRODUCT_IMAGE_FILENAMES:
+        return PRODUCT_IMAGE_FILENAMES[key]
+    for keyword, filename in PRODUCT_IMAGE_KEYWORDS:
+        if keyword in key:
+            return filename
+    return "hero-meat-counter.png"
+
+
+def media_url(filename: str) -> str:
+    return f"/media/{quote(filename)}"
+
+
 templates.env.filters["currency"] = currency
 templates.env.filters["number"] = number
 templates.env.filters["nice_date"] = nice_date
+templates.env.filters["product_image"] = product_image
+templates.env.filters["media_url"] = media_url
 
 PORTAL_TEMPLATES = {
     "owner": "portals/owner.html",
@@ -101,6 +152,23 @@ def path_with_query(path: str, **params: str) -> str:
     if not clean:
         return path
     return path + "?" + urlencode(clean)
+
+
+@app.get("/media/{filename}")
+async def media_asset(filename: str):
+    if not MEDIA_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=404)
+    asset = data.media_asset_by_filename(filename)
+    if asset is None:
+        raise HTTPException(status_code=404)
+    return Response(
+        content=asset["content"],
+        media_type=asset["content_type"],
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Length": str(asset["size_bytes"]),
+        },
+    )
 
 
 def require_portal_session(request: Request, role_key: str) -> RedirectResponse | None:
@@ -294,6 +362,8 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
             "inquiries": data.inquiries,
             "orders": data.orders,
             "sales_reports": data.sales_reports,
+            "team_report_sales": data.team_sales_report_entries() if role_key == "team-leader" and section == "reports" else [],
+            "team_rejected_orders": data.team_rejected_order_entries() if role_key == "team-leader" and section == "reports" else [],
             "alerts": data.alerts,
             "forecasts": data.forecasts,
             "accounts": data.accounts,
@@ -467,7 +537,7 @@ async def team_order_decision(request: Request, order_id: int, decision: str):
     if decision not in {"approve", "reject", "fulfill"}:
         raise HTTPException(status_code=404)
     if not data.decide_order(order_id, decision):
-        return redirect_to(safe_portal_path("team-leader", "orders", error="Order not found."))
+        return redirect_to(safe_portal_path("team-leader", "orders", error="Order not found or already finalized."))
     return redirect_to(safe_portal_path("team-leader", "orders", message=f"Order {decision} action recorded."))
 
 
@@ -476,8 +546,6 @@ async def team_report(
     request: Request,
     period_start: date = Form(...),
     period_end: date = Form(...),
-    total_sales: float = Form(...),
-    total_orders: int = Form(...),
     notes: str = Form(""),
 ):
     guard = require_portal_session(request, "team-leader")
@@ -485,13 +553,19 @@ async def team_report(
         return guard
     try:
         require_date_range(period_start, period_end)
-        require_nonnegative_number(total_sales, "Total sales")
-        if total_orders < 0:
-            raise ValueError("Total orders cannot be negative.")
-        data.add_sales_report("team_leader", "Maria Santos", period_start, period_end, total_sales, total_orders, notes.strip())
+        totals = data.team_sales_report_totals(period_start, period_end)
+        data.add_sales_report(
+            "team_leader",
+            "Maria Santos",
+            period_start,
+            period_end,
+            totals["total_sales"],
+            totals["total_orders"],
+            notes.strip(),
+        )
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "reports", error=str(exc)))
-    return redirect_to(safe_portal_path("team-leader", "reports", message="Team leader report submitted."))
+    return redirect_to(safe_portal_path("team-leader", "reports", message="Team leader report submitted with current fulfilled sales totals."))
 
 
 @app.post("/portal/owner/products")

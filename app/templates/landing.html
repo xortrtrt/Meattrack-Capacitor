@@ -10,18 +10,17 @@
     />
   </head>
   <body class="landing-page">
-    <!-- Navigation -->
     <nav class="navbar">
       <div class="nav-container">
         <a href="/" class="logo">
           <img
-            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            src="{{ 'batangas_premium.png'|media_url }}"
             alt="Batangas Premium"
             class="logo-img"
           />
         </a>
         <ul class="nav-links">
-          <li><a href="/products">Our Products</a></li>
+          <li><a href="/products">Store</a></li>
           <li><a href="/about">About Us</a></li>
           <li><a href="/partnerships">Partnerships</a></li>
           <li><a href="#inquiry">Contact</a></li>
@@ -30,23 +29,30 @@
       </div>
     </nav>
 
-    <!-- Hero Section -->
     <section
       class="hero"
-      style="background-image: url('{{ url_for('static', path='img/background.jpg') }}')"
+      style="background-image: url('{{ 'background.jpg'|media_url }}')"
     >
       <div class="hero-overlay"></div>
       <div class="hero-content">
         <div class="hero-center">
           <img
-            src="{{ url_for('static', path='img/batangas_premium.png') }}"
+            src="{{ 'batangas_premium.png'|media_url }}"
             alt="Batangas Premium Logo"
             class="hero-logo"
           />
           <h1>Batangas Premium</h1>
-          <p class="tagline">Authentic Filipino Flavor, Premium Quality</p>
+          <p class="tagline">
+            "Ala Eh! Pagkakasarap-sarap nire!" Premium frozen meat products
+            for homes, resellers, and local outlets.
+          </p>
+          <div class="quality-row" aria-label="Brand quality highlights">
+            <span>Pure</span>
+            <span>Guaranteed</span>
+            <span>Quality</span>
+          </div>
           <div class="hero-buttons">
-            <a href="/products" class="btn btn-primary">Explore Products</a>
+            <a href="/products" class="btn btn-primary">Explore Store</a>
             <a href="#inquiry" class="btn btn-secondary">Become a Partner</a>
           </div>
         </div>
@@ -59,13 +65,60 @@
     </div>
     {% endif %}
 
-    <!-- Inquiry Section -->
+    <section class="store-intro">
+      <div class="container store-intro-grid">
+        <div>
+          <h2>Award-winning products, ready for your next order.</h2>
+          <p>
+            Longganisa, tocino, tapa, bacon, and sausages presented with the
+            same black-and-gold Batangas Premium storefront identity.
+          </p>
+        </div>
+        <div class="store-points" aria-label="Store benefits">
+          <span>Retail Packs</span>
+          <span>Reseller Rates</span>
+          <span>City Outlet Support</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="products-section">
+      <div class="container">
+        <div class="section-header">
+          <h2>Featured Frozen Products</h2>
+          <p>Product-first cards inspired by the official Batangas Premium store.</p>
+        </div>
+        <div class="products-grid">
+          {% for product in products[:6] %}
+          <article class="product-card">
+            <a class="product-media" href="/products">
+              <img
+                src="{{ product.name|product_image|media_url }}"
+                alt="{{ product.name }}"
+                loading="lazy"
+              />
+            </a>
+            <div class="product-card-body">
+              <span class="product-category">{{ product.category }}</span>
+              <h3>{{ product.name }}</h3>
+              <p>{{ product.description }}</p>
+              <div class="product-meta">
+                <strong class="product-price">{{ product.base_price|currency }}</strong>
+                <a class="product-cta" href="#inquiry">Inquire</a>
+              </div>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
     <section id="inquiry" class="inquiry-section">
       <div class="container">
         <h2>Let's Connect</h2>
         <p class="inquiry-intro">
-          Interested in our products or partnership opportunities? Reach out to
-          us.
+          Interested in products, reseller rates, or city outlet opportunities?
+          Send your details and the team will review your inquiry.
         </p>
 
         <div class="inquiry-wrapper">
@@ -127,7 +180,7 @@
                 name="message"
                 rows="5"
                 minlength="10"
-                placeholder="Share your location, business interests, and which products interest you..."
+                placeholder="Share your location, business interest, and target products..."
               ></textarea>
             </div>
 
@@ -159,7 +212,6 @@
       </div>
     </section>
 
-    <!-- Chatbot Widget -->
     <aside class="chatbot-widget" data-chatbot>
       <button
         class="chatbot-toggle"
@@ -181,7 +233,7 @@
             data-chatbot-close
             aria-label="Close chat"
           >
-            ×
+            x
           </button>
         </header>
         <div class="chatbot-messages" data-chatbot-messages>
@@ -197,12 +249,11 @@
             placeholder="Ask us anything..."
             required
           />
-          <button type="submit" aria-label="Send message">➤</button>
+          <button type="submit" aria-label="Send message">Send</button>
         </form>
       </section>
     </aside>
 
-    <!-- Footer -->
     <footer class="footer">
       <div class="container">
         <div class="footer-content">
@@ -213,7 +264,7 @@
           <div class="footer-section">
             <h4>Quick Links</h4>
             <ul>
-              <li><a href="/products">Products</a></li>
+              <li><a href="/products">Store</a></li>
               <li><a href="/partnerships">Partnerships</a></li>
               <li><a href="#inquiry">Contact</a></li>
               <li><a href="/login">Portal</a></li>

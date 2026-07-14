@@ -36,6 +36,12 @@ If the database is empty or needs a reset, run:
 .venv\Scripts\python.exe tools\seed_database.py
 ```
 
+The seed script also imports every file from `app/static/img` into the PostgreSQL `media_assets` table. If you add or replace image files later without resetting the database, run:
+
+```powershell
+.venv\Scripts\python.exe tools\import_static_images.py
+```
+
 Then start FastAPI:
 
 ```powershell
@@ -67,6 +73,7 @@ Passwords are stored in `accounts.password_hash`. The seed script stores PBKDF2 
 - Portal pages use `app/templates/portals/base.html` plus one role template per portal: `reseller.html`, `team_leader.html`, and `owner.html`.
 - CSS is split by surface: `public.css` for public pages, `login.css` for login, `portal_base.css` for shared portal layout, and `app/static/css/portals/` for role-specific portal overrides.
 - `app/repositories.py` reads and writes PostgreSQL data for the current UI flows.
+- Image assets are stored in PostgreSQL `media_assets` as binary data and served through `/media/{filename}`.
 - PostgreSQL schema lives in `database/schema.sql` and is intentionally simplified to the portal workflows currently implemented.
 
 ## Chatbot Configuration
