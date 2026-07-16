@@ -76,8 +76,15 @@ jobs:
       - name: Install Android SDK 36
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          sdk_root="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          sdkmanager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$sdkmanager" ]]; then
+            echo "sdkmanager was not found at $sdkmanager" >&2
+            find "$sdk_root/cmdline-tools" -type f -name sdkmanager -print >&2 || true
+            exit 1
+          fi
+          yes | "$sdkmanager" --licenses >/dev/null || true
+          "$sdkmanager" --install "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install Capacitor dependencies
         run: npm ci
