@@ -7,11 +7,14 @@
     "mobile:sync": "cap sync",
     "mobile:android": "cap open android",
     "mobile:run:android": "cap run android",
+    "mobile:ios": "cap open ios",
+    "mobile:run:ios": "cap run ios",
     "mobile:doctor": "cap doctor"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
-    "@capacitor/core": "^8.0.0"
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.4.2"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",

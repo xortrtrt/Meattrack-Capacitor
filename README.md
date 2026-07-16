@@ -126,7 +126,15 @@ deployed FastAPI HTTPS URL, and download the `meattrack-android-debug` artifact
 after the job succeeds. The runner validates `/health`, installs Android SDK 36,
 syncs Capacitor, and builds the APK entirely in the cloud.
 
-Adding/building iOS uses the same web configuration but requires macOS and Xcode.
+The native iOS project is also included. For a free cloud build, use the
+**Build iOS Simulator App** GitHub Actions workflow, enter the same deployed
+FastAPI HTTPS URL, and download the `meattrack-ios-simulator` artifact. It uses
+macOS 26 and Xcode 26 to build an unsigned iOS Simulator `.app` bundle.
+
+The simulator artifact cannot be installed on a physical iPhone. A signed IPA,
+TestFlight build, or App Store release requires Apple signing credentials and an
+Apple Developer Program membership. Without signing, iPhone users can still open
+the deployed site in Safari and choose **Share -> Add to Home Screen**.
 
 ## Deploy FastAPI on Render
 

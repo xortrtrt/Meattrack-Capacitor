@@ -15,6 +15,10 @@ node_modules/
 android/.gradle/
 android/local.properties
 android/app/build/
+ios/App/build/
+ios/App/DerivedData/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
 *.jks
 *.keystore
 database/supabase_full_export.sql

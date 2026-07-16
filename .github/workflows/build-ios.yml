@@ -1,0 +1,102 @@
+name: Build iOS Simulator App
+
+on:
+  workflow_dispatch:
+    inputs:
+      mobile_app_url:
+        description: Public HTTPS URL of the deployed FastAPI service
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      MOBILE_APP_URL: ${{ inputs.mobile_app_url }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Validate backend URL
+        shell: bash
+        run: |
+          MOBILE_APP_URL="${MOBILE_APP_URL%/}"
+          MOBILE_APP_URL="${MOBILE_APP_URL%/health}"
+          if [[ ! "$MOBILE_APP_URL" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "mobile_app_url must be a public HTTPS URL" >&2
+            exit 1
+          fi
+          echo "MOBILE_APP_URL=$MOBILE_APP_URL" >> "$GITHUB_ENV"
+
+          health_url="$MOBILE_APP_URL/health"
+          health_body="$(mktemp)"
+          echo "Waiting for backend health check: $health_url"
+          for attempt in {1..12}; do
+            http_code="$(curl \
+              --location \
+              --silent \
+              --show-error \
+              --connect-timeout 15 \
+              --max-time 60 \
+              --output "$health_body" \
+              --write-out "%{http_code}" \
+              "$health_url" || true)"
+            echo "Attempt $attempt/12 returned HTTP ${http_code:-000}"
+            cat "$health_body"
+            echo
+            if [[ "$http_code" == "200" ]] \
+              && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' "$health_body" \
+              && grep -Eq '"database"[[:space:]]*:[[:space:]]*"connected"' "$health_body"; then
+              echo "Backend and database are ready."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Backend health check did not become ready after 12 attempts." >&2
+          exit 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify Xcode
+        run: xcodebuild -version
+
+      - name: Install Capacitor dependencies
+        run: npm ci
+
+      - name: Sync deployed URL into iOS
+        run: npm exec cap sync ios
+
+      - name: Build unsigned iOS Simulator app
+        shell: bash
+        run: |
+          derived_data="$RUNNER_TEMP/meattrack-ios"
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$derived_data" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          app_path="$derived_data/Build/Products/Debug-iphonesimulator/App.app"
+          test -d "$app_path"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$app_path" "$RUNNER_TEMP/meattrack-ios-simulator.zip"
+
+      - name: Upload iOS Simulator app
+        uses: actions/upload-artifact@v6
+        with:
+          name: meattrack-ios-simulator
+          path: ${{ runner.temp }}/meattrack-ios-simulator.zip
+          if-no-files-found: error
+          retention-days: 14
