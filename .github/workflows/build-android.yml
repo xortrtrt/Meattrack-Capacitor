@@ -20,19 +20,48 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate backend URL
         shell: bash
         run: |
+          MOBILE_APP_URL="${MOBILE_APP_URL%/}"
+          MOBILE_APP_URL="${MOBILE_APP_URL%/health}"
           if [[ ! "$MOBILE_APP_URL" =~ ^https://[^[:space:]]+$ ]]; then
             echo "mobile_app_url must be a public HTTPS URL" >&2
             exit 1
           fi
-          curl --fail --show-error --silent --retry 5 "$MOBILE_APP_URL/health"
+          echo "MOBILE_APP_URL=$MOBILE_APP_URL" >> "$GITHUB_ENV"
+
+          health_url="$MOBILE_APP_URL/health"
+          health_body="$(mktemp)"
+          echo "Waiting for backend health check: $health_url"
+          for attempt in {1..12}; do
+            http_code="$(curl \
+              --location \
+              --silent \
+              --show-error \
+              --connect-timeout 15 \
+              --max-time 60 \
+              --output "$health_body" \
+              --write-out "%{http_code}" \
+              "$health_url" || true)"
+            echo "Attempt $attempt/12 returned HTTP ${http_code:-000}"
+            cat "$health_body"
+            echo
+            if [[ "$http_code" == "200" ]] \
+              && grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' "$health_body" \
+              && grep -Eq '"database"[[:space:]]*:[[:space:]]*"connected"' "$health_body"; then
+              echo "Backend and database are ready."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Backend health check did not become ready after 12 attempts." >&2
+          exit 1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -63,7 +92,7 @@ jobs:
           ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: meattrack-android-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
