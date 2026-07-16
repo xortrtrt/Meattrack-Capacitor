@@ -108,9 +108,38 @@ def main() -> None:
         print("Checking the Supabase connection over TLS...")
         with psycopg2.connect(url, connect_timeout=10) as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'")
-                table_count = cursor.fetchone()[0]
-        print(f"Connection verified; public schema currently contains {table_count} tables.")
+                cursor.execute(
+                    """
+                    SELECT tablename, rowsecurity
+                    FROM pg_tables
+                    WHERE schemaname = 'public' AND tablename = ANY(%s)
+                    ORDER BY tablename
+                    """,
+                    (list(APP_TABLES),),
+                )
+                table_security = dict(cursor.fetchall())
+                missing_tables = sorted(set(APP_TABLES) - set(table_security))
+                unsecured_tables = sorted(
+                    table for table, row_security in table_security.items() if not row_security
+                )
+                if missing_tables:
+                    raise RuntimeError(
+                        f"Migration verification failed; missing tables: {', '.join(missing_tables)}"
+                    )
+                if unsecured_tables:
+                    raise RuntimeError(
+                        "Migration verification failed; RLS is disabled on: "
+                        + ", ".join(unsecured_tables)
+                    )
+                cursor.execute("SELECT count(*) FROM accounts")
+                account_count = cursor.fetchone()[0]
+                cursor.execute("SELECT count(*) FROM inventory_items")
+                item_count = cursor.fetchone()[0]
+        print(
+            "Connection and migration verified; "
+            f"{len(table_security)} app tables have RLS enabled, with "
+            f"{account_count} accounts and {item_count} inventory items."
+        )
         return
 
     schema_sql = without_transaction_markers(SCHEMA_FILE.read_text(encoding="utf-8"))
