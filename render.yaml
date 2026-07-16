@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: meattrack-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_POOL_MIN
+        value: "1"
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      - key: SESSION_SECRET_KEY
+        generateValue: true
+      - key: OPENROUTER_API_KEY
+        sync: false

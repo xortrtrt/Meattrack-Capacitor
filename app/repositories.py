@@ -9,6 +9,11 @@ from app.security import hash_password, password_needs_rehash, verify_password
 today = date.today()
 
 
+def database_health() -> str:
+    row = fetch_one("SELECT 1 AS ready")
+    return "connected" if row and row["ready"] == 1 else "unavailable"
+
+
 def normalize_inventory_text(value: str, label: str) -> str:
     cleaned = " ".join(value.strip().split())
     if not cleaned:

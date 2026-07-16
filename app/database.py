@@ -3,12 +3,14 @@ from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 
-from app.config import DATABASE_URL
+from app.config import DATABASE_POOL_MAX, DATABASE_POOL_MIN, database_dsn
 
-DSN = DATABASE_URL
+DSN = database_dsn()
 
 # Initialize thread-safe connection pool
-pool = ThreadedConnectionPool(1, 10, DSN)
+if DATABASE_POOL_MIN < 1 or DATABASE_POOL_MAX < DATABASE_POOL_MIN:
+    raise ValueError("DATABASE_POOL_MIN/MAX define an invalid connection pool size")
+pool = ThreadedConnectionPool(DATABASE_POOL_MIN, DATABASE_POOL_MAX, DSN)
 
 @contextmanager
 def get_db_cursor():

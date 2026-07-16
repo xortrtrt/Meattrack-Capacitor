@@ -7,10 +7,11 @@ FastAPI prototype for Batangas Premium's MEATTRACK public website and role-based
 - Backend framework: FastAPI
 - Template engine: Jinja2 server-rendered HTML
 - Frontend: HTML, CSS, and vanilla JavaScript
-- Database: PostgreSQL
+- Database: Supabase PostgreSQL in production; local PostgreSQL for development
 - Database driver: psycopg2
 - Local app server: Uvicorn
 - Local database runtime: Docker PostgreSQL container
+- Mobile runtime: Capacitor 8 (Android native project)
 
 This project is not using React, Vue, Angular, Laravel, Django, or Node.js for the main app.
 
@@ -53,6 +54,92 @@ Then open:
 ```text
 http://127.0.0.1:8000
 ```
+
+The deployment health check is available at `GET /health` and verifies both the
+FastAPI service and its database connection.
+
+## Supabase Database
+
+MEATTRACK keeps all database operations on the FastAPI server. The mobile app
+does not contain the Supabase database password or connect directly to the
+database.
+
+1. Create a Supabase project and copy its direct or Session pooler connection
+   string from **Connect**. Session mode on port 5432 is usually the simplest
+   option for an IPv4-hosted FastAPI service.
+2. URL-encode special characters in the database password.
+3. Import the existing schema and data into a new/disposable project:
+
+```powershell
+$env:SUPABASE_DB_URL="postgresql://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@REGION.pooler.supabase.com:5432/postgres"
+.venv\Scripts\python.exe tools\migrate_to_supabase.py --reset
+```
+
+4. Set the hosted backend's `DATABASE_URL` to that Session pooler URL and append
+   `?sslmode=require`. Set a strong `SESSION_SECRET_KEY` there as well.
+
+The importer replaces only MEATTRACK tables, verifies key row counts, and then
+enables RLS without public policies. That prevents Supabase anon/authenticated
+API keys from bypassing FastAPI's authentication and business rules. See
+`database/README.md` for details.
+
+## Capacitor Mobile App
+
+Because the current UI is rendered by FastAPI/Jinja, the native shell loads the
+deployed FastAPI site over HTTPS. Deploy the backend first (the included
+`Dockerfile` is ready for a container host), and confirm that
+`https://YOUR_DOMAIN/health` returns `{"status":"ok","database":"connected"}`.
+
+Install and generate the Android project:
+
+```powershell
+npm.cmd install
+npm.cmd exec cap add android
+```
+
+Select the deployed backend and sync it into Android:
+
+```powershell
+$env:MOBILE_APP_URL="https://YOUR_DOMAIN"
+npm.cmd run mobile:sync
+npm.cmd run mobile:android
+```
+
+Capacitor 8 requires Android Studio 2025.2.1 or newer and an Android SDK. Android
+Studio supplies the matching JDK. Every time the mobile URL or Capacitor
+configuration changes, run `npm.cmd run mobile:sync` again. The app refuses
+plain HTTP by default.
+
+For same-Wi-Fi development only, start Uvicorn on all interfaces and explicitly
+allow a LAN URL:
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+$env:MOBILE_APP_URL="http://YOUR_COMPUTER_IPV4:8000"
+$env:CAPACITOR_ALLOW_CLEARTEXT="true"
+npm.cmd run mobile:sync
+```
+
+If the local computer cannot run Android Studio, use the repository's
+**Build Android APK** GitHub Actions workflow. Choose **Run workflow**, enter the
+deployed FastAPI HTTPS URL, and download the `meattrack-android-debug` artifact
+after the job succeeds. The runner validates `/health`, installs Android SDK 36,
+syncs Capacitor, and builds the APK entirely in the cloud.
+
+Adding/building iOS uses the same web configuration but requires macOS and Xcode.
+
+## Deploy FastAPI on Render
+
+The included `render.yaml` defines a free Docker web service in Singapore. In
+Render, create a new Blueprint from this GitHub repository and supply these
+secret values when prompted:
+
+- `DATABASE_URL`: the Supabase Session pooler URL on port 5432;
+- `OPENROUTER_API_KEY`: optional; leave empty to use the local chatbot fallback.
+
+Render generates `SESSION_SECRET_KEY` automatically. Once `/health` reports a
+connected database, use the service's `https://...onrender.com` URL as the
+`mobile_app_url` input to the Android build workflow.
 
 ## Demo Logins
 

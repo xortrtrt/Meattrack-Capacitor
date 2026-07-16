@@ -1,0 +1,10 @@
+.git
+.venv
+node_modules
+android
+__pycache__
+*.pyc
+*.log
+.env
+database/supabase_full_export.sql
+database/supabase_data_import.sql

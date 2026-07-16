@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import repositories as data
 from app.chatbot import ask_chatbot
-from app.config import SESSION_SECRET_KEY
+from app.config import APP_ENV, SESSION_SECRET_KEY
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -21,7 +21,12 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MEDIA_FILENAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 app = FastAPI(title="MEATTRACK", version="0.1.0")
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY, same_site="lax")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET_KEY,
+    same_site="lax",
+    https_only=APP_ENV == "production",
+)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -104,6 +109,16 @@ PORTAL_TEMPLATES = {
     "team-leader": "portals/team_leader.html",
     "reseller": "portals/reseller.html",
 }
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    """Deployment and mobile connectivity probe without exposing secrets."""
+    try:
+        result = data.database_health()
+    except Exception:
+        return JSONResponse({"status": "unhealthy", "database": "unavailable"}, status_code=503)
+    return {"status": "ok", "database": result}
 
 
 def redirect_to(path: str) -> RedirectResponse:

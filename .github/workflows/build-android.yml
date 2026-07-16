@@ -1,0 +1,71 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      mobile_app_url:
+        description: Public HTTPS URL of the deployed FastAPI service
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MOBILE_APP_URL: ${{ inputs.mobile_app_url }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate backend URL
+        shell: bash
+        run: |
+          if [[ ! "$MOBILE_APP_URL" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "mobile_app_url must be a public HTTPS URL" >&2
+            exit 1
+          fi
+          curl --fail --show-error --silent --retry 5 "$MOBILE_APP_URL/health"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install Capacitor dependencies
+        run: npm ci
+
+      - name: Sync deployed URL into Android
+        run: npm run mobile:sync
+
+      - name: Build installable debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: meattrack-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
