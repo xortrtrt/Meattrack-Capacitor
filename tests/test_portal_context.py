@@ -30,19 +30,31 @@ READ_FUNCTIONS = (
     "list_inventory_batches",
     "list_raw_materials",
     "list_product_recipes",
+    "count_products",
+    "count_inquiries",
+    "count_orders",
+    "count_sales_reports",
+    "count_forecasts",
+    "count_accounts",
+    "count_activity_logs",
     "team_sales_report_entries",
     "team_rejected_order_entries",
+    "reseller_most_bought_products",
+    "reseller_sales_series",
+    "reseller_reportable_products",
+    "list_notifications",
+    "unread_notification_count",
 )
 
 EXPECTED_CALLS = {
-    ("owner", "dashboard"): {"current_metrics", "list_products", "list_alerts"},
-    ("owner", "products"): {"list_products"},
-    ("owner", "reports"): {"list_sales_reports"},
-    ("owner", "forecasts"): {"list_forecasts"},
-    ("owner", "accounts"): {"list_accounts"},
-    ("owner", "logs"): {"list_activity_logs"},
-    ("team-leader", "dashboard"): {"current_metrics", "list_alerts", "list_inquiries"},
-    ("team-leader", "sales"): {"list_products", "list_orders"},
+    ("owner", "dashboard"): {"current_metrics", "list_products", "list_alerts", "list_forecasts", "list_notifications", "unread_notification_count"},
+    ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
+    ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
+    ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "list_notifications", "unread_notification_count"},
+    ("owner", "accounts"): {"list_accounts", "count_accounts", "list_notifications", "unread_notification_count"},
+    ("owner", "logs"): {"list_activity_logs", "count_activity_logs", "list_notifications", "unread_notification_count"},
+    ("team-leader", "dashboard"): {"current_metrics", "list_inquiries", "list_orders", "list_notifications", "unread_notification_count"},
+    ("team-leader", "sales"): {"list_products", "list_orders", "count_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "inventory"): {
         "list_products",
         "list_inventory_items",
@@ -50,30 +62,38 @@ EXPECTED_CALLS = {
         "list_raw_materials",
         "list_product_recipes",
         "list_alerts",
+        "list_notifications",
+        "unread_notification_count",
     },
-    ("team-leader", "inquiries"): {"list_inquiries"},
-    ("team-leader", "orders"): {"list_orders"},
+    ("team-leader", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
+    ("team-leader", "orders"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "reports"): {
         "list_sales_reports",
+        "count_sales_reports",
         "team_sales_report_entries",
         "team_rejected_order_entries",
+        "list_notifications",
+        "unread_notification_count",
     },
     ("reseller", "dashboard"): {
         "current_metrics",
-        "list_products",
-        "list_orders",
+        "reseller_most_bought_products",
+        "reseller_sales_series",
         "list_sales_reports",
+        "list_notifications",
+        "unread_notification_count",
     },
-    ("reseller", "order"): {"list_products"},
-    ("reseller", "history"): {"list_orders"},
-    ("reseller", "reports"): {"list_sales_reports"},
+    ("reseller", "order"): {"list_products", "list_notifications", "unread_notification_count"},
+    ("reseller", "cart"): {"list_products", "list_notifications", "unread_notification_count"},
+    ("reseller", "history"): {"list_orders", "list_notifications", "unread_notification_count"},
+    ("reseller", "reports"): {"list_sales_reports", "list_notifications", "unread_notification_count"},
 }
 
 
 def install_read_spies(monkeypatch):
     calls = defaultdict(list)
     for name in READ_FUNCTIONS:
-        result = METRICS if name == "current_metrics" else []
+        result = METRICS if name == "current_metrics" else 0 if name.startswith(("count_", "unread_")) else []
 
         def fake(*args, _name=name, _result=result, **kwargs):
             calls[_name].append((args, kwargs))
@@ -103,14 +123,18 @@ def test_section_filters_are_applied(monkeypatch):
 
     assert client.get("/portal/team-leader/dashboard").status_code == 200
     assert calls["list_inquiries"] == [((), {"limit": 4})]
+    assert calls["list_orders"] == [((), {"order_type": "walk_in", "limit": 5})]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/team-leader/sales").status_code == 200
-    assert calls["list_orders"] == [((), {"order_type": "walk_in"})]
+    assert calls["list_orders"] == [((), {"order_type": "walk_in", "q": "", "status": "", "page": 1, "page_size": 10})]
+    assert calls["count_orders"] == [((), {"order_type": "walk_in", "q": "", "status": ""})]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/dashboard").status_code == 200
-    assert calls["list_orders"] == [((), {"order_type": "reseller"})]
+    assert calls["reseller_most_bought_products"] == [((), {"limit": 3})]
+    assert len(calls["reseller_sales_series"]) == 1
+    assert calls["reseller_sales_series"][0][0][2] == "fulfilled"
     assert calls["list_sales_reports"] == [((), {"report_source": "reseller", "limit": 1})]
 
 

@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Portal Login | Batangas Premium</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/login.css') }}"
+      href="{{ url_for('static', path='css/login.css') }}?v=20260720-mobile-safe-1"
     />
   </head>
   <body class="login-page">
@@ -17,7 +17,7 @@
     <div class="login-overlay"></div>
 
     <main class="login-wrapper">
-      <div class="login-card">
+      <section class="login-story" aria-label="Batangas Premium portal overview">
         <a href="/" class="login-brand">
           <img
             src="{{ 'batangas_premium.png'|media_url }}"
@@ -25,8 +25,20 @@
             class="login-logo"
           />
         </a>
+        <h1>MEATTRACK Portal</h1>
+        <p>
+          Inventory, reseller orders, sales reports, and demand forecasts for
+          Batangas Premium operations.
+        </p>
+        <div class="login-highlights">
+          <span>Owner Forecasts</span>
+          <span>Team Sales</span>
+          <span>Reseller Orders</span>
+        </div>
+      </section>
 
-        <h1>Portal Sign In</h1>
+      <div class="login-card">
+        <h2>Portal Sign In</h2>
         <p class="login-subtitle">Access your Batangas Premium dashboard</p>
 
         {% if message or error %}
@@ -59,14 +71,46 @@
               autocomplete="current-password"
             />
           </div>
+          <label class="consent-check">
+            <input required type="checkbox" name="consent" value="yes" />
+            <span>
+              I agree to the <a href="/terms">Terms</a> and
+              <a href="/privacy">Privacy Notice</a>.
+            </span>
+          </label>
           <button class="login-btn" type="submit">Sign In</button>
         </form>
+
+        <div class="social-divider"><span>or continue with</span></div>
+        <div class="social-actions">
+          <form action="/auth/oauth/google" method="post">
+            <label class="consent-check compact">
+              <input required type="checkbox" name="consent" value="yes" />
+              <span>I agree</span>
+            </label>
+            <button class="social-btn" type="submit" {% if not social_auth_enabled %}disabled{% endif %}>
+              <i data-lucide="mail"></i> Google / Gmail
+            </button>
+          </form>
+          <form action="/auth/oauth/facebook" method="post">
+            <label class="consent-check compact">
+              <input required type="checkbox" name="consent" value="yes" />
+              <span>I agree</span>
+            </label>
+            <button class="social-btn" type="submit" {% if not social_auth_enabled %}disabled{% endif %}>
+              <span class="social-letter">f</span> Facebook
+            </button>
+          </form>
+        </div>
+        {% if not social_auth_enabled %}
+        <p class="social-note">Social login needs Supabase URL and publishable key in the environment.</p>
+        {% endif %}
 
         <a class="login-back" href="/">&larr; Back to website</a>
       </div>
     </main>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260720-redesign-1"></script>
   </body>
 </html>

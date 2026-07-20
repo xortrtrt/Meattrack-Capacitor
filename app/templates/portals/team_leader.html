@@ -3,23 +3,31 @@
 {% block portal_content %}
             {% if section == "dashboard" %}
             <section class="metric-grid">
-                <article class="metric-card"><span>Open alerts</span><strong>{{ metrics.open_alerts }}</strong><small>Stock or expiry warnings</small></article>
+                <article class="metric-card"><span>Fulfilled sales</span><strong>{{ metrics.fulfilled_sales|currency }}</strong><small>Recorded transactions</small></article>
                 <article class="metric-card"><span>Pending reseller orders</span><strong>{{ metrics.pending_reseller_orders }}</strong><small>Need team leader action</small></article>
                 <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }}</strong><small>Finished packs available</small></article>
             </section>
-            <section class="content-grid two">
-                <article class="panel">
-                    <div class="panel-heading"><h2>Priority alerts</h2><a href="/portal/team-leader/inventory">Inventory</a></div>
-                    <div class="stack-list">
-                        {% for alert in alerts %}
-                        <div class="stack-item alert {{ alert.severity }}">
-                            <strong>{{ alert.subject }}</strong>
-                            <span>{{ alert.message }}</span>
-                            <span class="status-badge {{ alert.status }}">{{ alert.status }}</span>
-                        </div>
+            <section class="panel dashboard-priority">
+                <div class="panel-heading"><h2>Latest sales</h2><a href="/portal/team-leader/sales">Record sale</a></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Order</th><th>Product</th><th>Status</th><th>Total</th></tr></thead>
+                        <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td>#{{ order.order_id }}</td>
+                            <td>{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
+                            <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+                            <td>{{ order.total_amount|currency }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4">No sales yet.</td></tr>
                         {% endfor %}
-                    </div>
-                </article>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="content-grid two">
                 <article class="panel">
                     <div class="panel-heading"><h2>Assigned inquiries</h2><a href="/portal/team-leader/inquiries">Review</a></div>
                     <div class="stack-list">
@@ -34,41 +42,7 @@
                 </article>
             </section>
             {% elif section == "sales" %}
-            <section class="content-grid two">
-                <article class="panel">
-                    <h2>Record walk-in sale</h2>
-                    <form class="form-panel bare" action="/portal/team-leader/sales" method="post">
-                        <label>Product
-                            <select name="product_id" required>
-                                {% for product in products %}
-                                <option value="{{ product.product_id }}">{{ product.name }} - {{ product.base_price|currency }}/{{ product.unit }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>Quantity in packs <input required type="number" min="1" step="1" name="quantity" value="5"></label>
-                        <label>Notes <textarea name="notes" rows="4" placeholder="Counter sale notes"></textarea></label>
-                        <button class="button primary" type="submit"><i data-lucide="receipt"></i> Record sale</button>
-                    </form>
-                </article>
-                <article class="panel">
-                    <h2>Recent counter transactions</h2>
-                    <div class="table-wrap">
-                        <table>
-                            <thead><tr><th>Order</th><th>Product</th><th>Status</th><th>Total</th></tr></thead>
-                            <tbody>
-                            {% for order in orders if order.order_type == "walk_in" %}
-                            <tr>
-                                <td>#{{ order.order_id }}</td>
-                                <td>{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}</td>
-                                <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
-                                <td>{{ order.total_amount|currency }}</td>
-                            </tr>
-                            {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </article>
-            </section>
+
             {% elif section == "inventory" %}
             <section class="content-grid two">
                 <article class="panel">
@@ -372,30 +346,63 @@
                     <h2>Assigned reseller inquiries</h2>
                     <span class="hint">Approvals are handled by the assigned team leader.</span>
                 </div>
-                <div class="inquiry-grid">
+                <form class="filter-bar" method="get">
+                    <label>Search <input name="q" value="{{ inquiries_page.filters.q }}" placeholder="Name, email, business"></label>
+                    <label>Status
+                        <select name="status">
+                            <option value="">All</option>
+                            <option value="assigned" {{ 'selected' if inquiries_page.filters.status == 'assigned' else '' }}>Assigned</option>
+                            <option value="approved" {{ 'selected' if inquiries_page.filters.status == 'approved' else '' }}>Approved</option>
+                            <option value="rejected" {{ 'selected' if inquiries_page.filters.status == 'rejected' else '' }}>Rejected</option>
+                        </select>
+                    </label>
+                    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                </form>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Business</th><th>Contact</th><th>Message</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody>
                     {% for inquiry in inquiries %}
-                    <article class="inquiry-card">
-                        <div>
-                            <span class="status-badge {{ inquiry.status }}">{{ inquiry.status }}</span>
-                            <h3>{{ inquiry.business_name }}</h3>
-                            <p>{{ inquiry.message }}</p>
-                            <small>{{ inquiry.name }} - {{ inquiry.email }} - {{ inquiry.contact_number }}</small>
-                        </div>
-                        <div class="button-row">
+                    <tr>
+                        <td><strong>{{ inquiry.business_name }}</strong></td>
+                        <td>{{ inquiry.name }}<br><span class="muted">{{ inquiry.email }} - {{ inquiry.contact_number }}</span></td>
+                        <td>{{ inquiry.message }}</td>
+                        <td><span class="status-badge {{ inquiry.status }}">{{ inquiry.status }}</span></td>
+                        <td>
+                          <div class="table-actions">
                             <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/approve" method="post">
-                                <button class="button primary small" type="submit"><i data-lucide="check"></i> Approve</button>
+                                <button class="icon-button" type="submit" title="Approve"><i data-lucide="check"></i></button>
                             </form>
                             <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/reject" method="post">
-                                <button class="button danger small" type="submit"><i data-lucide="x"></i> Reject</button>
+                                <button class="icon-button danger" type="submit" title="Reject"><i data-lucide="x"></i></button>
                             </form>
-                        </div>
-                    </article>
+                          </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5">No inquiries found.</td></tr>
                     {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
+                <div class="pagination"><span>Page {{ inquiries_page.pagination.page }} of {{ inquiries_page.pagination.total_pages }}</span></div>
             </section>
             {% elif section == "orders" %}
             <section class="panel">
                 <div class="panel-heading"><h2>Reseller order review</h2><span class="hint">Approve, reject, or mark prepared orders fulfilled.</span></div>
+                <form class="filter-bar" method="get">
+                    <label>Search <input name="q" value="{{ orders_page.filters.q }}" placeholder="Order, reseller, product"></label>
+                    <label>Status
+                        <select name="status">
+                            <option value="">All</option>
+                            <option value="pending" {{ 'selected' if orders_page.filters.status == 'pending' else '' }}>Pending</option>
+                            <option value="approved" {{ 'selected' if orders_page.filters.status == 'approved' else '' }}>Approved</option>
+                            <option value="fulfilled" {{ 'selected' if orders_page.filters.status == 'fulfilled' else '' }}>Fulfilled</option>
+                            <option value="rejected" {{ 'selected' if orders_page.filters.status == 'rejected' else '' }}>Rejected</option>
+                        </select>
+                    </label>
+                    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                </form>
                 <div class="table-wrap">
                     <table>
                         <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Status</th><th>Total</th><th>Action</th></tr></thead>
@@ -405,7 +412,7 @@
                             <tr>
                                 <td>#{{ order.order_id }}</td>
                                 <td>{{ order.reseller }}</td>
-                                <td>{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}</td>
+                                <td>{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
                                 <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
                                 <td>{{ order.total_amount|currency }}</td>
                                 <td>
@@ -420,6 +427,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="pagination"><span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span></div>
             </section>
             {% elif section == "reports" %}
             <section class="content-grid two">
@@ -543,6 +551,10 @@
                 </article>
                 <article class="panel">
                     <h2>Team reports</h2>
+                    <form class="filter-bar" method="get">
+                        <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
+                        <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                    </form>
                     <div class="stack-list">
                     {% for report in sales_reports if report.report_source == "team_leader" %}
                         <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency }} - {{ report.total_orders }} orders</em></div>

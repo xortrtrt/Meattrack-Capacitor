@@ -23,6 +23,7 @@
   --success: #2f6f4e;
   --error: #b23b35;
   --shadow: 0 18px 46px rgba(13, 12, 11, 0.16);
+  --mobile-bottom-reserve: 112px;
 }
 
 * {
@@ -81,12 +82,18 @@ button {
 
 .nav-container {
   width: min(1240px, calc(100% - 32px));
-  min-height: 78px;
+  min-height: 64px;
   margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
+}
+
+.nav-title {
+  color: var(--gold);
+  font-weight: 900;
+  letter-spacing: 0;
 }
 
 .logo {
@@ -104,20 +111,31 @@ button {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px 28px;
+  gap: 8px 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .nav-links a {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 13px;
+  border-radius: 999px;
   color: var(--white);
   font-size: 0.92rem;
   font-weight: 700;
 }
 
-.nav-links a:hover {
+.nav-tabs a:hover,
+.nav-tabs a.is-active {
+  background: rgba(215, 182, 33, 0.16);
   color: var(--gold);
+}
+
+.mobile-nav-toggle {
+  display: none;
 }
 
 .btn-portal {
@@ -150,6 +168,7 @@ section {
   background-position: center;
   background-size: cover;
   overflow: hidden;
+  animation: hero-pan 22s ease-in-out infinite alternate;
 }
 
 .hero::before {
@@ -200,6 +219,31 @@ section {
   color: var(--cream);
   font-size: 1.35rem;
   font-weight: 500;
+}
+
+.tagline mark {
+  padding: 0 0.18em;
+  background: linear-gradient(180deg, transparent 58%, rgba(215, 182, 33, 0.75) 0);
+  color: var(--white);
+}
+
+@keyframes hero-pan {
+  from {
+    background-position: 46% 50%;
+  }
+  to {
+    background-position: 56% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .hero {
+    animation: none;
+  }
 }
 
 .quality-row {
@@ -376,6 +420,10 @@ section {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(246, 236, 208, 0.92)),
     var(--cream);
+}
+
+.section-band {
+  position: relative;
 }
 
 .catalog-hero {
@@ -920,6 +968,35 @@ section {
   margin: 0;
 }
 
+.policy-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--cream-soft);
+}
+
+.policy-shell {
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 64px 0;
+}
+
+.policy-shell h1 {
+  margin: 12px 0 8px;
+  color: var(--black);
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.policy-shell p {
+  color: var(--muted);
+}
+
+.policy-version,
+.policy-back {
+  color: var(--gold-deep);
+  font-weight: 850;
+}
+
 .notice {
   padding: 14px 16px;
   border-radius: 6px;
@@ -993,24 +1070,68 @@ section {
 
   .container,
   .hero-content {
-    width: min(1180px, calc(100% - 28px));
+    width: calc(100% - 28px);
+    max-width: 362px;
   }
 
   .logo-img {
-    width: 132px;
+    width: 118px;
+  }
+
+  .nav-title {
+    font-size: 0.98rem;
   }
 
   .nav-container {
     width: 100%;
+    max-width: 390px;
     padding: 12px 14px;
     align-items: center;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .mobile-nav-toggle {
+    width: 44px;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--gold);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gold);
+    font-weight: 850;
+  }
+
+  .mobile-nav-toggle span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .mobile-nav-toggle svg {
+    width: 18px;
+    height: 18px;
   }
 
   .nav-links {
     width: 100%;
-    display: grid;
+    display: none;
     grid-template-columns: 1fr;
     gap: 8px;
+    padding-top: 6px;
+  }
+
+  .nav-links.is-open {
+    display: grid;
   }
 
   .nav-links li:last-child {
@@ -1032,23 +1153,40 @@ section {
 
   .hero {
     margin-top: 0;
-    min-height: 560px;
+    min-height: 520px;
+    padding: 48px 0 60px;
   }
 
   .catalog-hero {
     margin-top: 0;
+    padding: 46px 0 30px;
   }
 
   .hero h1 {
-    font-size: 2.35rem;
+    max-width: 100%;
+    font-size: 1.98rem;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
   }
 
   .tagline {
-    font-size: 1.08rem;
+    max-width: 100%;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
   }
 
   .hero-logo {
-    width: 178px;
+    width: 158px;
+  }
+
+  .hero-center,
+  .catalog-hero p,
+  .section-header,
+  .product-card,
+  .partnership-card,
+  .contact-info {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .hero-buttons .btn,
@@ -1062,7 +1200,22 @@ section {
   .partnerships-section h2,
   .inquiry-section h2,
   .catalog-hero h1 {
-    font-size: 1.85rem;
+    font-size: 1.65rem;
+    overflow-wrap: anywhere;
+  }
+
+  .store-intro h2 {
+    font-size: 1.55rem;
+    overflow-wrap: anywhere;
+  }
+
+  .store-intro p,
+  .section-header p,
+  .catalog-hero p,
+  .about-text p,
+  .partnership-card p,
+  .contact-info p {
+    overflow-wrap: anywhere;
   }
 
   .store-points,
@@ -1077,23 +1230,89 @@ section {
     flex-wrap: nowrap;
     max-width: 100%;
     overflow-x: auto;
+    overscroll-behavior-inline: contain;
     padding-bottom: 6px;
   }
 
   .category-tabs span {
     flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .products-grid {
     grid-template-columns: 1fr;
   }
 
+  .product-card h3,
+  .product-card p,
+  .product-category,
+  .product-price,
+  .product-cta {
+    overflow-wrap: anywhere;
+  }
+
+  .product-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .footer {
+    padding: 36px 0 calc(var(--mobile-bottom-reserve) + 48px + env(safe-area-inset-bottom));
+  }
+
+  .policy-shell {
+    padding-bottom: calc(var(--mobile-bottom-reserve) + 48px + env(safe-area-inset-bottom));
+  }
+
+  .footer-content {
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+
+  .footer-section p,
+  .footer-section a,
+  .footer-bottom p {
+    overflow-wrap: anywhere;
+  }
+
+  .footer-bottom {
+    padding: 16px 8px 0;
+  }
+
+  .footer-bottom p {
+    max-width: 280px;
+    margin: 0 auto;
+  }
+
   .chatbot-widget {
     right: 14px;
-    bottom: 14px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .chatbot-toggle {
+    width: 52px;
+    min-height: 52px;
+    padding: 0;
+    border-radius: 50%;
+  }
+
+  .chatbot-toggle::before {
+    content: "?";
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+
+  .chat-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .chatbot-panel {
     width: calc(100vw - 28px);
+    max-height: calc(100vh - 72px);
   }
 }

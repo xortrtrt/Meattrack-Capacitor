@@ -24,6 +24,10 @@ MEDIA_BASE_URL = os.getenv("MEDIA_BASE_URL", "").strip().rstrip("/")
 if MEDIA_BASE_URL and not MEDIA_BASE_URL.startswith("https://"):
     raise ValueError("MEDIA_BASE_URL must use HTTPS")
 
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
+CONSENT_VERSION = os.getenv("CONSENT_VERSION", "2026-07-20")
+
 
 def database_dsn(value: str = DATABASE_URL) -> str:
     """Normalize hosted PostgreSQL URLs and require TLS for Supabase."""
