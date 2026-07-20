@@ -1,66 +1,150 @@
 <!doctype html>
 <html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/portal_base.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}">
-</head>
-<body class="portal-body role-{{ role_key }}">
-    <aside class="portal-sidebar">
-        <a class="brand portal-brand" href="/">
-            <span class="brand-mark">
-                <img src="{{ 'batangas_premium.png'|media_url }}" alt="Batangas Premium">
-            </span>
-            <span>
-                <strong>MEATTRACK</strong>
-                <small>{{ role.label }} portal</small>
-            </span>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260721-sticky-drawer-1"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260721-card-rows-mobile-2"
+    />
+  </head>
+  <body class="portal-body role-{{ role_key }}">
+    <button
+      class="portal-drawer-backdrop"
+      type="button"
+      aria-label="Close portal menu"
+      data-portal-nav-dismiss
+    ></button>
+    <aside class="portal-sidebar" id="portal-nav-drawer" data-portal-drawer>
+      <a class="brand portal-brand" href="/">
+        <span class="brand-mark">
+          <img
+            src="{{ 'batangas_premium.png'|media_url }}"
+            alt="Batangas Premium"
+          />
+        </span>
+        <span>
+          <strong>MEATTRACK</strong>
+          <small>{{ role.label }} portal</small>
+        </span>
+      </a>
+      <button
+        class="portal-drawer-close"
+        type="button"
+        aria-label="Close menu"
+        data-portal-nav-close
+      >
+        <i data-lucide="x"></i>
+      </button>
+      <nav
+        class="portal-nav"
+        id="portal-nav"
+        aria-label="{{ role.label }} navigation"
+        data-portal-nav
+      >
+        {% for slug, label, icon in nav %}
+        <a
+          class="{{ 'active' if section == slug else '' }}"
+          href="/portal/{{ role_key }}/{{ slug }}"
+        >
+          <i data-lucide="{{ icon }}"></i>
+          {{ label }}
         </a>
-        <nav class="portal-nav" aria-label="{{ role.label }} navigation">
-            {% for slug, label, icon in nav %}
-            <a class="{{ 'active' if section == slug else '' }}" href="/portal/{{ role_key }}/{{ slug }}">
-                <i data-lucide="{{ icon }}"></i>
-                {{ label }}
-            </a>
-            {% endfor %}
-        </nav>
-        <div class="portal-user">
-            <span>{{ role.name }}</span>
-            <small>{{ role.email }}</small>
-            <a href="/logout">Sign out</a>
-        </div>
+        {% endfor %}
+      </nav>
+      <div class="portal-user">
+        <span>{{ role.name }}</span>
+        <small>{{ role.email }}</small>
+        <a href="/logout">Sign out</a>
+      </div>
     </aside>
 
     <main class="portal-main">
-        <header class="portal-topbar">
-            <div>
-                <span class="eyebrow">{{ role.label }} workspace</span>
-                <h1>{{ section_title }}</h1>
-            </div>
-            <div class="topbar-actions">
-                <a class="button subtle" href="/">
-                    <i data-lucide="globe"></i>
-                    Website
+      <header class="portal-topbar">
+        <div class="portal-title-block">
+          <button
+            class="portal-menu-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="portal-nav-drawer"
+            data-portal-nav-toggle
+          >
+            <i data-lucide="menu"></i>
+          </button>
+          <div class="portal-title-copy">
+            <span class="eyebrow">{{ role.label }} workspace</span>
+            <h1>{{ section_title }}</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          {% if role_key == "reseller" %}
+          <a
+            class="icon-button portal-cart-trigger"
+            href="/portal/reseller/cart"
+            title="Cart"
+            aria-label="Cart"
+          >
+            <i data-lucide="shopping-cart"></i>
+            {% if cart_count %}
+            <span class="notification-count" data-cart-nav-count>{{ cart_count|number }}</span>
+            {% endif %}
+          </a>
+          {% endif %}
+          <details class="notification-menu">
+            <summary
+              class="icon-button notification-trigger"
+              title="Notifications"
+            >
+              <i data-lucide="bell"></i>
+              {% if unread_notifications %}
+              <span class="notification-count">{{ unread_notifications }}</span>
+              {% endif %}
+            </summary>
+            <div class="notification-panel">
+              <div class="notification-head">
+                <strong>Notifications</strong>
+                <form
+                  action="/portal/{{ role_key }}/notifications/read?section={{ section }}"
+                  method="post"
+                >
+                  <button type="submit">Mark read</button>
+                </form>
+              </div>
+              <div class="notification-list">
+                {% for item in notifications %}
+                <a
+                  class="notification-item {{ item.severity }} {{ 'is-read' if item.read_at else '' }}"
+                  href="{{ item.target_url or '/portal/' ~ role_key }}"
+                >
+                  <span>{{ item.category }}</span>
+                  <strong>{{ item.title }}</strong>
+                  <small>{{ item.message }}</small>
                 </a>
-                <a class="button primary" href="/logout">
-                    <i data-lucide="log-out"></i>
-                    Sign out
-                </a>
+                {% else %}
+                <p class="notification-empty">No notifications yet.</p>
+                {% endfor %}
+              </div>
             </div>
-        </header>
+          </details>
+        </div>
+      </header>
 
-        {% if message or error %}
-            <aside class="notice {{ 'error' if error else 'success' }}">
-                {{ error or message }}
-            </aside>
-        {% endif %}
-
-        {% block portal_content %}{% endblock %}
+      {% if message or error %}
+      <aside class="notice {{ 'error' if error else 'success' }}">
+        {{ error or message }}
+      </aside>
+      {% endif %} {% block portal_content %}{% endblock %}
     </main>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}"></script>
-</body>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260721-product-modal-1"></script>
+  </body>
 </html>

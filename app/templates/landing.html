@@ -2,34 +2,40 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Batangas Premium | Frozen Meat Products</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/public.css') }}"
+      href="{{ url_for('static', path='css/public.css') }}?v=20260720-mobile-safe-1"
     />
   </head>
   <body class="landing-page">
     <nav class="navbar">
       <div class="nav-container">
-        <a href="/" class="logo">
-          <img
-            src="{{ 'batangas_premium.png'|media_url }}"
-            alt="Batangas Premium"
-            class="logo-img"
-          />
-        </a>
-        <ul class="nav-links">
-          <li><a href="/products">Store</a></li>
-          <li><a href="/about">About Us</a></li>
-          <li><a href="/partnerships">Partnerships</a></li>
-          <li><a href="#inquiry">Contact</a></li>
+        <span class="nav-title">Batangas Premium</span>
+        <button
+          class="mobile-nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="public-nav"
+          data-mobile-nav-toggle
+        >
+          <i data-lucide="menu"></i>
+          <span>Menu</span>
+        </button>
+        <ul class="nav-links nav-tabs" id="public-nav" data-mobile-nav>
+          <li><a href="#home" data-scroll-tab>Home</a></li>
+          <li><a href="#store" data-scroll-tab>Store</a></li>
+          <li><a href="#about" data-scroll-tab>About</a></li>
+          <li><a href="#partnerships" data-scroll-tab>Partnerships</a></li>
+          <li><a href="#inquiry" data-scroll-tab>Contact</a></li>
           <li><a href="/login" class="btn-portal">Portal Login</a></li>
         </ul>
       </div>
     </nav>
 
     <section
+      id="home"
       class="hero"
       style="background-image: url('{{ 'background.jpg'|media_url }}')"
     >
@@ -43,8 +49,8 @@
           />
           <h1>Batangas Premium</h1>
           <p class="tagline">
-            "Ala Eh! Pagkakasarap-sarap nire!" Premium frozen meat products
-            for homes, resellers, and local outlets.
+            <mark>Ala Eh! Pagkakasarap-sarap nire!</mark> Premium frozen meat
+            products for homes, resellers, and local outlets.
           </p>
           <div class="quality-row" aria-label="Brand quality highlights">
             <span>Pure</span>
@@ -52,7 +58,7 @@
             <span>Quality</span>
           </div>
           <div class="hero-buttons">
-            <a href="/products" class="btn btn-primary">Explore Store</a>
+            <a href="#store" class="btn btn-primary">Explore Store</a>
             <a href="#inquiry" class="btn btn-secondary">Become a Partner</a>
           </div>
         </div>
@@ -65,7 +71,7 @@
     </div>
     {% endif %}
 
-    <section class="store-intro">
+    <section id="store" class="store-intro">
       <div class="container store-intro-grid">
         <div>
           <h2>Award-winning products, ready for your next order.</h2>
@@ -82,16 +88,22 @@
       </div>
     </section>
 
-    <section class="products-section">
+    <section class="products-section section-band">
       <div class="container">
+        <div class="category-tabs" aria-label="Product categories">
+          <span>All</span>
+          <span>Retail</span>
+          <span>Reseller Packages</span>
+          <span>Outlet Supply</span>
+        </div>
         <div class="section-header">
           <h2>Featured Frozen Products</h2>
-          <p>Product-first cards inspired by the official Batangas Premium store.</p>
+          <p>Product-first cards for retail buyers, resellers, and outlet partners.</p>
         </div>
         <div class="products-grid">
-          {% for product in products[:6] %}
+          {% for product in products %}
           <article class="product-card">
-            <a class="product-media" href="/products">
+            <a class="product-media" href="#inquiry">
               <img
                 src="{{ product.name|product_image|media_url }}"
                 alt="{{ product.name }}"
@@ -109,6 +121,98 @@
             </div>
           </article>
           {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section id="about" class="about-section section-band">
+      <div class="container about-content">
+        <div class="about-text">
+          <h2>From Engineers to Entrepreneurs</h2>
+          <p>
+            Batangas Premium was founded on June 22, 2020, by Nicko Jay
+            Landicho and Weng Opena. The brand grew from skinless longganisa
+            into a trusted frozen meat line serving homes, resellers, and local
+            outlets.
+          </p>
+          <p>
+            The system behind MEATTRACK supports that growth with inventory,
+            sales, reseller ordering, and demand forecasting in one workflow.
+          </p>
+          <div class="about-stats">
+            <div class="stat">
+              <span class="stat-value">June 2020</span>
+              <span class="stat-label">Founded</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">5,000+</span>
+              <span class="stat-label">Distributor reach</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">10 Regions</span>
+              <span class="stat-label">Luzon and Visayas</span>
+            </div>
+          </div>
+        </div>
+        <div class="about-features">
+          <div class="feature-box">
+            <span class="feature-icon">MEATS</span>
+            <h4>Premium Products</h4>
+            <p>Longganisa, tapa, tocino, ham, bacon, and specialty meats.</p>
+          </div>
+          <div class="feature-box">
+            <span class="feature-icon">QC</span>
+            <h4>Quality Standards</h4>
+            <p>Consistent handling, batch visibility, and expiry monitoring.</p>
+          </div>
+          <div class="feature-box">
+            <span class="feature-icon">REACH</span>
+            <h4>Wide Reach</h4>
+            <p>Distribution activity across major Luzon and Visayas regions.</p>
+          </div>
+          <div class="feature-box">
+            <span class="feature-icon">TEAM</span>
+            <h4>Partner Growth</h4>
+            <p>Programs for resellers, outlet partners, and distributors.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="partnerships" class="partnerships-section section-band">
+      <div class="container">
+        <h2>Partnership Opportunities</h2>
+        <div class="partnership-grid">
+          <div class="partnership-card">
+            <h3>Reseller Program</h3>
+            <p>Carry Batangas Premium products with competitive reseller rates.</p>
+            <ul class="benefits-list">
+              <li>Wholesale pricing</li>
+              <li>Flexible order quantities</li>
+              <li>Sales support</li>
+            </ul>
+          </div>
+          <div class="partnership-card featured">
+            <h3>City Outlet</h3>
+            <p>Bring frozen products closer to local buyers in your area.</p>
+            <ul class="benefits-list">
+              <li>Area-focused selling</li>
+              <li>Higher margins</li>
+              <li>Business guidance</li>
+            </ul>
+          </div>
+          <div class="partnership-card">
+            <h3>Distributor Network</h3>
+            <p>Expand through volume-based supply and wider coverage.</p>
+            <ul class="benefits-list">
+              <li>Volume discounts</li>
+              <li>Logistics coordination</li>
+              <li>Growth incentives</li>
+            </ul>
+          </div>
+        </div>
+        <div class="button-row center-actions">
+          <a class="btn btn-primary" href="#inquiry">Send Partnership Inquiry</a>
         </div>
       </div>
     </section>
@@ -265,7 +369,8 @@
             <h4>Quick Links</h4>
             <ul>
               <li><a href="/products">Store</a></li>
-              <li><a href="/partnerships">Partnerships</a></li>
+              <li><a href="#about">About</a></li>
+              <li><a href="#partnerships">Partnerships</a></li>
               <li><a href="#inquiry">Contact</a></li>
               <li><a href="/login">Portal</a></li>
             </ul>
@@ -283,6 +388,6 @@
     </footer>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260720-redesign-1"></script>
   </body>
 </html>

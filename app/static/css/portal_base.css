@@ -12,6 +12,8 @@
   --white: #ffffff;
   --success: #2f6f4e;
   --error: #b23b35;
+  --warning: #9a6a00;
+  --info: #315779;
   --primary: #0d0c0b;
   --primary-dark: #050504;
   --gold: #d7b621;
@@ -21,6 +23,7 @@
   --surface: #ffffff;
   --surface-muted: #fbf7ec;
   --sidebar: #0d0c0b;
+  --mobile-bottom-reserve: 112px;
 }
 
 * {
@@ -32,6 +35,7 @@ body {
   font-family: "Rubik", "Segoe UI", Arial, sans-serif;
   font-size: 16px;
   line-height: 1.6;
+  overflow-x: hidden;
 }
 
 a {
@@ -53,10 +57,15 @@ button {
 
 .portal-body {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   background:
-    linear-gradient(180deg, rgba(246, 236, 208, 0.76), rgba(251, 247, 236, 0.96)),
+    linear-gradient(
+      180deg,
+      rgba(246, 236, 208, 0.76),
+      rgba(251, 247, 236, 0.96)
+    ),
     #f7f2e4;
   color: var(--text);
 }
@@ -69,6 +78,7 @@ button {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -79,6 +89,11 @@ button {
   color: #f7f4ef;
   border-right: 1px solid rgba(215, 182, 33, 0.38);
   overflow-y: auto;
+}
+
+.portal-drawer-backdrop,
+.portal-drawer-close {
+  display: none;
 }
 
 .brand {
@@ -150,6 +165,10 @@ button {
   color: var(--primary);
 }
 
+.portal-menu-toggle {
+  display: none;
+}
+
 .portal-user {
   margin-top: auto;
   display: grid;
@@ -175,10 +194,11 @@ button {
 
 .portal-main {
   min-width: 0;
+  width: 100%;
   display: grid;
   align-content: start;
   gap: 20px;
-  padding: 28px 36px 56px;
+  padding: 24px clamp(18px, 3vw, 36px) 52px;
 }
 
 .portal-topbar {
@@ -189,6 +209,14 @@ button {
   gap: 18px;
   padding-bottom: 18px;
   border-bottom: 1px solid rgba(170, 134, 22, 0.28);
+}
+
+.portal-title-block {
+  min-width: 0;
+}
+
+.portal-title-copy {
+  min-width: 0;
 }
 
 .portal-topbar h1 {
@@ -297,6 +325,107 @@ button {
   border-left: 4px solid var(--error);
 }
 
+.notification-menu {
+  position: relative;
+}
+
+.notification-menu summary {
+  list-style: none;
+}
+
+.notification-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.notification-trigger {
+  position: relative;
+}
+
+.notification-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--error);
+  color: var(--white);
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: min(360px, calc(100vw - 28px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 18px 42px rgba(13, 12, 11, 0.18);
+}
+
+.notification-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-head button {
+  background: transparent;
+  color: var(--gold-deep);
+  font-weight: 850;
+}
+
+.notification-list {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--info);
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-item.warning {
+  border-left-color: var(--warning);
+}
+
+.notification-item.critical {
+  border-left-color: var(--error);
+}
+
+.notification-item.is-read {
+  opacity: 0.68;
+}
+
+.notification-item span {
+  color: var(--text-light);
+  font-size: 0.75rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.notification-item small,
+.notification-empty {
+  color: var(--text-light);
+}
+
+.notification-empty {
+  margin: 0;
+  padding: 16px;
+}
+
 .metric-grid,
 .content-grid,
 .operations-grid,
@@ -356,9 +485,9 @@ button {
   color: var(--text-light);
 }
 
-.panel {
+.portal-body .panel {
   min-width: 0;
-  padding: 22px;
+  padding: clamp(18px, 2.2vw, 24px);
 }
 
 .panel h2 {
@@ -375,17 +504,25 @@ button {
 
 .panel-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  min-width: 0;
 }
 
 .panel-heading h2 {
-  margin-bottom: 0;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .panel-heading a {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   color: var(--gold-deep);
   font-weight: 850;
 }
@@ -395,23 +532,36 @@ button {
   color: var(--text-light);
 }
 
+.panel-heading .hint {
+  max-width: min(520px, 52%);
+  text-align: right;
+  line-height: 1.35;
+}
+
 .table-wrap {
   width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  -webkit-overflow-scrolling: touch;
 }
 
 .portal-body table {
   width: 100%;
-  min-width: 560px;
-  border-collapse: collapse;
+  min-width: 640px;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .portal-body th,
 .portal-body td {
-  padding: 12px 10px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 
 .portal-body th {
@@ -424,6 +574,10 @@ button {
 
 .portal-body td {
   color: var(--text);
+}
+
+.portal-body tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .inventory-groups {
@@ -443,7 +597,7 @@ button {
 }
 
 .portal-body table.compact-table {
-  min-width: 0;
+  min-width: 460px;
 }
 
 .recipe-details {
@@ -467,7 +621,10 @@ button {
 
 .recipe-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.55fr) minmax(130px, 0.45fr);
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.55fr) minmax(
+      130px,
+      0.45fr
+    );
   gap: 12px;
   padding: 9px 11px;
   background: var(--surface);
@@ -556,6 +713,12 @@ button {
 .alert-card.warning {
   border-color: var(--gold);
   background: #fffbef;
+}
+
+.stack-item.alert.info,
+.alert-card.info {
+  border-color: #b9cde0;
+  background: #f5f9fc;
 }
 
 .stock-line {
@@ -669,7 +832,9 @@ button {
 
 .ingredient-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.35fr) minmax(110px, 0.3fr) 40px;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(130px, 0.35fr) minmax(110px, 0.3fr)
+    40px;
   gap: 12px;
   align-items: end;
 }
@@ -709,13 +874,86 @@ button {
 
 .inline-edit {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(130px, 0.75fr) minmax(130px, 0.75fr) 42px;
-  gap: 10px;
-  align-items: end;
-  padding: 13px;
+  grid-template-columns: minmax(180px, 1fr) minmax(190px, 430px) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-muted);
+}
+
+.inline-edit > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-priority {
+  border-top: 4px solid var(--gold);
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 0 0 18px;
+  min-width: 0;
+}
+
+.filter-bar label {
+  display: grid;
+  flex: 0 1 260px;
+  gap: 6px;
+  color: var(--primary);
+  font-size: 0.86rem;
+  font-weight: 800;
+  min-width: min(100%, 220px);
+}
+
+.filter-bar label:first-child {
+  flex: 1 1 340px;
+}
+
+.filter-bar input,
+.filter-bar select {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--white);
+  color: var(--text);
+}
+
+.filter-bar .button {
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding-inline: 20px;
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 2px;
+  color: var(--text-light);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.pagination a {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--primary);
 }
 
 .inline-edit label {
@@ -723,9 +961,11 @@ button {
   gap: 7px;
   color: var(--primary);
   font-weight: 700;
+  min-width: 0;
 }
 
 .inline-edit input {
+  width: 100%;
   min-height: 40px;
   padding: 10px 11px;
   border: 1px solid var(--border);
@@ -801,27 +1041,177 @@ button {
 @media (max-width: 860px) {
   .portal-body {
     display: block;
+    min-height: 100dvh;
+    padding-bottom: calc(var(--mobile-bottom-reserve) + env(safe-area-inset-bottom));
+  }
+
+  .portal-body.drawer-is-open {
+    overflow: hidden;
   }
 
   .portal-sidebar {
-    position: static;
-    height: auto;
-    gap: 16px;
-    padding: 16px;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 60;
+    width: min(320px, 86vw);
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: calc(18px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));
+    border-right: 1px solid rgba(215, 182, 33, 0.46);
+    box-shadow: 18px 0 44px rgba(13, 12, 11, 0.28);
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    overscroll-behavior: contain;
+  }
+
+  .portal-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .portal-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    display: block;
+    border: 0;
+    background: rgba(13, 12, 11, 0.54);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+  }
+
+  .portal-body.drawer-is-open .portal-drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .portal-brand {
+    min-width: 0;
+    padding-right: 48px;
+  }
+
+  .portal-brand > span:last-child {
+    min-width: 0;
+  }
+
+  .portal-brand strong,
+  .portal-brand small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .portal-drawer-close {
+    position: absolute;
+    top: calc(18px + env(safe-area-inset-top));
+    right: 18px;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(215, 182, 33, 0.48);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--gold);
+  }
+
+  .portal-menu-toggle {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 14px;
+    border: 1px solid rgba(215, 182, 33, 0.64);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--gold);
+    font-weight: 850;
+  }
+
+  .portal-menu-toggle svg,
+  .portal-drawer-close svg {
+    width: 18px;
+    height: 18px;
   }
 
   .portal-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .portal-user {
+    margin-top: 0;
+    padding-top: 16px;
+    display: grid;
   }
 
   .portal-main {
     gap: 16px;
-    padding: 20px 14px 42px;
+    padding: 0 14px calc(var(--mobile-bottom-reserve) + 44px + env(safe-area-inset-bottom));
   }
 
   .portal-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: auto;
+    margin: 0 -14px;
+    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+    background:
+      linear-gradient(180deg, rgba(68, 22, 18, 0.42), rgba(13, 12, 11, 0) 44%),
+      var(--sidebar);
+    color: #f7f4ef;
+    border-bottom: 1px solid rgba(215, 182, 33, 0.46);
+    box-shadow: 0 12px 28px rgba(13, 12, 11, 0.18);
+  }
+
+  .portal-title-block {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    min-width: 0;
+    gap: 12px;
+  }
+
+  .portal-title-copy {
+    min-width: 0;
+  }
+
+  .portal-title-copy .eyebrow {
+    color: var(--gold);
+  }
+
+  .portal-topbar h1 {
+    color: #f7f4ef;
+    font-size: 1.22rem;
+    line-height: 1.12;
+  }
+
+  .topbar-actions .icon-button {
+    border-color: rgba(215, 182, 33, 0.64);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--gold);
+  }
+
+  .panel-heading {
     align-items: flex-start;
     flex-direction: column;
+    gap: 8px;
+  }
+
+  .panel-heading .hint {
+    max-width: 100%;
+    text-align: left;
   }
 
   .metric-grid,
@@ -837,25 +1227,54 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .topbar-actions,
   .button-row {
     width: 100%;
   }
 
-  .topbar-actions .button,
   .button-row .button {
     flex: 1 1 auto;
   }
 
-  .panel,
+  .topbar-actions {
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .portal-body .panel,
   .metric-card,
   .alert-card,
   .inquiry-card {
     padding: 16px;
   }
 
+  .filter-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar label,
+  .filter-bar label:first-child,
+  .filter-bar .button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .notification-panel {
+    position: fixed;
+    top: calc(74px + env(safe-area-inset-top));
+    right: 14px;
+    width: calc(100vw - 28px);
+    max-width: 360px;
+  }
+
+  .table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .portal-body table {
-    min-width: 520px;
+    min-width: 560px;
   }
 
   .portal-body table.compact-table {
@@ -881,12 +1300,31 @@ button {
   }
 
   .portal-nav a {
-    min-height: 40px;
+    min-height: 44px;
     padding: 0 10px;
   }
 
+  .brand-mark {
+    width: 54px;
+    height: 42px;
+  }
+
+  .portal-brand {
+    gap: 10px;
+  }
+
+  .portal-brand strong {
+    font-size: 0.95rem;
+  }
+
+  .portal-brand small {
+    font-size: 0.78rem;
+  }
+
   .portal-topbar h1 {
-    font-size: 2rem;
+    font-size: 1.12rem;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
   }
 
   .panel h2 {
@@ -900,6 +1338,15 @@ button {
 
   .portal-body th,
   .portal-body td {
-    padding: 10px 8px;
+    padding: 12px 10px;
+  }
+
+  .button,
+  .icon-button,
+  .form-panel input,
+  .form-panel textarea,
+  .form-panel select,
+  .inline-edit input {
+    min-height: 44px;
   }
 }

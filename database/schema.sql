@@ -18,6 +18,8 @@ CREATE TABLE accounts (
     name text NOT NULL,
     email text NOT NULL,
     password_hash text NOT NULL,
+    auth_user_id uuid,
+    auth_provider text,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -155,6 +157,16 @@ CREATE TABLE order_items (
     line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity * unit_price, 2)) STORED
 );
 
+CREATE TABLE reseller_cart_items (
+    cart_item_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    quantity numeric(12,3) NOT NULL CHECK (quantity > 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (account_id, product_id)
+);
+
 CREATE TABLE sales_reports (
     sales_report_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     report_source text NOT NULL
@@ -169,6 +181,31 @@ CREATE TABLE sales_reports (
     notes text,
     submitted_at timestamptz NOT NULL DEFAULT now(),
     CHECK (period_end >= period_start)
+);
+
+CREATE TABLE sales_report_items (
+    sales_report_item_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sales_report_id bigint NOT NULL REFERENCES sales_reports(sales_report_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    quantity_sold numeric(12,3) NOT NULL CHECK (quantity_sold > 0),
+    unit text NOT NULL DEFAULT 'pack',
+    unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0),
+    line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity_sold * unit_price, 2)) STORED
+);
+
+CREATE TABLE sales_report_attachments (
+    sales_report_attachment_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    sales_report_id bigint NOT NULL REFERENCES sales_reports(sales_report_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    filename text NOT NULL,
+    content_type text NOT NULL,
+    content bytea NOT NULL,
+    size_bytes integer NOT NULL CHECK (size_bytes >= 0 AND size_bytes <= 5242880),
+    checksum_sha256 text NOT NULL,
+    uploaded_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(filename) <> ''),
+    CHECK (filename !~ '[\\/]'),
+    CHECK (btrim(content_type) <> ''),
+    CHECK (length(checksum_sha256) = 64)
 );
 
 CREATE TABLE alerts (
@@ -219,14 +256,55 @@ CREATE TABLE forecast_results (
     CHECK (confidence_lower IS NULL OR confidence_upper IS NULL OR confidence_upper >= confidence_lower)
 );
 
+CREATE TABLE user_consents (
+    user_consent_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    policy_version text NOT NULL,
+    consent_source text NOT NULL,
+    provider text,
+    accepted_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(policy_version) <> ''),
+    CHECK (btrim(consent_source) <> '')
+);
+
+CREATE TABLE notifications (
+    notification_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    recipient_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    recipient_role text CHECK (recipient_role IN ('owner', 'team-leader', 'reseller')),
+    category text NOT NULL,
+    severity text NOT NULL DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'critical')),
+    title text NOT NULL,
+    message text NOT NULL,
+    target_url text,
+    source_type text,
+    source_id bigint,
+    dedupe_key text UNIQUE,
+    read_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (recipient_account_id IS NOT NULL OR recipient_role IS NOT NULL),
+    CHECK (btrim(category) <> ''),
+    CHECK (btrim(title) <> ''),
+    CHECK (btrim(message) <> '')
+);
+
 CREATE UNIQUE INDEX ux_accounts_email_lower ON accounts (lower(email));
+CREATE UNIQUE INDEX ux_accounts_auth_user_id ON accounts (auth_user_id)
+    WHERE auth_user_id IS NOT NULL;
 CREATE UNIQUE INDEX ux_resellers_email_lower ON resellers (lower(email));
 CREATE UNIQUE INDEX ux_inventory_items_type_name_lower ON inventory_items (item_type, lower(name));
 CREATE INDEX ix_inventory_items_type_name ON inventory_items (item_type, name);
 CREATE INDEX ix_inventory_batches_fefo ON inventory_batches (item_id, expiry_date, quantity_available)
     WHERE quality_status = 'approved' AND quantity_available > 0;
 CREATE INDEX ix_orders_reseller_status ON orders (reseller_id, status);
+CREATE INDEX ix_reseller_cart_items_account_updated ON reseller_cart_items (account_id, updated_at DESC);
+CREATE INDEX ix_reseller_cart_items_product ON reseller_cart_items (product_id);
+CREATE INDEX ix_sales_report_items_report ON sales_report_items (sales_report_id);
+CREATE INDEX ix_sales_report_items_product ON sales_report_items (product_id);
+CREATE INDEX ix_sales_report_attachments_report ON sales_report_attachments (sales_report_id);
 CREATE INDEX ix_activity_logs_account_created ON activity_logs (account_id, created_at DESC);
 CREATE INDEX ix_alerts_status_type ON alerts (status, alert_type);
+CREATE INDEX ix_user_consents_account_accepted ON user_consents (account_id, accepted_at DESC);
+CREATE INDEX ix_notifications_role_read_created ON notifications (recipient_role, read_at, created_at DESC);
+CREATE INDEX ix_notifications_account_read_created ON notifications (recipient_account_id, read_at, created_at DESC);
 
 COMMIT;
