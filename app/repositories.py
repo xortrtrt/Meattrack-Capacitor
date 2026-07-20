@@ -190,6 +190,239 @@ portal_nav = {
     ],
 }
 
+
+# ----------------- Explicit read operations -----------------
+
+def list_inventory_items() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT ii.item_id, ii.item_type,
+               CASE ii.item_type
+                   WHEN 'raw_material' THEN 'Raw material'
+                   WHEN 'finished_product' THEN 'Finished product'
+               END AS item_type_label,
+               ii.category, ii.name, ii.unit, ii.base_price, ii.is_active,
+               CASE
+                   WHEN ii.item_type = 'raw_material' THEN ii.quantity_available
+                   ELSE COALESCE(SUM(ib.quantity_available) FILTER (
+                       WHERE ib.quality_status = 'approved'
+                         AND ib.expiry_date >= CURRENT_DATE
+                   ), 0)
+               END AS available
+        FROM inventory_items ii
+        LEFT JOIN inventory_batches ib ON ib.item_id = ii.item_id
+        WHERE ii.item_type IN ('raw_material', 'finished_product')
+        GROUP BY ii.item_id, ii.item_type, ii.category, ii.name, ii.unit,
+                 ii.base_price, ii.quantity_available, ii.is_active
+        ORDER BY CASE ii.item_type WHEN 'raw_material' THEN 1 ELSE 2 END, ii.name;
+    """))
+
+
+def list_inventory_batches() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT ib.batch_id, ib.item_id, ii.item_type,
+               CASE ii.item_type
+                   WHEN 'raw_material' THEN 'Raw material'
+                   WHEN 'finished_product' THEN 'Finished product'
+               END AS item_type_label,
+               ii.name AS item_name, ib.batch_code, ib.source_type,
+               ib.quantity_received, ib.quantity_available, ib.unit,
+               ib.received_date, ib.expiry_date, ib.quality_status
+        FROM inventory_batches ib
+        JOIN inventory_items ii ON ii.item_id = ib.item_id
+        WHERE ii.item_type = 'finished_product'
+        ORDER BY ib.batch_id DESC;
+    """))
+
+
+def list_products() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT p.item_id AS product_id, p.name, p.description, p.unit, p.base_price, p.is_active,
+               p.category,
+               (
+                   SELECT COUNT(*)
+                   FROM product_recipes pr
+                   JOIN inventory_items rm ON rm.item_id = pr.material_item_id
+                   WHERE pr.product_item_id = p.item_id
+                     AND rm.item_type = 'raw_material'
+               ) AS recipe_count,
+               COALESCE(SUM(pb.quantity_available) FILTER (
+                   WHERE pb.quality_status = 'approved'
+                     AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
+               ), 0) AS available
+        FROM inventory_items p
+        LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
+        WHERE p.item_type = 'finished_product'
+        GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category
+        ORDER BY p.item_id;
+    """))
+
+
+def list_raw_materials() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT item_id AS raw_material_id, category, name, unit,
+               quantity_available AS available
+        FROM inventory_items
+        WHERE item_type = 'raw_material'
+          AND is_active = true
+        ORDER BY category, name;
+    """))
+
+
+def list_product_recipes() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT pr.recipe_id, pr.product_item_id AS product_id, p.name AS product_name,
+               pr.material_item_id AS raw_material_id, rm.name AS raw_material_name,
+               rm.category AS raw_material_category,
+               pr.quantity_required, pr.unit
+        FROM product_recipes pr
+        JOIN inventory_items p ON p.item_id = pr.product_item_id
+        JOIN inventory_items rm ON rm.item_id = pr.material_item_id
+        WHERE p.item_type = 'finished_product'
+          AND rm.item_type = 'raw_material'
+        ORDER BY p.name, rm.category, rm.name;
+    """))
+
+
+def list_inquiries(limit: int | None = None) -> list[dict]:
+    query = """
+        SELECT i.inquiry_id, i.name, i.contact_number, i.email, i.business_name, i.message, i.status,
+               a.name AS assigned_to, i.created_at
+        FROM inquiries i
+        LEFT JOIN accounts a ON a.account_id = i.assigned_team_leader_account_id
+        ORDER BY i.inquiry_id DESC
+    """
+    params = None
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        query += " LIMIT %s"
+        params = (limit,)
+    return clean_row(fetch_all(query + ";", params))
+
+
+def list_orders(order_type: str | None = None) -> list[dict]:
+    if order_type not in {None, "reseller", "walk_in"}:
+        raise ValueError("order_type must be reseller, walk_in, or None")
+    where = " WHERE o.order_type = %s" if order_type else ""
+    params = (order_type,) if order_type else None
+    orders = clean_row(fetch_all(f"""
+        SELECT o.order_id, o.order_type, o.reseller_id,
+               COALESCE(r.business_name, 'Retail counter') AS reseller,
+               o.status, o.order_date, o.total_amount, o.notes
+        FROM orders o
+        LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
+        {where}
+        ORDER BY o.order_id DESC;
+    """, params))
+    if not orders:
+        return orders
+
+    order_ids = [order["order_id"] for order in orders]
+    items = clean_row(fetch_all("""
+        SELECT oi.order_id, oi.product_id, p.name, oi.quantity, oi.unit_price, oi.line_total
+        FROM order_items oi
+        JOIN inventory_items p ON p.item_id = oi.product_id
+        WHERE p.item_type = 'finished_product'
+          AND oi.order_id = ANY(%s);
+    """, (order_ids,)))
+    items_by_order: dict[int, list[dict]] = {}
+    for item in items:
+        order_id = item.pop("order_id")
+        items_by_order.setdefault(order_id, []).append(item)
+    for order in orders:
+        order["items"] = items_by_order.get(order["order_id"], [])
+    return orders
+
+
+def list_sales_reports(report_source: str | None = None, limit: int | None = None) -> list[dict]:
+    if report_source not in {None, "reseller", "team_leader"}:
+        raise ValueError("report_source must be reseller, team_leader, or None")
+    query = """
+        SELECT sr.sales_report_id, sr.report_source,
+               COALESCE(a.name, 'System') AS submitted_by,
+               sr.period_start, sr.period_end, sr.total_sales, sr.total_orders, sr.notes
+        FROM sales_reports sr
+        LEFT JOIN accounts a ON a.account_id = sr.submitted_by_account_id
+    """
+    params: list[object] = []
+    if report_source:
+        query += " WHERE sr.report_source = %s"
+        params.append(report_source)
+    query += " ORDER BY sr.sales_report_id DESC"
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        query += " LIMIT %s"
+        params.append(limit)
+    return clean_row(fetch_all(query + ";", tuple(params) or None))
+
+
+def list_alerts() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT al.alert_id, al.alert_type, al.severity, al.message, al.status, al.triggered_at,
+               (CASE
+                    WHEN al.product_batch_id IS NOT NULL THEN (
+                        SELECT p.name || ' batch ' || pb.batch_code
+                        FROM inventory_batches pb
+                        JOIN inventory_items p ON p.item_id = pb.item_id
+                        WHERE pb.batch_id = al.product_batch_id
+                    )
+                    WHEN al.product_id IS NOT NULL THEN (SELECT name FROM inventory_items WHERE item_id = al.product_id)
+                    WHEN al.raw_material_id IS NOT NULL THEN (SELECT name FROM inventory_items WHERE item_id = al.raw_material_id)
+                    ELSE 'System Alert'
+                END) AS subject
+        FROM alerts al
+        ORDER BY al.alert_id DESC;
+    """))
+
+
+def list_forecasts(limit: int | None = None) -> list[dict]:
+    query = """
+        SELECT fr.forecast_result_id, p.name AS product, fr.forecast_date, fr.predicted_quantity,
+               ('85%% - 95%% range') AS confidence
+        FROM forecast_results fr
+        JOIN inventory_items p ON p.item_id = fr.product_id
+        WHERE p.item_type = 'finished_product'
+        ORDER BY fr.forecast_result_id DESC
+    """
+    params = None
+    if limit is not None:
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        query += " LIMIT %s"
+        params = (limit,)
+    return clean_row(fetch_all(query + ";", params))
+
+
+def list_accounts() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT a.account_id, a.account_type, a.name, a.email,
+               (CASE WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status
+        FROM accounts a
+        ORDER BY a.account_id;
+    """))
+
+
+def list_activity_logs() -> list[dict]:
+    return clean_row(fetch_all("""
+        SELECT al.activity_log_id,
+               COALESCE(a.name, 'MEATTRACK') AS actor,
+               al.action,
+               (CASE
+                    WHEN al.entity_type = 'orders' THEN 'Order #' || al.entity_id
+                    WHEN al.entity_type = 'products' THEN (SELECT name FROM inventory_items WHERE item_id = al.entity_id)
+                    WHEN al.entity_type = 'sales_reports' THEN 'Report #' || al.entity_id
+                    WHEN al.entity_type = 'departments' THEN (SELECT department_name FROM departments WHERE department_id = al.entity_id)
+                    WHEN al.entity_type = 'forecast_runs' THEN 'Daily product demand'
+                    ELSE COALESCE(al.entity_type, 'System')
+                END) AS entity,
+               al.created_at
+        FROM activity_logs al
+        LEFT JOIN accounts a ON a.account_id = al.account_id
+        ORDER BY al.activity_log_id DESC;
+    """))
+
+
 # ----------------- Dynamic Attribute Getters -----------------
 
 def __getattr__(name: str):
@@ -208,62 +441,11 @@ def __getattr__(name: str):
             ORDER BY r.reseller_id DESC;
         """))
     elif name == "inventory_items":
-        return clean_row(fetch_all("""
-            SELECT ii.item_id, ii.item_type,
-                   CASE ii.item_type
-                       WHEN 'raw_material' THEN 'Raw material'
-                       WHEN 'finished_product' THEN 'Finished product'
-                   END AS item_type_label,
-                   ii.category, ii.name, ii.unit, ii.base_price, ii.is_active,
-                   CASE
-                       WHEN ii.item_type = 'raw_material' THEN ii.quantity_available
-                       ELSE COALESCE(SUM(ib.quantity_available) FILTER (
-                           WHERE ib.quality_status = 'approved'
-                             AND ib.expiry_date >= CURRENT_DATE
-                       ), 0)
-                   END AS available
-            FROM inventory_items ii
-            LEFT JOIN inventory_batches ib ON ib.item_id = ii.item_id
-            WHERE ii.item_type IN ('raw_material', 'finished_product')
-            GROUP BY ii.item_id, ii.item_type, ii.category, ii.name, ii.unit, ii.base_price, ii.quantity_available, ii.is_active
-            ORDER BY CASE ii.item_type WHEN 'raw_material' THEN 1 ELSE 2 END, ii.name;
-        """))
+        return list_inventory_items()
     elif name == "inventory_batches":
-        return clean_row(fetch_all("""
-            SELECT ib.batch_id, ib.item_id, ii.item_type,
-                   CASE ii.item_type
-                       WHEN 'raw_material' THEN 'Raw material'
-                       WHEN 'finished_product' THEN 'Finished product'
-                   END AS item_type_label,
-                   ii.name AS item_name, ib.batch_code, ib.source_type,
-                   ib.quantity_received, ib.quantity_available, ib.unit,
-                   ib.received_date, ib.expiry_date, ib.quality_status
-            FROM inventory_batches ib
-            JOIN inventory_items ii ON ii.item_id = ib.item_id
-            WHERE ii.item_type = 'finished_product'
-            ORDER BY ib.batch_id DESC;
-        """))
+        return list_inventory_batches()
     elif name == "products":
-        return clean_row(fetch_all("""
-            SELECT p.item_id AS product_id, p.name, p.description, p.unit, p.base_price, p.is_active,
-                   p.category,
-                   (
-                       SELECT COUNT(*)
-                       FROM product_recipes pr
-                       JOIN inventory_items rm ON rm.item_id = pr.material_item_id
-                       WHERE pr.product_item_id = p.item_id
-                         AND rm.item_type = 'raw_material'
-                   ) AS recipe_count,
-                   COALESCE(SUM(pb.quantity_available) FILTER (
-                       WHERE pb.quality_status = 'approved'
-                         AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
-                   ), 0) AS available
-            FROM inventory_items p
-            LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
-            WHERE p.item_type = 'finished_product'
-            GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category
-            ORDER BY p.item_id;
-        """))
+        return list_products()
     elif name == "product_batches":
         return clean_row(fetch_all("""
             SELECT pb.batch_id AS product_batch_id, pb.item_id AS product_id, pb.batch_code, pb.source_type,
@@ -274,116 +456,24 @@ def __getattr__(name: str):
             ORDER BY pb.batch_id DESC;
         """))
     elif name == "raw_materials":
-        return clean_row(fetch_all("""
-            SELECT item_id AS raw_material_id, category, name, unit,
-                   quantity_available AS available
-            FROM inventory_items
-            WHERE item_type = 'raw_material'
-              AND is_active = true
-            ORDER BY category, name;
-        """))
+        return list_raw_materials()
     elif name == "product_recipes":
-        return clean_row(fetch_all("""
-            SELECT pr.recipe_id, pr.product_item_id AS product_id, p.name AS product_name,
-                   pr.material_item_id AS raw_material_id, rm.name AS raw_material_name,
-                   rm.category AS raw_material_category,
-                   pr.quantity_required, pr.unit
-            FROM product_recipes pr
-            JOIN inventory_items p ON p.item_id = pr.product_item_id
-            JOIN inventory_items rm ON rm.item_id = pr.material_item_id
-            WHERE p.item_type = 'finished_product'
-              AND rm.item_type = 'raw_material'
-            ORDER BY p.name, rm.category, rm.name;
-        """))
+        return list_product_recipes()
     elif name == "inquiries":
-        return clean_row(fetch_all("""
-            SELECT i.inquiry_id, i.name, i.contact_number, i.email, i.business_name, i.message, i.status,
-                   a.name AS assigned_to, i.created_at
-            FROM inquiries i
-            LEFT JOIN accounts a ON a.account_id = i.assigned_team_leader_account_id
-            ORDER BY i.inquiry_id DESC;
-        """))
+        return list_inquiries()
 
     elif name == "orders":
-        orders = fetch_all("""
-            SELECT o.order_id, o.order_type, o.reseller_id,
-                   COALESCE(r.business_name, 'Retail counter') AS reseller,
-                   o.status, o.order_date, o.total_amount, o.notes
-            FROM orders o
-            LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
-            ORDER BY o.order_id DESC;
-        """)
-        orders = clean_row(orders)
-        if orders:
-            items = fetch_all("""
-                SELECT oi.order_id, oi.product_id, p.name, oi.quantity, oi.unit_price, oi.line_total
-                FROM order_items oi
-                JOIN inventory_items p ON p.item_id = oi.product_id
-                WHERE p.item_type = 'finished_product';
-            """)
-            items = clean_row(items)
-            items_by_order = {}
-            for item in items:
-                order_id = item.pop("order_id")
-                items_by_order.setdefault(order_id, []).append(item)
-            for o in orders:
-                o["items"] = items_by_order.get(o["order_id"], [])
-        return orders
+        return list_orders()
     elif name == "sales_reports":
-        return clean_row(fetch_all("""
-            SELECT sr.sales_report_id, sr.report_source,
-                   COALESCE(a.name, 'System') AS submitted_by,
-                   sr.period_start, sr.period_end, sr.total_sales, sr.total_orders, sr.notes
-            FROM sales_reports sr
-            LEFT JOIN accounts a ON a.account_id = sr.submitted_by_account_id
-            ORDER BY sr.sales_report_id DESC;
-        """))
+        return list_sales_reports()
     elif name == "alerts":
-        return clean_row(fetch_all("""
-            SELECT al.alert_id, al.alert_type, al.severity, al.message, al.status, al.triggered_at,
-                   (CASE 
-                       WHEN al.product_batch_id IS NOT NULL THEN (SELECT p.name || ' batch ' || pb.batch_code FROM inventory_batches pb JOIN inventory_items p ON p.item_id = pb.item_id WHERE pb.batch_id = al.product_batch_id)
-                       WHEN al.product_id IS NOT NULL THEN (SELECT name FROM inventory_items WHERE item_id = al.product_id)
-                       WHEN al.raw_material_id IS NOT NULL THEN (SELECT name FROM inventory_items WHERE item_id = al.raw_material_id)
-                       ELSE 'System Alert'
-                    END) AS subject
-            FROM alerts al
-            ORDER BY al.alert_id DESC;
-        """))
+        return list_alerts()
     elif name == "forecasts":
-        return clean_row(fetch_all("""
-            SELECT fr.forecast_result_id, p.name AS product, fr.forecast_date, fr.predicted_quantity,
-                   ('85%% - 95%% range') AS confidence
-            FROM forecast_results fr
-            JOIN inventory_items p ON p.item_id = fr.product_id
-            WHERE p.item_type = 'finished_product'
-            ORDER BY fr.forecast_result_id DESC;
-        """))
+        return list_forecasts()
     elif name == "accounts":
-        return clean_row(fetch_all("""
-            SELECT a.account_id, a.account_type, a.name, a.email,
-                   (CASE WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status
-            FROM accounts a
-            ORDER BY a.account_id;
-        """))
+        return list_accounts()
     elif name == "activity_logs":
-        return clean_row(fetch_all("""
-            SELECT al.activity_log_id,
-                   COALESCE(a.name, 'MEATTRACK') AS actor,
-                   al.action,
-                   (CASE 
-                       WHEN al.entity_type = 'orders' THEN 'Order #' || al.entity_id
-                       WHEN al.entity_type = 'products' THEN (SELECT name FROM inventory_items WHERE item_id = al.entity_id)
-                       WHEN al.entity_type = 'sales_reports' THEN 'Report #' || al.entity_id
-                       WHEN al.entity_type = 'departments' THEN (SELECT department_name FROM departments WHERE department_id = al.entity_id)
-                       WHEN al.entity_type = 'forecast_runs' THEN 'Daily product demand'
-                       ELSE COALESCE(al.entity_type, 'System')
-                    END) AS entity,
-                   al.created_at
-            FROM activity_logs al
-            LEFT JOIN accounts a ON a.account_id = al.account_id
-            ORDER BY al.activity_log_id DESC;
-        """))
+        return list_activity_logs()
 
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
@@ -458,34 +548,44 @@ def authenticate_account(email: str, password: str) -> dict | None:
     return clean if clean["role_key"] else None
 
 def current_metrics() -> dict:
-    sales_res = fetch_one("SELECT COALESCE(SUM(total_amount), 0) AS val FROM orders WHERE status = 'fulfilled';")
-    fulfilled_sales = float(sales_res["val"])
-    
-    pending_res = fetch_one("SELECT COUNT(*) AS val FROM orders WHERE order_type = 'reseller' AND status = 'pending';")
-    pending_reseller_orders = int(pending_res["val"])
-    
-    alerts_res = fetch_one("SELECT COUNT(*) AS val FROM alerts WHERE status = 'open';")
-    open_alerts = int(alerts_res["val"])
-    
-    resellers_res = fetch_one("SELECT COUNT(*) AS val FROM resellers WHERE reseller_status = 'active';")
-    active_resellers = int(resellers_res["val"])
-    
-    available_res = fetch_one("""
-        SELECT COALESCE(SUM(ib.quantity_available), 0) AS val
-        FROM inventory_batches ib
-        JOIN inventory_items ii ON ii.item_id = ib.item_id
-        WHERE ii.item_type = 'finished_product'
-          AND ib.quality_status = 'approved'
-          AND (ib.expiry_date IS NULL OR ib.expiry_date >= CURRENT_DATE);
+    row = fetch_one("""
+        SELECT
+            COALESCE((
+                SELECT SUM(total_amount)
+                FROM orders
+                WHERE status = 'fulfilled'
+            ), 0) AS fulfilled_sales,
+            (
+                SELECT COUNT(*)
+                FROM orders
+                WHERE order_type = 'reseller' AND status = 'pending'
+            ) AS pending_reseller_orders,
+            (
+                SELECT COUNT(*)
+                FROM alerts
+                WHERE status = 'open'
+            ) AS open_alerts,
+            (
+                SELECT COUNT(*)
+                FROM resellers
+                WHERE reseller_status = 'active'
+            ) AS active_resellers,
+            COALESCE((
+                SELECT SUM(ib.quantity_available)
+                FROM inventory_batches ib
+                JOIN inventory_items ii ON ii.item_id = ib.item_id
+                WHERE ii.item_type = 'finished_product'
+                  AND ib.quality_status = 'approved'
+                  AND (ib.expiry_date IS NULL OR ib.expiry_date >= CURRENT_DATE)
+            ), 0) AS total_available;
     """)
-    total_available = float(available_res["val"])
-    
+
     return {
-        "fulfilled_sales": fulfilled_sales,
-        "pending_reseller_orders": pending_reseller_orders,
-        "open_alerts": open_alerts,
-        "active_resellers": active_resellers,
-        "total_available": total_available,
+        "fulfilled_sales": float(row["fulfilled_sales"]),
+        "pending_reseller_orders": int(row["pending_reseller_orders"]),
+        "open_alerts": int(row["open_alerts"]),
+        "active_resellers": int(row["active_resellers"]),
+        "total_available": float(row["total_available"]),
     }
 
 def add_log(actor_name: str, action: str, entity_name: str) -> None:

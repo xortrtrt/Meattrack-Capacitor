@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Legacy rollback importer; production pages now use Supabase Storage."""
+
 import hashlib
 import mimetypes
 import sys

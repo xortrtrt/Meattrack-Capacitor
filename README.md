@@ -37,11 +37,9 @@ If the database is empty or needs a reset, run:
 .venv\Scripts\python.exe tools\seed_database.py
 ```
 
-The seed script also imports every file from `app/static/img` into the PostgreSQL `media_assets` table. If you add or replace image files later without resetting the database, run:
-
-```powershell
-.venv\Scripts\python.exe tools\import_static_images.py
-```
+The seed script creates application records only. Images remain available from
+`app/static/img` locally and are uploaded separately to Supabase Storage for
+production.
 
 Then start FastAPI:
 
@@ -82,6 +80,28 @@ The importer replaces only MEATTRACK tables, verifies key row counts, and then
 enables RLS without public policies. That prevents Supabase anon/authenticated
 API keys from bypassing FastAPI's authentication and business rules. See
 `database/README.md` for details.
+
+## Supabase Storage Images
+
+Production product and branding images are served from a public Supabase Storage
+bucket rather than PostgreSQL. Run the idempotent uploader locally with a secret
+key from **Project Settings -> API Keys**:
+
+```powershell
+$env:SUPABASE_URL="https://PROJECT_REF.supabase.co"
+$env:SUPABASE_SECRET_KEY="YOUR_LOCAL_SECRET_KEY"
+.venv\Scripts\python.exe tools\migrate_images_to_storage.py
+```
+
+The tool creates or updates the public `meattrack-assets` bucket, restricts it to
+JPEG/PNG files up to 5 MB, uploads `app/static/img` under `images/`, and verifies
+every uploaded file by size and SHA-256. It is safe to run again. Never place
+`SUPABASE_SECRET_KEY` in Render, GitHub, Capacitor, templates, or browser code.
+
+Copy the printed public folder URL into `MEDIA_BASE_URL` on Render. When that
+variable is empty, the app falls back to `/static/img` for local development.
+The old `media_assets` table and `tools/import_static_images.py` are retained for
+one rollback release but are no longer used by page requests or database seeding.
 
 ## Capacitor Mobile App
 
@@ -143,11 +163,16 @@ Render, create a new Blueprint from this GitHub repository and supply these
 secret values when prompted:
 
 - `DATABASE_URL`: the Supabase Session pooler URL on port 5432;
+- `MEDIA_BASE_URL`: the public Supabase Storage `meattrack-assets/images` URL;
 - `OPENROUTER_API_KEY`: optional; leave empty to use the local chatbot fallback.
 
 Render generates `SESSION_SECRET_KEY` automatically. Once `/health` reports a
 connected database, use the service's `https://...onrender.com` URL as the
 `mobile_app_url` input to the Android build workflow.
+
+The service intentionally remains on Render's free instance type. It can spin
+down after inactivity, so the first request may still be slow; warm portal
+requests use section-specific database reads.
 
 ## Demo Logins
 
@@ -167,9 +192,23 @@ Passwords are stored in `accounts.password_hash`. The seed script stores PBKDF2 
 - Owner Portal: executive dashboard, product pricing, reports, forecasts, account management, audit logs.
 - Portal pages use `app/templates/portals/base.html` plus one role template per portal: `reseller.html`, `team_leader.html`, and `owner.html`.
 - CSS is split by surface: `public.css` for public pages, `login.css` for login, `portal_base.css` for shared portal layout, and `app/static/css/portals/` for role-specific portal overrides.
-- `app/repositories.py` reads and writes PostgreSQL data for the current UI flows.
-- Image assets are stored in PostgreSQL `media_assets` as binary data and served through `/media/{filename}`.
+- `app/repositories.py` reads and writes PostgreSQL data for the current UI flows; portal pages load only the datasets needed by their selected section.
+- Production images use the Supabase Storage public CDN. `/media/{filename}` remains as a compatibility redirect and performs no database query.
+- Rubik and Lucide are pinned, licensed, and served locally instead of loading from Google Fonts or Unpkg.
 - PostgreSQL schema lives in `database/schema.sql` and is intentionally simplified to the portal workflows currently implemented.
+
+## Tests
+
+Install the development dependencies and run the regression suite:
+
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest -q
+```
+
+The suite covers every portal role/section, exact data-loader selection,
+parameterized filters, the single-query dashboard metrics implementation,
+Storage upload verification, compatibility redirects, and local asset caching.
 
 ## Chatbot Configuration
 

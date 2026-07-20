@@ -6,19 +6,30 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, Form, HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import repositories as data
 from app.chatbot import ask_chatbot
-from app.config import APP_ENV, SESSION_SECRET_KEY
+from app.config import APP_ENV, MEDIA_BASE_URL, SESSION_SECRET_KEY
 
 
 BASE_DIR = Path(__file__).resolve().parent
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-MEDIA_FILENAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+MEDIA_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+class CachedStaticFiles(StaticFiles):
+    """Give versioned local dependencies a long-lived browser cache."""
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        normalized_path = path.lstrip("/\\").replace("\\", "/")
+        if response.status_code == 200 and normalized_path.startswith(("fonts/", "vendor/")):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
 
 app = FastAPI(title="MEATTRACK", version="0.1.0")
 app.add_middleware(
@@ -27,7 +38,7 @@ app.add_middleware(
     same_site="lax",
     https_only=APP_ENV == "production",
 )
-app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+app.mount("/static", CachedStaticFiles(directory=BASE_DIR / "static"), name="static")
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
@@ -95,7 +106,10 @@ def product_image(value: str) -> str:
 
 
 def media_url(filename: str) -> str:
-    return f"/media/{quote(filename)}"
+    encoded = quote(filename, safe="")
+    if MEDIA_BASE_URL:
+        return f"{MEDIA_BASE_URL}/{encoded}"
+    return f"/static/img/{encoded}"
 
 
 templates.env.filters["currency"] = currency
@@ -109,6 +123,91 @@ PORTAL_TEMPLATES = {
     "team-leader": "portals/team_leader.html",
     "reseller": "portals/reseller.html",
 }
+
+
+def _owner_dashboard_context() -> dict:
+    return {
+        "metrics": data.current_metrics(),
+        "products": data.list_products(),
+        "alerts": data.list_alerts(),
+    }
+
+
+def _team_dashboard_context() -> dict:
+    return {
+        "metrics": data.current_metrics(),
+        "alerts": data.list_alerts(),
+        "inquiries": data.list_inquiries(limit=4),
+    }
+
+
+def _team_inventory_context() -> dict:
+    return {
+        "products": data.list_products(),
+        "inventory_items": data.list_inventory_items(),
+        "inventory_batches": data.list_inventory_batches(),
+        "raw_materials": data.list_raw_materials(),
+        "product_recipes": data.list_product_recipes(),
+        "alerts": data.list_alerts(),
+        "raw_material_categories": data.raw_material_categories,
+        "product_categories": data.product_categories,
+        "stock_units": data.stock_units,
+        "content_units": data.content_units,
+        "recipe_units": data.recipe_units,
+    }
+
+
+PORTAL_SECTION_LOADERS = {
+    ("owner", "dashboard"): _owner_dashboard_context,
+    ("owner", "products"): lambda: {"products": data.list_products()},
+    ("owner", "reports"): lambda: {"sales_reports": data.list_sales_reports()},
+    ("owner", "forecasts"): lambda: {"forecasts": data.list_forecasts(limit=10)},
+    ("owner", "accounts"): lambda: {"accounts": data.list_accounts()},
+    ("owner", "logs"): lambda: {"activity_logs": data.list_activity_logs()},
+    ("team-leader", "dashboard"): _team_dashboard_context,
+    ("team-leader", "sales"): lambda: {
+        "products": data.list_products(),
+        "orders": data.list_orders(order_type="walk_in"),
+    },
+    ("team-leader", "inventory"): _team_inventory_context,
+    ("team-leader", "inquiries"): lambda: {"inquiries": data.list_inquiries()},
+    ("team-leader", "orders"): lambda: {"orders": data.list_orders(order_type="reseller")},
+    ("team-leader", "reports"): lambda: {
+        "sales_reports": data.list_sales_reports(report_source="team_leader"),
+        "team_report_sales": data.team_sales_report_entries(),
+        "team_rejected_orders": data.team_rejected_order_entries(),
+    },
+    ("reseller", "dashboard"): lambda: {
+        "metrics": data.current_metrics(),
+        "products": data.list_products(),
+        "orders": data.list_orders(order_type="reseller"),
+        "sales_reports": data.list_sales_reports(report_source="reseller", limit=1),
+    },
+    ("reseller", "order"): lambda: {"products": data.list_products()},
+    ("reseller", "history"): lambda: {"orders": data.list_orders(order_type="reseller")},
+    ("reseller", "reports"): lambda: {
+        "sales_reports": data.list_sales_reports(report_source="reseller")
+    },
+}
+
+
+def portal_section_context(role_key: str, section: str, request: Request) -> dict:
+    context = PORTAL_SECTION_LOADERS[(role_key, section)]()
+    products = context.get("products", [])
+    if products:
+        selected_product = products[0]
+        requested_product_id = request.query_params.get("product_id")
+        if requested_product_id:
+            try:
+                product_id = int(requested_product_id)
+            except ValueError:
+                product_id = None
+            selected_product = next(
+                (product for product in products if product["product_id"] == product_id),
+                selected_product,
+            )
+        context["selected_product"] = selected_product
+    return context
 
 
 @app.get("/health", include_in_schema=False)
@@ -173,16 +272,10 @@ def path_with_query(path: str, **params: str) -> str:
 async def media_asset(filename: str):
     if not MEDIA_FILENAME_RE.match(filename):
         raise HTTPException(status_code=404)
-    asset = data.media_asset_by_filename(filename)
-    if asset is None:
-        raise HTTPException(status_code=404)
-    return Response(
-        content=asset["content"],
-        media_type=asset["content_type"],
-        headers={
-            "Cache-Control": "public, max-age=3600",
-            "Content-Length": str(asset["size_bytes"]),
-        },
+    return RedirectResponse(
+        media_url(filename),
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        headers={"Cache-Control": "public, max-age=3600"},
     )
 
 
@@ -201,8 +294,7 @@ async def landing(request: Request, message: str = "", error: str = ""):
             "request": request,
             "message": message,
             "error": error,
-            "products": data.products,
-            "metrics": data.current_metrics(),
+            "products": data.list_products(),
         },
     )
 
@@ -214,7 +306,7 @@ async def products(request: Request):
         "products.html",
         {
             "request": request,
-            "products": data.products,
+            "products": data.list_products(),
         },
     )
 
@@ -341,50 +433,22 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
     if section not in nav_sections:
         raise HTTPException(status_code=404)
 
-    products = data.products
-    selected_product = products[0] if products else None
-    if products and request.query_params.get("product_id"):
-        selected_product_id = int(request.query_params["product_id"])
-        selected_product = data.product_by_id(selected_product_id) or products[0]
+    context = {
+        "request": request,
+        "role_key": role_key,
+        "role": data.roles[role_key],
+        "nav": data.portal_nav[role_key],
+        "section": section,
+        "section_title": nav_sections[section][1],
+        "message": message,
+        "error": error,
+    }
+    context.update(portal_section_context(role_key, section, request))
 
     return templates.TemplateResponse(
         request,
         PORTAL_TEMPLATES[role_key],
-        {
-            "request": request,
-            "role_key": role_key,
-            "role": data.roles[role_key],
-            "nav": data.portal_nav[role_key],
-            "section": section,
-            "section_title": nav_sections[section][1],
-            "message": message,
-            "error": error,
-            "metrics": data.current_metrics(),
-            "departments": data.departments,
-            "resellers": data.resellers,
-            "products": products,
-            "selected_product": selected_product,
-            "inventory_items": data.inventory_items,
-            "inventory_batches": data.inventory_batches,
-            "product_batches": data.product_batches,
-            "raw_materials": data.raw_materials,
-            "raw_material_categories": data.raw_material_categories,
-            "product_categories": data.product_categories,
-            "stock_units": data.stock_units,
-            "content_units": data.content_units,
-            "recipe_units": data.recipe_units,
-            "product_recipes": data.product_recipes,
-            "inquiries": data.inquiries,
-            "orders": data.orders,
-            "sales_reports": data.sales_reports,
-            "team_report_sales": data.team_sales_report_entries() if role_key == "team-leader" and section == "reports" else [],
-            "team_rejected_orders": data.team_rejected_order_entries() if role_key == "team-leader" and section == "reports" else [],
-            "alerts": data.alerts,
-            "forecasts": data.forecasts,
-            "accounts": data.accounts,
-            "activity_logs": data.activity_logs,
-            "today": data.today,
-        },
+        context,
     )
 
 
