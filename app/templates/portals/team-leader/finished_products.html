@@ -1,0 +1,14 @@
+<section class="panel inventory-items-browser">
+  <div class="panel-heading">
+    <h2>Finished products inventory</h2>
+    <span class="hint">Sellable products, stock levels, prices, and active status.</span>
+  </div>
+  <form class="filter-bar" method="get">
+    <label>Search <input name="q" value="{{ inventory_products_page.filters.q }}" placeholder="Product, category, unit"></label>
+    {% if inventory_products_page.filters.type %}
+    <input type="hidden" name="type" value="{{ inventory_products_page.filters.type }}">
+    {% endif %}
+    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+  </form>
+  {% include "portals/team-leader/_inventory_products.html" %}
+</section>

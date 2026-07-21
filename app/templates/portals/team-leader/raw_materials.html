@@ -1,0 +1,47 @@
+<section class="panel inventory-items-browser">
+  <div class="panel-heading">
+    <h2>Raw materials inventory</h2>
+    <span class="hint">Ingredients and supplies used for production.</span>
+  </div>
+  <form class="filter-bar" method="get">
+    <label>Search <input name="q" value="{{ raw_materials_page.filters.q }}" placeholder="Raw material, category, unit"></label>
+    {% if raw_materials_page.filters.type %}
+    <input type="hidden" name="type" value="{{ raw_materials_page.filters.type }}">
+    {% endif %}
+    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+  </form>
+  <nav class="portal-category-tabs" aria-label="Raw material categories">
+    {% for tab in raw_material_tabs %}
+    <a
+      class="{{ 'active' if raw_materials_page.filters.type == tab.value else '' }}"
+      href="/portal/team-leader/raw-materials?type={{ tab.value|urlencode }}{% if raw_materials_page.filters.q %}&q={{ raw_materials_page.filters.q|urlencode }}{% endif %}&page=1"
+    >{{ tab.label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="table-wrap">
+    <table class="responsive-card-table compact-table">
+      <thead><tr><th>Category</th><th>Item</th><th>Available</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for item in raw_items %}
+      <tr>
+        <td data-label="Category">{{ item.category.replace("_", " ")|title }}</td>
+        <td data-label="Item">{{ item.name }}</td>
+        <td data-label="Available">{{ item.available|number }} {{ item.unit }}</td>
+        <td data-label="Status"><span class="status-badge {{ 'active' if item.is_active else 'absent' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">No raw materials found for this filter.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    {% if raw_materials_page.pagination.has_prev %}
+    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&page={{ raw_materials_page.pagination.page - 1 }}">Previous</a>
+    {% endif %}
+    <span>Page {{ raw_materials_page.pagination.page }} of {{ raw_materials_page.pagination.total_pages }}</span>
+    {% if raw_materials_page.pagination.has_next %}
+    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&page={{ raw_materials_page.pagination.page + 1 }}">Next</a>
+    {% endif %}
+  </div>
+</section>

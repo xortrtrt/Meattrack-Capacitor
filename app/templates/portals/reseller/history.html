@@ -6,7 +6,7 @@
     >
   </div>
   <div class="table-wrap">
-    <table>
+    <table class="responsive-card-table order-history-table">
       <thead>
         <tr>
           <th>Order</th>
@@ -14,15 +14,15 @@
           <th>Product</th>
           <th>Status</th>
           <th>Total</th>
-          <th>Notes</th>
+          <th>Proof of payment</th>
         </tr>
       </thead>
       <tbody>
         {% for order in orders if order.order_type == "reseller" %}
         <tr>
-          <td>#{{ order.order_id }}</td>
-          <td>{{ order.order_date|nice_date }}</td>
-          <td>
+          <td data-label="Order">#{{ order.order_id }}</td>
+          <td data-label="Date">{{ order.order_date|nice_date }}</td>
+          <td data-label="Product">
             {% if order["items"] %}
               {% for item in order["items"] %}
                 {{ item.quantity|number }} packs {{ item.name }}{% if not loop.last %}<br />{% endif %}
@@ -31,16 +31,62 @@
               <span class="hint">No items recorded</span>
             {% endif %}
           </td>
-          <td>
+          <td data-label="Status">
             <span class="status-badge {{ order.status }}"
               >{{ order.status }}</span
             >
           </td>
-          <td>{{ order.total_amount|currency }}</td>
-          <td>{{ order.notes }}</td>
+          <td data-label="Total">{{ order.total_amount|currency }}</td>
+          <td data-label="Proof of payment">
+            <div class="payment-proof-cell">
+              {% if order.payment_proofs %}
+                <div class="proof-links">
+                  {% for proof in order.payment_proofs %}
+                  <a
+                    href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
+                    data-proof-modal-open
+                    data-proof-url="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
+                    data-proof-title="{{ proof.filename }}"
+                  >
+                    <i data-lucide="image"></i>
+                    {{ proof.filename }}
+                  </a>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="status-badge pending">Required</span>
+              {% endif %}
+              {% if order.status == "pending" %}
+              <form
+                class="proof-upload-form"
+                action="/portal/reseller/orders/{{ order.order_id }}/payment-proof"
+                method="post"
+                enctype="multipart/form-data"
+              >
+                <label>
+                  Upload screenshot
+                  <input required type="file" name="payment_proofs" accept="image/png,image/jpeg,image/webp" multiple />
+                </label>
+                <button class="button subtle small" type="submit">
+                  <i data-lucide="upload"></i>
+                  Send proof
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  <div class="pagination">
+    {% if orders_page.pagination.has_prev %}
+    <a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&page={{ orders_page.pagination.page - 1 }}">Previous</a>
+    {% endif %}
+    <span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>
+    {% if orders_page.pagination.has_next %}
+    <a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next</a>
+    {% endif %}
   </div>
 </section>

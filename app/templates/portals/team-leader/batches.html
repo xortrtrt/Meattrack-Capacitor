@@ -1,0 +1,50 @@
+<section class="panel">
+  <div class="panel-heading">
+    <h2>Finished product batches</h2>
+    <span class="hint">Search and review produced batches by product category.</span>
+  </div>
+  <form class="filter-bar" method="get">
+    <label>Search <input name="q" value="{{ inventory_batches_page.filters.q }}" placeholder="Batch, product, source"></label>
+    {% if inventory_batches_page.filters.type %}
+    <input type="hidden" name="type" value="{{ inventory_batches_page.filters.type }}">
+    {% endif %}
+    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+  </form>
+  <nav class="portal-category-tabs" aria-label="Product batch categories">
+    <a class="{{ 'active' if not inventory_batches_page.filters.type else '' }}" href="?{% if inventory_batches_page.filters.q %}q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}">All</a>
+    {% for category in product_categories %}
+    <a
+      class="{{ 'active' if inventory_batches_page.filters.type == category else '' }}"
+      href="?type={{ category|urlencode }}{% if inventory_batches_page.filters.q %}&q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}"
+    >{{ category }}</a>
+    {% endfor %}
+  </nav>
+  <div class="table-wrap">
+    <table class="responsive-card-table">
+      <thead><tr><th>Batch</th><th>Product</th><th>Category</th><th>Available</th><th>Expiry</th><th>Source</th></tr></thead>
+      <tbody>
+      {% for batch in inventory_batches %}
+      <tr>
+        <td data-label="Batch">{{ batch.batch_code }}</td>
+        <td data-label="Product">{{ batch.item_name }}</td>
+        <td data-label="Category">{{ batch.category }}</td>
+        <td data-label="Available">{{ batch.quantity_available|number }} {{ batch.unit }}</td>
+        <td data-label="Expiry">{{ batch.expiry_date|nice_date }}</td>
+        <td data-label="Source"><span class="status-badge {{ batch.source_type }}">{{ batch.source_type.replace("_", " ") }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">No finished product batches found.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    {% if inventory_batches_page.pagination.has_prev %}
+    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&page={{ inventory_batches_page.pagination.page - 1 }}">Previous</a>
+    {% endif %}
+    <span>Page {{ inventory_batches_page.pagination.page }} of {{ inventory_batches_page.pagination.total_pages }}</span>
+    {% if inventory_batches_page.pagination.has_next %}
+    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&page={{ inventory_batches_page.pagination.page + 1 }}">Next</a>
+    {% endif %}
+  </div>
+</section>

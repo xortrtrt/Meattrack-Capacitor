@@ -9,11 +9,11 @@
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260721-sticky-drawer-1"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260721-inventory-pages-1"
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260721-card-rows-mobile-2"
+      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260721-inventory-product-cards-1"
     />
   </head>
   <body class="portal-body role-{{ role_key }}">
@@ -137,14 +137,79 @@
         </div>
       </header>
 
-      {% if message or error %}
-      <aside class="notice {{ 'error' if error else 'success' }}">
-        {{ error or message }}
-      </aside>
-      {% endif %} {% block portal_content %}{% endblock %}
+      <div class="toast-region" aria-live="polite" aria-atomic="true" data-toast-region>
+        {% if message or error %}
+        <article class="toast {{ 'error' if error else 'success' }}" data-toast>
+          <span class="toast-icon">
+            <i data-lucide="{{ 'circle-alert' if error else 'circle-check' }}"></i>
+          </span>
+          <div class="toast-copy">
+            <strong>{{ 'Action needed' if error else 'Success' }}</strong>
+            <p>{{ error or message }}</p>
+          </div>
+          <button class="toast-close" type="button" aria-label="Close notification" data-toast-close>
+            <i data-lucide="x"></i>
+          </button>
+        </article>
+        {% endif %}
+        {% if credential_flash %}
+        <article class="toast warning persistent" data-toast data-toast-persistent="true">
+          <span class="toast-icon">
+            <i data-lucide="key-round"></i>
+          </span>
+          <div class="toast-copy">
+            <strong>One-time reseller credentials</strong>
+            <p>Email to send manually: {{ credential_flash.email }}</p>
+            <p>Temporary password: <code>{{ credential_flash.temporary_password }}</code></p>
+            <small>{{ credential_flash.reason }}</small>
+          </div>
+          <button class="toast-close" type="button" aria-label="Close notification" data-toast-close>
+            <i data-lucide="x"></i>
+          </button>
+        </article>
+        {% endif %}
+      </div>
+      {% block portal_content %}{% endblock %}
     </main>
 
+    <div class="proof-modal" data-proof-modal hidden>
+      <button
+        class="proof-modal-backdrop"
+        type="button"
+        aria-label="Close proof preview"
+        data-proof-modal-close
+      ></button>
+      <section
+        class="proof-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="proof-modal-title"
+      >
+        <div class="proof-modal-head">
+          <div>
+            <span class="eyebrow">Proof of payment</span>
+            <h2 id="proof-modal-title" data-proof-modal-title>Payment screenshot</h2>
+          </div>
+          <button class="icon-button" type="button" aria-label="Close proof preview" data-proof-modal-close>
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="proof-modal-body">
+          <button class="proof-modal-image-button" type="button" aria-label="View proof image fullscreen" data-proof-fullscreen-toggle>
+            <img src="" alt="" data-proof-modal-image />
+          </button>
+        </div>
+        <div class="proof-modal-footer">
+          <a class="button subtle proof-modal-link" href="#" target="_blank" rel="noopener" data-proof-modal-link>
+            <i data-lucide="external-link"></i>
+            Open image in new tab
+          </a>
+        </div>
+      </section>
+    </div>
+
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260721-product-modal-1"></script>
+    <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260721-inventory-products-1"></script>
   </body>
 </html>

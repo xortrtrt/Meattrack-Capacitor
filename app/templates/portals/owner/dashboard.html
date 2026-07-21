@@ -20,9 +20,8 @@
                 <article class="metric-card"><span>Fulfilled sales</span><strong>{{ metrics.fulfilled_sales|currency }}</strong><small>Recorded transactions</small></article>
                 <article class="metric-card"><span>Active resellers</span><strong>{{ metrics.active_resellers }}</strong><small>Approved external accounts</small></article>
                 <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }} packs</strong><small>Approved available products</small></article>
-                <article class="metric-card"><span>Open alerts</span><strong>{{ metrics.open_alerts }}</strong><small>Needs attention</small></article>
             </section>
-            <section class="content-grid two">
+            <section class="content-grid">
                 <article class="panel">
                     <h2>Sales and stock pulse</h2>
                     <div class="bar-list">
@@ -34,9 +33,5 @@
                         </div>
                         {% endfor %}
                     </div>
-                </article>
-                <article class="panel">
-                    <h2>Management exceptions</h2>
-                    <div class="stack-list">{% for alert in alerts %}<div class="stack-item alert {{ alert.severity }}"><strong>{{ alert.subject }}</strong><span>{{ alert.message }}</span><span class="status-badge {{ alert.status }}">{{ alert.status }}</span></div>{% endfor %}</div>
                 </article>
             </section>

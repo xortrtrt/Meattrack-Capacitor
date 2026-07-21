@@ -1,0 +1,52 @@
+<section class="inventory-separated-section" data-inventory-products-region>
+  <div class="panel-heading">
+    <h3>Finished products</h3>
+    <span class="hint">Sellable products displayed as product cards.</span>
+  </div>
+  <nav class="portal-category-tabs" aria-label="Finished product categories">
+    {% for tab in inventory_item_tabs %}
+    <a
+      class="{{ 'active' if inventory_products_page.filters.type == tab.value else '' }}"
+      href="/portal/team-leader/finished-products?type={{ tab.value|urlencode }}{% if inventory_products_page.filters.q %}&q={{ inventory_products_page.filters.q|urlencode }}{% endif %}&page=1"
+      data-inventory-products-link
+      data-partial-url="/portal/team-leader/finished-products/products?type={{ tab.value|urlencode }}{% if inventory_products_page.filters.q %}&q={{ inventory_products_page.filters.q|urlencode }}{% endif %}&page=1"
+    >{{ tab.label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="inventory-products-status" data-inventory-products-status aria-live="polite"></div>
+  <div class="inventory-product-card-grid">
+    {% for product in finished_products %}
+    <article class="inventory-product-card">
+      <span class="inventory-product-image">
+        <img src="{{ product.name|product_image|media_url }}" alt="{{ product.name }}" loading="lazy">
+      </span>
+      <div class="inventory-product-card-copy">
+        <span class="reseller-product-category">{{ product.category }}</span>
+        <h3>{{ product.name }}</h3>
+        <strong>{{ product.available|number }} {{ product.unit }} available</strong>
+        <small>{{ product.base_price|currency }}/{{ product.unit }}</small>
+        <span class="status-badge {{ 'active' if product.is_active else 'absent' }}">{{ 'Active' if product.is_active else 'Inactive' }}</span>
+      </div>
+    </article>
+    {% else %}
+    <p class="hint">No finished products found for this filter.</p>
+    {% endfor %}
+  </div>
+  <div class="pagination" data-inventory-products-pagination>
+    {% if inventory_products_page.pagination.has_prev %}
+    <a
+      href="/portal/team-leader/finished-products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page - 1 }}"
+      data-inventory-products-link
+      data-partial-url="/portal/team-leader/finished-products/products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page - 1 }}"
+    >Previous</a>
+    {% endif %}
+    <span>Page {{ inventory_products_page.pagination.page }} of {{ inventory_products_page.pagination.total_pages }}</span>
+    {% if inventory_products_page.pagination.has_next %}
+    <a
+      href="/portal/team-leader/finished-products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page + 1 }}"
+      data-inventory-products-link
+      data-partial-url="/portal/team-leader/finished-products/products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page + 1 }}"
+    >Next</a>
+    {% endif %}
+  </div>
+</section>

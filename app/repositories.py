@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import secrets
 
 from app.database import fetch_all, fetch_one, execute_write, clean_row, get_transaction_cursor
-from app.config import DEFAULT_ACCOUNT_PASSWORD, RESELLER_PASSWORD
+from app.config import DEFAULT_ACCOUNT_PASSWORD
 from app.security import hash_password, password_needs_rehash, verify_password
 
 today = date.today()
@@ -96,11 +96,34 @@ SYSTEM_TABLES_READY = False
 SYSTEM_TABLES_SQL = """
 ALTER TABLE accounts
     ADD COLUMN IF NOT EXISTS auth_user_id uuid,
-    ADD COLUMN IF NOT EXISTS auth_provider text;
+    ADD COLUMN IF NOT EXISTS auth_provider text,
+    ADD COLUMN IF NOT EXISTS team_leader_role text;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'accounts_team_leader_role_check'
+    ) THEN
+        ALTER TABLE accounts
+            ADD CONSTRAINT accounts_team_leader_role_check
+            CHECK (team_leader_role IS NULL OR team_leader_role IN ('inventory', 'sales'));
+    END IF;
+END $$;
+
+UPDATE accounts
+SET team_leader_role = 'inventory'
+WHERE account_type = 'team_leader'
+  AND team_leader_role IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_auth_user_id
     ON accounts (auth_user_id)
     WHERE auth_user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS ix_accounts_team_leader_role
+    ON accounts (team_leader_role)
+    WHERE account_type = 'team_leader';
 
 ALTER TABLE resellers
     ADD COLUMN IF NOT EXISTS team_leader_account_id bigint;
@@ -130,6 +153,7 @@ SET team_leader_account_id = (
     FROM accounts
     WHERE account_type = 'team_leader'
       AND is_active = true
+      AND team_leader_role = 'sales'
     ORDER BY account_id
     LIMIT 1
 )
@@ -139,6 +163,7 @@ WHERE team_leader_account_id IS NULL
       FROM accounts
       WHERE account_type = 'team_leader'
         AND is_active = true
+        AND team_leader_role = 'sales'
   );
 
 CREATE TABLE IF NOT EXISTS user_consents (
@@ -216,6 +241,27 @@ CREATE INDEX IF NOT EXISTS ix_sales_report_items_product
     ON sales_report_items (product_id);
 
 ALTER TABLE sales_report_items ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS order_payment_proofs (
+    order_payment_proof_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id bigint NOT NULL REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    uploaded_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    filename text NOT NULL,
+    content_type text NOT NULL,
+    content bytea NOT NULL,
+    size_bytes integer NOT NULL CHECK (size_bytes >= 0 AND size_bytes <= 5242880),
+    checksum_sha256 text NOT NULL,
+    uploaded_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(filename) <> ''),
+    CHECK (filename !~ '[\\/]'),
+    CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+    CHECK (length(checksum_sha256) = 64)
+);
+
+CREATE INDEX IF NOT EXISTS ix_order_payment_proofs_order
+    ON order_payment_proofs (order_id, uploaded_at DESC);
+
+ALTER TABLE order_payment_proofs ENABLE ROW LEVEL SECURITY;
 
 CREATE TABLE IF NOT EXISTS sales_report_attachments (
     sales_report_attachment_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -308,8 +354,8 @@ roles = {
     "team-leader": {
         "label": "Team Leader",
         "account_type": "team_leader",
-        "name": "Maria Santos",
-        "email": "leader@batangaspremium.test",
+        "name": "Team Leader",
+        "email": "team.leader@batangaspremium.test",
         "default_section": "dashboard",
     },
     "reseller": {
@@ -321,13 +367,18 @@ roles = {
     },
 }
 
+team_leader_role_labels = {
+    "inventory": "Inventory Team Leader",
+    "sales": "Sales Team Leader",
+}
+
 portal_nav = {
     "reseller": [
         ("dashboard", "Dashboard", "layout-dashboard"),
         ("order", "Products", "shopping-basket"),
         ("cart", "Cart", "shopping-cart"),
         ("history", "Order History", "clipboard-list"),
-        ("reports", "Sales Reports", "file-up"),
+        ("profile", "Profile", "user-cog"),
     ],
     "team-leader": [
         ("dashboard", "Dashboard", "layout-dashboard"),
@@ -347,10 +398,67 @@ portal_nav = {
     ],
 }
 
+team_leader_nav_by_role = {
+    "inventory": [
+        ("dashboard", "Dashboard", "layout-dashboard"),
+        ("inventory", "Inventory", "boxes"),
+        ("raw-materials", "Raw Materials", "beef"),
+        ("finished-products", "Finished Products", "package-search"),
+        ("batches", "Product Batches", "package-check"),
+        ("logs", "Inventory Logs", "scroll-text"),
+    ],
+    "sales": [
+        ("dashboard", "Dashboard", "layout-dashboard"),
+        ("inquiries", "Inquiries", "user-check"),
+        ("orders", "Reseller Orders", "clipboard-check"),
+        ("reports", "Reports", "file-text"),
+    ],
+}
+
+
+def portal_nav_for(role_key: str, team_leader_role: str | None = None) -> list[tuple[str, str, str]]:
+    if role_key == "team-leader":
+        return team_leader_nav_by_role.get(team_leader_role or "sales", team_leader_nav_by_role["sales"])
+    return portal_nav[role_key]
+
+
+def default_section_for(role_key: str, team_leader_role: str | None = None) -> str:
+    nav = portal_nav_for(role_key, team_leader_role)
+    return nav[0][0] if nav else roles[role_key]["default_section"]
+
 
 # ----------------- Explicit read operations -----------------
 
-def list_inventory_items() -> list[dict]:
+def inventory_item_filter(category: str) -> tuple[str, str]:
+    raw = (category or "").strip()
+    if ":" in raw:
+        item_type, item_category = raw.split(":", 1)
+        if item_type in {"raw_material", "finished_product"}:
+            return item_type, item_category.strip().replace("_", " ")
+    if raw in {"raw_material", "finished_product"}:
+        return raw, ""
+    return "", raw.replace("_", " ")
+
+
+def list_inventory_items(q: str = "", category: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+    where = ["ii.item_type IN ('raw_material', 'finished_product')"]
+    params: list[object] = []
+    q = q.strip()
+    item_type, item_category = inventory_item_filter(category)
+    if q:
+        where.append("(ii.name ILIKE %s OR ii.category ILIKE %s OR ii.unit ILIKE %s)")
+        search = f"%{q}%"
+        params.extend([search, search, search])
+    if item_type:
+        where.append("ii.item_type = %s")
+        params.append(item_type)
+    if item_category:
+        where.append("LOWER(ii.category) = LOWER(%s)")
+        params.append(item_category)
+    paging_sql = ""
+    if page is not None:
+        paging_sql = " LIMIT %s OFFSET %s"
+        params.extend([page_size, (page - 1) * page_size])
     return clean_row(fetch_all("""
         SELECT ii.item_id, ii.item_type,
                CASE ii.item_type
@@ -367,28 +475,89 @@ def list_inventory_items() -> list[dict]:
                END AS available
         FROM inventory_items ii
         LEFT JOIN inventory_batches ib ON ib.item_id = ii.item_id
-        WHERE ii.item_type IN ('raw_material', 'finished_product')
+        WHERE {where_sql}
         GROUP BY ii.item_id, ii.item_type, ii.category, ii.name, ii.unit,
                  ii.base_price, ii.quantity_available, ii.is_active
-        ORDER BY CASE ii.item_type WHEN 'raw_material' THEN 1 ELSE 2 END, ii.name;
-    """))
+        ORDER BY CASE ii.item_type WHEN 'raw_material' THEN 1 ELSE 2 END, ii.category, ii.name
+        {paging_sql};
+    """.format(where_sql=" AND ".join(where), paging_sql=paging_sql), tuple(params) or None))
 
 
-def list_inventory_batches() -> list[dict]:
+def count_inventory_items(q: str = "", category: str = "") -> int:
+    where = ["ii.item_type IN ('raw_material', 'finished_product')"]
+    params: list[object] = []
+    q = q.strip()
+    item_type, item_category = inventory_item_filter(category)
+    if q:
+        where.append("(ii.name ILIKE %s OR ii.category ILIKE %s OR ii.unit ILIKE %s)")
+        search = f"%{q}%"
+        params.extend([search, search, search])
+    if item_type:
+        where.append("ii.item_type = %s")
+        params.append(item_type)
+    if item_category:
+        where.append("LOWER(ii.category) = LOWER(%s)")
+        params.append(item_category)
+    row = fetch_one(f"""
+        SELECT COUNT(*) AS total
+        FROM inventory_items ii
+        WHERE {" AND ".join(where)};
+    """, tuple(params) or None)
+    return int(row["total"])
+
+
+def list_inventory_batches(q: str = "", category: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+    where = ["ii.item_type = 'finished_product'"]
+    params: list[object] = []
+    q = q.strip()
+    category = category.strip()
+    if q:
+        where.append("(ib.batch_code ILIKE %s OR ii.name ILIKE %s OR ib.source_type ILIKE %s)")
+        search = f"%{q}%"
+        params.extend([search, search, search])
+    if category:
+        where.append("ii.category = %s")
+        params.append(category)
+    paging_sql = ""
+    if page is not None:
+        paging_sql = " LIMIT %s OFFSET %s"
+        params.extend([page_size, (page - 1) * page_size])
     return clean_row(fetch_all("""
         SELECT ib.batch_id, ib.item_id, ii.item_type,
                CASE ii.item_type
                    WHEN 'raw_material' THEN 'Raw material'
                    WHEN 'finished_product' THEN 'Finished product'
                END AS item_type_label,
-               ii.name AS item_name, ib.batch_code, ib.source_type,
+               ii.name AS item_name, ii.category, ib.batch_code, ib.source_type,
                ib.quantity_received, ib.quantity_available, ib.unit,
                ib.received_date, ib.expiry_date, ib.quality_status
         FROM inventory_batches ib
         JOIN inventory_items ii ON ii.item_id = ib.item_id
-        WHERE ii.item_type = 'finished_product'
-        ORDER BY ib.batch_id DESC;
-    """))
+        WHERE {where_sql}
+        ORDER BY ib.batch_id DESC
+        {paging_sql};
+    """.format(where_sql=" AND ".join(where), paging_sql=paging_sql), tuple(params) or None))
+
+
+def count_inventory_batches(q: str = "", category: str = "") -> int:
+    where = ["ii.item_type = 'finished_product'"]
+    params: list[object] = []
+    q = q.strip()
+    category = category.strip()
+    if q:
+        where.append("(ib.batch_code ILIKE %s OR ii.name ILIKE %s OR ib.source_type ILIKE %s)")
+        search = f"%{q}%"
+        params.extend([search, search, search])
+    if category:
+        where.append("ii.category = %s")
+        params.append(category)
+    row = fetch_one(f"""
+        SELECT COUNT(*) AS total
+        FROM inventory_batches ib
+        JOIN inventory_items ii ON ii.item_id = ib.item_id
+        WHERE {" AND ".join(where)};
+    """, tuple(params) or None)
+    return int(row["total"])
 
 
 def list_products(q: str = "", category: str = "", page: int | None = None, page_size: int = 12) -> list[dict]:
@@ -463,8 +632,20 @@ def list_raw_materials() -> list[dict]:
     """))
 
 
-def list_product_recipes() -> list[dict]:
-    return clean_row(fetch_all("""
+def list_product_recipes(product_ids: list[int] | None = None) -> list[dict]:
+    where = [
+        "p.item_type = 'finished_product'",
+        "rm.item_type = 'raw_material'",
+    ]
+    params: list[object] = []
+    if product_ids is not None:
+        scoped_product_ids = [int(product_id) for product_id in product_ids]
+        if not scoped_product_ids:
+            return []
+        where.append("pr.product_item_id = ANY(%s)")
+        params.append(scoped_product_ids)
+
+    return clean_row(fetch_all(f"""
         SELECT pr.recipe_id, pr.product_item_id AS product_id, p.name AS product_name,
                pr.material_item_id AS raw_material_id, rm.name AS raw_material_name,
                rm.category AS raw_material_category,
@@ -472,10 +653,9 @@ def list_product_recipes() -> list[dict]:
         FROM product_recipes pr
         JOIN inventory_items p ON p.item_id = pr.product_item_id
         JOIN inventory_items rm ON rm.item_id = pr.material_item_id
-        WHERE p.item_type = 'finished_product'
-          AND rm.item_type = 'raw_material'
+        WHERE {" AND ".join(where)}
         ORDER BY p.name, rm.category, rm.name;
-    """))
+    """, tuple(params) or None))
 
 
 def pagination_meta(total: int, page: int, page_size: int) -> dict:
@@ -647,7 +827,115 @@ def list_orders(
         items_by_order.setdefault(order_id, []).append(item)
     for order in orders:
         order["items"] = items_by_order.get(order["order_id"], [])
+
+    proofs = clean_row(fetch_all("""
+        SELECT order_payment_proof_id,
+               order_id,
+               filename,
+               content_type,
+               size_bytes,
+               checksum_sha256,
+               uploaded_at
+        FROM order_payment_proofs
+        WHERE order_id = ANY(%s)
+        ORDER BY uploaded_at DESC, order_payment_proof_id DESC;
+    """, (order_ids,)))
+    proofs_by_order: dict[int, list[dict]] = {}
+    for proof in proofs:
+        order_id = proof.pop("order_id")
+        proofs_by_order.setdefault(order_id, []).append(proof)
+    for order in orders:
+        order["payment_proofs"] = proofs_by_order.get(order["order_id"], [])
+        order["payment_proof_count"] = len(order["payment_proofs"])
     return orders
+
+
+def add_order_payment_proofs(account_id: int, order_id: int, attachments: list[dict]) -> int:
+    ensure_system_tables()
+    if not attachments:
+        raise ValueError("Attach at least one proof of payment screenshot.")
+    profile = reseller_account_profile(account_id)
+    order = fetch_one(
+        """
+        SELECT order_id, status
+        FROM orders
+        WHERE order_id = %s
+          AND order_type = 'reseller'
+          AND reseller_id = %s
+        LIMIT 1;
+        """,
+        (order_id, profile["reseller_id"]),
+    )
+    if not order:
+        raise ValueError("Order was not found.")
+    if order["status"] not in {"pending", "rejected"}:
+        raise ValueError("Proof of payment can only be uploaded while the order is pending or rejected.")
+    inserted = 0
+    with get_transaction_cursor() as cur:
+        for attachment in attachments:
+            cur.execute(
+                """
+                INSERT INTO order_payment_proofs (
+                    order_id, uploaded_by_account_id, filename, content_type,
+                    content, size_bytes, checksum_sha256
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s);
+                """,
+                (
+                    order_id,
+                    account_id,
+                    attachment["filename"],
+                    attachment["content_type"],
+                    attachment["content"],
+                    attachment["size_bytes"],
+                    attachment["checksum_sha256"],
+                ),
+            )
+            inserted += 1
+    add_log(profile["business_name"], "uploaded_payment_proof", f"Order #{order_id}")
+    create_notification(
+        recipient_account_id=profile["team_leader_account_id"],
+        category="order",
+        severity="info",
+        title="Payment proof uploaded",
+        message=f"{profile['business_name']} uploaded payment proof for order #{order_id}.",
+        target_url="/portal/team-leader/orders",
+        source_type="orders",
+        source_id=order_id,
+        dedupe_key=f"order-proof-{order_id}-{inserted}-{datetime.now().timestamp()}",
+    )
+    return inserted
+
+
+def get_order_payment_proof(proof_id: int, account_id: int | None, role_key: str | None) -> dict | None:
+    ensure_system_tables()
+    proof = fetch_one(
+        """
+        SELECT opp.order_payment_proof_id,
+               opp.order_id,
+               opp.filename,
+               opp.content_type,
+               opp.content,
+               opp.size_bytes,
+               o.created_by_account_id,
+               r.team_leader_account_id
+        FROM order_payment_proofs opp
+        JOIN orders o ON o.order_id = opp.order_id
+        LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
+        WHERE opp.order_payment_proof_id = %s
+        LIMIT 1;
+        """,
+        (proof_id,),
+    )
+    if not proof:
+        return None
+    if role_key == "owner":
+        return clean_row(proof)
+    if role_key == "reseller" and account_id == proof["created_by_account_id"]:
+        return clean_row(proof)
+    if role_key == "team-leader" and account_id == proof["team_leader_account_id"]:
+        return clean_row(proof)
+    return None
 
 
 def reseller_most_bought_products(limit: int = 6, account_id: int | None = None) -> list[dict]:
@@ -1011,7 +1299,7 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
     return clean_row(fetch_all("""
-        SELECT a.account_id, a.account_type, a.reseller_id, a.name, a.email,
+        SELECT a.account_id, a.account_type, a.team_leader_role, a.reseller_id, a.name, a.email,
                (CASE WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status,
                a.auth_provider,
                r.team_leader_account_id,
@@ -1047,11 +1335,37 @@ def count_accounts(q: str = "", account_type: str = "") -> int:
 def list_team_leader_accounts() -> list[dict]:
     ensure_system_tables()
     return clean_row(fetch_all("""
-        SELECT account_id, name, email
+        SELECT account_id, name, email, team_leader_role
         FROM accounts
         WHERE account_type = 'team_leader'
           AND is_active = true
+          AND team_leader_role = 'sales'
         ORDER BY name, account_id;
+    """))
+
+
+def next_sales_team_leader() -> dict | None:
+    ensure_system_tables()
+    leaders = list_team_leader_accounts()
+    if not leaders:
+        return None
+    row = fetch_one("""
+        SELECT COUNT(*) AS total
+        FROM inquiries
+        WHERE assigned_team_leader_account_id IS NOT NULL;
+    """)
+    index = int(row["total"] if row else 0) % len(leaders)
+    return leaders[index]
+
+
+def list_all_team_leader_accounts() -> list[dict]:
+    ensure_system_tables()
+    return clean_row(fetch_all("""
+        SELECT account_id, name, email, team_leader_role
+        FROM accounts
+        WHERE account_type = 'team_leader'
+          AND is_active = true
+        ORDER BY team_leader_role, name, account_id;
     """))
 
 
@@ -1100,10 +1414,22 @@ def set_reseller_team_leader(reseller_id: int, team_leader_account_id: int) -> d
     return clean_row(reseller)
 
 
-def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+INVENTORY_LOG_ACTIONS = (
+    "updated_raw_inventory",
+    "added_raw_inventory_quantity",
+    "created_product_recipe",
+    "produced_product_batch",
+    "registered_product_batch",
+)
+
+
+def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10, inventory_only: bool = False) -> list[dict]:
     where = []
     params: list[object] = []
     q = q.strip()
+    if inventory_only:
+        where.append("al.action = ANY(%s)")
+        params.append(list(INVENTORY_LOG_ACTIONS))
     if q:
         where.append("(COALESCE(a.name, 'MEATTRACK') ILIKE %s OR al.action ILIKE %s OR al.entity_type ILIKE %s)")
         search = f"%{q}%"
@@ -1134,18 +1460,24 @@ def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10
     """.format(where_sql=where_sql, paging_sql=paging_sql), tuple(params) or None))
 
 
-def count_activity_logs(q: str = "") -> int:
+def count_activity_logs(q: str = "", inventory_only: bool = False) -> int:
     query = """
         SELECT COUNT(*) AS total
         FROM activity_logs al
         LEFT JOIN accounts a ON a.account_id = al.account_id
     """
+    where = []
     params: list[object] = []
     q = q.strip()
+    if inventory_only:
+        where.append("al.action = ANY(%s)")
+        params.append(list(INVENTORY_LOG_ACTIONS))
     if q:
-        query += " WHERE (COALESCE(a.name, 'MEATTRACK') ILIKE %s OR al.action ILIKE %s OR al.entity_type ILIKE %s)"
+        where.append("(COALESCE(a.name, 'MEATTRACK') ILIKE %s OR al.action ILIKE %s OR al.entity_type ILIKE %s)")
         search = f"%{q}%"
         params.extend([search, search, search])
+    if where:
+        query += " WHERE " + " AND ".join(where)
     row = fetch_one(query + ";", tuple(params) or None)
     return int(row["total"])
 
@@ -1345,7 +1677,7 @@ def authenticate_account(email: str, password: str) -> dict | None:
     ensure_system_tables()
     account = fetch_one(
         """
-        SELECT account_id, account_type, name, email, password_hash, is_active, auth_provider
+        SELECT account_id, account_type, team_leader_role, name, email, password_hash, is_active, auth_provider
         FROM accounts
         WHERE lower(email) = lower(%s)
         LIMIT 1;
@@ -1366,7 +1698,55 @@ def authenticate_account(email: str, password: str) -> dict | None:
 
     clean = clean_row(account)
     clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
+        clean["team_leader_role"] = "sales"
+    if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
+        clean["team_leader_role"] = "sales"
     return clean if clean["role_key"] else None
+
+
+def change_account_password(account_id: int, current_password: str, new_password: str) -> None:
+    ensure_system_tables()
+    account = fetch_one(
+        """
+        SELECT account_id, name, password_hash
+        FROM accounts
+        WHERE account_id = %s
+          AND account_type = 'reseller'
+          AND is_active = true
+        LIMIT 1;
+        """,
+        (account_id,),
+    )
+    if not account:
+        raise ValueError("Reseller account was not found.")
+    if not verify_password(current_password, account["password_hash"]):
+        raise ValueError("Current password is incorrect.")
+    cleaned_password = new_password.strip()
+    if len(cleaned_password) < 8:
+        raise ValueError("New password must be at least 8 characters.")
+    execute_write(
+        "UPDATE accounts SET password_hash = %s WHERE account_id = %s;",
+        (hash_password(cleaned_password), account_id),
+    )
+    add_log(account["name"], "changed_password", "Reseller profile")
+
+
+def account_portal_profile(account_id: int) -> dict | None:
+    ensure_system_tables()
+    account = fetch_one("""
+        SELECT account_id, account_type, team_leader_role, name, email, is_active
+        FROM accounts
+        WHERE account_id = %s
+        LIMIT 1;
+    """, (account_id,))
+    if not account or not account["is_active"]:
+        return None
+    clean = clean_row(account)
+    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
+        clean["team_leader_role"] = "sales"
+    return clean
 
 
 def social_login_account(
@@ -1374,7 +1754,7 @@ def social_login_account(
     email: str,
     name: str,
     provider: str,
-    allow_reseller_signup: bool = True,
+    allow_reseller_signup: bool = False,
 ) -> dict | None:
     ensure_system_tables()
     normalized_email = email.strip().lower()
@@ -1383,7 +1763,7 @@ def social_login_account(
     with get_transaction_cursor() as cur:
         cur.execute(
             """
-            SELECT account_id, account_type, name, email, is_active, auth_provider
+            SELECT account_id, account_type, team_leader_role, name, email, is_active, auth_provider
             FROM accounts
             WHERE auth_user_id = %s::uuid OR lower(email) = lower(%s)
             ORDER BY CASE WHEN auth_user_id = %s::uuid THEN 0 ELSE 1 END
@@ -1403,7 +1783,7 @@ def social_login_account(
                 SET auth_user_id = COALESCE(auth_user_id, %s::uuid),
                     auth_provider = %s
                 WHERE account_id = %s
-                RETURNING account_id, account_type, name, email, is_active, auth_provider;
+                RETURNING account_id, account_type, team_leader_role, name, email, is_active, auth_provider;
                 """,
                 (auth_user_id, provider, account["account_id"]),
             )
@@ -1438,7 +1818,7 @@ def social_login_account(
                     is_active, auth_user_id, auth_provider
                 )
                 VALUES ('reseller', %s, %s, %s, %s, true, %s::uuid, %s)
-                RETURNING account_id, account_type, name, email, is_active, auth_provider;
+                RETURNING account_id, account_type, team_leader_role, name, email, is_active, auth_provider;
                 """,
                 (
                     reseller["reseller_id"],
@@ -1637,6 +2017,48 @@ def current_metrics(team_leader_account_id: int | None = None, reseller_account_
         "total_available": float(row["total_available"]),
     }
 
+
+def inventory_product_movement_analytics(days: int = 30, limit: int = 8) -> list[dict]:
+    clean_days = max(1, min(int(days), 365))
+    clean_limit = max(1, min(int(limit), 20))
+    return clean_row(fetch_all("""
+        SELECT p.item_id AS product_id,
+               p.name,
+               p.category,
+               p.unit,
+               COALESCE(stock.total_available, 0) AS total_available,
+               COALESCE(product_in.total_in, 0) AS total_in,
+               COALESCE(product_out.total_out, 0) AS total_out
+        FROM inventory_items p
+        LEFT JOIN (
+            SELECT item_id, SUM(quantity_available) AS total_available
+            FROM inventory_batches
+            WHERE quality_status = 'approved'
+              AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+            GROUP BY item_id
+        ) stock ON stock.item_id = p.item_id
+        LEFT JOIN (
+            SELECT item_id, SUM(quantity_received) AS total_in
+            FROM inventory_batches
+            WHERE received_date >= CURRENT_DATE - (%s * INTERVAL '1 day')
+            GROUP BY item_id
+        ) product_in ON product_in.item_id = p.item_id
+        LEFT JOIN (
+            SELECT oi.product_id, SUM(oi.quantity) AS total_out
+            FROM order_items oi
+            JOIN orders o ON o.order_id = oi.order_id
+            WHERE o.status = 'fulfilled'
+              AND COALESCE(o.fulfilled_at::date, o.order_date) >= CURRENT_DATE - (%s * INTERVAL '1 day')
+            GROUP BY oi.product_id
+        ) product_out ON product_out.product_id = p.item_id
+        WHERE p.item_type = 'finished_product'
+          AND p.is_active = true
+        ORDER BY (COALESCE(product_in.total_in, 0) + COALESCE(product_out.total_out, 0)) DESC,
+                 p.name
+        LIMIT %s;
+    """, (clean_days, clean_days, clean_limit)))
+
+
 def add_log(actor_name: str, action: str, entity_name: str) -> None:
     acc = fetch_one("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (actor_name,))
     acc_id = acc["account_id"] if acc else None
@@ -1650,20 +2072,13 @@ def add_log(actor_name: str, action: str, entity_name: str) -> None:
     """, (acc_id, action, 'custom', 0, datetime.now()))
 
 def add_inquiry(name: str, business_name: str, email: str, contact_number: str, message: str) -> dict:
-    leader = fetch_one("""
-        SELECT account_id
-        FROM accounts
-        WHERE account_type = 'team_leader'
-          AND is_active = true
-        ORDER BY account_id
-        LIMIT 1;
-    """)
+    leader = next_sales_team_leader()
     leader_id = leader["account_id"] if leader else None
     
     inq = execute_write("""
         INSERT INTO inquiries (name, contact_number, email, business_name, message, status, assigned_team_leader_account_id)
         VALUES (%s, %s, %s, %s, %s, 'assigned', %s)
-        RETURNING inquiry_id, name, contact_number, email, business_name, message, status, created_at;
+        RETURNING inquiry_id, name, contact_number, email, business_name, message, status, assigned_team_leader_account_id, created_at;
     """, (name, contact_number, email, business_name, message, leader_id), returning=True)
     
     inq = clean_row(inq)
@@ -1683,46 +2098,90 @@ def add_inquiry(name: str, business_name: str, email: str, contact_number: str, 
     )
     return inq
 
+
+def generate_temporary_password() -> str:
+    token = secrets.token_urlsafe(9).replace("-", "").replace("_", "")
+    return f"BP-{token[:10]}"
+
+
 def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id: int | None = None) -> dict | None:
     ensure_system_tables()
-    inq = fetch_one("SELECT * FROM inquiries WHERE inquiry_id = %s;", (inquiry_id,))
-    if not inq:
-        return None
-    if approving_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, approving_team_leader_account_id}:
-        return None
+    temporary_password = generate_temporary_password()
+    with get_transaction_cursor() as cur:
+        cur.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE;", (inquiry_id,))
+        inq = cur.fetchone()
+        if not inq:
+            return None
+        if approving_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, approving_team_leader_account_id}:
+            return None
 
-    leader_id = approving_team_leader_account_id or inq["assigned_team_leader_account_id"]
-    if leader_id is None:
-        leader = fetch_one("""
-            SELECT account_id
+        cur.execute(
+            """
+            SELECT account_id, account_type
             FROM accounts
-            WHERE account_type = 'team_leader'
-              AND is_active = true
-            ORDER BY account_id
+            WHERE lower(email) = lower(%s)
             LIMIT 1;
-        """)
-        leader_id = leader["account_id"] if leader else None
-    
-    execute_write("""
-        UPDATE inquiries 
-        SET status = 'approved', assigned_team_leader_account_id = %s, reviewed_by_account_id = %s, reviewed_at = %s
-        WHERE inquiry_id = %s;
-    """, (leader_id, leader_id, datetime.now(), inquiry_id))
-    
-    res = execute_write("""
-        INSERT INTO resellers (inquiry_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, approved_at)
-        VALUES (%s, %s, %s, %s, %s, 'Pending onboarding details', 'active', %s, %s, %s)
-        RETURNING reseller_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, created_at;
-    """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, leader_id, datetime.now()), returning=True)
-    
+            """,
+            (inq["email"],),
+        )
+        existing_account = cur.fetchone()
+        if existing_account:
+            raise ValueError("That email is already used by an existing portal account. Use a different reseller email before approval.")
+
+        leader_id = approving_team_leader_account_id or inq["assigned_team_leader_account_id"]
+        if leader_id is None:
+            cur.execute("""
+                SELECT account_id
+                FROM accounts
+                WHERE account_type = 'team_leader'
+                  AND is_active = true
+                  AND team_leader_role = 'sales'
+                ORDER BY account_id
+                LIMIT 1;
+            """)
+            leader = cur.fetchone()
+            leader_id = leader["account_id"] if leader else None
+        if leader_id is None:
+            raise ValueError("No active sales team leader is available for this reseller.")
+
+        cur.execute(
+            """
+            SELECT reseller_id
+            FROM resellers
+            WHERE inquiry_id = %s
+            LIMIT 1;
+            """,
+            (inquiry_id,),
+        )
+        if cur.fetchone():
+            raise ValueError("This inquiry already has a reseller account.")
+
+        cur.execute("""
+            UPDATE inquiries
+            SET status = 'approved', assigned_team_leader_account_id = %s, reviewed_by_account_id = %s, reviewed_at = %s
+            WHERE inquiry_id = %s;
+        """, (leader_id, leader_id, datetime.now(), inquiry_id))
+
+        cur.execute("""
+            INSERT INTO resellers (inquiry_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, approved_at)
+            VALUES (%s, %s, %s, %s, %s, 'Pending onboarding details', 'active', %s, %s, %s)
+            RETURNING reseller_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, created_at;
+        """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, leader_id, datetime.now()))
+        res = cur.fetchone()
+
+        cur.execute("""
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
+            VALUES ('reseller', %s, %s, %s, %s, true)
+            RETURNING account_id, email;
+        """, (res["reseller_id"], res["business_name"], res["email"], hash_password(temporary_password)))
+        account = cur.fetchone()
+
+        cur.execute("SELECT name, email FROM accounts WHERE account_id = %s;", (leader_id,))
+        leader = cur.fetchone()
+
     res = clean_row(res)
-    
-    execute_write("""
-        INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
-        VALUES ('reseller', %s, %s, %s, %s, true);
-    """, (res["reseller_id"], res["business_name"], res["email"], hash_password(RESELLER_PASSWORD)))
-    
-    add_log("Maria Santos", "approved_reseller_inquiry", f"Inquiry #{inquiry_id}")
+
+    add_log(leader["name"] if leader else "Sales team leader", "approved_reseller_inquiry", f"Inquiry #{inquiry_id}")
     create_notification(
         recipient_role="owner",
         category="account",
@@ -1734,6 +2193,11 @@ def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id:
         source_id=inquiry_id,
         dedupe_key=f"inquiry-approved-{inquiry_id}",
     )
+    res["account_id"] = account["account_id"] if account else None
+    res["account_email"] = account["email"] if account else res["email"]
+    res["temporary_password"] = temporary_password
+    res["team_leader_name"] = leader["name"] if leader else "Assigned sales team leader"
+    res["team_leader_email"] = leader["email"] if leader else ""
     return res
 
 def reject_inquiry(inquiry_id: int, reviewing_team_leader_account_id: int | None = None) -> bool:
@@ -1910,6 +2374,17 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
         leader_id = leader["account_id"] if leader else None
     
     if decision == "approve":
+        proof = fetch_one(
+            """
+            SELECT 1
+            FROM order_payment_proofs
+            WHERE order_id = %s
+            LIMIT 1;
+            """,
+            (order_id,),
+        )
+        if not proof:
+            raise ValueError("Proof of payment is required before approving this order.")
         execute_write("""
             UPDATE orders 
             SET status = 'approved', approved_by_account_id = %s, approved_at = %s 
@@ -2068,6 +2543,37 @@ def team_rejected_order_entries(team_leader_account_id: int | None = None) -> li
           {scope_sql}
         GROUP BY o.order_id, r.business_name, o.approved_at, o.order_date, o.total_amount, o.notes
         ORDER BY rejected_at DESC, o.order_id DESC;
+    """, tuple(params) or None))
+
+
+def team_reseller_purchase_summary(team_leader_account_id: int | None = None) -> list[dict]:
+    """Summarize actual reseller purchases from approved/fulfilled system orders."""
+    ensure_system_tables()
+    scope_sql = ""
+    params: list[object] = []
+    if team_leader_account_id is not None:
+        scope_sql = "AND r.team_leader_account_id = %s"
+        params.append(team_leader_account_id)
+    return clean_row(fetch_all(f"""
+        SELECT r.reseller_id,
+               COALESCE(r.business_name, 'Reseller') AS reseller,
+               p.item_id AS product_id,
+               p.name AS product,
+               oi.unit,
+               COALESCE(SUM(oi.quantity), 0) AS total_quantity,
+               COALESCE(SUM(oi.line_total), 0) AS total_amount,
+               COUNT(DISTINCT o.order_id) AS order_count,
+               MAX(COALESCE(o.fulfilled_at, o.approved_at, o.order_date)) AS latest_order_at
+        FROM orders o
+        JOIN resellers r ON r.reseller_id = o.reseller_id
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN inventory_items p ON p.item_id = oi.product_id
+        WHERE o.order_type = 'reseller'
+          AND o.status IN ('approved', 'fulfilled')
+          AND p.item_type = 'finished_product'
+          {scope_sql}
+        GROUP BY r.reseller_id, r.business_name, p.item_id, p.name, oi.unit
+        ORDER BY r.business_name ASC, total_quantity DESC, total_amount DESC, p.name ASC;
     """, tuple(params) or None))
 
 
@@ -2634,18 +3140,20 @@ def add_product_batch(product_id: int, batch_code: str, quantity: float, expiry_
     add_log("Maria Santos", "registered_product_batch", batch_code)
     return batch
 
-def add_account(account_type: str, name: str, email: str) -> None:
+def add_account(account_type: str, name: str, email: str, team_leader_role: str | None = None) -> None:
     reseller_id = None
     
     if account_type == "reseller":
-        res = fetch_one("SELECT reseller_id FROM resellers WHERE email = %s LIMIT 1;", (email,))
-        if res:
-            reseller_id = res["reseller_id"]
+        raise ValueError("Reseller accounts are created only by approving chatbot inquiries.")
+    if account_type == "team_leader":
+        team_leader_role = team_leader_role if team_leader_role in {"inventory", "sales"} else "sales"
+    else:
+        team_leader_role = None
             
     execute_write("""
-        INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
-        VALUES (%s, %s, %s, %s, %s, true);
-    """, (account_type, reseller_id, name, email, hash_password(DEFAULT_ACCOUNT_PASSWORD)))
+        INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role, is_active)
+        VALUES (%s, %s, %s, %s, %s, %s, true);
+    """, (account_type, reseller_id, name, email, hash_password(DEFAULT_ACCOUNT_PASSWORD), team_leader_role))
     add_log("Owner", "created_account", email)
 
 def add_forecast(model_name: str, forecast_horizon_days: int) -> None:

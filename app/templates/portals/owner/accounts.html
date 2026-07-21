@@ -6,12 +6,18 @@
                             <select name="account_type">
                                 <option value="owner">Owner</option>
                                 <option value="team_leader">Team leader</option>
-                                <option value="reseller">Reseller</option>
                             </select>
                         </label>
                         <label>Name <input required name="name"></label>
                         <label>Email <input required type="email" name="email"></label>
+                        <label>Team leader role
+                            <select name="team_leader_role">
+                                <option value="sales">Sales team leader</option>
+                                <option value="inventory">Inventory team leader</option>
+                            </select>
+                        </label>
                         <button class="button primary" type="submit">Create account</button>
+                        <p class="hint">Reseller accounts are created only after a sales team leader approves a chatbot inquiry.</p>
                     </form>
                 </article>
                 <article class="panel">

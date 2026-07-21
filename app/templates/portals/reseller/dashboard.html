@@ -5,22 +5,9 @@
     <small>Awaiting team leader review</small>
   </article>
   <article class="metric-card">
-    <span>Latest report value</span>
-    {% if sales_reports %}
-    <strong>{{ sales_reports[0].total_sales|currency }}</strong>
-    <small
-      >{{ sales_reports[0].period_start|nice_date }} - {{
-      sales_reports[0].period_end|nice_date }}</small
-    >
-    {% else %}
-    <strong>PHP 0.00</strong>
-    <small>No reports submitted yet</small>
-    {% endif %}
-  </article>
-  <article class="metric-card">
     <span>Assigned team leader</span>
     <strong>{{ reseller_profile.team_leader_name if reseller_profile and reseller_profile.team_leader_name else "Unassigned" }}</strong>
-    <small>{{ reseller_profile.team_leader_email if reseller_profile and reseller_profile.team_leader_email else "Contact owner before submitting orders/reports" }}</small>
+    <small>{{ reseller_profile.team_leader_email if reseller_profile and reseller_profile.team_leader_email else "Contact owner before submitting orders" }}</small>
   </article>
 </section>
 <section class="content-grid">

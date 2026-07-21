@@ -3,6 +3,23 @@
         window.lucide.createIcons();
     }
 
+    function bindToasts() {
+        document.querySelectorAll("[data-toast]").forEach((toast) => {
+            const close = toast.querySelector("[data-toast-close]");
+            const persistent = toast.dataset.toastPersistent === "true";
+            const dismiss = () => {
+                toast.classList.add("is-hiding");
+                window.setTimeout(() => toast.remove(), 180);
+            };
+            close?.addEventListener("click", dismiss);
+            if (!persistent) {
+                window.setTimeout(dismiss, 5200);
+            }
+        });
+    }
+
+    bindToasts();
+
     const today = new Date().toISOString().slice(0, 10);
     document.querySelectorAll('input[type="date"]').forEach((input) => {
         if (!input.value) {
@@ -237,6 +254,97 @@
         });
     }
 
+    function bindProofModal() {
+        const modal = document.querySelector("[data-proof-modal]");
+        if (!modal) {
+            return;
+        }
+
+        const title = modal.querySelector("[data-proof-modal-title]");
+        const image = modal.querySelector("[data-proof-modal-image]");
+        const externalLink = modal.querySelector("[data-proof-modal-link]");
+        const fullscreenToggle = modal.querySelector("[data-proof-fullscreen-toggle]");
+        let lastFocused = null;
+
+        function setFullscreen(active) {
+            modal.classList.toggle("is-fullscreen", active);
+            if (fullscreenToggle) {
+                fullscreenToggle.setAttribute(
+                    "aria-label",
+                    active ? "Exit fullscreen proof image" : "View proof image fullscreen",
+                );
+            }
+        }
+
+        function openModal(trigger) {
+            const proofUrl = trigger.dataset.proofUrl || trigger.getAttribute("href");
+            const proofTitle = trigger.dataset.proofTitle || trigger.textContent.trim() || "Payment screenshot";
+            if (!proofUrl) {
+                return;
+            }
+
+            lastFocused = document.activeElement;
+            if (title) {
+                title.textContent = proofTitle;
+            }
+            if (image) {
+                image.src = proofUrl;
+                image.alt = proofTitle;
+            }
+            if (externalLink) {
+                externalLink.href = proofUrl;
+            }
+            setFullscreen(false);
+            modal.hidden = false;
+            document.body.classList.add("modal-is-open");
+            modal.querySelector("[data-proof-modal-close]")?.focus();
+        }
+
+        function closeModal() {
+            modal.hidden = true;
+            setFullscreen(false);
+            document.body.classList.remove("modal-is-open");
+            if (image) {
+                image.removeAttribute("src");
+                image.alt = "";
+            }
+            if (lastFocused && typeof lastFocused.focus === "function") {
+                lastFocused.focus();
+            }
+        }
+
+        fullscreenToggle?.addEventListener("click", () => {
+            setFullscreen(!modal.classList.contains("is-fullscreen"));
+        });
+
+        modal.querySelector(".proof-modal-backdrop")?.addEventListener("click", () => {
+            if (modal.classList.contains("is-fullscreen")) {
+                setFullscreen(false);
+            }
+        });
+
+        document.querySelectorAll("[data-proof-modal-open]").forEach((trigger) => {
+            trigger.addEventListener("click", (event) => {
+                event.preventDefault();
+                openModal(trigger);
+            });
+        });
+
+        modal.querySelectorAll("[data-proof-modal-close]").forEach((button) => {
+            button.addEventListener("click", closeModal);
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !modal.hidden) {
+                if (modal.classList.contains("is-fullscreen")) {
+                    setFullscreen(false);
+                    return;
+                }
+                closeModal();
+            }
+        });
+    }
+
     function formatMoney(value) {
         return `PHP ${Number(value || 0).toLocaleString("en-US", {
             minimumFractionDigits: 2,
@@ -372,10 +480,162 @@
         recalculateCart();
     }
 
+    function bindInventoryMovementChart() {
+        const canvas = document.querySelector("[data-inventory-movement-chart]");
+        const payload = document.querySelector("[data-inventory-movement-json]");
+        if (!canvas || !payload) {
+            return;
+        }
+
+        let rows = [];
+        try {
+            rows = JSON.parse(payload.textContent || "[]");
+        } catch (error) {
+            rows = [];
+        }
+
+        if (!rows.length || !window.Chart) {
+            return;
+        }
+
+        const labels = rows.map((row) => row.name);
+        const stockIn = rows.map((row) => Number(row.total_in || 0));
+        const stockOut = rows.map((row) => Number(row.total_out || 0));
+        const units = rows.map((row) => row.unit || "pack");
+
+        new window.Chart(canvas.getContext("2d"), {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: "Stock in",
+                        data: stockIn,
+                        backgroundColor: "rgba(223, 190, 29, 0.82)",
+                        borderColor: "#d9b90f",
+                        borderWidth: 1,
+                        borderRadius: 8,
+                    },
+                    {
+                        label: "Stock out",
+                        data: stockOut,
+                        backgroundColor: "rgba(91, 48, 25, 0.82)",
+                        borderColor: "#5b3019",
+                        borderWidth: 1,
+                        borderRadius: 8,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: "y",
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0,
+                            color: "#675b44",
+                        },
+                        grid: {
+                            color: "rgba(215, 201, 154, 0.45)",
+                        },
+                    },
+                    y: {
+                        ticks: {
+                            color: "#23150f",
+                            font: {
+                                weight: 700,
+                            },
+                        },
+                        grid: {
+                            display: false,
+                        },
+                    },
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: "#23150f",
+                            boxWidth: 14,
+                            boxHeight: 14,
+                            useBorderRadius: true,
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const unit = units[context.dataIndex] || "pack";
+                                return `${context.dataset.label}: ${formatQuantity(context.parsed.x)} ${unit}`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        const fallback = document.querySelector("[data-inventory-movement-fallback]");
+        if (fallback) {
+            fallback.hidden = true;
+        }
+    }
+
+    function bindInventoryProductsPagination() {
+        document.addEventListener("click", async (event) => {
+            const link = event.target.closest("[data-inventory-products-link]");
+            if (!link) {
+                return;
+            }
+            const region = link.closest("[data-inventory-products-region]");
+            const partialUrl = link.dataset.partialUrl;
+            if (!region || !partialUrl) {
+                return;
+            }
+
+            event.preventDefault();
+            const status = region.querySelector("[data-inventory-products-status]");
+            region.classList.add("is-loading");
+            if (status) {
+                status.textContent = "Loading products...";
+            }
+
+            try {
+                const response = await fetch(partialUrl, {
+                    headers: {
+                        "X-Requested-With": "fetch",
+                    },
+                });
+                if (!response.ok) {
+                    throw new Error("Products could not be loaded.");
+                }
+                const html = await response.text();
+                const template = document.createElement("template");
+                template.innerHTML = html.trim();
+                const replacement = template.content.querySelector("[data-inventory-products-region]");
+                if (!replacement) {
+                    throw new Error("Products could not be loaded.");
+                }
+                region.replaceWith(replacement);
+                window.history.pushState({}, "", link.href);
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            } catch (error) {
+                region.classList.remove("is-loading");
+                if (status) {
+                    status.textContent = error.message || "Products could not be loaded.";
+                }
+            }
+        });
+    }
+
     bindQuantitySteppers();
     bindProductSearch();
     bindProductModal();
+    bindProofModal();
     bindCartAutosave();
+    bindInventoryMovementChart();
+    bindInventoryProductsPagination();
 
     const widget = document.querySelector("[data-chatbot]");
     if (!widget) {
@@ -408,6 +668,12 @@
 
     toggle.addEventListener("click", () => setOpen(panel.hidden));
     closeButton.addEventListener("click", () => setOpen(false));
+    document.querySelectorAll("[data-open-chatbot]").forEach((button) => {
+        button.addEventListener("click", () => {
+            setOpen(true);
+            input.value = "I want to be a reseller";
+        });
+    });
 
     form.addEventListener("submit", async (event) => {
         event.preventDefault();

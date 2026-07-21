@@ -13,13 +13,14 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import repositories as data
-from app.chatbot import ask_chatbot
+from app.chatbot import process_chatbot_message
+from app.emailer import send_reseller_credentials
 from app.config import APP_ENV, CONSENT_VERSION, MEDIA_BASE_URL, SESSION_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL
 
 
@@ -156,31 +157,6 @@ def date_filter(value: str | None, fallback: date) -> date:
         return fallback
 
 
-def month_bounds(value: date) -> tuple[date, date]:
-    first = value.replace(day=1)
-    if value.month == 12:
-        next_month = value.replace(year=value.year + 1, month=1, day=1)
-    else:
-        next_month = value.replace(month=value.month + 1, day=1)
-    return first, next_month - timedelta(days=1)
-
-
-def require_calendar_month(period_start: date, period_end: date) -> None:
-    month_start, month_end = month_bounds(period_start)
-    if period_start != month_start or period_end != month_end:
-        raise ValueError("Sales reports must cover one complete calendar month.")
-
-
-def require_completed_report_month(period_start: date, period_end: date) -> None:
-    require_calendar_month(period_start, period_end)
-    if APP_ENV != "development" and date.today() < period_end:
-        raise ValueError("Sales reports can only be submitted on or after the last day of the month.")
-
-
-def reseller_report_submit_available(period_end: date) -> bool:
-    return APP_ENV == "development" or date.today() >= period_end
-
-
 def paged(items: list[dict], total: int, page: int, page_size: int = 10, **filters: str) -> dict:
     return {
         "items": items,
@@ -283,11 +259,72 @@ def accounts_page(request: Request, page_size: int = 10) -> dict:
     return page
 
 
-def logs_page(request: Request, page_size: int = 10) -> dict:
+def logs_page(request: Request, page_size: int = 10, inventory_only: bool = False) -> dict:
     filters = portal_filters(request)
-    items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size)
-    total = data.count_activity_logs(q=filters["q"])
+    items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=inventory_only)
+    total = data.count_activity_logs(q=filters["q"], inventory_only=inventory_only)
     return paged(items, total, filters["page"], page_size, q=filters["q"])
+
+
+def inventory_items_page(request: Request, page_size: int = 10) -> dict:
+    filters = portal_filters(request)
+    items = data.list_inventory_items(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size)
+    total = data.count_inventory_items(q=filters["q"], category=filters["type"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+
+
+def finished_inventory_products_page(request: Request, page_size: int = 8) -> dict:
+    filters = portal_filters(request)
+    category = f"finished_product:{filters['type']}" if filters["type"] else "finished_product"
+    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size)
+    total = data.count_inventory_items(q=filters["q"], category=category)
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+
+
+def raw_materials_inventory_page(request: Request, page_size: int = 10) -> dict:
+    filters = portal_filters(request)
+    category = f"raw_material:{filters['type']}" if filters["type"] else "raw_material"
+    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size)
+    total = data.count_inventory_items(q=filters["q"], category=category)
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+
+
+def raw_materials_inventory_context(request: Request) -> dict:
+    raw_materials_page = raw_materials_inventory_page(request)
+    return {
+        "raw_materials_page": raw_materials_page,
+        "raw_items": raw_materials_page["items"],
+        "raw_material_tabs": [
+            {"label": "All raw materials", "value": ""},
+            *[
+                {"label": category.replace("_", " ").title(), "value": category}
+                for category in data.raw_material_categories
+            ],
+        ],
+    }
+
+
+def finished_products_inventory_context(request: Request) -> dict:
+    products_page = finished_inventory_products_page(request)
+    return {
+        "inventory_items_page": products_page,
+        "inventory_products_page": products_page,
+        "finished_products": products_page["items"],
+        "inventory_item_tabs": [
+            {"label": "All products", "value": ""},
+            *[
+                {"label": category, "value": category}
+                for category in data.product_categories
+            ],
+        ],
+    }
+
+
+def inventory_batches_page(request: Request, page_size: int = 10) -> dict:
+    filters = portal_filters(request)
+    items = data.list_inventory_batches(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size)
+    total = data.count_inventory_batches(q=filters["q"], category=filters["type"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
 
 
 def session_account_id(request: Request) -> int | None:
@@ -295,6 +332,40 @@ def session_account_id(request: Request) -> int | None:
         return int(request.session.get("account_id"))
     except (TypeError, ValueError):
         return None
+
+
+def session_team_leader_role(request: Request) -> str | None:
+    value = request.session.get("team_leader_role")
+    return value if value in {"inventory", "sales"} else None
+
+
+def portal_nav_for_request(role_key: str, request: Request) -> list[tuple[str, str, str]]:
+    return data.portal_nav_for(role_key, session_team_leader_role(request))
+
+
+def portal_role_for_request(role_key: str, request: Request) -> dict:
+    role = dict(data.roles[role_key])
+    account_name = request.session.get("account_name")
+    account_email = request.session.get("account_email")
+    if account_name:
+        role["name"] = account_name
+    if account_email:
+        role["email"] = account_email
+    if role_key == "team-leader":
+        leader_role = session_team_leader_role(request) or "sales"
+        role["label"] = data.team_leader_role_labels.get(leader_role, role["label"])
+        role["team_leader_role"] = leader_role
+    return role
+
+
+def team_leader_section_allowed(request: Request, section: str) -> bool:
+    return section in {item[0] for item in portal_nav_for_request("team-leader", request)}
+
+
+def require_team_leader_role(request: Request, required_role: str) -> RedirectResponse | None:
+    if session_team_leader_role(request) == required_role:
+        return None
+    return redirect_to(safe_portal_path("team-leader", "dashboard", error="Your team leader account cannot access that action."))
 
 
 def reseller_cart_count(request: Request) -> float:
@@ -362,7 +433,6 @@ def reseller_dashboard_context(request: Request) -> dict:
         "metrics": data.current_metrics(reseller_account_id=account_id),
         "reseller_profile": reseller_profile,
         "most_bought_products": data.reseller_most_bought_products(limit=3, account_id=account_id),
-        "sales_reports": data.list_sales_reports(report_source="reseller", limit=1, reseller_account_id=account_id),
         "sales_series": sales_series,
         "sales_chart_total": total_sales,
         "sales_chart_orders": total_orders,
@@ -374,26 +444,18 @@ def reseller_dashboard_context(request: Request) -> dict:
     }
 
 
-def reseller_reports_context(request: Request) -> dict:
-    period_start, period_end = month_bounds(date.today())
-    submit_available = reseller_report_submit_available(period_end)
+def reseller_profile_context(request: Request) -> dict:
     account_id = session_account_id(request)
-    reportable_products = []
-    month_orders = []
+    account = data.account_portal_profile(account_id) if account_id is not None else None
+    reseller_profile = None
     if account_id is not None:
-        reportable_products = data.reseller_reportable_products(account_id, period_start, period_end)
-        month_orders = data.reseller_month_orders(account_id, period_start, period_end)
+        try:
+            reseller_profile = data.reseller_account_profile(account_id)
+        except ValueError:
+            reseller_profile = None
     return {
-        "sales_reports": data.list_sales_reports(report_source="reseller", reseller_account_id=account_id),
-        "reportable_products": reportable_products,
-        "monthly_orders": month_orders,
-        "report_period": {
-            "start": period_start.isoformat(),
-            "end": period_end.isoformat(),
-        },
-        "report_submit_available": submit_available,
-        "report_locked_reason": "" if submit_available else "Sales reports unlock on the last day of the month.",
-        "report_dev_mode": APP_ENV == "development",
+        "account_profile": account,
+        "reseller_profile": reseller_profile,
     }
 
 
@@ -401,28 +463,37 @@ def _owner_dashboard_context(request: Request) -> dict:
     return {
         "metrics": data.current_metrics(),
         "products": data.list_products(),
-        "alerts": data.list_alerts(),
         "forecasts": data.list_forecasts(limit=5),
     }
 
 
 def _team_dashboard_context(request: Request) -> dict:
     account_id = session_account_id(request)
+    leader_role = session_team_leader_role(request) or "sales"
+    if leader_role == "inventory":
+        return {
+            "team_leader_role": leader_role,
+            "metrics": data.current_metrics(team_leader_account_id=account_id),
+            "products": data.list_products(),
+            "movement_analytics": data.inventory_product_movement_analytics(days=30, limit=8),
+        }
     return {
+        "team_leader_role": leader_role,
         "metrics": data.current_metrics(team_leader_account_id=account_id),
         "inquiries": data.list_inquiries(limit=4, assigned_team_leader_account_id=account_id),
-        "orders": data.list_orders(order_type="walk_in", limit=5, team_leader_account_id=account_id),
+        "orders": data.list_orders(order_type="reseller", limit=5, team_leader_account_id=account_id),
     }
 
 
 def _team_inventory_context(request: Request) -> dict:
+    recipe_products_page = product_page(request, page_size=8)
+    recipe_product_ids = [product["product_id"] for product in recipe_products_page["items"]]
     return {
         "products": data.list_products(),
-        "inventory_items": data.list_inventory_items(),
-        "inventory_batches": data.list_inventory_batches(),
+        "recipe_products_page": recipe_products_page,
+        "recipe_products": recipe_products_page["items"],
         "raw_materials": data.list_raw_materials(),
-        "product_recipes": data.list_product_recipes(),
-        "alerts": data.list_alerts(),
+        "product_recipes": data.list_product_recipes(product_ids=recipe_product_ids),
         "raw_material_categories": data.raw_material_categories,
         "product_categories": data.product_categories,
         "stock_units": data.stock_units,
@@ -434,7 +505,10 @@ def _team_inventory_context(request: Request) -> dict:
 PORTAL_SECTION_LOADERS = {
     ("owner", "dashboard"): _owner_dashboard_context,
     ("owner", "products"): lambda request: {"products_page": (page := product_page(request)), "products": page["items"]},
-    ("owner", "reports"): lambda request: {"sales_reports_page": (page := reports_page(request)), "sales_reports": page["items"]},
+    ("owner", "reports"): lambda request: {
+        "sales_reports_page": (page := reports_page(request, "team_leader")),
+        "sales_reports": page["items"],
+    },
     ("owner", "forecasts"): lambda request: {"forecasts_page": (page := forecasts_page(request)), "forecasts": page["items"]},
     ("owner", "accounts"): lambda request: {
         "accounts_page": (page := accounts_page(request)),
@@ -450,6 +524,17 @@ PORTAL_SECTION_LOADERS = {
         "orders": page["items"],
     },
     ("team-leader", "inventory"): _team_inventory_context,
+    ("team-leader", "raw-materials"): raw_materials_inventory_context,
+    ("team-leader", "finished-products"): finished_products_inventory_context,
+    ("team-leader", "batches"): lambda request: {
+        "inventory_batches_page": (page := inventory_batches_page(request)),
+        "inventory_batches": page["items"],
+        "product_categories": data.product_categories,
+    },
+    ("team-leader", "logs"): lambda request: {
+        "activity_logs_page": (page := logs_page(request, inventory_only=session_team_leader_role(request) == "inventory")),
+        "activity_logs": page["items"],
+    },
     ("team-leader", "inquiries"): lambda request: {
         "inquiries_page": (page := inquiries_page(request, assigned_team_leader_account_id=session_account_id(request))),
         "inquiries": page["items"],
@@ -461,19 +546,22 @@ PORTAL_SECTION_LOADERS = {
     ("team-leader", "reports"): lambda request: {
         "sales_reports_page": (page := reports_page(request, "team_leader", team_leader_account_id=session_account_id(request))),
         "sales_reports": page["items"],
-        "reseller_sales_reports": data.list_sales_reports(
-            report_source="reseller",
-            team_leader_account_id=session_account_id(request),
-            limit=10,
-        ),
+        "reseller_purchase_summary": data.team_reseller_purchase_summary(team_leader_account_id=session_account_id(request)),
         "team_report_sales": data.team_sales_report_entries(team_leader_account_id=session_account_id(request)),
         "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=session_account_id(request)),
     },
     ("reseller", "dashboard"): reseller_dashboard_context,
-    ("reseller", "order"): lambda request: {"products": data.list_products()},
+    ("reseller", "order"): lambda request: {
+        "products_page": (page := product_page(request, page_size=8)),
+        "products": page["items"],
+        "product_categories": data.product_categories,
+    },
     ("reseller", "cart"): reseller_cart_context,
-    ("reseller", "history"): lambda request: {"orders": data.list_orders(order_type="reseller", reseller_account_id=session_account_id(request))},
-    ("reseller", "reports"): reseller_reports_context,
+    ("reseller", "history"): lambda request: {
+        "orders_page": (page := orders_page(request, "reseller", reseller_account_id=session_account_id(request))),
+        "orders": page["items"],
+    },
+    ("reseller", "profile"): reseller_profile_context,
 }
 
 
@@ -534,18 +622,10 @@ def require_date_range(period_start: date, period_end: date) -> None:
         raise ValueError("Period end cannot be earlier than period start.")
 
 
-REPORT_ATTACHMENT_TYPES = {
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "application/pdf",
-    "text/csv",
-    "text/plain",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-}
+PAYMENT_PROOF_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
-async def parse_report_attachments(uploads: list[UploadFile]) -> list[dict]:
+async def parse_payment_proof_attachments(uploads: list[UploadFile]) -> list[dict]:
     attachments = []
     for upload in uploads:
         if not upload.filename:
@@ -555,12 +635,12 @@ async def parse_report_attachments(uploads: list[UploadFile]) -> list[dict]:
         if not content:
             continue
         if len(attachments) >= 3:
-            raise ValueError("Attach up to 3 files only.")
+            raise ValueError("Attach up to 3 payment screenshots only.")
         if len(content) > 5 * 1024 * 1024:
             raise ValueError(f"{filename} is larger than 5 MB.")
         content_type = upload.content_type or "application/octet-stream"
-        if content_type not in REPORT_ATTACHMENT_TYPES:
-            raise ValueError(f"{filename} must be an image, PDF, CSV, text, or XLSX file.")
+        if content_type not in PAYMENT_PROOF_TYPES:
+            raise ValueError(f"{filename} must be a JPG, PNG, or WebP screenshot.")
         attachments.append({
             "filename": filename,
             "content_type": content_type,
@@ -647,8 +727,11 @@ def establish_portal_session(request: Request, account: dict) -> RedirectRespons
     request.session["account_id"] = account["account_id"]
     request.session["role_key"] = role
     request.session["account_name"] = account["name"]
+    request.session["account_email"] = account["email"]
+    if role == "team-leader":
+        request.session["team_leader_role"] = account.get("team_leader_role") or "sales"
     data.add_log(account["name"], "login", data.roles[role]["label"])
-    return redirect_to(safe_portal_path(role, data.roles[role]["default_section"]))
+    return redirect_to(safe_portal_path(role, data.default_section_for(role, account.get("team_leader_role"))))
 
 
 @app.get("/media/{filename}")
@@ -712,20 +795,13 @@ async def create_public_inquiry(
     contact_number: str = Form(...),
     message: str = Form(...),
 ):
-    try:
-        if len(name.strip()) < 2:
-            raise ValueError("Name is required.")
-        if len(business_name.strip()) < 2:
-            raise ValueError("Business name is required.")
-        email = require_email(email)
-        if len(contact_number.strip()) < 7:
-            raise ValueError("Contact number is too short.")
-        if len(message.strip()) < 10:
-            raise ValueError("Please include a short message about your reseller request.")
-        data.add_inquiry(name.strip(), business_name.strip(), email, contact_number.strip(), message.strip())
-    except ValueError as exc:
-        return redirect_to(path_with_query("/", error=str(exc)) + "#reseller-inquiry")
-    return redirect_to(path_with_query("/", message="Inquiry submitted. A team leader will review it.") + "#reseller-inquiry")
+    return redirect_to(
+        path_with_query(
+            "/",
+            error="Public sign-up is disabled. Please use the chatbot so a sales team leader can qualify your reseller inquiry.",
+        )
+        + "#inquiry"
+    )
 
 
 @app.post("/api/chatbot")
@@ -734,9 +810,38 @@ async def chatbot_api(request: Request):
     message = str(payload.get("message", "")).strip()
     if len(message) < 2:
         return JSONResponse({"reply": "Please contact Batangas Premium directly for complete details."})
-    reply = ask_chatbot(message)
+    result = process_chatbot_message(message, request.session.get("chatbot_state") or {})
+    lead_created = False
+    assigned_team_leader = None
+    if result.get("action") == "create_lead":
+        lead = result.get("lead") or {}
+        inquiry = data.add_inquiry(
+            str(lead.get("name", "")).strip(),
+            str(lead.get("business_name", "")).strip(),
+            require_email(str(lead.get("email", "")).strip()),
+            str(lead.get("contact_number", "")).strip(),
+            "\n".join(
+                [
+                    f"Location: {lead.get('location', '')}",
+                    f"Interest: {lead.get('interest', '')}",
+                    "Source: chatbot lead capture",
+                ]
+            ),
+        )
+        lead_created = True
+        request.session["chatbot_state"] = {}
+        assigned_id = inquiry.get("assigned_team_leader_account_id")
+        if assigned_id:
+            assigned = data.account_portal_profile(int(assigned_id))
+            assigned_team_leader = assigned.get("name") if assigned else None
+        reply = result["reply"]
+        if assigned_team_leader:
+            reply += f" Your assigned sales team leader is {assigned_team_leader}."
+    else:
+        request.session["chatbot_state"] = result.get("state") or {}
+        reply = result["reply"]
     data.add_log("Website visitor", "used_chatbot", "Public support widget")
-    return JSONResponse({"reply": reply})
+    return JSONResponse({"reply": reply, "lead_created": lead_created, "assigned_team_leader": assigned_team_leader})
 
 
 @app.get("/login")
@@ -848,10 +953,16 @@ async def auth_callback(request: Request, code: str = "", state: str = "", error
         request.session.clear()
         return redirect_to(path_with_query("/login", error="Your social account did not provide an email address."))
 
-    account = data.social_login_account(str(user.get("id")), email, account_name_from_user(user, email), provider)
+    account = data.social_login_account(
+        str(user.get("id")),
+        email,
+        account_name_from_user(user, email),
+        provider,
+        allow_reseller_signup=False,
+    )
     if account is None:
         request.session.clear()
-        return redirect_to(path_with_query("/login", error="This account is inactive. Please contact the owner."))
+        return redirect_to(path_with_query("/login", error="No portal account exists for this social login. Please use the credentials provided by Batangas Premium."))
 
     data.record_user_consent(account["account_id"], CONSENT_VERSION, f"oauth:{provider}", provider)
     return establish_portal_session(request, account)
@@ -864,6 +975,25 @@ async def logout(request: Request):
     return response
 
 
+@app.get("/portal/order-payment-proofs/{proof_id}")
+async def portal_order_payment_proof(request: Request, proof_id: int):
+    role_key = request.session.get("role_key")
+    account_id = session_account_id(request)
+    if role_key not in {"owner", "team-leader", "reseller"} or account_id is None:
+        raise HTTPException(status_code=404)
+    proof = data.get_order_payment_proof(proof_id, account_id, role_key)
+    if not proof:
+        raise HTTPException(status_code=404)
+    return Response(
+        content=proof["content"],
+        media_type=proof["content_type"],
+        headers={
+            "Content-Disposition": f"inline; filename=\"{proof['filename']}\"",
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
 @app.get("/portal/{role_key}")
 async def portal_default(request: Request, role_key: str):
     if role_key not in data.roles:
@@ -871,7 +1001,61 @@ async def portal_default(request: Request, role_key: str):
     guard = require_portal_session(request, role_key)
     if guard:
         return guard
-    return redirect_to(f"/portal/{role_key}/{data.roles[role_key]['default_section']}")
+    return redirect_to(f"/portal/{role_key}/{data.default_section_for(role_key, session_team_leader_role(request))}")
+
+
+@app.get("/portal/team-leader/inventory-items")
+async def team_inventory_items_legacy_redirect(request: Request):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
+    query = request.url.query
+    suffix = f"?{query}" if query else ""
+    return redirect_to(f"/portal/team-leader/raw-materials{suffix}")
+
+
+@app.get("/portal/team-leader/inventory-items/products")
+async def team_inventory_products_legacy_partial_redirect(request: Request):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
+    query = request.url.query
+    suffix = f"?{query}" if query else ""
+    return redirect_to(f"/portal/team-leader/finished-products/products{suffix}")
+
+
+@app.get("/portal/team-leader/finished-products/products")
+async def team_inventory_products_partial(request: Request):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
+    products_page = finished_inventory_products_page(request)
+    return templates.TemplateResponse(
+        request,
+        "portals/team-leader/_inventory_products.html",
+        {
+            "request": request,
+            "inventory_items_page": products_page,
+            "inventory_products_page": products_page,
+            "finished_products": products_page["items"],
+            "inventory_item_tabs": [
+                {"label": "All products", "value": ""},
+                *[
+                    {"label": category, "value": category}
+                    for category in data.product_categories
+                ],
+            ],
+        },
+    )
 
 
 @app.get("/portal/{role_key}/{section}")
@@ -881,15 +1065,16 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
     guard = require_portal_session(request, role_key)
     if guard:
         return guard
-    nav_sections = {item[0]: item for item in data.portal_nav[role_key]}
+    nav = portal_nav_for_request(role_key, request)
+    nav_sections = {item[0]: item for item in nav}
     if section not in nav_sections:
         raise HTTPException(status_code=404)
 
     context = {
         "request": request,
         "role_key": role_key,
-        "role": data.roles[role_key],
-        "nav": data.portal_nav[role_key],
+        "role": portal_role_for_request(role_key, request),
+        "nav": nav,
         "section": section,
         "section_title": nav_sections[section][1],
         "message": message,
@@ -899,6 +1084,8 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "unread_notifications": data.unread_notification_count(role_key, request.session.get("account_id")),
     }
     context.update(portal_section_context(role_key, section, request))
+    if role_key == "team-leader" and section == "inquiries":
+        context["credential_flash"] = request.session.pop("credential_flash", None)
 
     return templates.TemplateResponse(
         request,
@@ -990,37 +1177,46 @@ async def reseller_cart_checkout(request: Request, notes: str = Form("")):
     return redirect_to(safe_portal_path("reseller", "history", message="Order submitted for team leader approval."))
 
 
-@app.post("/portal/reseller/reports")
-async def reseller_report(
+@app.post("/portal/reseller/orders/{order_id}/payment-proof")
+async def reseller_order_payment_proof(
     request: Request,
-    period_start: date = Form(...),
-    period_end: date = Form(...),
-    notes: str = Form(""),
-    attachments: list[UploadFile] = File(default=[]),
+    order_id: int,
+    payment_proofs: list[UploadFile] = File(default=[]),
 ):
     guard = require_portal_session(request, "reseller")
     if guard:
         return guard
     account_id = session_account_id(request)
     if account_id is None:
-        return redirect_to(safe_portal_path("reseller", "reports", error="Your session expired. Please sign in again."))
+        return redirect_to(safe_portal_path("reseller", "history", error="Your session expired. Please sign in again."))
     try:
-        require_date_range(period_start, period_end)
-        require_completed_report_month(period_start, period_end)
-        form = await request.form()
-        quantities = {
-            int(key.removeprefix("sold_")): value
-            for key, value in form.items()
-            if key.startswith("sold_") and str(value).strip()
-        }
-        parsed_attachments = await parse_report_attachments(attachments)
-        data.add_reseller_sell_through_report(account_id, period_start, period_end, quantities, notes.strip(), parsed_attachments)
+        attachments = await parse_payment_proof_attachments(payment_proofs)
+        count = data.add_order_payment_proofs(account_id, order_id, attachments)
     except ValueError as exc:
-        return redirect_to(safe_portal_path("reseller", "reports", error=str(exc)))
-    return redirect_to(safe_portal_path("reseller", "reports", message="Sell-through report submitted."))
+        return redirect_to(safe_portal_path("reseller", "history", error=str(exc)))
+    return redirect_to(safe_portal_path("reseller", "history", message=f"{count} payment proof screenshot uploaded."))
 
 
-
+@app.post("/portal/reseller/profile/password")
+async def reseller_profile_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    guard = require_portal_session(request, "reseller")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    if account_id is None:
+        return redirect_to(safe_portal_path("reseller", "profile", error="Your session expired. Please sign in again."))
+    try:
+        if new_password != confirm_password:
+            raise ValueError("New password and confirmation do not match.")
+        data.change_account_password(account_id, current_password, new_password)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("reseller", "profile", error=str(exc)))
+    return redirect_to(safe_portal_path("reseller", "profile", message="Password updated."))
 
 
 @app.post("/portal/team-leader/sales")
@@ -1028,12 +1224,7 @@ async def team_walk_in_sale(request: Request, product_id: int = Form(...), quant
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
-    try:
-        require_positive_number(quantity, "Quantity")
-        data.create_order("team-leader", product_id, quantity, notes.strip(), account_id=session_account_id(request))
-    except ValueError as exc:
-        return redirect_to(safe_portal_path("team-leader", "sales", error=str(exc)))
-    return redirect_to(safe_portal_path("team-leader", "sales", message="Walk-in sale recorded and inventory updated."))
+    return redirect_to(safe_portal_path("team-leader", "dashboard", error="Walk-in sales are disabled for team leader demo accounts."))
 
 
 @app.post("/portal/team-leader/inventory-items")
@@ -1047,6 +1238,9 @@ async def team_inventory_item(
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
     try:
         require_positive_number(quantity, "Quantity")
         data.add_raw_inventory_item(name, category, unit, quantity)
@@ -1064,6 +1258,9 @@ async def team_inventory_item_quantity(
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
     try:
         require_positive_number(quantity, "Quantity")
         data.add_raw_inventory_quantity(raw_material_id, quantity)
@@ -1077,6 +1274,9 @@ async def team_product(request: Request):
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
 
     form = await request.form()
     material_item_ids = [value for value in form.getlist("material_item_id[]") if str(value).strip()]
@@ -1110,6 +1310,9 @@ async def team_production(
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
     try:
         if len(batch_code.strip()) < 4:
             raise ValueError("Batch code is too short.")
@@ -1129,10 +1332,31 @@ async def team_inquiry_decision(request: Request, inquiry_id: int, decision: str
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
+    role_guard = require_team_leader_role(request, "sales")
+    if role_guard:
+        return role_guard
     if decision == "approve":
-        if data.add_reseller_from_inquiry(inquiry_id, approving_team_leader_account_id=session_account_id(request)) is None:
-            return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
-        return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved and reseller account staged."))
+        try:
+            reseller = data.add_reseller_from_inquiry(inquiry_id, approving_team_leader_account_id=session_account_id(request))
+            if reseller is None:
+                return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
+        except ValueError as exc:
+            return redirect_to(safe_portal_path("team-leader", "inquiries", error=str(exc)))
+        sent, email_message = send_reseller_credentials(
+            to_email=reseller["account_email"],
+            business_name=reseller["business_name"],
+            temporary_password=reseller["temporary_password"],
+            team_leader_name=reseller.get("team_leader_name") or request.session.get("account_name") or "Sales team leader",
+        )
+        if not sent:
+            request.session["credential_flash"] = {
+                "email": reseller["account_email"],
+                "temporary_password": reseller["temporary_password"],
+                "business_name": reseller["business_name"],
+                "reason": email_message,
+            }
+            return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved. Email was not sent, so show the credentials below once."))
+        return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved and reseller credentials were emailed."))
     if decision == "reject":
         if not data.reject_inquiry(inquiry_id, reviewing_team_leader_account_id=session_account_id(request)):
             return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
@@ -1145,10 +1369,16 @@ async def team_order_decision(request: Request, order_id: int, decision: str):
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
+    role_guard = require_team_leader_role(request, "sales")
+    if role_guard:
+        return role_guard
     if decision not in {"approve", "reject", "fulfill"}:
         raise HTTPException(status_code=404)
-    if not data.decide_order(order_id, decision, team_leader_account_id=session_account_id(request)):
-        return redirect_to(safe_portal_path("team-leader", "orders", error="Order not found or already finalized."))
+    try:
+        if not data.decide_order(order_id, decision, team_leader_account_id=session_account_id(request)):
+            return redirect_to(safe_portal_path("team-leader", "orders", error="Order not found or already finalized."))
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "orders", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "orders", message=f"Order {decision} action recorded."))
 
 
@@ -1162,6 +1392,9 @@ async def team_report(
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
+    role_guard = require_team_leader_role(request, "sales")
+    if role_guard:
+        return role_guard
     try:
         require_date_range(period_start, period_end)
         account_id = session_account_id(request)
@@ -1201,17 +1434,23 @@ async def owner_product(request: Request, product_id: int = Form(...), base_pric
 
 
 @app.post("/portal/owner/accounts")
-async def owner_account(request: Request, account_type: str = Form(...), name: str = Form(...), email: str = Form(...)):
+async def owner_account(
+    request: Request,
+    account_type: str = Form(...),
+    name: str = Form(...),
+    email: str = Form(...),
+    team_leader_role: str = Form("sales"),
+):
     guard = require_portal_session(request, "owner")
     if guard:
         return guard
     try:
-        if account_type not in {"owner", "team_leader", "reseller"}:
+        if account_type not in {"owner", "team_leader"}:
             raise ValueError("Invalid account type.")
         if len(name.strip()) < 2:
             raise ValueError("Account name is required.")
         email = require_email(email)
-        data.add_account(account_type, name, email)
+        data.add_account(account_type, name, email, team_leader_role=team_leader_role)
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "accounts", message="Account created."))

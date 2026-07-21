@@ -1,5 +1,5 @@
             <section class="panel">
-                <div class="panel-heading"><h2>Reseller order review</h2><span class="hint">Approve, reject, or mark prepared orders fulfilled.</span></div>
+                <div class="panel-heading"><h2>Reseller order review</h2><span class="hint">Approve only after proof of payment is uploaded.</span></div>
                 <form class="filter-bar" method="get">
                     <label>Search <input name="q" value="{{ orders_page.filters.q }}" placeholder="Order, reseller, product"></label>
                     <label>Status
@@ -14,20 +14,40 @@
                     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
                 </form>
                 <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Status</th><th>Total</th><th>Action</th></tr></thead>
+                    <table class="responsive-card-table order-review-table">
+                        <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Status</th><th>Total</th><th>Proof</th><th>Action</th></tr></thead>
                         <tbody>
                         {% for order in orders if order.order_type == "reseller" %}
                             {% set order_locked = order.status in ["fulfilled", "rejected"] %}
                             <tr>
-                                <td>#{{ order.order_id }}</td>
-                                <td>{{ order.reseller }}</td>
-                                <td>{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
-                                <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
-                                <td>{{ order.total_amount|currency }}</td>
-                                <td>
+                                <td data-label="Order">#{{ order.order_id }}</td>
+                                <td data-label="Reseller">{{ order.reseller }}</td>
+                                <td data-label="Product">{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
+                                <td data-label="Status"><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+                                <td data-label="Total">{{ order.total_amount|currency }}</td>
+                                <td data-label="Proof">
+                                    {% if order.payment_proofs %}
+                                    <div class="proof-links">
+                                        {% for proof in order.payment_proofs %}
+                                        <a
+                                            href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
+                                            data-proof-modal-open
+                                            data-proof-url="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
+                                            data-proof-title="{{ proof.filename }}"
+                                        >
+                                            <i data-lucide="image"></i>
+                                            {{ proof.filename }}
+                                        </a>
+                                        {% endfor %}
+                                    </div>
+                                    {% else %}
+                                    <span class="status-badge pending">Missing</span>
+                                    {% endif %}
+                                </td>
+                                <td data-label="Action">
+                                    {% set approval_blocked = order.status == "pending" and not order.payment_proofs %}
                                     <div class="table-actions">
-                                        <form action="/portal/team-leader/orders/{{ order.order_id }}/approve" method="post"><button class="icon-button" title="Approve" {% if order_locked %}disabled aria-disabled="true"{% endif %}><i data-lucide="check"></i></button></form>
+                                        <form action="/portal/team-leader/orders/{{ order.order_id }}/approve" method="post"><button class="icon-button" title="{{ 'Proof of payment required' if approval_blocked else 'Approve' }}" {% if order_locked or approval_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="check"></i></button></form>
                                         <form action="/portal/team-leader/orders/{{ order.order_id }}/reject" method="post"><button class="icon-button danger" title="Reject" {% if order_locked %}disabled aria-disabled="true"{% endif %}><i data-lucide="x"></i></button></form>
                                         <form action="/portal/team-leader/orders/{{ order.order_id }}/fulfill" method="post"><button class="icon-button" title="Fulfill" {% if order_locked %}disabled aria-disabled="true"{% endif %}><i data-lucide="package-check"></i></button></form>
                                     </div>

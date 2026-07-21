@@ -1,39 +1,84 @@
-            <section class="metric-grid">
-                <article class="metric-card"><span>Fulfilled sales</span><strong>{{ metrics.fulfilled_sales|currency }}</strong><small>Recorded transactions</small></article>
-                <article class="metric-card"><span>Pending reseller orders</span><strong>{{ metrics.pending_reseller_orders }}</strong><small>Need team leader action</small></article>
-                <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }}</strong><small>Finished packs available</small></article>
-            </section>
-            <section class="panel dashboard-priority">
-                <div class="panel-heading"><h2>Latest sales</h2><a href="/portal/team-leader/sales">Record sale</a></div>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Order</th><th>Product</th><th>Status</th><th>Total</th></tr></thead>
-                        <tbody>
-                        {% for order in orders %}
-                        <tr>
-                            <td>#{{ order.order_id }}</td>
-                            <td>{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
-                            <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
-                            <td>{{ order.total_amount|currency }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="4">No sales yet.</td></tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            <section class="content-grid two">
-                <article class="panel">
-                    <div class="panel-heading"><h2>Assigned inquiries</h2><a href="/portal/team-leader/inquiries">Review</a></div>
-                    <div class="stack-list">
-                        {% for inquiry in inquiries[:4] %}
-                        <div class="stack-item">
-                            <strong>{{ inquiry.business_name }}</strong>
-                            <span>{{ inquiry.name }} - {{ inquiry.contact_number }}</span>
-                            <em>{{ inquiry.status }}</em>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </article>
-            </section>
+{% if team_leader_role == "inventory" %}
+<section class="metric-grid">
+    <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }}</strong><small>Finished packs available</small></article>
+    <article class="metric-card"><span>Active products</span><strong>{{ products|length }}</strong><small>Products visible for ordering</small></article>
+    <article class="metric-card"><span>Movement analytics</span><strong>{{ movement_analytics|length }}</strong><small>Products tracked for the last 30 days</small></article>
+</section>
+<section class="panel inventory-analytics-panel">
+    <div class="panel-heading">
+        <div>
+            <h2>Product movement analytics</h2>
+            <span class="hint">Finished-product stock in from batches and stock out from fulfilled orders in the last 30 days.</span>
+        </div>
+        <a href="/portal/team-leader/batches">View batches</a>
+    </div>
+    <script type="application/json" data-inventory-movement-json>{{ movement_analytics|tojson }}</script>
+    <div class="inventory-movement-chart">
+        <canvas data-inventory-movement-chart aria-label="Product inventory in and out chart" role="img"></canvas>
+    </div>
+    <div class="inventory-movement-fallback" data-inventory-movement-fallback>
+        {% set movement_max = namespace(value=0) %}
+        {% for row in movement_analytics %}
+            {% set combined = row.total_in + row.total_out %}
+            {% if combined > movement_max.value %}
+                {% set movement_max.value = combined %}
+            {% endif %}
+        {% endfor %}
+        {% for row in movement_analytics %}
+        <div class="inventory-movement-row">
+            <strong>{{ row.name }}</strong>
+            <span>
+                <i class="movement-in" style="width: {{ ((row.total_in / movement_max.value) * 100) if movement_max.value else 0 }}%"></i>
+                <i class="movement-out" style="width: {{ ((row.total_out / movement_max.value) * 100) if movement_max.value else 0 }}%"></i>
+            </span>
+            <small>In: {{ row.total_in|number }} {{ row.unit }} · Out: {{ row.total_out|number }} {{ row.unit }} · Stock: {{ row.total_available|number }} {{ row.unit }}</small>
+        </div>
+        {% else %}
+        <p class="muted">No product movement yet.</p>
+        {% endfor %}
+    </div>
+</section>
+{% else %}
+<section class="metric-grid">
+    <article class="metric-card"><span>Fulfilled reseller sales</span><strong>{{ metrics.fulfilled_sales|currency }}</strong><small>Assigned reseller transactions</small></article>
+    <article class="metric-card"><span>Pending reseller orders</span><strong>{{ metrics.pending_reseller_orders }}</strong><small>Need your action</small></article>
+    <article class="metric-card"><span>Active resellers</span><strong>{{ metrics.active_resellers }}</strong><small>Assigned to you</small></article>
+</section>
+<section class="panel dashboard-priority">
+    <div class="panel-heading"><h2>Latest assigned reseller orders</h2><a href="/portal/team-leader/orders">Review orders</a></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Status</th><th>Total</th></tr></thead>
+            <tbody>
+            {% for order in orders %}
+            <tr>
+                <td>#{{ order.order_id }}</td>
+                <td>{{ order.reseller }}</td>
+                <td>{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
+                <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+                <td>{{ order.total_amount|currency }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">No assigned reseller orders yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+<section class="content-grid two">
+    <article class="panel">
+        <div class="panel-heading"><h2>Assigned inquiries</h2><a href="/portal/team-leader/inquiries">Review</a></div>
+        <div class="stack-list">
+            {% for inquiry in inquiries[:4] %}
+            <div class="stack-item">
+                <strong>{{ inquiry.business_name }}</strong>
+                <span>{{ inquiry.name }} - {{ inquiry.contact_number }}</span>
+                <em>{{ inquiry.status }}</em>
+            </div>
+            {% else %}
+            <div class="stack-item"><span>No assigned inquiries yet.</span></div>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+{% endif %}

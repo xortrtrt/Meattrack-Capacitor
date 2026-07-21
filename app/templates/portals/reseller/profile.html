@@ -1,0 +1,56 @@
+<section class="content-grid two profile-layout">
+  <article class="panel profile-card">
+    <div class="panel-heading">
+      <h2>Profile</h2>
+      <span class="hint">Your reseller portal account details.</span>
+    </div>
+    <dl class="profile-details">
+      <div>
+        <dt>Account name</dt>
+        <dd>{{ account_profile.name if account_profile else role.name }}</dd>
+      </div>
+      <div>
+        <dt>Email</dt>
+        <dd>{{ account_profile.email if account_profile else role.email }}</dd>
+      </div>
+      <div>
+        <dt>Business</dt>
+        <dd>{{ reseller_profile.business_name if reseller_profile else "Pending reseller profile" }}</dd>
+      </div>
+      <div>
+        <dt>Assigned sales leader</dt>
+        <dd>
+          {{ reseller_profile.team_leader_name if reseller_profile and reseller_profile.team_leader_name else "Unassigned" }}
+          {% if reseller_profile and reseller_profile.team_leader_email %}
+          <small>{{ reseller_profile.team_leader_email }}</small>
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+  </article>
+
+  <article class="panel">
+    <div class="panel-heading">
+      <h2>Change password</h2>
+      <span class="hint">Use this after receiving a temporary password.</span>
+    </div>
+    <form class="form-panel bare" action="/portal/reseller/profile/password" method="post">
+      <label>
+        Current password
+        <input required type="password" name="current_password" autocomplete="current-password" />
+      </label>
+      <label>
+        New password
+        <input required type="password" name="new_password" minlength="8" autocomplete="new-password" />
+      </label>
+      <label>
+        Confirm new password
+        <input required type="password" name="confirm_password" minlength="8" autocomplete="new-password" />
+      </label>
+      <button class="button primary" type="submit">
+        <i data-lucide="key-round"></i>
+        Update password
+      </button>
+    </form>
+  </article>
+</section>

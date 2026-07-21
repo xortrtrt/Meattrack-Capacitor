@@ -132,34 +132,36 @@
             </section>
             <section class="panel">
                 <div class="panel-heading">
-                    <h2>Assigned reseller sales reports</h2>
-                    <span class="hint">Sell-through reports submitted by your assigned resellers.</span>
+                    <h2>Assigned reseller purchase summary</h2>
+                    <span class="hint">Based only on approved or fulfilled reseller orders inside MEATTRACK.</span>
                 </div>
-                <div class="stack-list">
-                {% for report in reseller_sales_reports %}
-                    <div class="stack-item">
-                        <strong>{{ report.reseller or report.submitted_by }}</strong>
-                        <span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span>
-                        <em>{{ report.total_sales|currency }} verified value · {{ report.total_orders }} units reported</em>
-                        {% if report["items"] %}
-                        <small>
-                            {% for item in report["items"] %}
-                                {{ item.quantity_sold|number }} {{ item.unit }} {{ item.name }}{% if not loop.last %}, {% endif %}
-                            {% endfor %}
-                        </small>
-                        {% endif %}
-                        {% if report["attachments"] %}
-                        <small>
-                            Attachments:
-                            {% for attachment in report["attachments"] %}
-                                {{ attachment.filename }}{% if not loop.last %}, {% endif %}
-                            {% endfor %}
-                        </small>
-                        {% endif %}
-                    </div>
-                {% else %}
-                    <div class="stack-item"><span>No assigned reseller reports yet.</span></div>
-                {% endfor %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Reseller</th>
+                                <th>Product</th>
+                                <th>Quantity bought</th>
+                                <th>Orders</th>
+                                <th>Total amount</th>
+                                <th>Latest order</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for purchase in reseller_purchase_summary %}
+                            <tr>
+                                <td>{{ purchase.reseller }}</td>
+                                <td>{{ purchase.product }}</td>
+                                <td>{{ purchase.total_quantity|number }} {{ purchase.unit }}</td>
+                                <td>{{ purchase.order_count|number }}</td>
+                                <td>{{ purchase.total_amount|currency }}</td>
+                                <td>{{ purchase.latest_order_at|nice_date }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="6">No approved or fulfilled reseller purchases yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </section>
             <section class="panel">

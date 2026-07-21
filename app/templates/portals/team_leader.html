@@ -7,11 +7,19 @@
   {% include "portals/team-leader/sales.html" %}
 {% elif section == "inventory" %}
   {% include "portals/team-leader/inventory.html" %}
+{% elif section == "raw-materials" %}
+  {% include "portals/team-leader/raw_materials.html" %}
+{% elif section == "finished-products" %}
+  {% include "portals/team-leader/finished_products.html" %}
+{% elif section == "batches" %}
+  {% include "portals/team-leader/batches.html" %}
 {% elif section == "inquiries" %}
   {% include "portals/team-leader/inquiries.html" %}
 {% elif section == "orders" %}
   {% include "portals/team-leader/orders.html" %}
 {% elif section == "reports" %}
   {% include "portals/team-leader/reports.html" %}
+{% elif section == "logs" %}
+  {% include "portals/team-leader/logs.html" %}
 {% endif %}
 {% endblock %}

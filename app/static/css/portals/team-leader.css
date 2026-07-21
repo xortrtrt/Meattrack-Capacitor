@@ -2,3 +2,502 @@
 .role-team-leader .portal-topbar h1 {
   max-width: 760px;
 }
+
+.role-team-leader .inventory-actions-grid {
+  align-items: stretch;
+  grid-template-columns: 1fr;
+}
+
+.role-team-leader .inventory-action-panel {
+  align-content: start;
+  grid-column: 1 / -1;
+}
+
+.role-team-leader .inventory-action-panel .panel-heading {
+  margin-bottom: 12px;
+}
+
+.role-team-leader .inventory-action-panel .form-panel {
+  height: 100%;
+}
+
+.role-team-leader .inventory-recipe-panel .panel-heading {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.role-team-leader .inventory-recipe-panel .panel-heading .hint {
+  max-width: 720px;
+  text-align: left;
+}
+
+.role-team-leader .inventory-recipe-panel .form-grid {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.role-team-leader .inventory-recipe-panel .ingredient-row {
+  grid-template-columns: minmax(240px, 1.3fr) minmax(170px, 0.7fr) minmax(140px, 0.55fr) 44px;
+}
+
+.role-team-leader .inventory-production-panel .form-panel {
+  max-width: 760px;
+}
+
+.role-team-leader .product-recipes-panel {
+  overflow: hidden;
+}
+
+.role-team-leader .product-recipes-panel .filter-bar {
+  margin-bottom: 18px;
+}
+
+.role-team-leader .recipe-card-list {
+  display: grid;
+  gap: 14px;
+}
+
+.role-team-leader .recipe-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(215, 201, 154, 0.72);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffdf5, #fbf5e6);
+  box-shadow: 0 10px 20px rgba(13, 12, 11, 0.06);
+  overflow: hidden;
+}
+
+.role-team-leader .recipe-card-summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  padding: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.role-team-leader .recipe-card-summary::-webkit-details-marker {
+  display: none;
+}
+
+.role-team-leader .recipe-card-summary::before {
+  content: "›";
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(215, 182, 33, 0.18);
+  color: var(--gold-deep);
+  font-size: 1.1rem;
+  font-weight: 900;
+  transform: translateY(-50%) rotate(0deg);
+  transition: transform 0.16s ease;
+}
+
+.role-team-leader .recipe-card[open] .recipe-card-summary::before {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+.role-team-leader .recipe-card-product {
+  display: grid;
+  gap: 4px;
+  grid-column: 1;
+  grid-row: 1;
+  padding-left: 34px;
+  min-width: 0;
+}
+
+.role-team-leader .recipe-card-product strong,
+.role-team-leader .recipe-card-product small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.role-team-leader .recipe-card-product small {
+  color: var(--text-light);
+  line-height: 1.35;
+}
+
+.role-team-leader .recipe-count {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid rgba(215, 182, 33, 0.48);
+  border-radius: 999px;
+  background: rgba(215, 182, 33, 0.16);
+  color: var(--primary);
+  font-size: 0.84rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.role-team-leader .recipe-card .recipe-lines {
+  max-height: min(300px, 46vh);
+  margin: 0 14px 14px;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.role-team-leader .recipe-card .recipe-line {
+  grid-template-columns: minmax(96px, 1fr) minmax(86px, 0.72fr) minmax(88px, 0.64fr);
+  gap: 10px;
+}
+
+.role-team-leader .recipe-card .recipe-line span {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.role-team-leader .recipe-empty {
+  display: block;
+  padding: 0 14px 14px;
+}
+
+.role-team-leader .inventory-items-browser {
+  display: grid;
+  gap: 18px;
+}
+
+.role-team-leader .inventory-separated-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.role-team-leader .inventory-separated-section .panel-heading {
+  margin-bottom: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(215, 201, 154, 0.62);
+}
+
+.role-team-leader .inventory-separated-section h3 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 1.22rem;
+}
+
+.role-team-leader .inventory-product-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.role-team-leader .inventory-product-card {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  overflow: visible;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+  box-shadow: 0 10px 22px rgba(13, 12, 11, 0.06);
+}
+
+.role-team-leader .inventory-product-image {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  min-height: 112px;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  background: #0f0e0c;
+}
+
+.role-team-leader .inventory-product-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 112px;
+  object-fit: contain;
+  background: #0f0e0c;
+}
+
+.role-team-leader .inventory-product-card-copy {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.role-team-leader .inventory-product-card-copy h3 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 1.05rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.role-team-leader .inventory-product-card-copy strong {
+  color: var(--primary);
+  font-size: 0.94rem;
+}
+
+.role-team-leader .inventory-product-card-copy small {
+  color: var(--text-light);
+  font-weight: 750;
+}
+
+.role-team-leader .inventory-analytics-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.role-team-leader .inventory-movement-chart {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  padding: 12px;
+  border: 1px solid rgba(215, 201, 154, 0.68);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 252, 240, 0.95), rgba(250, 243, 221, 0.68));
+}
+
+.role-team-leader .inventory-movement-chart canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.role-team-leader .inventory-movement-fallback {
+  display: grid;
+  gap: 12px;
+}
+
+.role-team-leader .inventory-movement-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.75fr) minmax(220px, 1.4fr);
+  gap: 8px 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(215, 201, 154, 0.62);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.role-team-leader .inventory-movement-row strong,
+.role-team-leader .inventory-movement-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.role-team-leader .inventory-movement-row span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.role-team-leader .inventory-movement-row i {
+  display: block;
+  min-width: 2px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.role-team-leader .inventory-movement-row .movement-in {
+  background: var(--gold);
+}
+
+.role-team-leader .inventory-movement-row .movement-out {
+  background: var(--primary);
+}
+
+.role-team-leader .inventory-movement-row small {
+  grid-column: 1 / -1;
+  color: var(--text-light);
+  font-weight: 750;
+}
+
+.role-team-leader [data-inventory-products-region] {
+  transition: opacity 0.16s ease;
+}
+
+.role-team-leader [data-inventory-products-region].is-loading {
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.role-team-leader .inventory-products-status {
+  min-height: 18px;
+  color: var(--gold-deep);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+@media (max-width: 1180px) {
+  .role-team-leader .inventory-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .role-team-leader .inventory-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .role-team-leader .inventory-recipe-panel .form-grid,
+  .role-team-leader .inventory-recipe-panel .ingredient-row {
+    grid-template-columns: 1fr;
+  }
+
+  .role-team-leader .inventory-recipe-panel .ingredient-row .icon-button {
+    width: 100%;
+  }
+
+  .role-team-leader .inventory-movement-chart {
+    min-height: 420px;
+    padding: 8px;
+  }
+
+  .role-team-leader .inventory-movement-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .role-team-leader .product-recipes-panel {
+    padding-inline: 14px;
+  }
+
+  .role-team-leader .product-recipes-panel .panel-heading {
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .role-team-leader .product-recipes-panel .panel-heading .hint {
+    max-width: none;
+    text-align: left;
+  }
+
+  .role-team-leader .product-recipes-panel .filter-bar {
+    margin-bottom: 14px;
+  }
+
+  .role-team-leader .recipe-card-list {
+    gap: 12px;
+  }
+
+  .role-team-leader .recipe-card {
+    border-radius: 16px;
+  }
+
+  .role-team-leader .recipe-card-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 13px;
+  }
+
+  .role-team-leader .recipe-card-product {
+    padding-left: 32px;
+  }
+
+  .role-team-leader .recipe-card-product strong {
+    font-size: 0.98rem;
+    line-height: 1.18;
+  }
+
+  .role-team-leader .recipe-card-product small {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 0.9rem;
+  }
+
+  .role-team-leader .recipe-count {
+    justify-self: start;
+    margin-left: 32px;
+    min-height: 30px;
+    padding-inline: 10px;
+    font-size: 0.8rem;
+  }
+
+  .role-team-leader .recipe-card .recipe-lines {
+    max-height: 210px;
+    margin: 0 10px 10px;
+  }
+
+  .role-team-leader .recipe-card .recipe-line {
+    grid-template-columns: 1fr auto;
+    gap: 6px 10px;
+    padding: 8px;
+  }
+
+  .role-team-leader .recipe-card .recipe-line span:nth-child(2) {
+    grid-column: 1;
+    color: var(--text-light);
+    font-size: 0.82rem;
+  }
+
+  .role-team-leader .recipe-card .recipe-line span:nth-child(3) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    font-weight: 850;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .role-team-leader .recipe-card .recipe-line.header {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .role-team-leader .inventory-product-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .role-team-leader .inventory-product-card {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .role-team-leader .inventory-product-image,
+  .role-team-leader .inventory-product-image img {
+    min-height: 112px;
+  }
+
+  .role-team-leader .inventory-product-card-copy {
+    gap: 5px;
+  }
+
+  .role-team-leader .inventory-product-card-copy h3 {
+    font-size: 0.9rem;
+  }
+
+  .role-team-leader .inventory-product-card-copy strong,
+  .role-team-leader .inventory-product-card-copy small {
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .role-team-leader .inventory-product-image,
+  .role-team-leader .inventory-product-image img {
+    min-height: 98px;
+  }
+}
+
+@media (max-width: 980px) {
+  .role-team-leader .inventory-recipe-panel .ingredient-row {
+    grid-template-columns: 1fr;
+  }
+
+  .role-team-leader .inventory-recipe-panel .ingredient-row .icon-button {
+    width: 100%;
+  }
+}

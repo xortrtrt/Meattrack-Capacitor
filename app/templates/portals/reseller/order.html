@@ -18,17 +18,39 @@
         <span class="eyebrow">Product catalog</span>
         <strong>Select quantities</strong>
       </div>
-      <span>{{ products|length }} products</span>
+      <span>{{ products_page.pagination.total }} products</span>
     </div>
-    <label class="reseller-product-search">
-      <i data-lucide="search"></i>
-      <span>Search products</span>
-      <input
-        type="search"
-        placeholder="Search by product name or category"
-        data-product-search
-      />
-    </label>
+    <form class="reseller-product-search" method="get" action="/portal/reseller/order">
+      <label>
+        <i data-lucide="search"></i>
+        <span>Search products</span>
+        <input
+          type="search"
+          name="q"
+          value="{{ products_page.filters.q }}"
+          placeholder="Search by product name or category"
+        />
+      </label>
+      {% if products_page.filters.type %}
+      <input type="hidden" name="type" value="{{ products_page.filters.type }}" />
+      {% endif %}
+      <button class="button subtle" type="submit">
+        <i data-lucide="search"></i>
+        Search
+      </button>
+    </form>
+    <nav class="reseller-category-tabs" aria-label="Product categories">
+      <a
+        class="{{ 'active' if not products_page.filters.type else '' }}"
+        href="/portal/reseller/order{% if products_page.filters.q %}?q={{ products_page.filters.q|urlencode }}{% endif %}"
+      >All</a>
+      {% for category in product_categories %}
+      <a
+        class="{{ 'active' if products_page.filters.type == category else '' }}"
+        href="/portal/reseller/order?type={{ category|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
+      >{{ category }}</a>
+      {% endfor %}
+    </nav>
     <div class="reseller-product-cards" data-product-grid>
       {% for product in products %}
       <article
@@ -75,6 +97,15 @@
     <p class="reseller-no-products" data-product-empty hidden>
       No products match your search.
     </p>
+    <div class="pagination reseller-product-pagination">
+      {% if products_page.pagination.has_prev %}
+      <a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&page={{ products_page.pagination.page - 1 }}">Previous</a>
+      {% endif %}
+      <span>Page {{ products_page.pagination.page }} of {{ products_page.pagination.total_pages }}</span>
+      {% if products_page.pagination.has_next %}
+      <a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&page={{ products_page.pagination.page + 1 }}">Next</a>
+      {% endif %}
+    </div>
     <div class="reseller-product-modal" data-product-modal hidden>
       <button
         class="reseller-product-modal-backdrop"

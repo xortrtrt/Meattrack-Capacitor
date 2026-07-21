@@ -212,7 +212,7 @@
           </div>
         </div>
         <div class="button-row center-actions">
-          <a class="btn btn-primary" href="#inquiry">Send Partnership Inquiry</a>
+          <a class="btn btn-primary" href="#inquiry">Start reseller chat</a>
         </div>
       </div>
     </section>
@@ -222,76 +222,23 @@
         <h2>Let's Connect</h2>
         <p class="inquiry-intro">
           Interested in products, reseller rates, or city outlet opportunities?
-          Send your details and the team will review your inquiry.
+          Start with the chatbot so your details can be confirmed and assigned to an available sales team leader.
         </p>
 
         <div class="inquiry-wrapper">
-          <form class="inquiry-form" action="/inquiries" method="post">
-            <div class="form-group">
-              <label for="name">Your Name</label>
-              <input
-                required
-                id="name"
-                type="text"
-                name="name"
-                placeholder="Juan Dela Cruz"
-                minlength="2"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="business_name">Business Name</label>
-              <input
-                required
-                id="business_name"
-                type="text"
-                name="business_name"
-                placeholder="Your Business"
-                minlength="2"
-              />
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="email">Email Address</label>
-                <input
-                  required
-                  id="email"
-                  type="email"
-                  name="email"
-                  placeholder="your@email.com"
-                />
-              </div>
-
-              <div class="form-group">
-                <label for="contact_number">Contact Number</label>
-                <input
-                  required
-                  id="contact_number"
-                  type="tel"
-                  name="contact_number"
-                  placeholder="09XX XXX XXXX"
-                  minlength="7"
-                />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="message">Tell Us More</label>
-              <textarea
-                required
-                id="message"
-                name="message"
-                rows="5"
-                minlength="10"
-                placeholder="Share your location, business interest, and target products..."
-              ></textarea>
-            </div>
-
-            <button type="submit" class="btn btn-primary btn-large">
-              Send Inquiry
+          <div class="inquiry-form inquiry-chat-card">
+            <h3>Reseller inquiries are handled through chat</h3>
+            <p>
+              The chatbot answers common questions first, confirms your details,
+              then assigns the inquiry to an available sales team leader.
+            </p>
+            <button type="button" class="btn btn-primary btn-large" data-open-chatbot>
+              Open reseller chat
             </button>
-          </form>
+            <p class="hint">
+              Public sign-up is disabled. Portal accounts are created only by Batangas Premium team leaders.
+            </p>
+          </div>
 
           <div class="contact-info">
             <h3>Contact Details</h3>

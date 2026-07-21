@@ -20,6 +20,7 @@ CREATE TABLE accounts (
     password_hash text NOT NULL,
     auth_user_id uuid,
     auth_provider text,
+    team_leader_role text CHECK (team_leader_role IS NULL OR team_leader_role IN ('inventory', 'sales')),
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -158,6 +159,22 @@ CREATE TABLE order_items (
     line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity * unit_price, 2)) STORED
 );
 
+CREATE TABLE order_payment_proofs (
+    order_payment_proof_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id bigint NOT NULL REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    uploaded_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    filename text NOT NULL,
+    content_type text NOT NULL,
+    content bytea NOT NULL,
+    size_bytes integer NOT NULL CHECK (size_bytes >= 0 AND size_bytes <= 5242880),
+    checksum_sha256 text NOT NULL,
+    uploaded_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(filename) <> ''),
+    CHECK (filename !~ '[\\/]'),
+    CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
+    CHECK (length(checksum_sha256) = 64)
+);
+
 CREATE TABLE reseller_cart_items (
     cart_item_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -291,12 +308,15 @@ CREATE TABLE notifications (
 CREATE UNIQUE INDEX ux_accounts_email_lower ON accounts (lower(email));
 CREATE UNIQUE INDEX ux_accounts_auth_user_id ON accounts (auth_user_id)
     WHERE auth_user_id IS NOT NULL;
+CREATE INDEX ix_accounts_team_leader_role ON accounts (team_leader_role)
+    WHERE account_type = 'team_leader';
 CREATE UNIQUE INDEX ux_resellers_email_lower ON resellers (lower(email));
 CREATE UNIQUE INDEX ux_inventory_items_type_name_lower ON inventory_items (item_type, lower(name));
 CREATE INDEX ix_inventory_items_type_name ON inventory_items (item_type, name);
 CREATE INDEX ix_inventory_batches_fefo ON inventory_batches (item_id, expiry_date, quantity_available)
     WHERE quality_status = 'approved' AND quantity_available > 0;
 CREATE INDEX ix_orders_reseller_status ON orders (reseller_id, status);
+CREATE INDEX ix_order_payment_proofs_order ON order_payment_proofs (order_id, uploaded_at DESC);
 CREATE INDEX ix_resellers_team_leader ON resellers (team_leader_account_id);
 CREATE INDEX ix_reseller_cart_items_account_updated ON reseller_cart_items (account_id, updated_at DESC);
 CREATE INDEX ix_reseller_cart_items_product ON reseller_cart_items (product_id);

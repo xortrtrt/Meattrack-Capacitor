@@ -26,6 +26,7 @@
                         <td>{{ inquiry.message }}</td>
                         <td><span class="status-badge {{ inquiry.status }}">{{ inquiry.status }}</span></td>
                         <td>
+                          {% if inquiry.status in ["pending", "assigned", "contacted"] %}
                           <div class="table-actions">
                             <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/approve" method="post">
                                 <button class="icon-button" type="submit" title="Approve"><i data-lucide="check"></i></button>
@@ -34,6 +35,9 @@
                                 <button class="icon-button danger" type="submit" title="Reject"><i data-lucide="x"></i></button>
                             </form>
                           </div>
+                          {% else %}
+                          <span class="hint">Reviewed</span>
+                          {% endif %}
                         </td>
                     </tr>
                     {% else %}
