@@ -1,0 +1,186 @@
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Submit team sales report</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/reports" method="post">
+                        <div class="form-grid"><label>Start <input required type="date" name="period_start"></label><label>End <input required type="date" name="period_end"></label></div>
+                        <div class="form-grid" data-team-report-totals>
+                            <label>Total sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
+                            <label>Total orders <input readonly type="text" data-report-total-orders value="0"></label>
+                        </div>
+                        <label>Notes <textarea name="notes" rows="4"></textarea></label>
+                        <button class="button primary" type="submit">Submit report</button>
+                    </form>
+                    <div class="report-order-items">
+                        <h3>Included order items</h3>
+                        <div class="table-wrap">
+                            <table class="compact-table">
+                                <thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Quantity</th><th>Sales</th></tr></thead>
+                                <tbody data-report-order-items>
+                                    <tr><td colspan="5">No fulfilled order items in this period.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <script type="application/json" id="team-report-sales-data">{{ team_report_sales|tojson }}</script>
+                    <script>
+                        (() => {
+                            const form = document.querySelector('form[action="/portal/team-leader/reports"]');
+                            const data = document.getElementById("team-report-sales-data");
+                            if (!form || !data) {
+                                return;
+                            }
+
+                            const records = JSON.parse(data.textContent || "[]");
+                            const startInput = form.querySelector('input[name="period_start"]');
+                            const endInput = form.querySelector('input[name="period_end"]');
+                            const salesInput = form.querySelector("[data-report-total-sales]");
+                            const ordersInput = form.querySelector("[data-report-total-orders]");
+                            const itemsBody = document.querySelector("[data-report-order-items]");
+
+                            const today = new Date();
+                            const todayText = [
+                                today.getFullYear(),
+                                String(today.getMonth() + 1).padStart(2, "0"),
+                                String(today.getDate()).padStart(2, "0"),
+                            ].join("-");
+
+                            if (!startInput.value) {
+                                startInput.value = todayText;
+                            }
+                            if (!endInput.value) {
+                                endInput.value = todayText;
+                            }
+
+                            const money = (value) => `PHP ${value.toLocaleString("en-PH", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                            })}`;
+                            const quantity = (value) => Number(value || 0).toLocaleString("en-PH", {
+                                minimumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2,
+                                maximumFractionDigits: 2,
+                            });
+                            const textCell = (value) => {
+                                const cell = document.createElement("td");
+                                cell.textContent = value;
+                                return cell;
+                            };
+
+                            const updateTotals = () => {
+                                const start = startInput.value;
+                                const end = endInput.value;
+                                if (!start || !end || end < start) {
+                                    salesInput.value = "PHP 0.00";
+                                    ordersInput.value = "0 orders / 0 packs";
+                                    if (itemsBody) {
+                                        itemsBody.innerHTML = '<tr><td colspan="5">No fulfilled order items in this period.</td></tr>';
+                                    }
+                                    return;
+                                }
+
+                                const orderIds = new Set();
+                                const included = records.filter((record) => record.sale_date >= start && record.sale_date <= end);
+                                const sales = included.reduce((sum, record) => {
+                                    orderIds.add(record.order_id);
+                                    return sum + Number(record.total_sales || 0);
+                                }, 0);
+                                const packs = included.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
+
+                                salesInput.value = money(sales);
+                                ordersInput.value = `${orderIds.size} orders / ${quantity(packs)} packs`;
+
+                                if (!itemsBody) {
+                                    return;
+                                }
+                                itemsBody.replaceChildren();
+                                if (included.length === 0) {
+                                    const row = document.createElement("tr");
+                                    row.appendChild(textCell("No fulfilled order items in this period."));
+                                    row.firstChild.colSpan = 5;
+                                    itemsBody.appendChild(row);
+                                    return;
+                                }
+
+                                included.forEach((record) => {
+                                    const row = document.createElement("tr");
+                                    row.appendChild(textCell(`#${record.order_id}`));
+                                    row.appendChild(textCell(record.customer || "Retail counter"));
+                                    row.appendChild(textCell(record.product || "Product"));
+                                    row.appendChild(textCell(`${quantity(record.quantity)} ${record.unit || "pack"}`));
+                                    row.appendChild(textCell(money(Number(record.total_sales || 0))));
+                                    itemsBody.appendChild(row);
+                                });
+                            };
+
+                            startInput.addEventListener("change", updateTotals);
+                            endInput.addEventListener("change", updateTotals);
+                            updateTotals();
+                        })();
+                    </script>
+                </article>
+                <article class="panel">
+                    <h2>Team reports</h2>
+                    <form class="filter-bar" method="get">
+                        <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
+                        <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                    </form>
+                    <div class="stack-list">
+                    {% for report in sales_reports if report.report_source == "team_leader" %}
+                        <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency }} - {{ report.total_orders }} orders</em></div>
+                    {% endfor %}
+                    </div>
+                </article>
+            </section>
+            <section class="panel">
+                <div class="panel-heading">
+                    <h2>Assigned reseller sales reports</h2>
+                    <span class="hint">Sell-through reports submitted by your assigned resellers.</span>
+                </div>
+                <div class="stack-list">
+                {% for report in reseller_sales_reports %}
+                    <div class="stack-item">
+                        <strong>{{ report.reseller or report.submitted_by }}</strong>
+                        <span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span>
+                        <em>{{ report.total_sales|currency }} verified value · {{ report.total_orders }} units reported</em>
+                        {% if report["items"] %}
+                        <small>
+                            {% for item in report["items"] %}
+                                {{ item.quantity_sold|number }} {{ item.unit }} {{ item.name }}{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </small>
+                        {% endif %}
+                        {% if report["attachments"] %}
+                        <small>
+                            Attachments:
+                            {% for attachment in report["attachments"] %}
+                                {{ attachment.filename }}{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </small>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="stack-item"><span>No assigned reseller reports yet.</span></div>
+                {% endfor %}
+                </div>
+            </section>
+            <section class="panel">
+                <div class="panel-heading"><h2>Rejected reseller orders</h2><span class="hint">Rejected orders are logged separately from fulfilled sales.</span></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Rejected</th><th>Total</th><th>Notes</th></tr></thead>
+                        <tbody>
+                        {% for rejected in team_rejected_orders %}
+                            <tr>
+                                <td>#{{ rejected.order_id }}</td>
+                                <td>{{ rejected.reseller }}</td>
+                                <td>{{ rejected.items }}</td>
+                                <td>{{ rejected.rejected_at|nice_date }}</td>
+                                <td>{{ rejected.total_amount|currency }}</td>
+                                <td>{{ rejected.notes or "No notes" }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="6">No rejected reseller orders.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>

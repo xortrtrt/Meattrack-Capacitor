@@ -1,0 +1,17 @@
+            <section class="panel">
+                <div class="panel-heading"><h2>Activity logs and audit trail</h2><span class="hint">Sensitive account, price, inventory, and reseller actions are recorded.</span></div>
+                <form class="filter-bar" method="get">
+                    <label>Search <input name="q" value="{{ activity_logs_page.filters.q }}" placeholder="Actor or action"></label>
+                    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                </form>
+                <div class="timeline">
+                    {% for log in activity_logs %}
+                    <article>
+                        <span>{{ log.created_at|nice_date }}</span>
+                        <strong>{{ log.actor }}</strong>
+                        <p>{{ log.action.replace("_", " ") }} - {{ log.entity }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+                <div class="pagination"><span>Page {{ activity_logs_page.pagination.page }} of {{ activity_logs_page.pagination.total_pages }}</span></div>
+            </section>

@@ -1,0 +1,139 @@
+<section class="reseller-cart-page" data-cart>
+  <article class="panel reseller-cart-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Your cart</h2>
+        <span class="hint"
+          >Review quantities, remove items, then submit the full order for
+          approval.</span
+        >
+      </div>
+      <a class="button subtle" href="/portal/reseller/order">
+        <i data-lucide="plus"></i> Add more products
+      </a>
+    </div>
+    {% if cart_items %}
+    <div class="reseller-cart-layout">
+      <div class="reseller-cart-items">
+        {% for item in cart_items %}
+        <article
+          class="reseller-cart-item"
+          data-cart-item
+          data-product-id="{{ item.product_id }}"
+          data-unit-price="{{ item.base_price }}"
+        >
+          <img
+            src="{{ item.name|product_image|media_url }}"
+            alt="{{ item.name }}"
+            loading="lazy"
+          />
+          <div>
+            <span class="reseller-product-category">{{ item.category }}</span>
+            <strong>{{ item.name }}</strong>
+            <small>{{ item.base_price|currency }}/{{ item.unit }}</small>
+          </div>
+          <form
+            action="/portal/reseller/cart"
+            method="post"
+            data-cart-update-form
+          >
+            <input
+              type="hidden"
+              name="product_id"
+              value="{{ item.product_id }}"
+            />
+            <input type="hidden" name="action" value="update" />
+            <label>
+              Qty
+              <span class="reseller-quantity-stepper cart-quantity-stepper">
+                <span>
+                  <button
+                    class="quantity-step"
+                    type="button"
+                    data-quantity-step="-1"
+                    aria-label="Decrease quantity"
+                  >
+                    <i data-lucide="minus"></i>
+                  </button>
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    step="1"
+                    name="quantity"
+                    value="{{ item.cart_quantity|number }}"
+                    data-quantity-input
+                    data-cart-quantity
+                  />
+                  <button
+                    class="quantity-step"
+                    type="button"
+                    data-quantity-step="1"
+                    aria-label="Increase quantity"
+                  >
+                    <i data-lucide="plus"></i>
+                  </button>
+                </span>
+              </span>
+            </label>
+          </form>
+          <strong class="reseller-cart-line-total" data-cart-line-total
+            >{{ item.line_total|currency }}</strong
+          >
+          <form action="/portal/reseller/cart" method="post">
+            <input
+              type="hidden"
+              name="product_id"
+              value="{{ item.product_id }}"
+            />
+            <input type="hidden" name="quantity" value="0" />
+            <input type="hidden" name="action" value="remove" />
+            <button class="icon-button danger" type="submit" title="Remove">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </form>
+        </article>
+        {% endfor %}
+      </div>
+      <aside class="reseller-summary-card">
+        <span class="eyebrow">Checkout</span>
+        <div class="reseller-total-box">
+          <span>Cart total</span>
+          <strong data-cart-total>{{ cart_total|currency }}</strong>
+          <small data-cart-count>{{ cart_count|number }} packs in cart</small>
+        </div>
+        <small class="hint cart-save-status" data-cart-save-status></small>
+        <form
+          class="reseller-checkout-form"
+          action="/portal/reseller/cart/checkout"
+          method="post"
+        >
+          <label class="reseller-notes-field">
+            Notes
+            <textarea
+              name="notes"
+              rows="4"
+              placeholder="Pickup date, delivery notes, preparation requests, or special instructions"
+            ></textarea>
+          </label>
+          <button class="button primary reseller-submit-order" type="submit">
+            <i data-lucide="send"></i> Submit order request
+          </button>
+        </form>
+        <p class="hint">
+          Your order remains pending until the team leader reviews it.
+        </p>
+      </aside>
+    </div>
+    {% else %}
+    <div class="reseller-empty-cart">
+      <i data-lucide="shopping-cart"></i>
+      <strong>Your cart is empty.</strong>
+      <span>Add products first before submitting an order request.</span>
+      <a class="button primary" href="/portal/reseller/order"
+        >Browse products</a
+      >
+    </div>
+    {% endif %}
+  </article>
+</section>

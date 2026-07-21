@@ -1,0 +1,296 @@
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Raw inventory</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/inventory-items" method="post">
+                        <h3>Create item</h3>
+                        <div class="form-grid">
+                            <label>Item name <input required name="name" placeholder="Chicken"></label>
+                            <label>Category
+                                <select name="category" required>
+                                    {% for category in raw_material_categories %}
+                                    <option value="{{ category }}">{{ category.replace("_", " ")|title }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>Unit
+                                <select name="unit" required>
+                                    {% for unit in stock_units %}
+                                    <option value="{{ unit }}">{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
+                        </div>
+                        <button class="button primary" type="submit"><i data-lucide="package-plus"></i> Add item</button>
+                    </form>
+                    <form class="form-panel bare" action="/portal/team-leader/inventory-items/quantity" method="post">
+                        <h3>Add quantity</h3>
+                        <label>Inventory item
+                            <select name="raw_material_id" required>
+                                {% for material in raw_materials %}
+                                <option value="{{ material.raw_material_id }}">{{ material.name }} - {{ material.available|number }} {{ material.unit }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>Quantity <input required type="number" min="0.001" step="0.001" name="quantity"></label>
+                        <button class="button primary" type="submit"><i data-lucide="plus"></i> Add quantity</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Create product recipe</h2>
+                    <form class="form-panel bare" id="product-recipe-form" action="/portal/team-leader/products" method="post">
+                        <div class="form-grid">
+                            <label>Product name <input required name="name" placeholder="Tocino"></label>
+                            <label>Category
+                                <select name="category" required>
+                                    {% for category in product_categories %}
+                                    <option value="{{ category }}">{{ category }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>Contents per pack <input required type="number" min="0.001" step="0.001" name="pack_size" placeholder="500"></label>
+                            <label>Contents unit
+                                <select name="pack_size_unit" required>
+                                    {% for unit in content_units %}
+                                    <option value="{{ unit }}">{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                        <div class="form-grid">
+                            <label>Stock counted as <input value="1 pack" disabled></label>
+                            <input type="hidden" name="unit" value="pack">
+                            <label>Price per pack <input type="number" min="0" step="0.01" name="base_price" placeholder="0.00"></label>
+                        </div>
+                        <div class="recipe-rows" id="recipe-rows">
+                            <div class="ingredient-row" data-recipe-row>
+                                <label>Ingredient
+                                    <select name="material_item_id[]" required>
+                                        {% for material in raw_materials %}
+                                        <option value="{{ material.raw_material_id }}">{{ material.name }} - {{ material.category }} - {{ material.available|number }} {{ material.unit }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>Required per pack <input required type="number" min="0.001" step="0.001" name="quantity_required[]" placeholder="500"></label>
+                                <label>Input unit
+                                    <select name="quantity_required_unit[]" required>
+                                        {% for unit in recipe_units %}
+                                        <option value="{{ unit }}">{{ unit }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <button class="icon-button danger" type="button" data-remove-ingredient title="Remove ingredient"><i data-lucide="x"></i></button>
+                            </div>
+                        </div>
+                        <div class="button-row">
+                            <button class="button subtle" type="button" id="add-ingredient"><i data-lucide="plus"></i> Add ingredient</button>
+                            <button class="button primary" type="submit"><i data-lucide="plus-circle"></i> Create recipe</button>
+                        </div>
+                    </form>
+                </article>
+            </section>
+            <section class="panel">
+                    <h2>Produce product</h2>
+                    <form class="form-panel bare" action="/portal/team-leader/production" method="post">
+                        <label>Product
+                            <select name="product_id" required>
+                                {% for product in products %}
+                                <option value="{{ product.product_id }}">{{ product.name }}{% if product.recipe_count == 0 %} (no recipe){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <div class="form-grid">
+                            <label>Output batch <input required name="batch_code" placeholder="PGL-0710-A"></label>
+                            <label>Packs produced <input required type="number" min="1" step="1" name="quantity"></label>
+                        </div>
+                        <label>Expiry date <input required type="date" name="expiry_date"></label>
+                        <button class="button primary" type="submit"><i data-lucide="factory"></i> Produce product</button>
+                    </form>
+            </section>
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Inventory items</h2>
+                    <div class="inventory-groups">
+                        <div class="inventory-group">
+                            <h3>Meat</h3>
+                            <div class="table-wrap">
+                                <table class="compact-table">
+                                    <thead><tr><th>Item</th><th>Available</th></tr></thead>
+                                    <tbody>
+                                    {% for item in inventory_items if item.item_type == "raw_material" and item.category|lower == "meat" %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.available|number }} {{ item.unit }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="2">No meat inventory.</td></tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="inventory-group">
+                            <h3>Raw materials</h3>
+                            <div class="table-wrap">
+                                <table class="compact-table">
+                                    <thead><tr><th>Item</th><th>Available</th></tr></thead>
+                                    <tbody>
+                                    {% for item in inventory_items if item.item_type == "raw_material" and item.category|lower|replace(" ", "_") == "raw_material" %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.available|number }} {{ item.unit }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="2">No raw material inventory.</td></tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="inventory-group">
+                            <h3>Finished products</h3>
+                            <div class="table-wrap">
+                                <table class="compact-table">
+                                    <thead><tr><th>Product</th><th>Category</th><th>Available</th></tr></thead>
+                                    <tbody>
+                                    {% for item in inventory_items if item.item_type == "finished_product" %}
+                                    <tr>
+                                        <td>{{ item.name }}</td>
+                                        <td>{{ item.category }}</td>
+                                        <td>{{ item.available|number }} {{ item.unit }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr><td colspan="3">No finished products yet.</td></tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                <article class="panel">
+                    <h2>Finished product batches</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Batch</th><th>Type</th><th>Item</th><th>Available</th><th>Expiry</th><th>Source</th></tr></thead>
+                            <tbody>
+                            {% for batch in inventory_batches %}
+                            <tr>
+                                <td>{{ batch.batch_code }}</td>
+                                <td>{{ batch.item_type_label }}</td>
+                                <td>{{ batch.item_name }}</td>
+                                <td>{{ batch.quantity_available|number }} {{ batch.unit }}</td>
+                                <td>{{ batch.expiry_date|nice_date }}</td>
+                                <td><span class="status-badge {{ batch.source_type }}">{{ batch.source_type.replace("_", " ") }}</span></td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+            <section class="panel">
+                    <h2>Product recipe</h2>
+                    <div class="table-wrap">
+                        <table class="compact-table">
+                            <thead><tr><th>Product</th><th>Recipe</th></tr></thead>
+                            <tbody>
+                            {% for product in products %}
+                            {% set recipe_rows = product_recipes | selectattr("product_id", "equalto", product.product_id) | list %}
+                            <tr>
+                                <td>
+                                    <strong>{{ product.name }}</strong>
+                                    <span class="muted">{{ product.description }}</span>
+                                </td>
+                                <td>
+                                    <details class="recipe-details">
+                                        <summary>{{ recipe_rows|length }} ingredient{{ "" if recipe_rows|length == 1 else "s" }}</summary>
+                                        {% if recipe_rows %}
+                                        <div class="recipe-lines">
+                                            <div class="recipe-line header"><span>Ingredient</span><span>Category</span><span>Required per pack</span></div>
+                                            {% for recipe in recipe_rows %}
+                                            <div class="recipe-line">
+                                                <span>{{ recipe.raw_material_name }}</span>
+                                                <span>{{ recipe.raw_material_category.replace("_", " ")|title }}</span>
+                                                <span>{{ recipe.quantity_required|number }} {{ recipe.unit }}</span>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% else %}
+                                        <span class="muted">No recipe</span>
+                                        {% endif %}
+                                    </details>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="2">No finished products yet.</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+            </section>
+            <section class="panel">
+                <h2>Low-stock and expiry alerts</h2>
+                <div class="operations-grid slim">
+                    {% for alert in alerts %}
+                    <article class="alert-card {{ alert.severity }}">
+                        <strong>{{ alert.subject }}</strong>
+                        <p>{{ alert.message }}</p>
+                        <span>{{ alert.triggered_at|nice_date }}</span>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            <script>
+                (function () {
+                    const rows = document.getElementById("recipe-rows");
+                    const addButton = document.getElementById("add-ingredient");
+                    if (!rows || !addButton) {
+                        return;
+                    }
+
+                    function updateRemoveButtons() {
+                        const recipeRows = rows.querySelectorAll("[data-recipe-row]");
+                        recipeRows.forEach((row) => {
+                            const button = row.querySelector("[data-remove-ingredient]");
+                            if (button) {
+                                button.disabled = recipeRows.length === 1;
+                            }
+                        });
+                    }
+
+                    rows.addEventListener("click", (event) => {
+                        const removeButton = event.target.closest("[data-remove-ingredient]");
+                        if (!removeButton) {
+                            return;
+                        }
+                        const recipeRows = rows.querySelectorAll("[data-recipe-row]");
+                        if (recipeRows.length <= 1) {
+                            return;
+                        }
+                        removeButton.closest("[data-recipe-row]").remove();
+                        updateRemoveButtons();
+                    });
+
+                    addButton.addEventListener("click", () => {
+                        const sourceRow = rows.querySelector("[data-recipe-row]");
+                        const newRow = sourceRow.cloneNode(true);
+                        newRow.querySelectorAll("input").forEach((input) => {
+                            input.value = "";
+                        });
+                        rows.appendChild(newRow);
+                        updateRemoveButtons();
+                        if (window.lucide) {
+                            window.lucide.createIcons();
+                        }
+                    });
+
+                    updateRemoveButtons();
+                })();
+            </script>

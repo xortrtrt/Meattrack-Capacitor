@@ -42,6 +42,9 @@ READ_FUNCTIONS = (
     "reseller_most_bought_products",
     "reseller_sales_series",
     "reseller_reportable_products",
+    "reseller_account_profile",
+    "list_team_leader_accounts",
+    "list_reseller_assignments",
     "list_notifications",
     "unread_notification_count",
 )
@@ -51,7 +54,14 @@ EXPECTED_CALLS = {
     ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
     ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
     ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "list_notifications", "unread_notification_count"},
-    ("owner", "accounts"): {"list_accounts", "count_accounts", "list_notifications", "unread_notification_count"},
+    ("owner", "accounts"): {
+        "list_accounts",
+        "count_accounts",
+        "list_team_leader_accounts",
+        "list_reseller_assignments",
+        "list_notifications",
+        "unread_notification_count",
+    },
     ("owner", "logs"): {"list_activity_logs", "count_activity_logs", "list_notifications", "unread_notification_count"},
     ("team-leader", "dashboard"): {"current_metrics", "list_inquiries", "list_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "sales"): {"list_products", "list_orders", "count_orders", "list_notifications", "unread_notification_count"},
@@ -122,20 +132,23 @@ def test_section_filters_are_applied(monkeypatch):
     monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
 
     assert client.get("/portal/team-leader/dashboard").status_code == 200
-    assert calls["list_inquiries"] == [((), {"limit": 4})]
-    assert calls["list_orders"] == [((), {"order_type": "walk_in", "limit": 5})]
+    assert calls["current_metrics"] == [((), {"team_leader_account_id": None})]
+    assert calls["list_inquiries"] == [((), {"limit": 4, "assigned_team_leader_account_id": None})]
+    assert calls["list_orders"] == [((), {"order_type": "walk_in", "limit": 5, "team_leader_account_id": None})]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/team-leader/sales").status_code == 200
-    assert calls["list_orders"] == [((), {"order_type": "walk_in", "q": "", "status": "", "page": 1, "page_size": 10})]
-    assert calls["count_orders"] == [((), {"order_type": "walk_in", "q": "", "status": ""})]
+    assert calls["list_orders"] == [((), {"order_type": "walk_in", "q": "", "status": "", "team_leader_account_id": None, "reseller_account_id": None, "page": 1, "page_size": 10})]
+    assert calls["count_orders"] == [((), {"order_type": "walk_in", "q": "", "status": "", "team_leader_account_id": None, "reseller_account_id": None})]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/dashboard").status_code == 200
-    assert calls["reseller_most_bought_products"] == [((), {"limit": 3})]
+    assert calls["current_metrics"] == [((), {"reseller_account_id": None})]
+    assert calls["reseller_most_bought_products"] == [((), {"limit": 3, "account_id": None})]
     assert len(calls["reseller_sales_series"]) == 1
     assert calls["reseller_sales_series"][0][0][2] == "fulfilled"
-    assert calls["list_sales_reports"] == [((), {"report_source": "reseller", "limit": 1})]
+    assert calls["reseller_sales_series"][0][1] == {"account_id": None}
+    assert calls["list_sales_reports"] == [((), {"report_source": "reseller", "limit": 1, "reseller_account_id": None})]
 
 
 def test_landing_page_does_not_load_metrics(monkeypatch):

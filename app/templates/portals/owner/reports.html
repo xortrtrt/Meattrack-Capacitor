@@ -1,0 +1,25 @@
+            <section class="panel">
+                <div class="panel-heading"><h2>Daily and monthly report source</h2><span class="hint">Reports are stored separately from actual order records.</span></div>
+                <form class="filter-bar" method="get">
+                    <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
+                    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                </form>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Source</th><th>Submitted by</th><th>Period</th><th>Sales</th><th>Orders</th><th>Notes</th></tr></thead>
+                        <tbody>
+                        {% for report in sales_reports %}
+                        <tr>
+                            <td>{{ report.report_source.replace("_", " ") }}</td>
+                            <td>{{ report.submitted_by }}</td>
+                            <td>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</td>
+                            <td>{{ report.total_sales|currency }}</td>
+                            <td>{{ report.total_orders }}</td>
+                            <td>{{ report.notes }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination"><span>Page {{ sales_reports_page.pagination.page }} of {{ sales_reports_page.pagination.total_pages }}</span></div>
+            </section>

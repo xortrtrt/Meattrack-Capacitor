@@ -1,0 +1,28 @@
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Demand forecast run</h2>
+                    <form class="form-panel bare" action="/portal/owner/forecasts" method="post">
+                        <label>Model name <input required name="model_name" value="Historical sales baseline"></label>
+                        <label>Forecast horizon days <input required type="number" min="1" name="forecast_horizon_days" value="7"></label>
+                        <button class="button primary" type="submit"><i data-lucide="play"></i> Run forecast</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Forecast results</h2>
+                    <form class="filter-bar" method="get">
+                        <label>Search <input name="q" value="{{ forecasts_page.filters.q }}" placeholder="Product"></label>
+                        <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                    </form>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Product</th><th>Date</th><th>Predicted qty</th><th>Range</th></tr></thead>
+                            <tbody>
+                            {% for forecast in forecasts[:10] %}
+                            <tr><td>{{ forecast.product }}</td><td>{{ forecast.forecast_date|nice_date }}</td><td>{{ forecast.predicted_quantity|number }} packs</td><td>{{ forecast.confidence }}</td></tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination"><span>Page {{ forecasts_page.pagination.page }} of {{ forecasts_page.pagination.total_pages }}</span></div>
+                </article>
+            </section>

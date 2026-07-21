@@ -7,6 +7,7 @@ from app import repositories
 
 def test_current_metrics_uses_one_database_round_trip(monkeypatch):
     calls = []
+    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
 
     def fake_fetch_one(query, params=None):
         calls.append((query, params))
@@ -34,6 +35,7 @@ def test_current_metrics_uses_one_database_round_trip(monkeypatch):
 
 def test_order_type_filters_headers_and_items(monkeypatch):
     calls = []
+    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
 
     def fake_fetch_all(query, params=None):
         calls.append((query, params))
@@ -74,6 +76,7 @@ def test_order_type_filters_headers_and_items(monkeypatch):
 
 def test_report_source_and_limit_are_parameterized(monkeypatch):
     calls = []
+    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
     monkeypatch.setattr(
         repositories,
         "fetch_all",
@@ -85,6 +88,49 @@ def test_report_source_and_limit_are_parameterized(monkeypatch):
     assert "sr.report_source = %s" in calls[0][0]
     assert "LIMIT %s" in calls[0][0]
     assert calls[0][1] == ("reseller", 1)
+
+
+def test_team_leader_order_scope_is_parameterized(monkeypatch):
+    calls = []
+    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
+    monkeypatch.setattr(
+        repositories,
+        "fetch_all",
+        lambda query, params=None: calls.append((query, params)) or [],
+    )
+    monkeypatch.setattr(
+        repositories,
+        "fetch_one",
+        lambda query, params=None: {"total": 0},
+    )
+
+    repositories.list_orders(order_type="reseller", team_leader_account_id=42)
+    repositories.count_orders(order_type="reseller", team_leader_account_id=42)
+
+    assert "r.team_leader_account_id = %s" in calls[0][0]
+    assert calls[0][1] == ("reseller", 42)
+
+
+def test_reseller_report_scope_is_parameterized(monkeypatch):
+    calls = []
+    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
+    monkeypatch.setattr(
+        repositories,
+        "fetch_all",
+        lambda query, params=None: calls.append((query, params)) or [],
+    )
+
+    repositories.list_sales_reports(report_source="reseller", reseller_account_id=7)
+
+    assert "sr.reseller_id = (" in calls[0][0]
+    assert calls[0][1] == ("reseller", 7)
+
+
+def test_schema_tracks_reseller_team_leader_assignment():
+    schema = open("database/schema.sql", encoding="utf-8").read()
+
+    assert "team_leader_account_id bigint REFERENCES accounts(account_id)" in schema
+    assert "CREATE INDEX ix_resellers_team_leader" in schema
 
 
 def test_inquiry_and_forecast_limits_are_parameterized(monkeypatch):

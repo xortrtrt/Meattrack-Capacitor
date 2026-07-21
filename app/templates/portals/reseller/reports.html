@@ -1,0 +1,165 @@
+<section class="content-grid two">
+  <article class="panel">
+    <h2>Submit sell-through report</h2>
+    <p class="hint">
+      Report sold quantities from products you already received. Totals are
+      calculated by the system and cannot exceed your unreported fulfilled order
+      balance.
+    </p>
+    <form
+      class="form-panel bare"
+      action="/portal/reseller/reports"
+      method="post"
+      enctype="multipart/form-data"
+    >
+      {% if not report_submit_available %}
+      <div class="reseller-report-lock">
+        <i data-lucide="lock"></i>
+        <span>{{ report_locked_reason }}</span>
+      </div>
+      {% elif report_dev_mode %}
+      <div class="reseller-report-lock development">
+        <i data-lucide="unlock"></i>
+        <span>Development mode: reports can be submitted before month-end.</span>
+      </div>
+      {% endif %}
+      <div class="form-grid">
+        <label
+          >Period start
+          <input
+            required
+            readonly
+            type="date"
+            name="period_start"
+            value="{{ report_period.start }}"
+        /></label>
+        <label
+          >Period end
+          <input
+            required
+            readonly
+            type="date"
+            name="period_end"
+            value="{{ report_period.end }}"
+        /></label>
+      </div>
+      <div class="reseller-month-orders">
+        <strong>Fulfilled orders this month</strong>
+        {% for order in monthly_orders %}
+        <details>
+          <summary>
+            <span
+              >#{{ order.order_id }} · {{ order.order_date|nice_date }}</span
+            >
+            <em>{{ order.total_amount|currency }}</em>
+          </summary>
+          <ul>
+            {% for item in order["items"] %}
+            <li>
+              {{ item.quantity|number }} {{ item.unit }} {{ item.name }} — {{
+              item.line_total|currency }}
+            </li>
+            {% else %}
+            <li>No items recorded.</li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% else %}
+        <p class="reseller-no-products">
+          No fulfilled orders are recorded for this month yet.
+        </p>
+        {% endfor %}
+      </div>
+      <div class="reseller-reportable-list">
+        {% for product in reportable_products %}
+        <label class="reseller-reportable-item">
+          <span>
+            <strong>{{ product.name }}</strong>
+            <small>
+              {{ product.category }} · {{ product.unit_price|currency }}/{{
+              product.unit }}
+            </small>
+            <em>
+              Bought {{ product.purchased_quantity|number }} {{ product.unit
+              }}/s
+            </em>
+          </span>
+          <input
+            type="number"
+            min="0"
+            max="{{ product.reportable_quantity }}"
+            step="1"
+            name="sold_{{ product.product_id }}"
+            placeholder="Qty sold"
+          />
+        </label>
+        {% else %}
+        <p class="reseller-no-products">
+          No fulfilled reseller products are available for sell-through
+          reporting for this month.
+        </p>
+        {% endfor %}
+      </div>
+      <label>
+        Attach supporting files
+        <input
+          type="file"
+          name="attachments"
+          accept="image/png,image/jpeg,image/webp,application/pdf,text/csv,text/plain,.xlsx"
+          multiple
+        />
+        <small class="hint">
+          Optional but recommended: receipts, POS screenshots, customer order
+          logs, CSV/XLSX files, or proof photos. Up to 3 files, 5 MB each.
+        </small>
+      </label>
+      <button
+        class="button primary"
+        type="submit"
+        {%
+        if
+        not
+        reportable_products
+        or
+        not
+        report_submit_available
+        %}disabled{%
+        endif
+        %}
+      >
+        <i data-lucide="file-up"></i> Submit report
+      </button>
+    </form>
+  </article>
+  <article class="panel">
+    <h2>Submitted sell-through reports</h2>
+    <div class="stack-list">
+      {% for report in sales_reports if report.report_source == "reseller" %}
+      <div class="stack-item">
+        <strong>{{ report.submitted_by }}</strong>
+        <span
+          >{{ report.period_start|nice_date }} - {{ report.period_end|nice_date
+          }}</span
+        >
+        <em
+          >{{ report.total_sales|currency }} verified value · {{
+          report.total_orders }} units reported</em
+        >
+        {% if report["items"] %}
+        <small>
+          {% for item in report["items"] %} {{ item.quantity_sold|number }} {{
+          item.unit }} {{ item.name }}{% if not loop.last %}, {% endif %} {%
+          endfor %}
+        </small>
+        {% endif %} {% if report["attachments"] %}
+        <small>
+          Attachments: {% for attachment in report["attachments"] %} {{
+          attachment.filename }}{% if not loop.last %}, {% endif %} {% endfor %}
+        </small>
+
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </article>
+</section>

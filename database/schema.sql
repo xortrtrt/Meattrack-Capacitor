@@ -73,6 +73,7 @@ CREATE TABLE resellers (
     address text,
     reseller_status text NOT NULL DEFAULT 'active'
         CHECK (reseller_status IN ('pending', 'active', 'suspended', 'inactive')),
+    team_leader_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
     approved_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
     approved_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
@@ -296,6 +297,7 @@ CREATE INDEX ix_inventory_items_type_name ON inventory_items (item_type, name);
 CREATE INDEX ix_inventory_batches_fefo ON inventory_batches (item_id, expiry_date, quantity_available)
     WHERE quality_status = 'approved' AND quantity_available > 0;
 CREATE INDEX ix_orders_reseller_status ON orders (reseller_id, status);
+CREATE INDEX ix_resellers_team_leader ON resellers (team_leader_account_id);
 CREATE INDEX ix_reseller_cart_items_account_updated ON reseller_cart_items (account_id, updated_at DESC);
 CREATE INDEX ix_reseller_cart_items_product ON reseller_cart_items (product_id);
 CREATE INDEX ix_sales_report_items_report ON sales_report_items (sales_report_id);

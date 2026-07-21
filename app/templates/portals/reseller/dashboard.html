@@ -1,0 +1,134 @@
+<section class="metric-grid">
+  <article class="metric-card">
+    <span>Pending orders</span>
+    <strong>{{ metrics.pending_reseller_orders }}</strong>
+    <small>Awaiting team leader review</small>
+  </article>
+  <article class="metric-card">
+    <span>Latest report value</span>
+    {% if sales_reports %}
+    <strong>{{ sales_reports[0].total_sales|currency }}</strong>
+    <small
+      >{{ sales_reports[0].period_start|nice_date }} - {{
+      sales_reports[0].period_end|nice_date }}</small
+    >
+    {% else %}
+    <strong>PHP 0.00</strong>
+    <small>No reports submitted yet</small>
+    {% endif %}
+  </article>
+  <article class="metric-card">
+    <span>Assigned team leader</span>
+    <strong>{{ reseller_profile.team_leader_name if reseller_profile and reseller_profile.team_leader_name else "Unassigned" }}</strong>
+    <small>{{ reseller_profile.team_leader_email if reseller_profile and reseller_profile.team_leader_email else "Contact owner before submitting orders/reports" }}</small>
+  </article>
+</section>
+<section class="content-grid">
+  <article class="panel">
+    <div class="panel-heading">
+      <h2>Most bought products</h2>
+      <a href="/portal/reseller/order">Order products</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Category</th>
+            <th>Total qty</th>
+            <th>Orders</th>
+            <th>Total amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for product in most_bought_products %}
+          <tr>
+            <td>
+              <strong>{{ product.name }}</strong><br />
+              <span class="hint">{{ product.base_price|currency }}/{{ product.unit }}</span>
+            </td>
+            <td>{{ product.category }}</td>
+            <td>{{ product.total_quantity|number }} {{ product.unit }}</td>
+            <td>{{ product.order_count|number }}</td>
+            <td>{{ product.total_amount|currency }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td>
+              <span class="hint">No reseller purchases yet.</span>
+            </td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+  <article class="panel reseller-sales-chart-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Reseller sales graph</h2>
+        <span class="hint">Filter by date and order status.</span>
+      </div>
+    </div>
+    <form class="filter-bar reseller-sales-filter" method="get">
+      <label>
+        From
+        <input
+          type="date"
+          name="start_date"
+          value="{{ sales_chart_filters.start_date }}"
+        />
+      </label>
+      <label>
+        To
+        <input
+          type="date"
+          name="end_date"
+          value="{{ sales_chart_filters.end_date }}"
+        />
+      </label>
+      <label>
+        Status
+        <select name="sales_status">
+          <option value="fulfilled" {{ 'selected' if sales_chart_filters.status == 'fulfilled' else '' }}>Fulfilled sales</option>
+          <option value="approved" {{ 'selected' if sales_chart_filters.status == 'approved' else '' }}>Approved</option>
+          <option value="pending" {{ 'selected' if sales_chart_filters.status == 'pending' else '' }}>Pending</option>
+          <option value="rejected" {{ 'selected' if sales_chart_filters.status == 'rejected' else '' }}>Rejected</option>
+          <option value="cancelled" {{ 'selected' if sales_chart_filters.status == 'cancelled' else '' }}>Cancelled</option>
+          <option value="all" {{ 'selected' if sales_chart_filters.status == 'all' else '' }}>All statuses</option>
+        </select>
+      </label>
+      <button class="button primary" type="submit">
+        <i data-lucide="filter"></i> Filter
+      </button>
+    </form>
+    <div class="reseller-sales-summary">
+      <span>
+        <small>Total sales</small>
+        <strong>{{ sales_chart_total|currency }}</strong>
+      </span>
+      <span>
+        <small>Total orders</small>
+        <strong>{{ sales_chart_orders|number }}</strong>
+      </span>
+    </div>
+    <div class="reseller-sales-chart">
+      {% for row in sales_series %}
+      <div class="reseller-sales-row">
+        <span>{{ row.sale_date|nice_date }}</span>
+        <div>
+          <i style="width: {{ row.bar_percent }}%"></i>
+        </div>
+        <strong>{{ row.total_sales|currency }}</strong>
+        <small>{{ row.order_count|number }} orders</small>
+      </div>
+      {% else %}
+      <p class="reseller-no-products">No reseller sales found for this filter.</p>
+      {% endfor %}
+    </div>
+  </article>
+</section>

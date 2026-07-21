@@ -612,6 +612,12 @@ body.modal-is-open {
   flex: 0 0 auto;
 }
 
+.role-reseller .reseller-report-lock.development {
+  border-color: rgba(215, 182, 33, 0.45);
+  background: #fff8dd;
+  color: #745600;
+}
+
 .role-reseller .reseller-month-orders {
   display: grid;
   gap: 10px;

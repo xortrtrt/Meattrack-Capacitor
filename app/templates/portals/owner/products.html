@@ -1,0 +1,30 @@
+            <section class="panel">
+                <div class="panel-heading"><h2>Product and price management</h2></div>
+                <form class="filter-bar" method="get">
+                    <label>Search <input name="q" value="{{ products_page.filters.q }}" placeholder="Product name"></label>
+                    <label>Category
+                        <select name="type">
+                            <option value="">All</option>
+                            <option value="Chicken" {{ 'selected' if products_page.filters.type == 'Chicken' else '' }}>Chicken</option>
+                            <option value="Pork" {{ 'selected' if products_page.filters.type == 'Pork' else '' }}>Pork</option>
+                            <option value="Beef" {{ 'selected' if products_page.filters.type == 'Beef' else '' }}>Beef</option>
+                        </select>
+                    </label>
+                    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                </form>
+                <div class="stack-list">
+                    {% for product in products %}
+                    <form class="inline-edit" action="/portal/owner/products" method="post">
+                        <input type="hidden" name="product_id" value="{{ product.product_id }}">
+                        <strong>{{ product.name }}</strong>
+                        <label>Price <input type="number" step="1" min="0" name="base_price" value="{{ product.base_price }}"></label>
+                        <button class="icon-button" type="submit" title="Save"><i data-lucide="save"></i></button>
+                    </form>
+                    {% endfor %}
+                </div>
+                <div class="pagination">
+                    {% if products_page.pagination.has_prev %}<a href="?q={{ products_page.filters.q }}&type={{ products_page.filters.type }}&page={{ products_page.pagination.page - 1 }}">Previous</a>{% endif %}
+                    <span>Page {{ products_page.pagination.page }} of {{ products_page.pagination.total_pages }}</span>
+                    {% if products_page.pagination.has_next %}<a href="?q={{ products_page.filters.q }}&type={{ products_page.filters.type }}&page={{ products_page.pagination.page + 1 }}">Next</a>{% endif %}
+                </div>
+            </section>

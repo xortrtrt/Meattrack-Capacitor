@@ -1,0 +1,39 @@
+            <section class="metric-grid">
+                <article class="metric-card"><span>Fulfilled sales</span><strong>{{ metrics.fulfilled_sales|currency }}</strong><small>Recorded transactions</small></article>
+                <article class="metric-card"><span>Pending reseller orders</span><strong>{{ metrics.pending_reseller_orders }}</strong><small>Need team leader action</small></article>
+                <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }}</strong><small>Finished packs available</small></article>
+            </section>
+            <section class="panel dashboard-priority">
+                <div class="panel-heading"><h2>Latest sales</h2><a href="/portal/team-leader/sales">Record sale</a></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Order</th><th>Product</th><th>Status</th><th>Total</th></tr></thead>
+                        <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td>#{{ order.order_id }}</td>
+                            <td>{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
+                            <td><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+                            <td>{{ order.total_amount|currency }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4">No sales yet.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="content-grid two">
+                <article class="panel">
+                    <div class="panel-heading"><h2>Assigned inquiries</h2><a href="/portal/team-leader/inquiries">Review</a></div>
+                    <div class="stack-list">
+                        {% for inquiry in inquiries[:4] %}
+                        <div class="stack-item">
+                            <strong>{{ inquiry.business_name }}</strong>
+                            <span>{{ inquiry.name }} - {{ inquiry.contact_number }}</span>
+                            <em>{{ inquiry.status }}</em>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </article>
+            </section>

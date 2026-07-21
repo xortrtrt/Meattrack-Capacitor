@@ -1,0 +1,81 @@
+            <section class="content-grid two">
+                <article class="panel">
+                    <h2>Account lifecycle</h2>
+                    <form class="form-panel bare" action="/portal/owner/accounts" method="post">
+                        <label>Account type
+                            <select name="account_type">
+                                <option value="owner">Owner</option>
+                                <option value="team_leader">Team leader</option>
+                                <option value="reseller">Reseller</option>
+                            </select>
+                        </label>
+                        <label>Name <input required name="name"></label>
+                        <label>Email <input required type="email" name="email"></label>
+                        <button class="button primary" type="submit">Create account</button>
+                    </form>
+                </article>
+                <article class="panel">
+                    <h2>Active accounts</h2>
+                    <form class="filter-bar" method="get">
+                        <label>Search <input name="q" value="{{ accounts_page.filters.q }}" placeholder="Name or email"></label>
+                        <label>Type
+                            <select name="type">
+                                <option value="">All</option>
+                                <option value="owner" {{ 'selected' if accounts_page.filters.type == 'owner' else '' }}>Owner</option>
+                                <option value="team_leader" {{ 'selected' if accounts_page.filters.type == 'team_leader' else '' }}>Team leader</option>
+                                <option value="reseller" {{ 'selected' if accounts_page.filters.type == 'reseller' else '' }}>Reseller</option>
+                            </select>
+                        </label>
+                        <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+                    </form>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>Name</th><th>Type</th><th>Email</th><th>Auth</th><th>Status</th></tr></thead>
+                            <tbody>{% for account in accounts %}<tr><td>{{ account.name }}</td><td>{{ account.account_type.replace("_", " ") }}</td><td>{{ account.email }}</td><td>{{ account.auth_provider or "password" }}</td><td><span class="status-badge active">{{ account.status }}</span></td></tr>{% endfor %}</tbody>
+                        </table>
+                    </div>
+                    <div class="pagination"><span>Page {{ accounts_page.pagination.page }} of {{ accounts_page.pagination.total_pages }}</span></div>
+                </article>
+            </section>
+            <section class="panel">
+                <div class="panel-heading">
+                    <h2>Reseller team assignments</h2>
+                    <span class="hint">Each reseller reports to exactly one team leader.</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Reseller</th>
+                                <th>Contact</th>
+                                <th>Assigned team leader</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for reseller in reseller_assignments %}
+                            <tr>
+                                <td>
+                                    <strong>{{ reseller.business_name }}</strong><br>
+                                    <span class="hint">{{ reseller.reseller_status }}</span>
+                                </td>
+                                <td>{{ reseller.contact_person }}<br><span class="hint">{{ reseller.email }}</span></td>
+                                <td>{{ reseller.team_leader_name or "Unassigned" }}</td>
+                                <td>
+                                    <form class="inline-assignment-form" action="/portal/owner/resellers/{{ reseller.reseller_id }}/team-leader" method="post">
+                                        <select name="team_leader_account_id" required>
+                                            {% for leader in team_leaders %}
+                                            <option value="{{ leader.account_id }}" {{ 'selected' if reseller.team_leader_account_id == leader.account_id else '' }}>{{ leader.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <button class="button subtle" type="submit">Save</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4">No reseller records yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>

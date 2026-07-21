@@ -1,0 +1,46 @@
+<section class="panel">
+  <div class="panel-heading">
+    <h2>Order history</h2>
+    <span class="hint"
+      >Pending, approved, rejected, fulfilled, and cancelled records</span
+    >
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Order</th>
+          <th>Date</th>
+          <th>Product</th>
+          <th>Status</th>
+          <th>Total</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders if order.order_type == "reseller" %}
+        <tr>
+          <td>#{{ order.order_id }}</td>
+          <td>{{ order.order_date|nice_date }}</td>
+          <td>
+            {% if order["items"] %}
+              {% for item in order["items"] %}
+                {{ item.quantity|number }} packs {{ item.name }}{% if not loop.last %}<br />{% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="hint">No items recorded</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="status-badge {{ order.status }}"
+              >{{ order.status }}</span
+            >
+          </td>
+          <td>{{ order.total_amount|currency }}</td>
+          <td>{{ order.notes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>

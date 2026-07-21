@@ -102,6 +102,45 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_auth_user_id
     ON accounts (auth_user_id)
     WHERE auth_user_id IS NOT NULL;
 
+ALTER TABLE resellers
+    ADD COLUMN IF NOT EXISTS team_leader_account_id bigint;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_resellers_team_leader'
+    ) THEN
+        ALTER TABLE resellers
+            ADD CONSTRAINT fk_resellers_team_leader
+            FOREIGN KEY (team_leader_account_id)
+            REFERENCES accounts(account_id)
+            ON UPDATE CASCADE
+            ON DELETE SET NULL;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS ix_resellers_team_leader
+    ON resellers (team_leader_account_id);
+
+UPDATE resellers
+SET team_leader_account_id = (
+    SELECT account_id
+    FROM accounts
+    WHERE account_type = 'team_leader'
+      AND is_active = true
+    ORDER BY account_id
+    LIMIT 1
+)
+WHERE team_leader_account_id IS NULL
+  AND EXISTS (
+      SELECT 1
+      FROM accounts
+      WHERE account_type = 'team_leader'
+        AND is_active = true
+  );
+
 CREATE TABLE IF NOT EXISTS user_consents (
     user_consent_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -457,6 +496,7 @@ def list_inquiries(
     limit: int | None = None,
     q: str = "",
     status: str = "",
+    assigned_team_leader_account_id: int | None = None,
     page: int | None = None,
     page_size: int = 10,
 ) -> list[dict]:
@@ -477,6 +517,9 @@ def list_inquiries(
     if status:
         where.append("i.status = %s")
         params.append(status)
+    if assigned_team_leader_account_id is not None:
+        where.append("i.assigned_team_leader_account_id = %s")
+        params.append(assigned_team_leader_account_id)
     if where:
         query += " WHERE " + " AND ".join(where)
     query += " ORDER BY i.inquiry_id DESC"
@@ -495,7 +538,7 @@ def list_inquiries(
     return clean_row(fetch_all(query + ";", tuple(params) or None))
 
 
-def count_inquiries(q: str = "", status: str = "") -> int:
+def count_inquiries(q: str = "", status: str = "", assigned_team_leader_account_id: int | None = None) -> int:
     query = "SELECT COUNT(*) AS total FROM inquiries i"
     where = []
     params: list[object] = []
@@ -508,6 +551,9 @@ def count_inquiries(q: str = "", status: str = "") -> int:
     if status:
         where.append("i.status = %s")
         params.append(status)
+    if assigned_team_leader_account_id is not None:
+        where.append("i.assigned_team_leader_account_id = %s")
+        params.append(assigned_team_leader_account_id)
     if where:
         query += " WHERE " + " AND ".join(where)
     row = fetch_one(query + ";", tuple(params) or None)
@@ -518,10 +564,13 @@ def list_orders(
     order_type: str | None = None,
     q: str = "",
     status: str = "",
+    team_leader_account_id: int | None = None,
+    reseller_account_id: int | None = None,
     limit: int | None = None,
     page: int | None = None,
     page_size: int = 10,
 ) -> list[dict]:
+    ensure_system_tables()
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
     where = []
@@ -534,6 +583,24 @@ def list_orders(
     if status:
         where.append("o.status = %s")
         params.append(status)
+    if team_leader_account_id is not None:
+        if order_type == "walk_in":
+            where.append("o.created_by_account_id = %s")
+            params.append(team_leader_account_id)
+        elif order_type == "reseller":
+            where.append("r.team_leader_account_id = %s")
+            params.append(team_leader_account_id)
+        else:
+            where.append("(o.created_by_account_id = %s OR r.team_leader_account_id = %s)")
+            params.extend([team_leader_account_id, team_leader_account_id])
+    if reseller_account_id is not None:
+        where.append("""o.reseller_id = (
+            SELECT a.reseller_id
+            FROM accounts a
+            WHERE a.account_id = %s
+              AND a.account_type = 'reseller'
+        )""")
+        params.append(reseller_account_id)
     if q:
         where.append("""(
             CAST(o.order_id AS text) ILIKE %s
@@ -552,9 +619,12 @@ def list_orders(
     orders = clean_row(fetch_all(f"""
         SELECT o.order_id, o.order_type, o.reseller_id,
                COALESCE(r.business_name, 'Retail counter') AS reseller,
+               r.team_leader_account_id,
+               tl.name AS team_leader_name,
                o.status, o.order_date, o.total_amount, o.notes
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
+        LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
         {where_sql}
         ORDER BY o.order_id DESC
         {"LIMIT %s" if limit is not None else ""}
@@ -580,10 +650,18 @@ def list_orders(
     return orders
 
 
-def reseller_most_bought_products(limit: int = 6) -> list[dict]:
+def reseller_most_bought_products(limit: int = 6, account_id: int | None = None) -> list[dict]:
+    ensure_system_tables()
     if limit < 1:
         raise ValueError("limit must be positive")
-    return clean_row(fetch_all("""
+    where = ["o.order_type = 'reseller'", "p.item_type = 'finished_product'"]
+    params: list[object] = []
+    if account_id is not None:
+        profile = reseller_account_profile(account_id)
+        where.append("o.reseller_id = %s")
+        params.append(profile["reseller_id"])
+    params.append(limit)
+    return clean_row(fetch_all(f"""
         SELECT p.item_id AS product_id,
                p.name,
                p.category,
@@ -595,15 +673,15 @@ def reseller_most_bought_products(limit: int = 6) -> list[dict]:
         FROM order_items oi
         JOIN orders o ON o.order_id = oi.order_id
         JOIN inventory_items p ON p.item_id = oi.product_id
-        WHERE o.order_type = 'reseller'
-          AND p.item_type = 'finished_product'
+        WHERE {" AND ".join(where)}
         GROUP BY p.item_id, p.name, p.category, p.unit, p.base_price
         ORDER BY total_quantity DESC, total_amount DESC, p.name ASC
         LIMIT %s;
-    """, (limit,)))
+    """, tuple(params)))
 
 
-def reseller_sales_series(start_date: date, end_date: date, status: str = "fulfilled") -> list[dict]:
+def reseller_sales_series(start_date: date, end_date: date, status: str = "fulfilled", account_id: int | None = None) -> list[dict]:
+    ensure_system_tables()
     if start_date > end_date:
         raise ValueError("start_date must be before end_date")
     allowed_statuses = {"", "all", "pending", "approved", "fulfilled", "rejected", "cancelled"}
@@ -615,6 +693,10 @@ def reseller_sales_series(start_date: date, end_date: date, status: str = "fulfi
         "COALESCE(o.fulfilled_at::date, o.order_date) BETWEEN %s AND %s",
     ]
     params: list[object] = [start_date, end_date]
+    if account_id is not None:
+        profile = reseller_account_profile(account_id)
+        where.append("o.reseller_id = %s")
+        params.append(profile["reseller_id"])
     if status and status != "all":
         where.append("o.status = %s")
         params.append(status)
@@ -630,7 +712,14 @@ def reseller_sales_series(start_date: date, end_date: date, status: str = "fulfi
     """, tuple(params)))
 
 
-def count_orders(order_type: str | None = None, q: str = "", status: str = "") -> int:
+def count_orders(
+    order_type: str | None = None,
+    q: str = "",
+    status: str = "",
+    team_leader_account_id: int | None = None,
+    reseller_account_id: int | None = None,
+) -> int:
+    ensure_system_tables()
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
     query = """
@@ -646,6 +735,24 @@ def count_orders(order_type: str | None = None, q: str = "", status: str = "") -
     if status:
         where.append("o.status = %s")
         params.append(status)
+    if team_leader_account_id is not None:
+        if order_type == "walk_in":
+            where.append("o.created_by_account_id = %s")
+            params.append(team_leader_account_id)
+        elif order_type == "reseller":
+            where.append("r.team_leader_account_id = %s")
+            params.append(team_leader_account_id)
+        else:
+            where.append("(o.created_by_account_id = %s OR r.team_leader_account_id = %s)")
+            params.extend([team_leader_account_id, team_leader_account_id])
+    if reseller_account_id is not None:
+        where.append("""o.reseller_id = (
+            SELECT a.reseller_id
+            FROM accounts a
+            WHERE a.account_id = %s
+              AND a.account_type = 'reseller'
+        )""")
+        params.append(reseller_account_id)
     q = q.strip()
     if q:
         where.append("""(
@@ -671,23 +778,49 @@ def list_sales_reports(
     report_source: str | None = None,
     limit: int | None = None,
     q: str = "",
+    team_leader_account_id: int | None = None,
+    reseller_account_id: int | None = None,
     page: int | None = None,
     page_size: int = 10,
 ) -> list[dict]:
+    ensure_system_tables()
     if report_source not in {None, "reseller", "team_leader"}:
         raise ValueError("report_source must be reseller, team_leader, or None")
     query = """
         SELECT sr.sales_report_id, sr.report_source,
                COALESCE(a.name, 'System') AS submitted_by,
+               COALESCE(r.business_name, '') AS reseller,
+               r.team_leader_account_id,
+               tl.name AS team_leader_name,
                sr.period_start, sr.period_end, sr.total_sales, sr.total_orders, sr.notes
         FROM sales_reports sr
         LEFT JOIN accounts a ON a.account_id = sr.submitted_by_account_id
+        LEFT JOIN resellers r ON r.reseller_id = sr.reseller_id
+        LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
     """
     where = []
     params: list[object] = []
     if report_source:
         where.append("sr.report_source = %s")
         params.append(report_source)
+    if team_leader_account_id is not None:
+        if report_source == "team_leader":
+            where.append("sr.submitted_by_account_id = %s")
+            params.append(team_leader_account_id)
+        elif report_source == "reseller":
+            where.append("r.team_leader_account_id = %s")
+            params.append(team_leader_account_id)
+        else:
+            where.append("(sr.submitted_by_account_id = %s OR r.team_leader_account_id = %s)")
+            params.extend([team_leader_account_id, team_leader_account_id])
+    if reseller_account_id is not None:
+        where.append("""sr.reseller_id = (
+            SELECT a.reseller_id
+            FROM accounts a
+            WHERE a.account_id = %s
+              AND a.account_type = 'reseller'
+        )""")
+        params.append(reseller_account_id)
     q = q.strip()
     if q:
         where.append("(COALESCE(a.name, 'System') ILIKE %s OR sr.notes ILIKE %s OR CAST(sr.sales_report_id AS text) ILIKE %s)")
@@ -749,19 +882,44 @@ def list_sales_reports(
     return reports
 
 
-def count_sales_reports(report_source: str | None = None, q: str = "") -> int:
+def count_sales_reports(
+    report_source: str | None = None,
+    q: str = "",
+    team_leader_account_id: int | None = None,
+    reseller_account_id: int | None = None,
+) -> int:
+    ensure_system_tables()
     if report_source not in {None, "reseller", "team_leader"}:
         raise ValueError("report_source must be reseller, team_leader, or None")
     query = """
         SELECT COUNT(*) AS total
         FROM sales_reports sr
         LEFT JOIN accounts a ON a.account_id = sr.submitted_by_account_id
+        LEFT JOIN resellers r ON r.reseller_id = sr.reseller_id
     """
     where = []
     params: list[object] = []
     if report_source:
         where.append("sr.report_source = %s")
         params.append(report_source)
+    if team_leader_account_id is not None:
+        if report_source == "team_leader":
+            where.append("sr.submitted_by_account_id = %s")
+            params.append(team_leader_account_id)
+        elif report_source == "reseller":
+            where.append("r.team_leader_account_id = %s")
+            params.append(team_leader_account_id)
+        else:
+            where.append("(sr.submitted_by_account_id = %s OR r.team_leader_account_id = %s)")
+            params.extend([team_leader_account_id, team_leader_account_id])
+    if reseller_account_id is not None:
+        where.append("""sr.reseller_id = (
+            SELECT a.reseller_id
+            FROM accounts a
+            WHERE a.account_id = %s
+              AND a.account_type = 'reseller'
+        )""")
+        params.append(reseller_account_id)
     q = q.strip()
     if q:
         where.append("(COALESCE(a.name, 'System') ILIKE %s OR sr.notes ILIKE %s OR CAST(sr.sales_report_id AS text) ILIKE %s)")
@@ -836,6 +994,7 @@ def count_forecasts(q: str = "") -> int:
 
 
 def list_accounts(q: str = "", account_type: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+    ensure_system_tables()
     where = []
     params: list[object] = []
     q = q.strip()
@@ -852,10 +1011,14 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
     return clean_row(fetch_all("""
-        SELECT a.account_id, a.account_type, a.name, a.email,
+        SELECT a.account_id, a.account_type, a.reseller_id, a.name, a.email,
                (CASE WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status,
-               a.auth_provider
+               a.auth_provider,
+               r.team_leader_account_id,
+               tl.name AS team_leader_name
         FROM accounts a
+        LEFT JOIN resellers r ON r.reseller_id = a.reseller_id
+        LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
         {where_sql}
         ORDER BY a.account_id
         {paging_sql};
@@ -863,6 +1026,7 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
 
 
 def count_accounts(q: str = "", account_type: str = "") -> int:
+    ensure_system_tables()
     query = "SELECT COUNT(*) AS total FROM accounts a"
     where = []
     params: list[object] = []
@@ -878,6 +1042,62 @@ def count_accounts(q: str = "", account_type: str = "") -> int:
         query += " WHERE " + " AND ".join(where)
     row = fetch_one(query + ";", tuple(params) or None)
     return int(row["total"])
+
+
+def list_team_leader_accounts() -> list[dict]:
+    ensure_system_tables()
+    return clean_row(fetch_all("""
+        SELECT account_id, name, email
+        FROM accounts
+        WHERE account_type = 'team_leader'
+          AND is_active = true
+        ORDER BY name, account_id;
+    """))
+
+
+def list_reseller_assignments() -> list[dict]:
+    ensure_system_tables()
+    return clean_row(fetch_all("""
+        SELECT r.reseller_id,
+               r.business_name,
+               r.contact_person,
+               r.email,
+               r.reseller_status,
+               r.team_leader_account_id,
+               tl.name AS team_leader_name,
+               tl.email AS team_leader_email,
+               a.account_id AS account_id
+        FROM resellers r
+        LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
+        LEFT JOIN accounts a ON a.reseller_id = r.reseller_id
+        ORDER BY r.business_name, r.reseller_id;
+    """))
+
+
+def set_reseller_team_leader(reseller_id: int, team_leader_account_id: int) -> dict:
+    ensure_system_tables()
+    leader = fetch_one("""
+        SELECT account_id, name
+        FROM accounts
+        WHERE account_id = %s
+          AND account_type = 'team_leader'
+          AND is_active = true
+        LIMIT 1;
+    """, (team_leader_account_id,))
+    if not leader:
+        raise ValueError("Select an active team leader.")
+
+    reseller = execute_write("""
+        UPDATE resellers
+        SET team_leader_account_id = %s
+        WHERE reseller_id = %s
+        RETURNING reseller_id, business_name, team_leader_account_id;
+    """, (team_leader_account_id, reseller_id), returning=True)
+    if not reseller:
+        raise ValueError("Reseller was not found.")
+
+    add_log("MEATTRACK", "assigned_reseller_team_leader", f"{reseller['business_name']} -> {leader['name']}")
+    return clean_row(reseller)
 
 
 def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
@@ -940,11 +1160,16 @@ def __getattr__(name: str):
             ORDER BY d.department_id;
         """))
     elif name == "resellers":
+        ensure_system_tables()
         return clean_row(fetch_all("""
             SELECT r.reseller_id, r.business_name, r.contact_person, r.email, r.contact_number, r.address, r.reseller_status,
-                   a.name AS approved_by, r.created_at
+                   a.name AS approved_by,
+                   r.team_leader_account_id,
+                   tl.name AS team_leader_name,
+                   r.created_at
             FROM resellers r
             LEFT JOIN accounts a ON a.account_id = r.approved_by_account_id
+            LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
             ORDER BY r.reseller_id DESC;
         """))
     elif name == "inventory_items":
@@ -1184,16 +1409,26 @@ def social_login_account(
             )
             account = cur.fetchone()
         elif allow_reseller_signup:
+            cur.execute("""
+                SELECT account_id
+                FROM accounts
+                WHERE account_type = 'team_leader'
+                  AND is_active = true
+                ORDER BY account_id
+                LIMIT 1;
+            """)
+            leader = cur.fetchone()
+            leader_id = leader["account_id"] if leader else None
             cur.execute(
                 """
                 INSERT INTO resellers (
                     business_name, contact_person, email, contact_number, address,
-                    reseller_status, approved_at
+                    reseller_status, team_leader_account_id, approved_at
                 )
-                VALUES (%s, %s, %s, 'OAuth signup', 'Pending onboarding details', 'active', %s)
+                VALUES (%s, %s, %s, 'OAuth signup', 'Pending onboarding details', 'active', %s, %s)
                 RETURNING reseller_id;
                 """,
-                (display_name, display_name, normalized_email, datetime.now()),
+                (display_name, display_name, normalized_email, leader_id, datetime.now()),
             )
             reseller = cur.fetchone()
             cur.execute(
@@ -1326,18 +1561,52 @@ def mark_notifications_read(role_key: str, account_id: int | None = None) -> Non
         (role_key, account_id),
     )
 
-def current_metrics() -> dict:
-    row = fetch_one("""
+def current_metrics(team_leader_account_id: int | None = None, reseller_account_id: int | None = None) -> dict:
+    ensure_system_tables()
+    order_scope = ""
+    pending_scope = ""
+    active_reseller_scope = ""
+    params: list[object] = []
+    if reseller_account_id is not None:
+        profile = reseller_account_profile(reseller_account_id)
+        order_scope = " AND reseller_id = %s"
+        pending_scope = " AND reseller_id = %s"
+        active_reseller_scope = " AND reseller_id = %s"
+        params.extend([profile["reseller_id"], profile["reseller_id"], profile["reseller_id"]])
+    elif team_leader_account_id is not None:
+        order_scope = """
+                AND (
+                    created_by_account_id = %s
+                    OR reseller_id IN (
+                        SELECT reseller_id
+                        FROM resellers
+                        WHERE team_leader_account_id = %s
+                    )
+                )
+        """
+        pending_scope = """
+                AND reseller_id IN (
+                    SELECT reseller_id
+                    FROM resellers
+                    WHERE team_leader_account_id = %s
+                )
+        """
+        active_reseller_scope = " AND team_leader_account_id = %s"
+        params.extend([team_leader_account_id, team_leader_account_id, team_leader_account_id, team_leader_account_id])
+
+    row = fetch_one(f"""
         SELECT
             COALESCE((
                 SELECT SUM(total_amount)
                 FROM orders
                 WHERE status = 'fulfilled'
+                {order_scope}
             ), 0) AS fulfilled_sales,
             (
                 SELECT COUNT(*)
                 FROM orders
                 WHERE order_type = 'reseller' AND status = 'pending'
+                {pending_scope}
             ) AS pending_reseller_orders,
             (
                 SELECT COUNT(*)
@@ -1348,6 +1617,7 @@ def current_metrics() -> dict:
                 SELECT COUNT(*)
                 FROM resellers
                 WHERE reseller_status = 'active'
+                {active_reseller_scope}
             ) AS active_resellers,
             COALESCE((
                 SELECT SUM(ib.quantity_available)
@@ -1357,7 +1627,7 @@ def current_metrics() -> dict:
                   AND ib.quality_status = 'approved'
                   AND (ib.expiry_date IS NULL OR ib.expiry_date >= CURRENT_DATE)
             ), 0) AS total_available;
-    """)
+    """, tuple(params) or None)
 
     return {
         "fulfilled_sales": float(row["fulfilled_sales"]),
@@ -1380,7 +1650,14 @@ def add_log(actor_name: str, action: str, entity_name: str) -> None:
     """, (acc_id, action, 'custom', 0, datetime.now()))
 
 def add_inquiry(name: str, business_name: str, email: str, contact_number: str, message: str) -> dict:
-    leader = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'team_leader' LIMIT 1;")
+    leader = fetch_one("""
+        SELECT account_id
+        FROM accounts
+        WHERE account_type = 'team_leader'
+          AND is_active = true
+        ORDER BY account_id
+        LIMIT 1;
+    """)
     leader_id = leader["account_id"] if leader else None
     
     inq = execute_write("""
@@ -1393,7 +1670,8 @@ def add_inquiry(name: str, business_name: str, email: str, contact_number: str, 
     
     add_log("MEATTRACK", "created_inquiry", f"Inquiry #{inq['inquiry_id']}")
     create_notification(
-        recipient_role="team-leader",
+        recipient_account_id=leader_id,
+        recipient_role=None if leader_id else "owner",
         category="inquiry",
         severity="info",
         title="New reseller inquiry",
@@ -1405,24 +1683,37 @@ def add_inquiry(name: str, business_name: str, email: str, contact_number: str, 
     )
     return inq
 
-def add_reseller_from_inquiry(inquiry_id: int) -> dict | None:
+def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id: int | None = None) -> dict | None:
+    ensure_system_tables()
     inq = fetch_one("SELECT * FROM inquiries WHERE inquiry_id = %s;", (inquiry_id,))
     if not inq:
         return None
+    if approving_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, approving_team_leader_account_id}:
+        return None
+
+    leader_id = approving_team_leader_account_id or inq["assigned_team_leader_account_id"]
+    if leader_id is None:
+        leader = fetch_one("""
+            SELECT account_id
+            FROM accounts
+            WHERE account_type = 'team_leader'
+              AND is_active = true
+            ORDER BY account_id
+            LIMIT 1;
+        """)
+        leader_id = leader["account_id"] if leader else None
     
     execute_write("""
         UPDATE inquiries 
-        SET status = 'approved', reviewed_by_account_id = assigned_team_leader_account_id, reviewed_at = %s 
+        SET status = 'approved', assigned_team_leader_account_id = %s, reviewed_by_account_id = %s, reviewed_at = %s
         WHERE inquiry_id = %s;
-    """, (datetime.now(), inquiry_id))
-    
-    leader_id = inq["assigned_team_leader_account_id"]
+    """, (leader_id, leader_id, datetime.now(), inquiry_id))
     
     res = execute_write("""
-        INSERT INTO resellers (inquiry_id, business_name, contact_person, email, contact_number, address, reseller_status, approved_by_account_id, approved_at)
-        VALUES (%s, %s, %s, %s, %s, 'Pending onboarding details', 'active', %s, %s)
-        RETURNING reseller_id, business_name, contact_person, email, contact_number, address, reseller_status, approved_by_account_id, created_at;
-    """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, datetime.now()), returning=True)
+        INSERT INTO resellers (inquiry_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, approved_at)
+        VALUES (%s, %s, %s, %s, %s, 'Pending onboarding details', 'active', %s, %s, %s)
+        RETURNING reseller_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, created_at;
+    """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, leader_id, datetime.now()), returning=True)
     
     res = clean_row(res)
     
@@ -1445,16 +1736,18 @@ def add_reseller_from_inquiry(inquiry_id: int) -> dict | None:
     )
     return res
 
-def reject_inquiry(inquiry_id: int) -> bool:
+def reject_inquiry(inquiry_id: int, reviewing_team_leader_account_id: int | None = None) -> bool:
     inq = fetch_one("SELECT * FROM inquiries WHERE inquiry_id = %s;", (inquiry_id,))
     if not inq:
+        return False
+    if reviewing_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, reviewing_team_leader_account_id}:
         return False
     
     execute_write("""
         UPDATE inquiries 
-        SET status = 'rejected', reviewed_by_account_id = assigned_team_leader_account_id, reviewed_at = %s 
+        SET status = 'rejected', assigned_team_leader_account_id = %s, reviewed_by_account_id = %s, reviewed_at = %s
         WHERE inquiry_id = %s;
-    """, (datetime.now(), inquiry_id))
+    """, (reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"], reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"], datetime.now(), inquiry_id))
     
 
     
@@ -1490,7 +1783,7 @@ def deduct_stock_fefo(product_id: int, quantity: float):
         
         remaining -= take
 
-def create_order_from_items(role: str, items: list[tuple[int, object]], notes: str = "") -> dict:
+def create_order_from_items(role: str, items: list[tuple[int, object]], notes: str = "", account_id: int | None = None) -> dict:
     if not items:
         raise ValueError("Add at least one product to the cart.")
 
@@ -1508,7 +1801,21 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
     order_type = "reseller" if role == "reseller" else "walk_in"
     reseller_id = None
     created_by_name = "Maria Santos"
+    team_leader_account_id = None
+    creator_id = account_id
     status = "pending" if role == "reseller" else "fulfilled"
+
+    if role == "reseller":
+        if account_id is None:
+            raise ValueError("Your session expired. Please sign in again.")
+        profile = require_reseller_team_leader(account_id)
+        reseller_id = profile["reseller_id"]
+        created_by_name = profile["business_name"]
+        team_leader_account_id = profile["team_leader_account_id"]
+    elif account_id is not None:
+        account = fetch_one("SELECT name FROM accounts WHERE account_id = %s LIMIT 1;", (account_id,))
+        if account:
+            created_by_name = account["name"]
 
     with get_transaction_cursor() as cur:
         cur.execute("""
@@ -1522,15 +1829,10 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
         if len(products) != len(quantities):
             raise ValueError("Unknown product")
 
-        if role == "reseller":
-            cur.execute("SELECT reseller_id, business_name FROM resellers WHERE email = 'reseller@lipafresh.test' LIMIT 1;")
-            res = cur.fetchone()
-            reseller_id = res["reseller_id"] if res else 1
-            created_by_name = res["business_name"] if res else "Lipa Fresh Mart"
-
-        cur.execute("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (created_by_name,))
-        acc = cur.fetchone()
-        creator_id = acc["account_id"] if acc else None
+        if creator_id is None:
+            cur.execute("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (created_by_name,))
+            acc = cur.fetchone()
+            creator_id = acc["account_id"] if acc else None
 
         total = Decimal("0.00")
         lines = []
@@ -1568,7 +1870,7 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
     else:
         add_log(created_by_name, "created_reseller_order", f"Order #{order_id}")
         create_notification(
-            recipient_role="team-leader",
+            recipient_account_id=team_leader_account_id,
             category="order",
             severity="warning",
             title="Pending reseller order",
@@ -1582,18 +1884,30 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
     return clean_row(ord_res)
 
 
-def create_order(role: str, product_id: int, quantity: float, notes: str = "") -> dict:
-    return create_order_from_items(role, [(product_id, quantity)], notes)
+def create_order(role: str, product_id: int, quantity: float, notes: str = "", account_id: int | None = None) -> dict:
+    return create_order_from_items(role, [(product_id, quantity)], notes, account_id=account_id)
 
-def decide_order(order_id: int, decision: str) -> bool:
-    ord_res = fetch_one("SELECT * FROM orders WHERE order_id = %s;", (order_id,))
+def decide_order(order_id: int, decision: str, team_leader_account_id: int | None = None) -> bool:
+    ensure_system_tables()
+    if team_leader_account_id is None:
+        ord_res = fetch_one("SELECT * FROM orders WHERE order_id = %s;", (order_id,))
+    else:
+        ord_res = fetch_one("""
+            SELECT o.*
+            FROM orders o
+            JOIN resellers r ON r.reseller_id = o.reseller_id
+            WHERE o.order_id = %s
+              AND r.team_leader_account_id = %s;
+        """, (order_id, team_leader_account_id))
     if not ord_res or ord_res["order_type"] != "reseller":
         return False
     if ord_res["status"] in {"fulfilled", "rejected"}:
         return False
     
-    leader = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'team_leader' LIMIT 1;")
-    leader_id = leader["account_id"] if leader else None
+    leader_id = team_leader_account_id
+    if leader_id is None:
+        leader = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'team_leader' LIMIT 1;")
+        leader_id = leader["account_id"] if leader else None
     
     if decision == "approve":
         execute_write("""
@@ -1661,17 +1975,30 @@ def decide_order(order_id: int, decision: str) -> bool:
     return True
 
 
-def team_sales_report_totals(period_start: date, period_end: date) -> dict:
-    totals = fetch_one("""
+def team_sales_report_totals(period_start: date, period_end: date, team_leader_account_id: int | None = None) -> dict:
+    ensure_system_tables()
+    scope_sql = ""
+    params: list[object] = [period_start, period_end]
+    if team_leader_account_id is not None:
+        scope_sql = """
+          AND (
+              (o.order_type = 'walk_in' AND o.created_by_account_id = %s)
+              OR (o.order_type = 'reseller' AND r.team_leader_account_id = %s)
+          )
+        """
+        params.extend([team_leader_account_id, team_leader_account_id])
+    totals = fetch_one(f"""
         SELECT COALESCE(SUM(oi.line_total), 0) AS total_sales,
                COUNT(DISTINCT o.order_id) AS total_orders
         FROM orders o
         JOIN order_items oi ON oi.order_id = o.order_id
         JOIN inventory_items p ON p.item_id = oi.product_id
+        LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         WHERE o.status = 'fulfilled'
           AND p.item_type = 'finished_product'
-          AND COALESCE(o.fulfilled_at, o.order_date)::date BETWEEN %s AND %s;
-    """, (period_start, period_end))
+          AND COALESCE(o.fulfilled_at, o.order_date)::date BETWEEN %s AND %s
+          {scope_sql};
+    """, tuple(params))
     totals = clean_row(totals)
     return {
         "total_sales": float(totals["total_sales"] or 0),
@@ -1679,8 +2006,19 @@ def team_sales_report_totals(period_start: date, period_end: date) -> dict:
     }
 
 
-def team_sales_report_entries() -> list[dict]:
-    entries = clean_row(fetch_all("""
+def team_sales_report_entries(team_leader_account_id: int | None = None) -> list[dict]:
+    ensure_system_tables()
+    scope_sql = ""
+    params: list[object] = []
+    if team_leader_account_id is not None:
+        scope_sql = """
+          AND (
+              (o.order_type = 'walk_in' AND o.created_by_account_id = %s)
+              OR (o.order_type = 'reseller' AND r.team_leader_account_id = %s)
+          )
+        """
+        params.extend([team_leader_account_id, team_leader_account_id])
+    entries = clean_row(fetch_all(f"""
         SELECT COALESCE(o.fulfilled_at, o.order_date)::date AS sale_date,
                o.order_id,
                COALESCE(r.business_name, 'Retail counter') AS customer,
@@ -1694,15 +2032,22 @@ def team_sales_report_entries() -> list[dict]:
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         WHERE o.status = 'fulfilled'
           AND p.item_type = 'finished_product'
+          {scope_sql}
         ORDER BY sale_date DESC, o.order_id DESC, p.name;
-    """))
+    """, tuple(params) or None))
     for entry in entries:
         entry["sale_date"] = entry["sale_date"].isoformat()
     return entries
 
 
-def team_rejected_order_entries() -> list[dict]:
-    return clean_row(fetch_all("""
+def team_rejected_order_entries(team_leader_account_id: int | None = None) -> list[dict]:
+    ensure_system_tables()
+    scope_sql = ""
+    params: list[object] = []
+    if team_leader_account_id is not None:
+        scope_sql = "AND r.team_leader_account_id = %s"
+        params.append(team_leader_account_id)
+    return clean_row(fetch_all(f"""
         SELECT o.order_id,
                COALESCE(r.business_name, 'Retail counter') AS reseller,
                COALESCE(o.approved_at, o.order_date) AS rejected_at,
@@ -1720,21 +2065,37 @@ def team_rejected_order_entries() -> list[dict]:
         WHERE o.order_type = 'reseller'
           AND o.status = 'rejected'
           AND p.item_type = 'finished_product'
+          {scope_sql}
         GROUP BY o.order_id, r.business_name, o.approved_at, o.order_date, o.total_amount, o.notes
         ORDER BY rejected_at DESC, o.order_id DESC;
-    """))
+    """, tuple(params) or None))
 
 
-def add_sales_report(source: str, submitted_by: str, period_start: date, period_end: date, total_sales: float, total_orders: int, notes: str) -> dict:
+def add_sales_report(
+    source: str,
+    submitted_by: str,
+    period_start: date,
+    period_end: date,
+    total_sales: float,
+    total_orders: int,
+    notes: str,
+    account_id: int | None = None,
+) -> dict:
     ensure_system_tables()
-    acc = fetch_one("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (submitted_by,))
+    if account_id is not None:
+        acc = fetch_one("SELECT account_id, name FROM accounts WHERE account_id = %s LIMIT 1;", (account_id,))
+    else:
+        acc = fetch_one("SELECT account_id, name FROM accounts WHERE name = %s LIMIT 1;", (submitted_by,))
     acc_id = acc["account_id"] if acc else None
+    actor_name = acc["name"] if acc else submitted_by
     
     reseller_id = None
     department_id = None
     if source == "reseller":
-        res = fetch_one("SELECT reseller_id FROM resellers WHERE email = 'reseller@lipafresh.test' LIMIT 1;")
-        reseller_id = res["reseller_id"] if res else 1
+        if account_id is None:
+            raise ValueError("Reseller reports require a signed-in reseller account.")
+        profile = require_reseller_team_leader(account_id)
+        reseller_id = profile["reseller_id"]
     else:
         dep = fetch_one("SELECT department_id FROM departments LIMIT 1;")
         department_id = dep["department_id"] if dep else 1
@@ -1745,16 +2106,21 @@ def add_sales_report(source: str, submitted_by: str, period_start: date, period_
         RETURNING sales_report_id, report_source, period_start, period_end, total_sales, total_orders, notes;
     """, (source, acc_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes), returning=True)
     
-    add_log(submitted_by, "submitted_sales_report", f"Report #{rep['sales_report_id']}")
+    add_log(actor_name, "submitted_sales_report", f"Report #{rep['sales_report_id']}")
     return clean_row(rep)
 
 
 def reseller_account_profile(account_id: int) -> dict:
+    ensure_system_tables()
     row = fetch_one("""
         SELECT a.account_id, a.name, a.email, a.reseller_id,
-               COALESCE(r.business_name, a.name) AS business_name
+               COALESCE(r.business_name, a.name) AS business_name,
+               r.team_leader_account_id,
+               tl.name AS team_leader_name,
+               tl.email AS team_leader_email
         FROM accounts a
         LEFT JOIN resellers r ON r.reseller_id = a.reseller_id
+        LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
         WHERE a.account_id = %s
           AND a.account_type = 'reseller'
         LIMIT 1;
@@ -1762,13 +2128,33 @@ def reseller_account_profile(account_id: int) -> dict:
     if not row:
         raise ValueError("Reseller account was not found.")
     if row["reseller_id"] is None:
-        reseller = fetch_one("SELECT reseller_id, business_name FROM resellers WHERE lower(email) = lower(%s) LIMIT 1;", (row["email"],))
+        reseller = fetch_one("""
+            SELECT r.reseller_id,
+                   r.business_name,
+                   r.team_leader_account_id,
+                   tl.name AS team_leader_name,
+                   tl.email AS team_leader_email
+            FROM resellers r
+            LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
+            WHERE lower(r.email) = lower(%s)
+            LIMIT 1;
+        """, (row["email"],))
         if reseller:
             row["reseller_id"] = reseller["reseller_id"]
             row["business_name"] = reseller["business_name"]
+            row["team_leader_account_id"] = reseller["team_leader_account_id"]
+            row["team_leader_name"] = reseller["team_leader_name"]
+            row["team_leader_email"] = reseller["team_leader_email"]
     if row["reseller_id"] is None:
         raise ValueError("This reseller account is not linked to an approved reseller profile.")
     return clean_row(row)
+
+
+def require_reseller_team_leader(account_id: int) -> dict:
+    profile = reseller_account_profile(account_id)
+    if not profile.get("team_leader_account_id"):
+        raise ValueError("Your reseller account is not assigned to a team leader yet. Please contact the owner before submitting orders or reports.")
+    return profile
 
 
 def reseller_month_orders(account_id: int, period_start: date, period_end: date) -> list[dict]:
@@ -1864,7 +2250,7 @@ def reseller_reportable_products(account_id: int, period_start: date | None = No
 
 def add_reseller_sell_through_report(account_id: int, period_start: date, period_end: date, quantities: dict[int, object], notes: str, attachments: list[dict] | None = None) -> dict:
     ensure_system_tables()
-    profile = reseller_account_profile(account_id)
+    profile = require_reseller_team_leader(account_id)
     reportable = {int(row["product_id"]): row for row in reseller_reportable_products(account_id, period_start, period_end)}
     clean_quantities: dict[int, Decimal] = {}
 
@@ -1930,6 +2316,17 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
             ))
 
     add_log(profile["business_name"], "submitted_reseller_sell_through_report", f"Report #{rep['sales_report_id']}")
+    create_notification(
+        recipient_account_id=profile["team_leader_account_id"],
+        category="report",
+        severity="info",
+        title="Reseller sales report submitted",
+        message=f"{profile['business_name']} submitted sell-through report #{rep['sales_report_id']}.",
+        target_url="/portal/team-leader/reports",
+        source_type="sales_reports",
+        source_id=rep["sales_report_id"],
+        dedupe_key=f"reseller-report-{rep['sales_report_id']}",
+    )
     return clean_row(rep)
 
 

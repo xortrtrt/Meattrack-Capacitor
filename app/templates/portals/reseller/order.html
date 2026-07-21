@@ -1,0 +1,168 @@
+<section class="reseller-order-page">
+  <article class="panel reseller-order-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Products</h2>
+        <span class="hint"
+          >Select products for your cart. Review and submit everything from the
+          cart page.</span
+        >
+      </div>
+      <a class="button subtle" href="/portal/reseller/cart">
+        <i data-lucide="shopping-cart"></i> View cart {% if cart_count %}({{
+        cart_count|number }}){% endif %}
+      </a>
+    </div>
+    <div class="reseller-order-section-heading">
+      <div>
+        <span class="eyebrow">Product catalog</span>
+        <strong>Select quantities</strong>
+      </div>
+      <span>{{ products|length }} products</span>
+    </div>
+    <label class="reseller-product-search">
+      <i data-lucide="search"></i>
+      <span>Search products</span>
+      <input
+        type="search"
+        placeholder="Search by product name or category"
+        data-product-search
+      />
+    </label>
+    <div class="reseller-product-cards" data-product-grid>
+      {% for product in products %}
+      <article
+        class="reseller-product-card"
+        data-product-card
+        data-product-text="{{ product.name }} {{ product.category }}"
+        data-product-id="{{ product.product_id }}"
+        data-product-name="{{ product.name }}"
+        data-product-category="{{ product.category }}"
+        data-product-price="{{ product.base_price }}"
+        data-product-unit="{{ product.unit }}"
+        data-product-stock="{{ product.available }}"
+        data-product-description="{{ product.description or 'No description available yet.' }}"
+        data-product-image="{{ product.name|product_image|media_url }}"
+      >
+        <button
+          class="reseller-product-card-button"
+          type="button"
+          data-product-modal-open
+          aria-label="View {{ product.name }}"
+        >
+          <span class="reseller-product-image">
+            <img
+              src="{{ product.name|product_image|media_url }}"
+              alt="{{ product.name }}"
+              loading="lazy"
+            />
+          </span>
+          <span class="reseller-product-info">
+            <span class="reseller-product-category"
+              >{{ product.category }}</span
+            >
+            <strong>{{ product.name }}</strong>
+            <h3>{{ product.base_price|currency }}/{{ product.unit }}</h3>
+            <em>{{ product.available|number }} {{ product.unit }} available</em>
+            <small>Tap to view details</small>
+          </span>
+        </button>
+      </article>
+      {% else %}
+      <p class="hint">No products are available for ordering yet.</p>
+      {% endfor %}
+    </div>
+    <p class="reseller-no-products" data-product-empty hidden>
+      No products match your search.
+    </p>
+    <div class="reseller-product-modal" data-product-modal hidden>
+      <button
+        class="reseller-product-modal-backdrop"
+        type="button"
+        data-product-modal-close
+        aria-label="Close product details"
+      ></button>
+      <article
+        class="reseller-product-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reseller-product-modal-title"
+      >
+        <button
+          class="icon-button reseller-product-modal-close"
+          type="button"
+          data-product-modal-close
+          aria-label="Close product details"
+        >
+          <i data-lucide="x"></i>
+        </button>
+        <span class="reseller-product-modal-image">
+          <img src="" alt="" data-product-modal-image />
+        </span>
+        <div class="reseller-product-modal-content">
+          <span class="reseller-product-category" data-product-modal-category></span>
+          <h3 id="reseller-product-modal-title" data-product-modal-name></h3>
+          <h3 id="reseller-product-modal-price" data-product-modal-price></h3>
+          <p data-product-modal-description></p>
+          <div class="reseller-product-modal-meta">
+            <span>
+              <small>Stock left</small>
+              <strong data-product-modal-stock></strong>
+            </span>
+            <span>
+              <small>Category</small>
+              <strong data-product-modal-category-label></strong>
+            </span>
+          </div>
+          <form
+            class="reseller-add-cart-form reseller-product-modal-form"
+            action="/portal/reseller/order"
+            method="post"
+          >
+            <input type="hidden" name="product_id" data-product-modal-id />
+            <label class="reseller-quantity-stepper">
+              Qty
+              <span>
+                <button
+                  type="button"
+                  class="quantity-step"
+                  data-quantity-step="-1"
+                  aria-label="Decrease quantity"
+                >
+                  <i data-lucide="minus"></i>
+                </button>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  step="1"
+                  name="quantity"
+                  value="1"
+                  data-quantity-input
+                  data-product-modal-quantity
+                />
+                <button
+                  type="button"
+                  class="quantity-step"
+                  data-quantity-step="1"
+                  aria-label="Increase quantity"
+                >
+                  <i data-lucide="plus"></i>
+                </button>
+              </span>
+            </label>
+            <button
+              class="button primary reseller-add-cart-button"
+              type="submit"
+              title="Add to cart"
+              aria-label="Add product to cart"
+              data-keep-label="true"
+            >
+              <i data-lucide="shopping-cart"></i>
+            </button>
+          </form>
+        </div>
+      </article>
+    </div>
+  </article>
+</section>

@@ -173,8 +173,12 @@ def require_calendar_month(period_start: date, period_end: date) -> None:
 
 def require_completed_report_month(period_start: date, period_end: date) -> None:
     require_calendar_month(period_start, period_end)
-    if date.today() < period_end:
+    if APP_ENV != "development" and date.today() < period_end:
         raise ValueError("Sales reports can only be submitted on or after the last day of the month.")
+
+
+def reseller_report_submit_available(period_end: date) -> bool:
+    return APP_ENV == "development" or date.today() >= period_end
 
 
 def paged(items: list[dict], total: int, page: int, page_size: int = 10, **filters: str) -> dict:
@@ -192,30 +196,72 @@ def product_page(request: Request, page_size: int = 12) -> dict:
     return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
 
 
-def orders_page(request: Request, order_type: str, page_size: int = 10) -> dict:
+def orders_page(
+    request: Request,
+    order_type: str,
+    page_size: int = 10,
+    team_leader_account_id: int | None = None,
+    reseller_account_id: int | None = None,
+) -> dict:
     filters = portal_filters(request)
     items = data.list_orders(
         order_type=order_type,
         q=filters["q"],
         status=filters["status"],
+        team_leader_account_id=team_leader_account_id,
+        reseller_account_id=reseller_account_id,
         page=filters["page"],
         page_size=page_size,
     )
-    total = data.count_orders(order_type=order_type, q=filters["q"], status=filters["status"])
+    total = data.count_orders(
+        order_type=order_type,
+        q=filters["q"],
+        status=filters["status"],
+        team_leader_account_id=team_leader_account_id,
+        reseller_account_id=reseller_account_id,
+    )
     return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"])
 
 
-def reports_page(request: Request, report_source: str | None = None, page_size: int = 10) -> dict:
+def reports_page(
+    request: Request,
+    report_source: str | None = None,
+    page_size: int = 10,
+    team_leader_account_id: int | None = None,
+    reseller_account_id: int | None = None,
+) -> dict:
     filters = portal_filters(request)
-    items = data.list_sales_reports(report_source=report_source, q=filters["q"], page=filters["page"], page_size=page_size)
-    total = data.count_sales_reports(report_source=report_source, q=filters["q"])
+    items = data.list_sales_reports(
+        report_source=report_source,
+        q=filters["q"],
+        team_leader_account_id=team_leader_account_id,
+        reseller_account_id=reseller_account_id,
+        page=filters["page"],
+        page_size=page_size,
+    )
+    total = data.count_sales_reports(
+        report_source=report_source,
+        q=filters["q"],
+        team_leader_account_id=team_leader_account_id,
+        reseller_account_id=reseller_account_id,
+    )
     return paged(items, total, filters["page"], page_size, q=filters["q"])
 
 
-def inquiries_page(request: Request, page_size: int = 10) -> dict:
+def inquiries_page(request: Request, page_size: int = 10, assigned_team_leader_account_id: int | None = None) -> dict:
     filters = portal_filters(request)
-    items = data.list_inquiries(q=filters["q"], status=filters["status"], page=filters["page"], page_size=page_size)
-    total = data.count_inquiries(q=filters["q"], status=filters["status"])
+    items = data.list_inquiries(
+        q=filters["q"],
+        status=filters["status"],
+        assigned_team_leader_account_id=assigned_team_leader_account_id,
+        page=filters["page"],
+        page_size=page_size,
+    )
+    total = data.count_inquiries(
+        q=filters["q"],
+        status=filters["status"],
+        assigned_team_leader_account_id=assigned_team_leader_account_id,
+    )
     return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"])
 
 
@@ -231,7 +277,10 @@ def accounts_page(request: Request, page_size: int = 10) -> dict:
     account_type = filters["type"] if filters["type"] in {"owner", "team_leader", "reseller"} else ""
     items = data.list_accounts(q=filters["q"], account_type=account_type, page=filters["page"], page_size=page_size)
     total = data.count_accounts(q=filters["q"], account_type=account_type)
-    return paged(items, total, filters["page"], page_size, q=filters["q"], type=account_type)
+    page = paged(items, total, filters["page"], page_size, q=filters["q"], type=account_type)
+    page["team_leaders"] = data.list_team_leader_accounts()
+    page["reseller_assignments"] = data.list_reseller_assignments()
+    return page
 
 
 def logs_page(request: Request, page_size: int = 10) -> dict:
@@ -285,6 +334,13 @@ def reseller_cart_payload(account_id: int, message: str = "") -> JSONResponse:
 
 
 def reseller_dashboard_context(request: Request) -> dict:
+    account_id = session_account_id(request)
+    reseller_profile = None
+    if account_id is not None:
+        try:
+            reseller_profile = data.reseller_account_profile(account_id)
+        except ValueError:
+            reseller_profile = None
     default_end = date.today()
     default_start = default_end - timedelta(days=29)
     start_date = date_filter(request.query_params.get("start_date"), default_start)
@@ -295,7 +351,7 @@ def reseller_dashboard_context(request: Request) -> dict:
     if status_filter not in {"all", "pending", "approved", "fulfilled", "rejected", "cancelled"}:
         status_filter = "fulfilled"
 
-    sales_series = data.reseller_sales_series(start_date, end_date, status_filter)
+    sales_series = data.reseller_sales_series(start_date, end_date, status_filter, account_id=account_id)
     max_sales = max((row["total_sales"] for row in sales_series), default=0)
     total_sales = sum(row["total_sales"] for row in sales_series)
     total_orders = sum(row["order_count"] for row in sales_series)
@@ -303,9 +359,10 @@ def reseller_dashboard_context(request: Request) -> dict:
         row["bar_percent"] = 0 if max_sales <= 0 else max(6, round((row["total_sales"] / max_sales) * 100, 2))
 
     return {
-        "metrics": data.current_metrics(),
-        "most_bought_products": data.reseller_most_bought_products(limit=3),
-        "sales_reports": data.list_sales_reports(report_source="reseller", limit=1),
+        "metrics": data.current_metrics(reseller_account_id=account_id),
+        "reseller_profile": reseller_profile,
+        "most_bought_products": data.reseller_most_bought_products(limit=3, account_id=account_id),
+        "sales_reports": data.list_sales_reports(report_source="reseller", limit=1, reseller_account_id=account_id),
         "sales_series": sales_series,
         "sales_chart_total": total_sales,
         "sales_chart_orders": total_orders,
@@ -319,6 +376,7 @@ def reseller_dashboard_context(request: Request) -> dict:
 
 def reseller_reports_context(request: Request) -> dict:
     period_start, period_end = month_bounds(date.today())
+    submit_available = reseller_report_submit_available(period_end)
     account_id = session_account_id(request)
     reportable_products = []
     month_orders = []
@@ -326,15 +384,16 @@ def reseller_reports_context(request: Request) -> dict:
         reportable_products = data.reseller_reportable_products(account_id, period_start, period_end)
         month_orders = data.reseller_month_orders(account_id, period_start, period_end)
     return {
-        "sales_reports": data.list_sales_reports(report_source="reseller"),
+        "sales_reports": data.list_sales_reports(report_source="reseller", reseller_account_id=account_id),
         "reportable_products": reportable_products,
         "monthly_orders": month_orders,
         "report_period": {
             "start": period_start.isoformat(),
             "end": period_end.isoformat(),
         },
-        "report_submit_available": date.today() >= period_end,
-        "report_locked_reason": "" if date.today() >= period_end else "Sales reports unlock on the last day of the month.",
+        "report_submit_available": submit_available,
+        "report_locked_reason": "" if submit_available else "Sales reports unlock on the last day of the month.",
+        "report_dev_mode": APP_ENV == "development",
     }
 
 
@@ -348,10 +407,11 @@ def _owner_dashboard_context(request: Request) -> dict:
 
 
 def _team_dashboard_context(request: Request) -> dict:
+    account_id = session_account_id(request)
     return {
-        "metrics": data.current_metrics(),
-        "inquiries": data.list_inquiries(limit=4),
-        "orders": data.list_orders(order_type="walk_in", limit=5),
+        "metrics": data.current_metrics(team_leader_account_id=account_id),
+        "inquiries": data.list_inquiries(limit=4, assigned_team_leader_account_id=account_id),
+        "orders": data.list_orders(order_type="walk_in", limit=5, team_leader_account_id=account_id),
     }
 
 
@@ -376,27 +436,43 @@ PORTAL_SECTION_LOADERS = {
     ("owner", "products"): lambda request: {"products_page": (page := product_page(request)), "products": page["items"]},
     ("owner", "reports"): lambda request: {"sales_reports_page": (page := reports_page(request)), "sales_reports": page["items"]},
     ("owner", "forecasts"): lambda request: {"forecasts_page": (page := forecasts_page(request)), "forecasts": page["items"]},
-    ("owner", "accounts"): lambda request: {"accounts_page": (page := accounts_page(request)), "accounts": page["items"]},
+    ("owner", "accounts"): lambda request: {
+        "accounts_page": (page := accounts_page(request)),
+        "accounts": page["items"],
+        "team_leaders": page["team_leaders"],
+        "reseller_assignments": page["reseller_assignments"],
+    },
     ("owner", "logs"): lambda request: {"activity_logs_page": (page := logs_page(request)), "activity_logs": page["items"]},
     ("team-leader", "dashboard"): _team_dashboard_context,
     ("team-leader", "sales"): lambda request: {
         "products": data.list_products(),
-        "orders_page": (page := orders_page(request, "walk_in")),
+        "orders_page": (page := orders_page(request, "walk_in", team_leader_account_id=session_account_id(request))),
         "orders": page["items"],
     },
     ("team-leader", "inventory"): _team_inventory_context,
-    ("team-leader", "inquiries"): lambda request: {"inquiries_page": (page := inquiries_page(request)), "inquiries": page["items"]},
-    ("team-leader", "orders"): lambda request: {"orders_page": (page := orders_page(request, "reseller")), "orders": page["items"]},
+    ("team-leader", "inquiries"): lambda request: {
+        "inquiries_page": (page := inquiries_page(request, assigned_team_leader_account_id=session_account_id(request))),
+        "inquiries": page["items"],
+    },
+    ("team-leader", "orders"): lambda request: {
+        "orders_page": (page := orders_page(request, "reseller", team_leader_account_id=session_account_id(request))),
+        "orders": page["items"],
+    },
     ("team-leader", "reports"): lambda request: {
-        "sales_reports_page": (page := reports_page(request, "team_leader")),
+        "sales_reports_page": (page := reports_page(request, "team_leader", team_leader_account_id=session_account_id(request))),
         "sales_reports": page["items"],
-        "team_report_sales": data.team_sales_report_entries(),
-        "team_rejected_orders": data.team_rejected_order_entries(),
+        "reseller_sales_reports": data.list_sales_reports(
+            report_source="reseller",
+            team_leader_account_id=session_account_id(request),
+            limit=10,
+        ),
+        "team_report_sales": data.team_sales_report_entries(team_leader_account_id=session_account_id(request)),
+        "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=session_account_id(request)),
     },
     ("reseller", "dashboard"): reseller_dashboard_context,
     ("reseller", "order"): lambda request: {"products": data.list_products()},
     ("reseller", "cart"): reseller_cart_context,
-    ("reseller", "history"): lambda request: {"orders": data.list_orders(order_type="reseller")},
+    ("reseller", "history"): lambda request: {"orders": data.list_orders(order_type="reseller", reseller_account_id=session_account_id(request))},
     ("reseller", "reports"): reseller_reports_context,
 }
 
@@ -907,7 +983,7 @@ async def reseller_cart_checkout(request: Request, notes: str = Form("")):
         return redirect_to(safe_portal_path("reseller", "cart", error="Your cart is empty."))
     try:
         items = [(item["product_id"], item["cart_quantity"]) for item in cart_items]
-        data.create_order_from_items("reseller", items, notes.strip())
+        data.create_order_from_items("reseller", items, notes.strip(), account_id=account_id)
         data.clear_reseller_cart(account_id)
     except ValueError as exc:
         return redirect_to(safe_portal_path("reseller", "cart", error=str(exc)))
@@ -954,7 +1030,7 @@ async def team_walk_in_sale(request: Request, product_id: int = Form(...), quant
         return guard
     try:
         require_positive_number(quantity, "Quantity")
-        data.create_order("team-leader", product_id, quantity, notes.strip())
+        data.create_order("team-leader", product_id, quantity, notes.strip(), account_id=session_account_id(request))
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "sales", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "sales", message="Walk-in sale recorded and inventory updated."))
@@ -1054,11 +1130,11 @@ async def team_inquiry_decision(request: Request, inquiry_id: int, decision: str
     if guard:
         return guard
     if decision == "approve":
-        if data.add_reseller_from_inquiry(inquiry_id) is None:
+        if data.add_reseller_from_inquiry(inquiry_id, approving_team_leader_account_id=session_account_id(request)) is None:
             return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
         return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved and reseller account staged."))
     if decision == "reject":
-        if not data.reject_inquiry(inquiry_id):
+        if not data.reject_inquiry(inquiry_id, reviewing_team_leader_account_id=session_account_id(request)):
             return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
         return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry rejected."))
     raise HTTPException(status_code=404)
@@ -1071,7 +1147,7 @@ async def team_order_decision(request: Request, order_id: int, decision: str):
         return guard
     if decision not in {"approve", "reject", "fulfill"}:
         raise HTTPException(status_code=404)
-    if not data.decide_order(order_id, decision):
+    if not data.decide_order(order_id, decision, team_leader_account_id=session_account_id(request)):
         return redirect_to(safe_portal_path("team-leader", "orders", error="Order not found or already finalized."))
     return redirect_to(safe_portal_path("team-leader", "orders", message=f"Order {decision} action recorded."))
 
@@ -1088,15 +1164,17 @@ async def team_report(
         return guard
     try:
         require_date_range(period_start, period_end)
-        totals = data.team_sales_report_totals(period_start, period_end)
+        account_id = session_account_id(request)
+        totals = data.team_sales_report_totals(period_start, period_end, team_leader_account_id=account_id)
         data.add_sales_report(
             "team_leader",
-            "Maria Santos",
+            request.session.get("account_name") or "Team leader",
             period_start,
             period_end,
             totals["total_sales"],
             totals["total_orders"],
             notes.strip(),
+            account_id=account_id,
         )
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "reports", error=str(exc)))
@@ -1137,6 +1215,18 @@ async def owner_account(request: Request, account_type: str = Form(...), name: s
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "accounts", message="Account created."))
+
+
+@app.post("/portal/owner/resellers/{reseller_id}/team-leader")
+async def owner_reseller_team_leader(request: Request, reseller_id: int, team_leader_account_id: int = Form(...)):
+    guard = require_portal_session(request, "owner")
+    if guard:
+        return guard
+    try:
+        data.set_reseller_team_leader(reseller_id, team_leader_account_id)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
+    return redirect_to(safe_portal_path("owner", "accounts", message="Reseller team leader updated."))
 
 
 @app.post("/portal/owner/forecasts")
