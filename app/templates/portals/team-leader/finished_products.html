@@ -8,6 +8,15 @@
     {% if inventory_products_page.filters.type %}
     <input type="hidden" name="type" value="{{ inventory_products_page.filters.type }}">
     {% endif %}
+    <label>Sort
+      <select name="sort">
+        <option value="">Default</option>
+        <option value="name_asc" {{ 'selected' if inventory_products_page.filters.sort == 'name_asc' else '' }}>Name A-Z</option>
+        <option value="category_asc" {{ 'selected' if inventory_products_page.filters.sort == 'category_asc' else '' }}>Category</option>
+        <option value="stock_desc" {{ 'selected' if inventory_products_page.filters.sort == 'stock_desc' else '' }}>Stock high-low</option>
+        <option value="stock_asc" {{ 'selected' if inventory_products_page.filters.sort == 'stock_asc' else '' }}>Stock low-high</option>
+      </select>
+    </label>
     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
   {% include "portals/team-leader/_inventory_products.html" %}

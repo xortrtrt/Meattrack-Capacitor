@@ -7,6 +7,15 @@
   </div>
   <form class="filter-bar owner-filter-bar" method="get">
     <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
+    <label>Sort
+      <select name="sort">
+        <option value="">Newest</option>
+        <option value="period_desc" {{ 'selected' if sales_reports_page.filters.sort == 'period_desc' else '' }}>Latest period</option>
+        <option value="sales_desc" {{ 'selected' if sales_reports_page.filters.sort == 'sales_desc' else '' }}>Sales high-low</option>
+        <option value="orders_desc" {{ 'selected' if sales_reports_page.filters.sort == 'orders_desc' else '' }}>Orders high-low</option>
+        <option value="oldest" {{ 'selected' if sales_reports_page.filters.sort == 'oldest' else '' }}>Oldest</option>
+      </select>
+    </label>
     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
 
@@ -63,8 +72,8 @@
   </div>
 
   <div class="pagination">
-    {% if sales_reports_page.pagination.has_prev %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&page={{ sales_reports_page.pagination.page - 1 }}">Previous</a>{% endif %}
+    {% if sales_reports_page.pagination.has_prev %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page - 1 }}">Previous</a>{% endif %}
     <span>Page {{ sales_reports_page.pagination.page }} of {{ sales_reports_page.pagination.total_pages }}</span>
-    {% if sales_reports_page.pagination.has_next %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&page={{ sales_reports_page.pagination.page + 1 }}">Next</a>{% endif %}
+    {% if sales_reports_page.pagination.has_next %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page + 1 }}">Next</a>{% endif %}
   </div>
 </section>

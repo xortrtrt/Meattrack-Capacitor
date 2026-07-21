@@ -11,6 +11,15 @@
                             <option value="rejected" {{ 'selected' if orders_page.filters.status == 'rejected' else '' }}>Rejected</option>
                         </select>
                     </label>
+                    <label>Sort
+                        <select name="sort">
+                            <option value="">Newest</option>
+                            <option value="oldest" {{ 'selected' if orders_page.filters.sort == 'oldest' else '' }}>Oldest</option>
+                            <option value="total_desc" {{ 'selected' if orders_page.filters.sort == 'total_desc' else '' }}>Total high-low</option>
+                            <option value="total_asc" {{ 'selected' if orders_page.filters.sort == 'total_asc' else '' }}>Total low-high</option>
+                            <option value="status_asc" {{ 'selected' if orders_page.filters.sort == 'status_asc' else '' }}>Status</option>
+                        </select>
+                    </label>
                     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
                 </form>
                 <div class="table-wrap">
@@ -57,5 +66,9 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="pagination"><span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span></div>
+                <div class="pagination">
+                    {% if orders_page.pagination.has_prev %}<a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}">Previous</a>{% endif %}
+                    <span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>
+                    {% if orders_page.pagination.has_next %}<a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next</a>{% endif %}
+                </div>
             </section>

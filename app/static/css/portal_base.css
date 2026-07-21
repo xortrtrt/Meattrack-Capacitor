@@ -933,6 +933,61 @@ button {
   box-shadow: 0 0 0 3px rgba(215, 182, 33, 0.18);
 }
 
+.password-rule-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.password-rule-list li {
+  position: relative;
+  min-height: 34px;
+  padding: 8px 10px 8px 32px;
+  border: 1px solid rgba(177, 49, 42, 0.22);
+  border-radius: 10px;
+  background: rgba(177, 49, 42, 0.06);
+  color: #7d2620;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1.25;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.password-rule-list li::before {
+  content: "×";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 999px;
+  background: #b1312a;
+  color: var(--white);
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.password-rule-list li.is-met {
+  border-color: rgba(42, 126, 78, 0.24);
+  background: rgba(42, 126, 78, 0.09);
+  color: #23633f;
+}
+
+.password-rule-list li.is-met::before {
+  content: "✓";
+  background: #2a7e4e;
+}
+
 .form-grid,
 .score-grid {
   display: grid;
@@ -1552,7 +1607,7 @@ button {
 
   .portal-main {
     gap: 16px;
-    padding: 0 14px calc(var(--mobile-bottom-reserve) + 44px + env(safe-area-inset-bottom));
+    padding: 0 14px calc(var(--mobile-bottom-reserve) + 56px + env(safe-area-inset-bottom));
   }
 
   .portal-topbar {
@@ -1645,9 +1700,14 @@ button {
     padding: 16px;
   }
 
+  .portal-body .panel {
+    border-radius: 16px;
+  }
+
   .filter-bar {
     display: grid;
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .filter-bar label,
@@ -1811,6 +1871,12 @@ button {
     width: 100%;
     justify-content: center;
   }
+
+  .otp-modal-card {
+    width: min(420px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: auto;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1870,6 +1936,25 @@ button {
   .portal-body th,
   .portal-body td {
     padding: 12px 10px;
+  }
+
+  .portal-main {
+    padding-inline: 10px;
+  }
+
+  .portal-topbar {
+    margin-inline: -10px;
+    padding-inline: 10px;
+  }
+
+  .portal-body .panel,
+  .metric-card,
+  .inquiry-card {
+    padding: 14px;
+  }
+
+  .pagination {
+    justify-content: center;
   }
 
   .button,

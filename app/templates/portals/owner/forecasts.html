@@ -68,6 +68,14 @@
   </div>
   <form class="filter-bar owner-filter-bar" method="get">
     <label>Search <input name="q" value="{{ forecasts_page.filters.q }}" placeholder="Product"></label>
+    <label>Sort
+      <select name="sort">
+        <option value="">Newest</option>
+        <option value="product_asc" {{ 'selected' if forecasts_page.filters.sort == 'product_asc' else '' }}>Product A-Z</option>
+        <option value="date_desc" {{ 'selected' if forecasts_page.filters.sort == 'date_desc' else '' }}>Forecast date</option>
+        <option value="qty_desc" {{ 'selected' if forecasts_page.filters.sort == 'qty_desc' else '' }}>Demand high-low</option>
+      </select>
+    </label>
     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
 
@@ -108,8 +116,8 @@
   </div>
 
   <div class="pagination">
-    {% if forecasts_page.pagination.has_prev %}<a href="?q={{ forecasts_page.filters.q|urlencode }}&page={{ forecasts_page.pagination.page - 1 }}">Previous</a>{% endif %}
+    {% if forecasts_page.pagination.has_prev %}<a href="?q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page - 1 }}">Previous</a>{% endif %}
     <span>Page {{ forecasts_page.pagination.page }} of {{ forecasts_page.pagination.total_pages }}</span>
-    {% if forecasts_page.pagination.has_next %}<a href="?q={{ forecasts_page.filters.q|urlencode }}&page={{ forecasts_page.pagination.page + 1 }}">Next</a>{% endif %}
+    {% if forecasts_page.pagination.has_next %}<a href="?q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page + 1 }}">Next</a>{% endif %}
   </div>
 </section>

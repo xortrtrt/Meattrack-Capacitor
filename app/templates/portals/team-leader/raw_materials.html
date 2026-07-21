@@ -8,13 +8,22 @@
     {% if raw_materials_page.filters.type %}
     <input type="hidden" name="type" value="{{ raw_materials_page.filters.type }}">
     {% endif %}
+    <label>Sort
+      <select name="sort">
+        <option value="">Default</option>
+        <option value="name_asc" {{ 'selected' if raw_materials_page.filters.sort == 'name_asc' else '' }}>Name A-Z</option>
+        <option value="category_asc" {{ 'selected' if raw_materials_page.filters.sort == 'category_asc' else '' }}>Category</option>
+        <option value="stock_desc" {{ 'selected' if raw_materials_page.filters.sort == 'stock_desc' else '' }}>Stock high-low</option>
+        <option value="stock_asc" {{ 'selected' if raw_materials_page.filters.sort == 'stock_asc' else '' }}>Stock low-high</option>
+      </select>
+    </label>
     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
   <nav class="portal-category-tabs" aria-label="Raw material categories">
     {% for tab in raw_material_tabs %}
     <a
       class="{{ 'active' if raw_materials_page.filters.type == tab.value else '' }}"
-      href="/portal/team-leader/raw-materials?type={{ tab.value|urlencode }}{% if raw_materials_page.filters.q %}&q={{ raw_materials_page.filters.q|urlencode }}{% endif %}&page=1"
+      href="/portal/team-leader/raw-materials?type={{ tab.value|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}{% if raw_materials_page.filters.q %}&q={{ raw_materials_page.filters.q|urlencode }}{% endif %}&page=1"
     >{{ tab.label }}</a>
     {% endfor %}
   </nav>
@@ -37,11 +46,11 @@
   </div>
   <div class="pagination">
     {% if raw_materials_page.pagination.has_prev %}
-    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&page={{ raw_materials_page.pagination.page - 1 }}">Previous</a>
+    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page={{ raw_materials_page.pagination.page - 1 }}">Previous</a>
     {% endif %}
     <span>Page {{ raw_materials_page.pagination.page }} of {{ raw_materials_page.pagination.total_pages }}</span>
     {% if raw_materials_page.pagination.has_next %}
-    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&page={{ raw_materials_page.pagination.page + 1 }}">Next</a>
+    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page={{ raw_materials_page.pagination.page + 1 }}">Next</a>
     {% endif %}
   </div>
 </section>

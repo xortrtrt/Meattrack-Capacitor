@@ -161,27 +161,27 @@ def test_inventory_team_leader_sections_load_only_inventory_data(monkeypatch, ro
     if section == "dashboard":
         assert calls["inventory_product_movement_analytics"] == [((), {"days": 30, "limit": 8})]
     if section == "logs":
-        assert calls["list_activity_logs"] == [((), {"q": "", "page": 1, "page_size": 10, "inventory_only": True})]
+        assert calls["list_activity_logs"] == [((), {"q": "", "page": 1, "page_size": 10, "inventory_only": True, "sort": ""})]
         assert calls["count_activity_logs"] == [((), {"q": "", "inventory_only": True})]
 
     if section == "inventory":
         assert calls["list_products"] == [
-            ((), {"q": "", "category": "", "page": 1, "page_size": 8}),
+            ((), {"q": "", "category": "", "page": 1, "page_size": 8, "sort": ""}),
             ((), {}),
         ]
         assert calls["count_products"] == [((), {"q": "", "category": ""})]
         assert calls["list_product_recipes"] == [((), {"product_ids": []})]
 
     if section == "raw-materials":
-        assert calls["list_inventory_items"] == [((), {"q": "", "category": "raw_material", "page": 1, "page_size": 10})]
+        assert calls["list_inventory_items"] == [((), {"q": "", "category": "raw_material", "page": 1, "page_size": 10, "sort": ""})]
         assert calls["count_inventory_items"] == [((), {"q": "", "category": "raw_material"})]
 
     if section == "finished-products":
-        assert calls["list_inventory_items"] == [((), {"q": "", "category": "finished_product", "page": 1, "page_size": 8})]
+        assert calls["list_inventory_items"] == [((), {"q": "", "category": "finished_product", "page": 1, "page_size": 8, "sort": ""})]
         assert calls["count_inventory_items"] == [((), {"q": "", "category": "finished_product"})]
 
     if section == "batches":
-        assert calls["list_inventory_batches"] == [((), {"q": "", "category": "", "page": 1, "page_size": 10})]
+        assert calls["list_inventory_batches"] == [((), {"q": "", "category": "", "page": 1, "page_size": 10, "sort": ""})]
         assert calls["count_inventory_batches"] == [((), {"q": "", "category": ""})]
 
 
@@ -205,12 +205,12 @@ def test_section_filters_are_applied(monkeypatch):
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/order?q=tocino&type=Pork&page=2").status_code == 200
-    assert calls["list_products"] == [((), {"q": "tocino", "category": "Pork", "page": 2, "page_size": 8})]
+    assert calls["list_products"] == [((), {"q": "tocino", "category": "Pork", "page": 2, "page_size": 8, "sort": ""})]
     assert calls["count_products"] == [((), {"q": "tocino", "category": "Pork"})]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/history?q=order&status=pending&page=2").status_code == 200
-    assert calls["list_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None, "page": 2, "page_size": 10})]
+    assert calls["list_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None, "page": 2, "page_size": 10, "sort": ""})]
     assert calls["count_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None})]
 
 

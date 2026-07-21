@@ -8,14 +8,23 @@
     {% if inventory_batches_page.filters.type %}
     <input type="hidden" name="type" value="{{ inventory_batches_page.filters.type }}">
     {% endif %}
+    <label>Sort
+      <select name="sort">
+        <option value="">Newest</option>
+        <option value="expiry_asc" {{ 'selected' if inventory_batches_page.filters.sort == 'expiry_asc' else '' }}>Earliest expiry</option>
+        <option value="available_desc" {{ 'selected' if inventory_batches_page.filters.sort == 'available_desc' else '' }}>Available high-low</option>
+        <option value="product_asc" {{ 'selected' if inventory_batches_page.filters.sort == 'product_asc' else '' }}>Product A-Z</option>
+        <option value="oldest" {{ 'selected' if inventory_batches_page.filters.sort == 'oldest' else '' }}>Oldest</option>
+      </select>
+    </label>
     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
   <nav class="portal-category-tabs" aria-label="Product batch categories">
-    <a class="{{ 'active' if not inventory_batches_page.filters.type else '' }}" href="?{% if inventory_batches_page.filters.q %}q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}">All</a>
+    <a class="{{ 'active' if not inventory_batches_page.filters.type else '' }}" href="?sort={{ inventory_batches_page.filters.sort|urlencode }}{% if inventory_batches_page.filters.q %}&q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}">All</a>
     {% for category in product_categories %}
     <a
       class="{{ 'active' if inventory_batches_page.filters.type == category else '' }}"
-      href="?type={{ category|urlencode }}{% if inventory_batches_page.filters.q %}&q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}"
+      href="?type={{ category|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}{% if inventory_batches_page.filters.q %}&q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}"
     >{{ category }}</a>
     {% endfor %}
   </nav>
@@ -40,11 +49,11 @@
   </div>
   <div class="pagination">
     {% if inventory_batches_page.pagination.has_prev %}
-    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&page={{ inventory_batches_page.pagination.page - 1 }}">Previous</a>
+    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page={{ inventory_batches_page.pagination.page - 1 }}">Previous</a>
     {% endif %}
     <span>Page {{ inventory_batches_page.pagination.page }} of {{ inventory_batches_page.pagination.total_pages }}</span>
     {% if inventory_batches_page.pagination.has_next %}
-    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&page={{ inventory_batches_page.pagination.page + 1 }}">Next</a>
+    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page={{ inventory_batches_page.pagination.page + 1 }}">Next</a>
     {% endif %}
   </div>
 </section>

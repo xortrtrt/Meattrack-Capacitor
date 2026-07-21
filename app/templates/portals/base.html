@@ -9,11 +9,11 @@
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260722-otp-modal-1"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260722-password-rules-1"
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260721-owner-compact-products-1"
+      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260722-history-card-1"
     />
   </head>
   <body class="portal-body role-{{ role_key }}">
@@ -258,6 +258,6 @@
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260722-otp-modal-1"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260722-password-rules-1"></script>
   </body>
 </html>

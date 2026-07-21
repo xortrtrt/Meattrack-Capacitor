@@ -7,9 +7,9 @@
     {% for tab in inventory_item_tabs %}
     <a
       class="{{ 'active' if inventory_products_page.filters.type == tab.value else '' }}"
-      href="/portal/team-leader/finished-products?type={{ tab.value|urlencode }}{% if inventory_products_page.filters.q %}&q={{ inventory_products_page.filters.q|urlencode }}{% endif %}&page=1"
+      href="/portal/team-leader/finished-products?type={{ tab.value|urlencode }}&sort={{ inventory_products_page.filters.sort|urlencode }}{% if inventory_products_page.filters.q %}&q={{ inventory_products_page.filters.q|urlencode }}{% endif %}&page=1"
       data-inventory-products-link
-      data-partial-url="/portal/team-leader/finished-products/products?type={{ tab.value|urlencode }}{% if inventory_products_page.filters.q %}&q={{ inventory_products_page.filters.q|urlencode }}{% endif %}&page=1"
+      data-partial-url="/portal/team-leader/finished-products/products?type={{ tab.value|urlencode }}&sort={{ inventory_products_page.filters.sort|urlencode }}{% if inventory_products_page.filters.q %}&q={{ inventory_products_page.filters.q|urlencode }}{% endif %}&page=1"
     >{{ tab.label }}</a>
     {% endfor %}
   </nav>
@@ -35,17 +35,17 @@
   <div class="pagination" data-inventory-products-pagination>
     {% if inventory_products_page.pagination.has_prev %}
     <a
-      href="/portal/team-leader/finished-products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page - 1 }}"
+      href="/portal/team-leader/finished-products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&sort={{ inventory_products_page.filters.sort|urlencode }}&page={{ inventory_products_page.pagination.page - 1 }}"
       data-inventory-products-link
-      data-partial-url="/portal/team-leader/finished-products/products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page - 1 }}"
+      data-partial-url="/portal/team-leader/finished-products/products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&sort={{ inventory_products_page.filters.sort|urlencode }}&page={{ inventory_products_page.pagination.page - 1 }}"
     >Previous</a>
     {% endif %}
     <span>Page {{ inventory_products_page.pagination.page }} of {{ inventory_products_page.pagination.total_pages }}</span>
     {% if inventory_products_page.pagination.has_next %}
     <a
-      href="/portal/team-leader/finished-products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page + 1 }}"
+      href="/portal/team-leader/finished-products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&sort={{ inventory_products_page.filters.sort|urlencode }}&page={{ inventory_products_page.pagination.page + 1 }}"
       data-inventory-products-link
-      data-partial-url="/portal/team-leader/finished-products/products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&page={{ inventory_products_page.pagination.page + 1 }}"
+      data-partial-url="/portal/team-leader/finished-products/products?q={{ inventory_products_page.filters.q|urlencode }}&type={{ inventory_products_page.filters.type|urlencode }}&sort={{ inventory_products_page.filters.sort|urlencode }}&page={{ inventory_products_page.pagination.page + 1 }}"
     >Next</a>
     {% endif %}
   </div>

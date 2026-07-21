@@ -14,6 +14,80 @@ from app.security import hash_password, password_needs_rehash, validate_password
 today = date.today()
 
 
+def safe_sort_sql(sort: str, allowed: dict[str, str], default_sql: str) -> str:
+    """Return a whitelisted ORDER BY clause fragment."""
+    return allowed.get((sort or "").strip(), default_sql)
+
+
+PRODUCT_SORTS = {
+    "name_asc": "p.name ASC, p.item_id ASC",
+    "name_desc": "p.name DESC, p.item_id DESC",
+    "price_asc": "p.base_price ASC, p.name ASC",
+    "price_desc": "p.base_price DESC, p.name ASC",
+    "stock_desc": "available DESC, p.name ASC",
+}
+
+INVENTORY_ITEM_SORTS = {
+    "name_asc": "ii.name ASC, ii.item_id ASC",
+    "category_asc": "ii.category ASC, ii.name ASC",
+    "stock_desc": "available DESC, ii.name ASC",
+    "stock_asc": "available ASC, ii.name ASC",
+}
+
+BATCH_SORTS = {
+    "newest": "ib.batch_id DESC",
+    "oldest": "ib.batch_id ASC",
+    "expiry_asc": "ib.expiry_date ASC NULLS LAST, ib.batch_id ASC",
+    "available_desc": "ib.quantity_available DESC, ib.batch_id DESC",
+    "product_asc": "ii.name ASC, ib.batch_id DESC",
+}
+
+INQUIRY_SORTS = {
+    "newest": "i.inquiry_id DESC",
+    "oldest": "i.inquiry_id ASC",
+    "business_asc": "i.business_name ASC, i.inquiry_id DESC",
+    "status_asc": "i.status ASC, i.inquiry_id DESC",
+}
+
+ORDER_SORTS = {
+    "newest": "o.order_id DESC",
+    "oldest": "o.order_id ASC",
+    "total_desc": "o.total_amount DESC, o.order_id DESC",
+    "total_asc": "o.total_amount ASC, o.order_id DESC",
+    "status_asc": "o.status ASC, o.order_id DESC",
+}
+
+REPORT_SORTS = {
+    "newest": "sr.sales_report_id DESC",
+    "oldest": "sr.sales_report_id ASC",
+    "period_desc": "sr.period_end DESC, sr.sales_report_id DESC",
+    "sales_desc": "sr.total_sales DESC, sr.sales_report_id DESC",
+    "orders_desc": "sr.total_orders DESC, sr.sales_report_id DESC",
+}
+
+FORECAST_SORTS = {
+    "newest": "fr.forecast_result_id DESC",
+    "product_asc": "p.name ASC, fr.forecast_date DESC",
+    "date_desc": "fr.forecast_date DESC, p.name ASC",
+    "qty_desc": "fr.predicted_quantity DESC, p.name ASC",
+}
+
+ACCOUNT_SORTS = {
+    "newest": "a.account_id DESC",
+    "oldest": "a.account_id ASC",
+    "name_asc": "a.name ASC, a.account_id ASC",
+    "type_asc": "a.account_type ASC, a.name ASC",
+    "status_asc": "a.is_active DESC, a.name ASC",
+}
+
+LOG_SORTS = {
+    "newest": "al.activity_log_id DESC",
+    "oldest": "al.activity_log_id ASC",
+    "actor_asc": "COALESCE(a.name, 'MEATTRACK') ASC, al.activity_log_id DESC",
+    "action_asc": "al.action ASC, al.activity_log_id DESC",
+}
+
+
 def database_health() -> str:
     row = fetch_one("SELECT 1 AS ready")
     return "connected" if row and row["ready"] == 1 else "unavailable"
@@ -482,7 +556,7 @@ def inventory_item_filter(category: str) -> tuple[str, str]:
     return "", raw.replace("_", " ")
 
 
-def list_inventory_items(q: str = "", category: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+def list_inventory_items(q: str = "", category: str = "", page: int | None = None, page_size: int = 10, sort: str = "") -> list[dict]:
     where = ["ii.item_type IN ('raw_material', 'finished_product')"]
     params: list[object] = []
     q = q.strip()
@@ -501,6 +575,7 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
+    order_sql = safe_sort_sql(sort, INVENTORY_ITEM_SORTS, "CASE ii.item_type WHEN 'raw_material' THEN 1 ELSE 2 END, ii.category, ii.name")
     return clean_row(fetch_all("""
         SELECT ii.item_id, ii.item_type,
                CASE ii.item_type
@@ -520,9 +595,9 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
         WHERE {where_sql}
         GROUP BY ii.item_id, ii.item_type, ii.category, ii.name, ii.unit,
                  ii.base_price, ii.quantity_available, ii.is_active
-        ORDER BY CASE ii.item_type WHEN 'raw_material' THEN 1 ELSE 2 END, ii.category, ii.name
+        ORDER BY {order_sql}
         {paging_sql};
-    """.format(where_sql=" AND ".join(where), paging_sql=paging_sql), tuple(params) or None))
+    """.format(where_sql=" AND ".join(where), order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
 
 
 def count_inventory_items(q: str = "", category: str = "") -> int:
@@ -548,7 +623,7 @@ def count_inventory_items(q: str = "", category: str = "") -> int:
     return int(row["total"])
 
 
-def list_inventory_batches(q: str = "", category: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+def list_inventory_batches(q: str = "", category: str = "", page: int | None = None, page_size: int = 10, sort: str = "") -> list[dict]:
     where = ["ii.item_type = 'finished_product'"]
     params: list[object] = []
     q = q.strip()
@@ -564,6 +639,7 @@ def list_inventory_batches(q: str = "", category: str = "", page: int | None = N
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
+    order_sql = safe_sort_sql(sort, BATCH_SORTS, BATCH_SORTS["newest"])
     return clean_row(fetch_all("""
         SELECT ib.batch_id, ib.item_id, ii.item_type,
                CASE ii.item_type
@@ -576,9 +652,9 @@ def list_inventory_batches(q: str = "", category: str = "", page: int | None = N
         FROM inventory_batches ib
         JOIN inventory_items ii ON ii.item_id = ib.item_id
         WHERE {where_sql}
-        ORDER BY ib.batch_id DESC
+        ORDER BY {order_sql}
         {paging_sql};
-    """.format(where_sql=" AND ".join(where), paging_sql=paging_sql), tuple(params) or None))
+    """.format(where_sql=" AND ".join(where), order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
 
 
 def count_inventory_batches(q: str = "", category: str = "") -> int:
@@ -602,7 +678,7 @@ def count_inventory_batches(q: str = "", category: str = "") -> int:
     return int(row["total"])
 
 
-def list_products(q: str = "", category: str = "", page: int | None = None, page_size: int = 12) -> list[dict]:
+def list_products(q: str = "", category: str = "", page: int | None = None, page_size: int = 12, sort: str = "") -> list[dict]:
     where_extra = []
     params: list[object] = []
     q = q.strip()
@@ -617,6 +693,7 @@ def list_products(q: str = "", category: str = "", page: int | None = None, page
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
+    order_sql = safe_sort_sql(sort, PRODUCT_SORTS, "p.item_id")
     return clean_row(fetch_all("""
         SELECT p.item_id AS product_id, p.name, p.description, p.unit, p.base_price, p.is_active,
                p.category,
@@ -636,10 +713,11 @@ def list_products(q: str = "", category: str = "", page: int | None = None, page
         WHERE p.item_type = 'finished_product'
           {where_extra}
         GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category
-        ORDER BY p.item_id
+        ORDER BY {order_sql}
         {paging_sql};
     """.format(
         where_extra=("AND " + " AND ".join(where_extra)) if where_extra else "",
+        order_sql=order_sql,
         paging_sql=paging_sql,
     ), tuple(params) or None))
 
@@ -721,6 +799,7 @@ def list_inquiries(
     assigned_team_leader_account_id: int | None = None,
     page: int | None = None,
     page_size: int = 10,
+    sort: str = "",
 ) -> list[dict]:
     query = """
         SELECT i.inquiry_id, i.name, i.contact_number, i.email, i.business_name, i.message, i.status,
@@ -744,7 +823,7 @@ def list_inquiries(
         params.append(assigned_team_leader_account_id)
     if where:
         query += " WHERE " + " AND ".join(where)
-    query += " ORDER BY i.inquiry_id DESC"
+    query += f" ORDER BY {safe_sort_sql(sort, INQUIRY_SORTS, INQUIRY_SORTS['newest'])}"
     if limit is not None:
         if limit < 1:
             raise ValueError("limit must be positive")
@@ -791,6 +870,7 @@ def list_orders(
     limit: int | None = None,
     page: int | None = None,
     page_size: int = 10,
+    sort: str = "",
 ) -> list[dict]:
     ensure_system_tables()
     if order_type not in {None, "reseller", "walk_in"}:
@@ -838,6 +918,7 @@ def list_orders(
         search = f"%{q}%"
         params.extend([search, search, search])
     where_sql = " WHERE " + " AND ".join(where) if where else ""
+    order_sql = safe_sort_sql(sort, ORDER_SORTS, ORDER_SORTS["newest"])
     orders = clean_row(fetch_all(f"""
         SELECT o.order_id, o.order_type, o.reseller_id,
                COALESCE(r.business_name, 'Retail counter') AS reseller,
@@ -848,7 +929,7 @@ def list_orders(
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
         {where_sql}
-        ORDER BY o.order_id DESC
+        ORDER BY {order_sql}
         {"LIMIT %s" if limit is not None else ""}
         {"LIMIT %s OFFSET %s" if limit is None and page is not None else ""};
     """, tuple(params + ([limit] if limit is not None else ([page_size, (page - 1) * page_size] if page is not None else []))) or None))
@@ -1112,6 +1193,7 @@ def list_sales_reports(
     reseller_account_id: int | None = None,
     page: int | None = None,
     page_size: int = 10,
+    sort: str = "",
 ) -> list[dict]:
     ensure_system_tables()
     if report_source not in {None, "reseller", "team_leader"}:
@@ -1158,7 +1240,7 @@ def list_sales_reports(
         params.extend([search, search, search])
     if where:
         query += " WHERE " + " AND ".join(where)
-    query += " ORDER BY sr.sales_report_id DESC"
+    query += f" ORDER BY {safe_sort_sql(sort, REPORT_SORTS, REPORT_SORTS['newest'])}"
     if limit is not None:
         if limit < 1:
             raise ValueError("limit must be positive")
@@ -1280,7 +1362,7 @@ def list_alerts() -> list[dict]:
     """))
 
 
-def list_forecasts(limit: int | None = None, q: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+def list_forecasts(limit: int | None = None, q: str = "", page: int | None = None, page_size: int = 10, sort: str = "") -> list[dict]:
     query = """
         SELECT fr.forecast_result_id, p.name AS product, fr.forecast_date, fr.predicted_quantity,
                fr.confidence_lower,
@@ -1304,7 +1386,7 @@ def list_forecasts(limit: int | None = None, q: str = "", page: int | None = Non
     if q:
         query += " AND p.name ILIKE %s"
         params.append(f"%{q}%")
-    query += " ORDER BY fr.forecast_result_id DESC"
+    query += f" ORDER BY {safe_sort_sql(sort, FORECAST_SORTS, FORECAST_SORTS['newest'])}"
     if limit is not None:
         if limit < 1:
             raise ValueError("limit must be positive")
@@ -1352,7 +1434,7 @@ def count_forecasts(q: str = "") -> int:
     return int(row["total"])
 
 
-def list_accounts(q: str = "", account_type: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
+def list_accounts(q: str = "", account_type: str = "", page: int | None = None, page_size: int = 10, sort: str = "") -> list[dict]:
     ensure_system_tables()
     where = []
     params: list[object] = []
@@ -1369,6 +1451,7 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
+    order_sql = safe_sort_sql(sort, ACCOUNT_SORTS, ACCOUNT_SORTS["oldest"])
     return clean_row(fetch_all("""
         SELECT a.account_id, a.account_type, a.team_leader_role, a.reseller_id, a.name, a.email,
                (CASE WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status,
@@ -1379,9 +1462,9 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
         LEFT JOIN resellers r ON r.reseller_id = a.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
         {where_sql}
-        ORDER BY a.account_id
+        ORDER BY {order_sql}
         {paging_sql};
-    """.format(where_sql=where_sql, paging_sql=paging_sql), tuple(params) or None))
+    """.format(where_sql=where_sql, order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
 
 
 def count_accounts(q: str = "", account_type: str = "") -> int:
@@ -1494,7 +1577,7 @@ INVENTORY_LOG_ACTIONS = (
 )
 
 
-def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10, inventory_only: bool = False) -> list[dict]:
+def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10, inventory_only: bool = False, sort: str = "") -> list[dict]:
     where = []
     params: list[object] = []
     q = q.strip()
@@ -1510,6 +1593,7 @@ def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
+    order_sql = safe_sort_sql(sort, LOG_SORTS, LOG_SORTS["newest"])
     return clean_row(fetch_all("""
         SELECT al.activity_log_id,
                COALESCE(a.name, 'MEATTRACK') AS actor,
@@ -1526,9 +1610,9 @@ def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10
         FROM activity_logs al
         LEFT JOIN accounts a ON a.account_id = al.account_id
         {where_sql}
-        ORDER BY al.activity_log_id DESC
+        ORDER BY {order_sql}
         {paging_sql};
-    """.format(where_sql=where_sql, paging_sql=paging_sql), tuple(params) or None))
+    """.format(where_sql=where_sql, order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
 
 
 def count_activity_logs(q: str = "", inventory_only: bool = False) -> int:

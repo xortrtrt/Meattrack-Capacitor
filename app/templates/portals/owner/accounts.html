@@ -43,6 +43,15 @@
           <option value="reseller" {{ 'selected' if accounts_page.filters.type == 'reseller' else '' }}>Reseller</option>
         </select>
       </label>
+      <label>Sort
+        <select name="sort">
+          <option value="">Default</option>
+          <option value="name_asc" {{ 'selected' if accounts_page.filters.sort == 'name_asc' else '' }}>Name A-Z</option>
+          <option value="type_asc" {{ 'selected' if accounts_page.filters.sort == 'type_asc' else '' }}>Account type</option>
+          <option value="status_asc" {{ 'selected' if accounts_page.filters.sort == 'status_asc' else '' }}>Status</option>
+          <option value="newest" {{ 'selected' if accounts_page.filters.sort == 'newest' else '' }}>Newest</option>
+        </select>
+      </label>
       <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
     </form>
     <div class="owner-account-card-list">
@@ -60,9 +69,9 @@
       {% endfor %}
     </div>
     <div class="pagination">
-      {% if accounts_page.pagination.has_prev %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&page={{ accounts_page.pagination.page - 1 }}">Previous</a>{% endif %}
+      {% if accounts_page.pagination.has_prev %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&sort={{ accounts_page.filters.sort|urlencode }}&page={{ accounts_page.pagination.page - 1 }}">Previous</a>{% endif %}
       <span>Page {{ accounts_page.pagination.page }} of {{ accounts_page.pagination.total_pages }}</span>
-      {% if accounts_page.pagination.has_next %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&page={{ accounts_page.pagination.page + 1 }}">Next</a>{% endif %}
+      {% if accounts_page.pagination.has_next %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&sort={{ accounts_page.filters.sort|urlencode }}&page={{ accounts_page.pagination.page + 1 }}">Next</a>{% endif %}
     </div>
   </article>
 </section>

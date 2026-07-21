@@ -68,6 +68,27 @@ def test_change_account_password_rejects_wrong_current_password(monkeypatch):
         repositories.change_account_password(7, "wrong-password", STRONG_NEW_PASSWORD)
 
 
+def test_profile_password_fields_render_live_rule_tracking():
+    reseller_profile = open("app/templates/portals/reseller/profile.html", encoding="utf-8").read()
+    team_profile = open("app/templates/portals/team-leader/profile.html", encoding="utf-8").read()
+    app_js = open("app/static/js/app.js", encoding="utf-8").read()
+    portal_css = open("app/static/css/portal_base.css", encoding="utf-8").read()
+
+    for template in (reseller_profile, team_profile):
+        assert "data-password-rules-input" in template
+        assert "data-password-rule-list" in template
+        assert 'data-password-rule="length"' in template
+        assert 'data-password-rule="uppercase"' in template
+        assert 'data-password-rule="lowercase"' in template
+        assert 'data-password-rule="number"' in template
+        assert 'data-password-rule="special"' in template
+
+    assert "function bindPasswordRuleTracking()" in app_js
+    assert "bindPasswordRuleTracking();" in app_js
+    assert ".password-rule-list" in portal_css
+    assert ".password-rule-list li.is-met" in portal_css
+
+
 def test_reseller_password_route_rejects_mismatched_confirmation(monkeypatch):
     monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(main, "session_account_id", lambda request: 7)

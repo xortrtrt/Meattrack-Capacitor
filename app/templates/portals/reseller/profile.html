@@ -96,7 +96,14 @@
       </label>
       <label>
         New password
-        <input required type="password" name="new_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" />
+        <input required type="password" name="new_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" data-password-rules-input />
+        <ul class="password-rule-list" data-password-rule-list aria-live="polite">
+          <li data-password-rule="length">8+ characters</li>
+          <li data-password-rule="uppercase">Uppercase letter</li>
+          <li data-password-rule="lowercase">Lowercase letter</li>
+          <li data-password-rule="number">Number</li>
+          <li data-password-rule="special">Special character</li>
+        </ul>
       </label>
       <label>
         Confirm new password

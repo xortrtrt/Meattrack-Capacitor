@@ -217,6 +217,21 @@ def test_inventory_item_and_batch_filters_are_parameterized(monkeypatch):
     assert fetch_one_calls[1][1] == ("%batch%", "%batch%", "%batch%", "Pork")
 
 
+def test_sort_parameters_are_whitelisted(monkeypatch):
+    queries = []
+    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
+    monkeypatch.setattr(repositories, "fetch_all", lambda query, params=None: queries.append(query) or [])
+
+    repositories.list_products(sort="price_desc; DROP TABLE accounts")
+    repositories.list_orders(order_type="reseller", sort="total_desc")
+    repositories.list_inventory_items(sort="stock_desc")
+
+    assert "DROP TABLE" not in "\n".join(queries)
+    assert "ORDER BY p.item_id" in queries[0]
+    assert "ORDER BY o.total_amount DESC, o.order_id DESC" in queries[1]
+    assert "ORDER BY available DESC, ii.name ASC" in queries[2]
+
+
 def test_product_recipes_can_be_scoped_to_paginated_products(monkeypatch):
     calls = []
     monkeypatch.setattr(

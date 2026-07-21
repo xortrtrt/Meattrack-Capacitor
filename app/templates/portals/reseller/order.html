@@ -22,6 +22,16 @@
         value="{{ products_page.filters.type }}"
       />
       {% endif %}
+      <label class="reseller-product-sort">
+        <span>Sort products</span>
+        <select name="sort">
+          <option value="">Default</option>
+          <option value="name_asc" {{ 'selected' if products_page.filters.sort == 'name_asc' else '' }}>Name A-Z</option>
+          <option value="price_asc" {{ 'selected' if products_page.filters.sort == 'price_asc' else '' }}>Price low-high</option>
+          <option value="price_desc" {{ 'selected' if products_page.filters.sort == 'price_desc' else '' }}>Price high-low</option>
+          <option value="stock_desc" {{ 'selected' if products_page.filters.sort == 'stock_desc' else '' }}>Stock high-low</option>
+        </select>
+      </label>
       <button class="button subtle" type="submit">
         <i data-lucide="search"></i>
         Search
@@ -30,13 +40,13 @@
     <nav class="reseller-category-tabs" aria-label="Product categories">
       <a
         class="{{ 'active' if not products_page.filters.type else '' }}"
-        href="/portal/reseller/order{% if products_page.filters.q %}?q={{ products_page.filters.q|urlencode }}{% endif %}"
+        href="/portal/reseller/order?sort={{ products_page.filters.sort|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
         >All</a
       >
       {% for category in product_categories %}
       <a
         class="{{ 'active' if products_page.filters.type == category else '' }}"
-        href="/portal/reseller/order?type={{ category|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
+        href="/portal/reseller/order?type={{ category|urlencode }}&sort={{ products_page.filters.sort|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
         >{{ category }}</a
       >
       {% endfor %}
@@ -90,7 +100,7 @@
     <div class="pagination reseller-product-pagination">
       {% if products_page.pagination.has_prev %}
       <a
-        href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&page={{ products_page.pagination.page - 1 }}"
+        href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ products_page.pagination.page - 1 }}"
         >Previous</a
       >
       {% endif %}
@@ -100,7 +110,7 @@
       >
       {% if products_page.pagination.has_next %}
       <a
-        href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&page={{ products_page.pagination.page + 1 }}"
+        href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ products_page.pagination.page + 1 }}"
         >Next</a
       >
       {% endif %}

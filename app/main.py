@@ -155,6 +155,7 @@ def portal_filters(request: Request) -> dict:
         "q": request.query_params.get("q", "").strip(),
         "status": request.query_params.get("status", "").strip(),
         "type": request.query_params.get("type", "").strip(),
+        "sort": request.query_params.get("sort", "").strip(),
         "page": positive_int(request.query_params.get("page")),
     }
 
@@ -176,9 +177,9 @@ def paged(items: list[dict], total: int, page: int, page_size: int = 10, **filte
 
 def product_page(request: Request, page_size: int = 12) -> dict:
     filters = portal_filters(request)
-    items = data.list_products(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size)
+    items = data.list_products(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_products(q=filters["q"], category=filters["type"])
-    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
 def orders_page(
@@ -197,6 +198,7 @@ def orders_page(
         reseller_account_id=reseller_account_id,
         page=filters["page"],
         page_size=page_size,
+        sort=filters["sort"],
     )
     total = data.count_orders(
         order_type=order_type,
@@ -205,7 +207,7 @@ def orders_page(
         team_leader_account_id=team_leader_account_id,
         reseller_account_id=reseller_account_id,
     )
-    return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"], sort=filters["sort"])
 
 
 def reports_page(
@@ -223,6 +225,7 @@ def reports_page(
         reseller_account_id=reseller_account_id,
         page=filters["page"],
         page_size=page_size,
+        sort=filters["sort"],
     )
     total = data.count_sales_reports(
         report_source=report_source,
@@ -230,7 +233,7 @@ def reports_page(
         team_leader_account_id=team_leader_account_id,
         reseller_account_id=reseller_account_id,
     )
-    return paged(items, total, filters["page"], page_size, q=filters["q"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
 
 
 def inquiries_page(request: Request, page_size: int = 10, assigned_team_leader_account_id: int | None = None) -> dict:
@@ -241,28 +244,29 @@ def inquiries_page(request: Request, page_size: int = 10, assigned_team_leader_a
         assigned_team_leader_account_id=assigned_team_leader_account_id,
         page=filters["page"],
         page_size=page_size,
+        sort=filters["sort"],
     )
     total = data.count_inquiries(
         q=filters["q"],
         status=filters["status"],
         assigned_team_leader_account_id=assigned_team_leader_account_id,
     )
-    return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"], sort=filters["sort"])
 
 
 def forecasts_page(request: Request, page_size: int = 10) -> dict:
     filters = portal_filters(request)
-    items = data.list_forecasts(q=filters["q"], page=filters["page"], page_size=page_size)
+    items = data.list_forecasts(q=filters["q"], page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_forecasts(q=filters["q"])
-    return paged(items, total, filters["page"], page_size, q=filters["q"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
 
 
 def accounts_page(request: Request, page_size: int = 10) -> dict:
     filters = portal_filters(request)
     account_type = filters["type"] if filters["type"] in {"owner", "team_leader", "reseller"} else ""
-    items = data.list_accounts(q=filters["q"], account_type=account_type, page=filters["page"], page_size=page_size)
+    items = data.list_accounts(q=filters["q"], account_type=account_type, page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_accounts(q=filters["q"], account_type=account_type)
-    page = paged(items, total, filters["page"], page_size, q=filters["q"], type=account_type)
+    page = paged(items, total, filters["page"], page_size, q=filters["q"], type=account_type, sort=filters["sort"])
     page["team_leaders"] = data.list_team_leader_accounts()
     page["reseller_assignments"] = data.list_reseller_assignments()
     return page
@@ -270,32 +274,32 @@ def accounts_page(request: Request, page_size: int = 10) -> dict:
 
 def logs_page(request: Request, page_size: int = 10, inventory_only: bool = False) -> dict:
     filters = portal_filters(request)
-    items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=inventory_only)
+    items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=inventory_only, sort=filters["sort"])
     total = data.count_activity_logs(q=filters["q"], inventory_only=inventory_only)
-    return paged(items, total, filters["page"], page_size, q=filters["q"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
 
 
 def inventory_items_page(request: Request, page_size: int = 10) -> dict:
     filters = portal_filters(request)
-    items = data.list_inventory_items(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size)
+    items = data.list_inventory_items(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_inventory_items(q=filters["q"], category=filters["type"])
-    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
 def finished_inventory_products_page(request: Request, page_size: int = 8) -> dict:
     filters = portal_filters(request)
     category = f"finished_product:{filters['type']}" if filters["type"] else "finished_product"
-    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size)
+    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_inventory_items(q=filters["q"], category=category)
-    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
 def raw_materials_inventory_page(request: Request, page_size: int = 10) -> dict:
     filters = portal_filters(request)
     category = f"raw_material:{filters['type']}" if filters["type"] else "raw_material"
-    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size)
+    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_inventory_items(q=filters["q"], category=category)
-    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
 def raw_materials_inventory_context(request: Request) -> dict:
@@ -331,9 +335,9 @@ def finished_products_inventory_context(request: Request) -> dict:
 
 def inventory_batches_page(request: Request, page_size: int = 10) -> dict:
     filters = portal_filters(request)
-    items = data.list_inventory_batches(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size)
+    items = data.list_inventory_batches(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_inventory_batches(q=filters["q"], category=filters["type"])
-    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"])
+    return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
 def session_account_id(request: Request) -> int | None:
