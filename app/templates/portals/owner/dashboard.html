@@ -1,37 +1,176 @@
-            <section class="panel dashboard-priority">
-                <div class="panel-heading">
-                    <h2>Demand forecast</h2>
-                    <a href="/portal/owner/forecasts">View all</a>
-                </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Product</th><th>Date</th><th>Predicted qty</th><th>Range</th></tr></thead>
-                        <tbody>
-                        {% for forecast in forecasts %}
-                        <tr><td>{{ forecast.product }}</td><td>{{ forecast.forecast_date|nice_date }}</td><td>{{ forecast.predicted_quantity|number }} packs</td><td>{{ forecast.confidence }}</td></tr>
-                        {% else %}
-                        <tr><td colspan="4">No forecast results yet.</td></tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            <section class="metric-grid">
-                <article class="metric-card"><span>Fulfilled sales</span><strong>{{ metrics.fulfilled_sales|currency }}</strong><small>Recorded transactions</small></article>
-                <article class="metric-card"><span>Active resellers</span><strong>{{ metrics.active_resellers }}</strong><small>Approved external accounts</small></article>
-                <article class="metric-card"><span>Stock monitored</span><strong>{{ metrics.total_available|number }} packs</strong><small>Approved available products</small></article>
-            </section>
-            <section class="content-grid">
-                <article class="panel">
-                    <h2>Sales and stock pulse</h2>
-                    <div class="bar-list">
-                        {% for product in products %}
-                        <div class="bar-row">
-                            <span>{{ product.name }}</span>
-                            <div><b style="width: {{ [product.available, 100] | min }}%"></b></div>
-                            <em>{{ product.available|number }} {{ product.unit }}</em>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </article>
-            </section>
+<section class="owner-dashboard-hero">
+  <article class="owner-hero-card forecast-focus">
+    <span class="eyebrow">Forecast priority</span>
+    {% set first_forecast = forecasts[0] if forecasts else none %} {% if
+    first_forecast %}
+    <h2>{{ first_forecast.product }}</h2>
+    <p>
+      {{ first_forecast.predicted_quantity|number }} packs expected on {{
+      first_forecast.forecast_date|nice_date }}.
+    </p>
+    <small>{{ first_forecast.confidence }}</small>
+    {% else %}
+    <h2>No forecast yet</h2>
+    <p>
+      Create a forecast run so the owner dashboard can prioritize upcoming
+      demand.
+    </p>
+    <small>Forecast module ready</small>
+    {% endif %}
+    <a class="button primary" href="/portal/owner/forecasts">
+      <i data-lucide="line-chart"></i>
+      Review forecasts
+    </a>
+  </article>
+
+  <article class="owner-hero-card sales-focus">
+    <span class="eyebrow">{{ owner_sales_period|capitalize }} sales view</span>
+    <h2>{{ owner_sales_chart_total|currency }}</h2>
+    <p>
+      {{ owner_sales_chart_orders|number }} fulfilled reseller orders from {{
+      owner_sales_chart_range.start }} to {{ owner_sales_chart_range.end }}.
+    </p>
+    <div class="owner-mini-stats">
+      <span
+        ><strong>{{ metrics.active_resellers }}</strong
+        ><small>Active resellers</small></span
+      >
+      <span
+        ><strong>{{ metrics.pending_reseller_orders }}</strong
+        ><small>Pending orders</small></span
+      >
+    </div>
+  </article>
+</section>
+
+<section class="metric-grid owner-metric-grid">
+  <article class="metric-card">
+    <span>Fulfilled sales</span
+    ><strong>{{ metrics.fulfilled_sales|currency }}</strong
+    ><small>All completed transactions</small>
+  </article>
+  <article class="metric-card">
+    <span>Pending orders</span
+    ><strong>{{ metrics.pending_reseller_orders }}</strong
+    ><small>Need team leader action</small>
+  </article>
+  <article class="metric-card">
+    <span>Active resellers</span><strong>{{ metrics.active_resellers }}</strong
+    ><small>Approved external accounts</small>
+  </article>
+  <article class="metric-card">
+    <span>Stock monitored</span
+    ><strong>{{ metrics.total_available|number }}</strong
+    ><small>Approved finished packs</small>
+  </article>
+</section>
+
+<section class="owner-dashboard-grid">
+  <article class="panel owner-sales-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Sales trend</h2>
+        <span class="hint">Fulfilled reseller sales grouped by selected period.</span>
+      </div>
+      <form
+        class="owner-sales-period-form"
+        method="get"
+        data-owner-sales-form
+        data-owner-sales-url="/portal/owner/dashboard/sales-chart"
+      >
+        <label>
+          View
+          <select name="sales_period">
+            {% for value, label in owner_sales_period_options %}
+            <option value="{{ value }}" {{ 'selected' if owner_sales_period == value else '' }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <a href="/portal/owner/reports">Reports</a>
+      </form>
+    </div>
+    <script type="application/json" data-owner-sales-json>
+      {{ owner_sales_chart|tojson }}
+    </script>
+    <div class="owner-sales-chart">
+      <canvas
+        data-owner-sales-chart
+        aria-label="Owner sales trend chart"
+        role="img"
+      ></canvas>
+    </div>
+  </article>
+
+  <article class="panel owner-top-products-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Most bought products</h2>
+      </div>
+    </div>
+    <div class="owner-product-rank-list">
+      {% for product in top_products %}
+      <div class="owner-product-rank">
+        <span>{{ loop.index }}</span>
+        <div>
+          <strong>{{ product.name }}</strong>
+          <small
+            >{{ product.total_quantity|number }} {{ product.unit }} · {{
+            product.total_amount|currency }}</small
+          >
+        </div>
+      </div>
+      {% else %}
+      <p class="hint">No reseller purchases yet.</p>
+      {% endfor %}
+    </div>
+  </article>
+</section>
+
+<section class="owner-dashboard-grid">
+  <article class="panel owner-forecast-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Upcoming demand</h2>
+        <span class="hint"
+          >Latest forecast results that should guide production planning.</span
+        >
+      </div>
+      <a href="/portal/owner/forecasts">View all</a>
+    </div>
+    <div class="owner-forecast-list">
+      {% for forecast in forecasts %}
+      <div class="owner-forecast-item">
+        <div>
+          <strong>{{ forecast.product }}</strong>
+          <small>{{ forecast.forecast_date|nice_date }}</small>
+        </div>
+        <span>{{ forecast.predicted_quantity|number }} packs</span>
+        <em>{{ forecast.confidence }}</em>
+      </div>
+      {% else %}
+      <p class="hint">No forecast results yet.</p>
+      {% endfor %}
+    </div>
+  </article>
+
+  <article class="panel owner-stock-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Stock pulse</h2>
+        <span class="hint">Current finished-product availability.</span>
+      </div>
+      <a href="/portal/owner/products">Manage prices</a>
+    </div>
+    <div class="owner-stock-list">
+      {% for product in products %}
+      <div class="owner-stock-item">
+        <span>{{ product.name }}</span>
+        <div><b style="width: {{ [product.available, 100] | min }}%"></b></div>
+        <strong>{{ product.available|number }} {{ product.unit }}</strong>
+      </div>
+      {% else %}
+      <p class="hint">No products found.</p>
+      {% endfor %}
+    </div>
+  </article>
+</section>

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from app import repositories
 
 
@@ -257,6 +259,11 @@ def test_schema_tracks_reseller_team_leader_assignment():
     assert "CREATE INDEX ix_accounts_team_leader_role" in schema
     assert "CREATE TABLE order_payment_proofs" in schema
     assert "CREATE INDEX ix_order_payment_proofs_order" in schema
+    assert "follow_up_sent_at timestamptz" in schema
+    assert "CREATE TABLE account_password_otps" in schema
+    assert "CREATE TABLE account_login_otps" in schema
+    assert "CREATE INDEX ix_account_password_otps_pending" in schema
+    assert "CREATE INDEX ix_account_login_otps_pending" in schema
 
 
 def test_inquiry_and_forecast_limits_are_parameterized(monkeypatch):
@@ -273,3 +280,169 @@ def test_inquiry_and_forecast_limits_are_parameterized(monkeypatch):
     assert calls[0][1] == (4,)
     assert calls[1][1] == (10,)
     assert all("LIMIT %s" in query for query, _ in calls)
+    assert "confidence_lower" in calls[1][0]
+    assert "JOIN forecast_runs" in calls[1][0]
+
+
+def test_add_forecast_uses_prophet_when_history_is_sufficient(monkeypatch):
+    writes = []
+    monkeypatch.setattr(repositories, "add_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repositories, "create_notification", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        repositories,
+        "fetch_one",
+        lambda query, params=None: {"account_id": 1} if "account_type = 'owner'" in query else {"val": Decimal("100")},
+    )
+
+    def fake_fetch_all(query, params=None):
+        if "FROM inventory_items" in query and "WHERE item_type = 'finished_product'" in query:
+            return [{"product_id": 10, "name": "Tocino Ala Eh"}]
+        if "FROM orders o" in query:
+            return [
+                {"product_id": 10, "sale_date": repositories.date.today() - repositories.timedelta(days=3), "quantity": Decimal("5")},
+                {"product_id": 10, "sale_date": repositories.date.today() - repositories.timedelta(days=2), "quantity": Decimal("8")},
+                {"product_id": 10, "sale_date": repositories.date.today() - repositories.timedelta(days=1), "quantity": Decimal("10")},
+            ]
+        return []
+
+    def fake_execute_write(query, params=None, returning=False):
+        writes.append((query, params, returning))
+        if returning:
+            return {"forecast_run_id": 99}
+        return None
+
+    monkeypatch.setattr(repositories, "fetch_all", fake_fetch_all)
+    monkeypatch.setattr(repositories, "execute_write", fake_execute_write)
+    monkeypatch.setattr(
+        repositories,
+        "prophet_product_forecast",
+        lambda history_rows, horizon: {
+            "forecast_date": repositories.date.today() + repositories.timedelta(days=horizon),
+            "predicted_quantity": 12,
+            "confidence_lower": 9,
+            "confidence_upper": 15,
+            "method": "Prophet",
+        },
+    )
+
+    repositories.add_forecast("Prophet demand forecast", 7)
+
+    forecast_writes = [call for call in writes if "INSERT INTO forecast_results" in call[0]]
+    assert len(forecast_writes) == 1
+    assert forecast_writes[0][1][3:] == (12, 9, 15)
+    assert any("Completed with: Prophet" in call[1][0] for call in writes if "UPDATE forecast_runs" in call[0])
+    assert any("Philippine holidays" in call[1][0] for call in writes if "UPDATE forecast_runs" in call[0])
+
+
+def test_forecast_business_events_include_paydays_and_batangas_season():
+    events = repositories.forecast_business_events(
+        repositories.date(2026, 7, 1),
+        repositories.date(2026, 12, 31),
+    )
+    event_names = set(events["holiday"].tolist())
+
+    assert "payday_window" in event_names
+    assert "month_end_payday_window" in event_names
+    assert "christmas_rush" in event_names
+    assert "new_year_rush" in event_names
+    assert "batangas_sublian_foundation_season" in event_names
+    assert repositories.date(2026, 7, 23) in set(events["ds"].tolist())
+
+
+def test_prophet_forecast_adds_ph_country_holidays(monkeypatch):
+    captured = {}
+
+    class FakeSeries:
+        def __init__(self, value):
+            self.value = value
+
+        def date(self):
+            return self.value
+
+    class FakeForecast:
+        def tail(self, *_args, **_kwargs):
+            return self
+
+        @property
+        def iloc(self):
+            return [self]
+
+        def __getitem__(self, key):
+            if key == "ds":
+                return FakeSeries(repositories.date.today() + repositories.timedelta(days=7))
+            return 10
+
+        def get(self, _key, default=None):
+            return default
+
+    class FakeProphet:
+        def __init__(self, **kwargs):
+            captured["kwargs"] = kwargs
+
+        def add_country_holidays(self, country_name):
+            captured["country_name"] = country_name
+
+        def fit(self, frame):
+            captured["frame_columns"] = list(frame.columns)
+
+        def make_future_dataframe(self, **kwargs):
+            captured["future_kwargs"] = kwargs
+            return object()
+
+        def predict(self, future):
+            captured["future"] = future
+            return FakeForecast()
+
+    monkeypatch.setitem(__import__("sys").modules, "prophet", type("ProphetModule", (), {"Prophet": FakeProphet}))
+
+    result = repositories.prophet_product_forecast(
+        [
+            {"sale_date": repositories.date.today() - repositories.timedelta(days=3), "quantity": repositories.Decimal("5")},
+            {"sale_date": repositories.date.today() - repositories.timedelta(days=2), "quantity": repositories.Decimal("8")},
+            {"sale_date": repositories.date.today() - repositories.timedelta(days=1), "quantity": repositories.Decimal("10")},
+        ],
+        7,
+    )
+
+    assert captured["country_name"] == "PH"
+    assert "holidays" in captured["kwargs"]
+    assert "batangas_sublian_foundation_season" in set(captured["kwargs"]["holidays"]["holiday"])
+    assert captured["future_kwargs"]["periods"] == 7
+    assert result["method"] == "Prophet"
+
+
+def test_add_forecast_falls_back_when_history_is_insufficient(monkeypatch):
+    writes = []
+    monkeypatch.setattr(repositories, "add_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repositories, "create_notification", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        repositories,
+        "fetch_one",
+        lambda query, params=None: {"account_id": 1} if "account_type = 'owner'" in query else {"val": Decimal("100")},
+    )
+
+    def fake_fetch_all(query, params=None):
+        if "FROM inventory_items" in query and "WHERE item_type = 'finished_product'" in query:
+            return [{"product_id": 10, "name": "Tocino Ala Eh"}]
+        return []
+
+    def fake_execute_write(query, params=None, returning=False):
+        writes.append((query, params, returning))
+        if returning:
+            return {"forecast_run_id": 100}
+        return None
+
+    monkeypatch.setattr(repositories, "fetch_all", fake_fetch_all)
+    monkeypatch.setattr(repositories, "execute_write", fake_execute_write)
+    monkeypatch.setattr(
+        repositories,
+        "prophet_product_forecast",
+        lambda *args, **kwargs: pytest.fail("Prophet should not run without enough history"),
+    )
+
+    repositories.add_forecast("Prophet demand forecast", 7)
+
+    forecast_writes = [call for call in writes if "INSERT INTO forecast_results" in call[0]]
+    assert len(forecast_writes) == 1
+    assert forecast_writes[0][1][3:] == (42.0, 35.7, 48.3)
+    assert any("Baseline fallback" in call[1][0] for call in writes if "UPDATE forecast_runs" in call[0])

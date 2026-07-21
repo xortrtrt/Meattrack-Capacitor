@@ -1,87 +1,102 @@
-            <section class="content-grid two">
-                <article class="panel">
-                    <h2>Account lifecycle</h2>
-                    <form class="form-panel bare" action="/portal/owner/accounts" method="post">
-                        <label>Account type
-                            <select name="account_type">
-                                <option value="owner">Owner</option>
-                                <option value="team_leader">Team leader</option>
-                            </select>
-                        </label>
-                        <label>Name <input required name="name"></label>
-                        <label>Email <input required type="email" name="email"></label>
-                        <label>Team leader role
-                            <select name="team_leader_role">
-                                <option value="sales">Sales team leader</option>
-                                <option value="inventory">Inventory team leader</option>
-                            </select>
-                        </label>
-                        <button class="button primary" type="submit">Create account</button>
-                        <p class="hint">Reseller accounts are created only after a sales team leader approves a chatbot inquiry.</p>
-                    </form>
-                </article>
-                <article class="panel">
-                    <h2>Active accounts</h2>
-                    <form class="filter-bar" method="get">
-                        <label>Search <input name="q" value="{{ accounts_page.filters.q }}" placeholder="Name or email"></label>
-                        <label>Type
-                            <select name="type">
-                                <option value="">All</option>
-                                <option value="owner" {{ 'selected' if accounts_page.filters.type == 'owner' else '' }}>Owner</option>
-                                <option value="team_leader" {{ 'selected' if accounts_page.filters.type == 'team_leader' else '' }}>Team leader</option>
-                                <option value="reseller" {{ 'selected' if accounts_page.filters.type == 'reseller' else '' }}>Reseller</option>
-                            </select>
-                        </label>
-                        <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
-                    </form>
-                    <div class="table-wrap">
-                        <table>
-                            <thead><tr><th>Name</th><th>Type</th><th>Email</th><th>Auth</th><th>Status</th></tr></thead>
-                            <tbody>{% for account in accounts %}<tr><td>{{ account.name }}</td><td>{{ account.account_type.replace("_", " ") }}</td><td>{{ account.email }}</td><td>{{ account.auth_provider or "password" }}</td><td><span class="status-badge active">{{ account.status }}</span></td></tr>{% endfor %}</tbody>
-                        </table>
-                    </div>
-                    <div class="pagination"><span>Page {{ accounts_page.pagination.page }} of {{ accounts_page.pagination.total_pages }}</span></div>
-                </article>
-            </section>
-            <section class="panel">
-                <div class="panel-heading">
-                    <h2>Reseller team assignments</h2>
-                    <span class="hint">Each reseller reports to exactly one team leader.</span>
-                </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Reseller</th>
-                                <th>Contact</th>
-                                <th>Assigned team leader</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for reseller in reseller_assignments %}
-                            <tr>
-                                <td>
-                                    <strong>{{ reseller.business_name }}</strong><br>
-                                    <span class="hint">{{ reseller.reseller_status }}</span>
-                                </td>
-                                <td>{{ reseller.contact_person }}<br><span class="hint">{{ reseller.email }}</span></td>
-                                <td>{{ reseller.team_leader_name or "Unassigned" }}</td>
-                                <td>
-                                    <form class="inline-assignment-form" action="/portal/owner/resellers/{{ reseller.reseller_id }}/team-leader" method="post">
-                                        <select name="team_leader_account_id" required>
-                                            {% for leader in team_leaders %}
-                                            <option value="{{ leader.account_id }}" {{ 'selected' if reseller.team_leader_account_id == leader.account_id else '' }}>{{ leader.name }}</option>
-                                            {% endfor %}
-                                        </select>
-                                        <button class="button subtle" type="submit">Save</button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr><td colspan="4">No reseller records yet.</td></tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+<section class="owner-account-layout">
+  <article class="panel owner-account-create">
+    <div class="panel-heading">
+      <div>
+        <h2>Account lifecycle</h2>
+        <span class="hint">Create owner and team leader accounts only.</span>
+      </div>
+    </div>
+    <form class="form-panel bare owner-account-form" action="/portal/owner/accounts" method="post">
+      <label>Account type
+        <select name="account_type">
+          <option value="owner">Owner</option>
+          <option value="team_leader">Team leader</option>
+        </select>
+      </label>
+      <label>Name <input required name="name"></label>
+      <label>Email <input required type="email" name="email"></label>
+      <label>Team leader role
+        <select name="team_leader_role">
+          <option value="sales">Sales team leader</option>
+          <option value="inventory">Inventory team leader</option>
+        </select>
+      </label>
+      <button class="button primary" type="submit"><i data-lucide="user-plus"></i> Create account</button>
+      <p class="hint">Reseller accounts are created only after a sales team leader approves a chatbot inquiry.</p>
+    </form>
+  </article>
+
+  <article class="panel owner-account-list">
+    <div class="panel-heading">
+      <div>
+        <h2>Active accounts</h2>
+        <span class="hint">Search and review portal access.</span>
+      </div>
+    </div>
+    <form class="filter-bar owner-filter-bar" method="get">
+      <label>Search <input name="q" value="{{ accounts_page.filters.q }}" placeholder="Name or email"></label>
+      <label>Type
+        <select name="type">
+          <option value="">All</option>
+          <option value="owner" {{ 'selected' if accounts_page.filters.type == 'owner' else '' }}>Owner</option>
+          <option value="team_leader" {{ 'selected' if accounts_page.filters.type == 'team_leader' else '' }}>Team leader</option>
+          <option value="reseller" {{ 'selected' if accounts_page.filters.type == 'reseller' else '' }}>Reseller</option>
+        </select>
+      </label>
+      <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
+    </form>
+    <div class="owner-account-card-list">
+      {% for account in accounts %}
+      <article class="owner-account-card">
+        <div>
+          <strong>{{ account.name }}</strong>
+          <small>{{ account.email }}</small>
+        </div>
+        <span class="owner-chip">{{ account.account_type.replace("_", " ") }}</span>
+        <span class="status-badge active">{{ account.status }}</span>
+      </article>
+      {% else %}
+      <p class="hint">No accounts found for this filter.</p>
+      {% endfor %}
+    </div>
+    <div class="pagination">
+      {% if accounts_page.pagination.has_prev %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&page={{ accounts_page.pagination.page - 1 }}">Previous</a>{% endif %}
+      <span>Page {{ accounts_page.pagination.page }} of {{ accounts_page.pagination.total_pages }}</span>
+      {% if accounts_page.pagination.has_next %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&page={{ accounts_page.pagination.page + 1 }}">Next</a>{% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="panel owner-assignments-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Reseller team assignments</h2>
+      <span class="hint">Each reseller reports to exactly one sales team leader.</span>
+    </div>
+  </div>
+  <div class="owner-assignment-list">
+    {% for reseller in reseller_assignments %}
+    <article class="owner-assignment-card">
+      <div class="owner-assignment-person">
+        <span class="owner-chip">{{ reseller.reseller_status }}</span>
+        <strong>{{ reseller.business_name }}</strong>
+        <small>{{ reseller.contact_person }} · {{ reseller.email }}</small>
+      </div>
+      <div class="owner-assignment-current">
+        <span class="hint">Assigned team leader</span>
+        <strong>{{ reseller.team_leader_name or "Unassigned" }}</strong>
+      </div>
+      <form class="inline-assignment-form" action="/portal/owner/resellers/{{ reseller.reseller_id }}/team-leader" method="post">
+        <select name="team_leader_account_id" required>
+          {% for leader in team_leaders %}
+          <option value="{{ leader.account_id }}" {{ 'selected' if reseller.team_leader_account_id == leader.account_id else '' }}>{{ leader.name }}</option>
+          {% endfor %}
+        </select>
+        <button class="button subtle" type="submit">Save</button>
+      </form>
+    </article>
+    {% else %}
+    <p class="hint">No reseller records yet.</p>
+    {% endfor %}
+  </div>
+</section>

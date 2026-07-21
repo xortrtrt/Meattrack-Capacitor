@@ -15,8 +15,722 @@
   min-width: 0;
 }
 
+.role-owner .owner-dashboard-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.role-owner .owner-hero-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: clamp(18px, 2.3vw, 28px);
+  border: 1px solid rgba(215, 182, 33, 0.42);
+  border-radius: 18px;
+  box-shadow: 0 18px 40px rgba(13, 12, 11, 0.11);
+}
+
+.role-owner .owner-hero-card h2 {
+  margin: 0;
+  color: var(--primary);
+  font-size: clamp(1.7rem, 3vw, 2.65rem);
+  line-height: 1.02;
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-hero-card p {
+  margin: 0;
+  max-width: 680px;
+  color: var(--text-light);
+  line-height: 1.5;
+}
+
+.role-owner .owner-hero-card small {
+  color: var(--gold-deep);
+  font-weight: 850;
+}
+
+.role-owner .forecast-focus {
+  background:
+    radial-gradient(circle at top right, rgba(215, 182, 33, 0.28), transparent 34%),
+    linear-gradient(135deg, #fffdf5, #f7ecc7);
+}
+
+.role-owner .sales-focus {
+  background:
+    radial-gradient(circle at bottom right, rgba(215, 182, 33, 0.22), transparent 38%),
+    linear-gradient(135deg, #17100d, #050504);
+}
+
+.role-owner .sales-focus h2,
+.role-owner .sales-focus p {
+  color: #fff7dc;
+}
+
+.role-owner .sales-focus .eyebrow,
+.role-owner .sales-focus small {
+  color: var(--gold);
+}
+
+.role-owner .owner-mini-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.role-owner .owner-mini-stats span {
+  display: grid;
+  gap: 3px;
+  padding: 12px;
+  border: 1px solid rgba(215, 182, 33, 0.36);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.role-owner .owner-mini-stats strong {
+  color: #fff7dc;
+  font-size: 1.35rem;
+}
+
+.role-owner .owner-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.role-owner .owner-sales-panel,
+.role-owner .owner-forecast-panel,
+.role-owner .owner-stock-panel,
+.role-owner .owner-top-products-panel {
+  overflow: hidden;
+}
+
+.role-owner .owner-sales-period-form {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.role-owner .owner-sales-period-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-light);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.role-owner .owner-sales-period-form select {
+  min-width: 150px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-weight: 850;
+}
+
+.role-owner .owner-sales-period-form a {
+  min-height: 40px;
+}
+
+.role-owner .owner-sales-period-form.is-loading {
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.role-owner .owner-sales-chart {
+  position: relative;
+  min-height: 320px;
+  padding: 12px;
+  border: 1px solid rgba(215, 201, 154, 0.68);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 252, 240, 0.95), rgba(250, 243, 221, 0.68));
+}
+
+.role-owner .owner-sales-chart canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.role-owner .owner-sales-fallback,
+.role-owner .owner-stock-list,
+.role-owner .owner-forecast-list,
+.role-owner .owner-product-rank-list {
+  display: grid;
+  gap: 12px;
+}
+
+.role-owner .owner-sales-row,
+.role-owner .owner-stock-item {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.5fr) minmax(0, 1fr) minmax(100px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.role-owner .owner-sales-row span,
+.role-owner .owner-stock-item span {
+  min-width: 0;
+  color: var(--primary);
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-sales-row i,
+.role-owner .owner-stock-item div {
+  overflow: hidden;
+  height: 12px;
+  border-radius: 999px;
+  background: #e8dcc1;
+}
+
+.role-owner .owner-sales-row b,
+.role-owner .owner-stock-item b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--gold), var(--gold-deep));
+}
+
+.role-owner .owner-sales-row strong,
+.role-owner .owner-stock-item strong {
+  color: var(--text-light);
+  font-size: 0.9rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.role-owner .owner-product-rank,
+.role-owner .owner-forecast-item {
+  display: grid;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(215, 201, 154, 0.62);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.role-owner .owner-product-rank {
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.role-owner .owner-product-rank > span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--primary);
+  font-weight: 900;
+}
+
+.role-owner .owner-product-rank strong,
+.role-owner .owner-forecast-item strong {
+  display: block;
+  min-width: 0;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-product-rank small,
+.role-owner .owner-forecast-item small,
+.role-owner .owner-forecast-item em {
+  color: var(--text-light);
+  font-style: normal;
+  font-weight: 750;
+}
+
+.role-owner .owner-forecast-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.role-owner .owner-forecast-item span {
+  color: var(--primary);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.role-owner .owner-forecast-item em {
+  grid-column: 1 / -1;
+  padding-top: 2px;
+  color: var(--gold-deep);
+}
+
+.role-owner .owner-filter-bar {
+  align-items: end;
+}
+
+.role-owner .owner-product-card-grid,
+.role-owner .owner-account-card-list,
+.role-owner .owner-assignment-list,
+.role-owner .owner-report-card-list,
+.role-owner .owner-forecast-card-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.role-owner .owner-product-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.role-owner .owner-product-card,
+.role-owner .owner-account-card,
+.role-owner .owner-assignment-card,
+.role-owner .owner-report-card,
+.role-owner .owner-forecast-result-card,
+.role-owner .owner-forecast-status {
+  min-width: 0;
+  border: 1px solid rgba(215, 201, 154, 0.76);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.role-owner .owner-product-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+.role-owner .owner-product-image {
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  padding: 8px;
+  background:
+    radial-gradient(circle at center, rgba(215, 182, 33, 0.18), transparent 58%),
+    #110d0b;
+}
+
+.role-owner .owner-product-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.role-owner .owner-product-copy,
+.role-owner .owner-price-form,
+.role-owner .owner-account-card,
+.role-owner .owner-assignment-card,
+.role-owner .owner-report-card,
+.role-owner .owner-forecast-result-card,
+.role-owner .owner-forecast-status {
+  padding: 14px;
+}
+
+.role-owner .owner-product-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.role-owner .owner-product-copy h3,
+.role-owner .owner-report-card h3,
+.role-owner .owner-forecast-result-card h3 {
+  margin: 0;
+  color: var(--primary);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-product-copy p,
+.role-owner .owner-report-card p,
+.role-owner .owner-forecast-result-card p,
+.role-owner .owner-forecast-status p {
+  margin: 0;
+  color: var(--text-light);
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-chip {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(215, 182, 33, 0.18);
+  color: var(--gold-deep);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.role-owner .owner-product-meta,
+.role-owner .owner-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.role-owner .owner-product-meta span,
+.role-owner .owner-report-metrics span {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid rgba(215, 201, 154, 0.62);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.role-owner .owner-product-meta strong,
+.role-owner .owner-report-metrics strong {
+  color: var(--primary);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-product-meta small,
+.role-owner .owner-report-metrics small,
+.role-owner .owner-account-card small,
+.role-owner .owner-assignment-card small,
+.role-owner .owner-forecast-result-card small,
+.role-owner .owner-forecast-status small {
+  color: var(--text-light);
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-price-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  border-top: 1px solid rgba(215, 201, 154, 0.62);
+  background: var(--surface);
+}
+
+.role-owner .owner-price-form label,
+.role-owner .owner-account-form label,
+.role-owner .owner-forecast-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--primary);
+  font-weight: 850;
+}
+
+.role-owner .owner-price-form input,
+.role-owner .owner-account-form input,
+.role-owner .owner-account-form select,
+.role-owner .owner-forecast-form input,
+.role-owner .owner-filter-bar input,
+.role-owner .owner-filter-bar select,
+.role-owner .inline-assignment-form select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.role-owner .owner-account-layout,
+.role-owner .owner-forecast-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1.3fr);
+  gap: 18px;
+}
+
+.role-owner .owner-account-form,
+.role-owner .owner-forecast-form {
+  display: grid;
+  gap: 12px;
+}
+
+.role-owner .owner-horizon-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.role-owner .owner-horizon-picker label {
+  position: relative;
+  display: block;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.role-owner .owner-horizon-picker input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.role-owner .owner-horizon-picker span {
+  display: grid;
+  min-height: 82px;
+  gap: 4px;
+  align-content: center;
+  padding: 12px;
+  border: 1px solid rgba(215, 201, 154, 0.82);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text-light);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.role-owner .owner-horizon-picker strong {
+  color: var(--primary);
+  font-size: 1.05rem;
+  line-height: 1.15;
+}
+
+.role-owner .owner-horizon-picker small {
+  color: var(--text-light);
+  line-height: 1.25;
+}
+
+.role-owner .owner-horizon-picker input:checked + span {
+  border-color: var(--gold-deep);
+  background: linear-gradient(135deg, rgba(215, 182, 33, 0.28), #fffdf5);
+  box-shadow: 0 10px 22px rgba(170, 134, 22, 0.13);
+}
+
+.role-owner .owner-horizon-picker input:focus-visible + span {
+  outline: 3px solid rgba(215, 182, 33, 0.32);
+  outline-offset: 2px;
+}
+
+.role-owner .owner-custom-horizon[hidden] {
+  display: none;
+}
+
+.role-owner .owner-account-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.role-owner .owner-account-card strong,
+.role-owner .owner-assignment-card strong,
+.role-owner .owner-forecast-status strong {
+  display: block;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-assignment-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(180px, 0.7fr) minmax(240px, 0.8fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.role-owner .owner-assignment-person,
+.role-owner .owner-assignment-current {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.role-owner .owner-report-card-list,
+.role-owner .owner-forecast-card-grid {
+  display: none;
+}
+
+.role-owner .owner-report-card,
+.role-owner .owner-forecast-result-card,
+.role-owner .owner-forecast-status {
+  display: grid;
+  gap: 12px;
+}
+
+.role-owner .owner-report-card ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-light);
+}
+
+.role-owner .owner-report-card summary {
+  min-height: 36px;
+  color: var(--gold-deep);
+  font-weight: 900;
+  cursor: pointer;
+}
+
 @media (max-width: 680px) {
   .role-owner .inline-assignment-form {
     min-width: 220px;
+  }
+}
+
+@media (max-width: 1040px) {
+  .role-owner .owner-dashboard-hero,
+  .role-owner .owner-dashboard-grid,
+  .role-owner .owner-account-layout,
+  .role-owner .owner-forecast-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-assignment-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .role-owner .owner-dashboard-hero {
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .role-owner .owner-hero-card {
+    border-radius: 16px;
+  }
+
+  .role-owner .owner-mini-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-sales-chart {
+    min-height: 280px;
+    padding: 8px;
+  }
+
+  .role-owner .owner-sales-period-form {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .role-owner .owner-sales-period-form label,
+  .role-owner .owner-sales-period-form select,
+  .role-owner .owner-sales-period-form a {
+    width: 100%;
+  }
+
+  .role-owner .owner-sales-row,
+  .role-owner .owner-stock-item {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-sales-row strong,
+  .role-owner .owner-stock-item strong {
+    text-align: left;
+  }
+
+  .role-owner .owner-forecast-item {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-forecast-item span {
+    white-space: normal;
+  }
+
+  .role-owner .owner-product-card-grid {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+  }
+
+  .role-owner .owner-product-copy,
+  .role-owner .owner-price-form,
+  .role-owner .owner-account-card,
+  .role-owner .owner-assignment-card,
+  .role-owner .owner-report-card,
+  .role-owner .owner-forecast-result-card,
+  .role-owner .owner-forecast-status {
+    padding: 12px;
+  }
+
+  .role-owner .owner-product-copy h3 {
+    font-size: 1.04rem;
+  }
+
+  .role-owner .owner-product-copy p,
+  .role-owner .owner-product-meta small {
+    font-size: 0.82rem;
+  }
+
+  .role-owner .owner-product-image {
+    aspect-ratio: 16 / 9;
+    padding: 8px;
+  }
+
+  .role-owner .owner-product-meta,
+  .role-owner .owner-report-metrics,
+  .role-owner .owner-price-form,
+  .role-owner .owner-account-card {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-price-form .button,
+  .role-owner .owner-filter-bar .button,
+  .role-owner .inline-assignment-form .button {
+    width: 100%;
+  }
+
+  .role-owner .owner-report-table,
+  .role-owner .owner-forecast-table {
+    display: none;
+  }
+
+  .role-owner .owner-report-card-list,
+  .role-owner .owner-forecast-card-grid {
+    display: grid;
+  }
+
+  .role-owner .owner-horizon-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .role-owner .owner-product-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .role-owner .owner-products-panel {
+    padding-inline: 10px;
+  }
+
+  .role-owner .owner-product-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .role-owner .owner-product-copy {
+    gap: 6px;
+    padding: 10px;
+  }
+
+  .role-owner .owner-price-form {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px;
+    border-top: 1px solid rgba(215, 201, 154, 0.62);
+  }
+
+  .role-owner .owner-price-form input {
+    min-height: 40px;
+  }
+
+  .role-owner .owner-price-form .button {
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 360px) {
+  .role-owner .owner-product-card {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-product-image {
+    min-height: 0;
+    aspect-ratio: 16 / 9;
   }
 }

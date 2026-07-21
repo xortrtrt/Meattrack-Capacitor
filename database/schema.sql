@@ -61,6 +61,7 @@ CREATE TABLE inquiries (
     assigned_team_leader_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
     reviewed_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
     reviewed_at timestamptz,
+    follow_up_sent_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -285,6 +286,28 @@ CREATE TABLE user_consents (
     CHECK (btrim(consent_source) <> '')
 );
 
+CREATE TABLE account_password_otps (
+    account_password_otp_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    otp_hash text NOT NULL,
+    pending_password_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(otp_hash) <> ''),
+    CHECK (btrim(pending_password_hash) <> '')
+);
+
+CREATE TABLE account_login_otps (
+    account_login_otp_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    otp_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(otp_hash) <> '')
+);
+
 CREATE TABLE notifications (
     notification_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     recipient_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -326,6 +349,10 @@ CREATE INDEX ix_sales_report_attachments_report ON sales_report_attachments (sal
 CREATE INDEX ix_activity_logs_account_created ON activity_logs (account_id, created_at DESC);
 CREATE INDEX ix_alerts_status_type ON alerts (status, alert_type);
 CREATE INDEX ix_user_consents_account_accepted ON user_consents (account_id, accepted_at DESC);
+CREATE INDEX ix_account_password_otps_pending ON account_password_otps (account_id, created_at DESC)
+    WHERE consumed_at IS NULL;
+CREATE INDEX ix_account_login_otps_pending ON account_login_otps (account_id, created_at DESC)
+    WHERE consumed_at IS NULL;
 CREATE INDEX ix_notifications_role_read_created ON notifications (recipient_role, read_at, created_at DESC);
 CREATE INDEX ix_notifications_account_read_created ON notifications (recipient_account_id, read_at, created_at DESC);
 

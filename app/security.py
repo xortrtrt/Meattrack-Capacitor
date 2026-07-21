@@ -2,11 +2,26 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import secrets
 
 
 PASSWORD_ALGORITHM = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 260_000
+PASSWORD_POLICY_MESSAGE = (
+    "New password must be at least 8 characters and include uppercase, "
+    "lowercase, number, and special character."
+)
+PASSWORD_POLICY_PATTERN = re.compile(
+    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$"
+)
+
+
+def validate_password_policy(password: str) -> str:
+    cleaned_password = password.strip()
+    if not PASSWORD_POLICY_PATTERN.match(cleaned_password):
+        raise ValueError(PASSWORD_POLICY_MESSAGE)
+    return cleaned_password
 
 
 def hash_password(password: str) -> str:

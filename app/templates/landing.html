@@ -6,7 +6,7 @@
     <title>Batangas Premium | Frozen Meat Products</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/public.css') }}?v=20260720-mobile-safe-1"
+      href="{{ url_for('static', path='css/public.css') }}?v=20260722-mobile-hero-logo-1"
     />
   </head>
   <body class="landing-page">
@@ -24,6 +24,9 @@
           <span>Menu</span>
         </button>
         <ul class="nav-links nav-tabs" id="public-nav" data-mobile-nav>
+          <li class="mobile-drawer-brand" aria-hidden="true">
+            <img src="{{ 'batangas_premium.png'|media_url }}" alt="" />
+          </li>
           <li><a href="#home" data-scroll-tab>Home</a></li>
           <li><a href="#store" data-scroll-tab>Store</a></li>
           <li><a href="#about" data-scroll-tab>About</a></li>
@@ -71,34 +74,11 @@
     </div>
     {% endif %}
 
-    <section id="store" class="store-intro">
-      <div class="container store-intro-grid">
-        <div>
-          <h2>Award-winning products, ready for your next order.</h2>
-          <p>
-            Longganisa, tocino, tapa, bacon, and sausages presented with the
-            same black-and-gold Batangas Premium storefront identity.
-          </p>
-        </div>
-        <div class="store-points" aria-label="Store benefits">
-          <span>Retail Packs</span>
-          <span>Reseller Rates</span>
-          <span>City Outlet Support</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="products-section section-band">
+    <section id="store" class="products-section section-band">
       <div class="container">
-        <div class="category-tabs" aria-label="Product categories">
-          <span>All</span>
-          <span>Retail</span>
-          <span>Reseller Packages</span>
-          <span>Outlet Supply</span>
-        </div>
         <div class="section-header">
           <h2>Featured Frozen Products</h2>
-          <p>Product-first cards for retail buyers, resellers, and outlet partners.</p>
+          <p>Retail packs and reseller-ready products in one compact catalog.</p>
         </div>
         <div class="products-grid">
           {% for product in products %}
@@ -335,6 +315,6 @@
     </footer>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260720-redesign-1"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260722-chatbot-persist-1"></script>
   </body>
 </html>

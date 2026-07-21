@@ -50,15 +50,24 @@ READ_FUNCTIONS = (
     "account_portal_profile",
     "list_team_leader_accounts",
     "list_reseller_assignments",
+    "latest_forecast_run",
     "list_notifications",
     "unread_notification_count",
 )
 
 EXPECTED_CALLS = {
-    ("owner", "dashboard"): {"current_metrics", "list_products", "list_forecasts", "list_notifications", "unread_notification_count"},
+    ("owner", "dashboard"): {
+        "current_metrics",
+        "list_products",
+        "list_forecasts",
+        "reseller_sales_series",
+        "reseller_most_bought_products",
+        "list_notifications",
+        "unread_notification_count",
+    },
     ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
     ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
-    ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "list_notifications", "unread_notification_count"},
+    ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_notifications", "unread_notification_count"},
     ("owner", "accounts"): {
         "list_accounts",
         "count_accounts",
@@ -67,7 +76,6 @@ EXPECTED_CALLS = {
         "list_notifications",
         "unread_notification_count",
     },
-    ("owner", "logs"): {"list_activity_logs", "count_activity_logs", "list_notifications", "unread_notification_count"},
     ("team-leader", "dashboard"): {"current_metrics", "list_inquiries", "list_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
     ("team-leader", "orders"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
@@ -80,6 +88,7 @@ EXPECTED_CALLS = {
         "list_notifications",
         "unread_notification_count",
     },
+    ("team-leader", "profile"): {"list_notifications", "unread_notification_count"},
     ("reseller", "dashboard"): {
         "current_metrics",
         "reseller_most_bought_products",
@@ -107,6 +116,7 @@ INVENTORY_EXPECTED_CALLS = {
     ("team-leader", "finished-products"): {"list_inventory_items", "count_inventory_items", "list_notifications", "unread_notification_count"},
     ("team-leader", "batches"): {"list_inventory_batches", "count_inventory_batches", "list_notifications", "unread_notification_count"},
     ("team-leader", "logs"): {"list_activity_logs", "count_activity_logs", "list_notifications", "unread_notification_count"},
+    ("team-leader", "profile"): {"list_notifications", "unread_notification_count"},
 }
 
 
@@ -217,11 +227,108 @@ def test_landing_page_does_not_load_metrics(monkeypatch):
     assert response.status_code == 200
 
 
+def test_landing_mobile_catalog_is_compact_and_drawer_based(monkeypatch):
+    monkeypatch.setattr(
+        main.data,
+        "list_products",
+        lambda: [
+            {
+                "name": "Tocino Ala Eh",
+                "description": "Tocino - 500 g per pack.",
+                "category": "Pork",
+                "base_price": 70,
+            }
+        ],
+    )
+    response = TestClient(main.app).get("/")
+    css = open("app/static/css/public.css", encoding="utf-8").read()
+
+    assert response.status_code == 200
+    assert 'id="store" class="products-section section-band"' in response.text
+    assert "mobile-drawer-brand" in response.text
+    assert "batangas_premium.png" in response.text
+    assert "store-intro" not in response.text
+    assert "Product-first cards" not in response.text
+    assert "Reseller Packages" not in response.text
+    assert ".logo {\n  display: none;" in css
+    assert "justify-content: center;" in css
+    assert ".nav-links li:last-child {\n  position: absolute;" in css
+    assert "right: 0;" in css
+    assert "inset: calc(14px + env(safe-area-inset-top)) auto auto 14px;" in css
+    assert ".nav-title {\n    display: none;" in css
+    assert ".nav-links li:last-child {\n    grid-column: auto;\n    position: static;" in css
+    assert ".mobile-drawer-brand {\n    display: grid;" in css
+    assert "justify-items: center;" in css
+    assert ".mobile-drawer-brand img" in css
+    assert "width: 112px;" in css
+    assert "width: min(210px, 70vw);" in css
+    assert "justify-self: center;" in css
+    assert "margin-inline: auto;" in css
+    assert "pointer-events: none;" in css
+    assert "background: transparent" in css
+    assert "translateX(-105%)" in css
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
+    assert ".product-card p {\n    display: none;" in css
+    assert "width: 44px;" in css
+    assert "bottom: calc(10px + env(safe-area-inset-bottom));" in css
+    assert "width: min(356px, calc(100vw - 20px));" in css
+    assert ".chatbot-widget.is-open .chatbot-toggle" in css
+    app_js = open("app/static/js/app.js", encoding="utf-8").read()
+    assert 'widget.classList.toggle("is-open", open);' in app_js
+    assert 'document.addEventListener("pointerdown", (event) =>' in app_js
+    assert "nav.contains(event.target) || toggle.contains(event.target)" in app_js
+    assert "meattrack_chatbot_messages_v1" in app_js
+    assert "24 * 60 * 60 * 1000" in app_js
+    assert "function bindOtpModal()" in app_js
+    assert "data-otp-modal-input" in app_js
+
+
+def test_login_page_removes_social_buttons_and_uses_glass_styles():
+    response = TestClient(main.app).get("/login")
+    css = open("app/static/css/login.css", encoding="utf-8").read()
+
+    assert response.status_code == 200
+    assert "Google / Gmail" not in response.text
+    assert "Facebook" not in response.text
+    assert "or continue with" not in response.text
+    assert "backdrop-filter: blur(22px)" in css
+    assert "border-radius: 24px" in css
+
+
 def test_reseller_nav_includes_profile():
     slugs = [slug for slug, *_ in main.data.portal_nav_for("reseller")]
 
     assert "profile" in slugs
     assert "reports" not in slugs
+
+
+def test_team_leader_nav_includes_profile_for_sales_and_inventory():
+    assert "profile" in [slug for slug, *_ in main.data.portal_nav_for("team-leader", "sales")]
+    assert "profile" in [slug for slug, *_ in main.data.portal_nav_for("team-leader", "inventory")]
+
+
+def test_password_otp_confirmation_renders_as_modal(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main, "session_account_id", lambda request: 9)
+    monkeypatch.setattr(main.data, "account_portal_profile", lambda account_id: {
+        "account_id": 9,
+        "name": "Sales Leader",
+        "email": "sales@example.test",
+        "account_type": "team_leader",
+        "role_key": "team-leader",
+        "team_leader_role": "sales",
+    })
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = client.get("/portal/team-leader/profile?otp=1")
+
+    assert response.status_code == 200
+    assert "data-otp-modal" in response.text
+    assert "Confirm password change" in response.text
+    assert "action=\"/portal/team-leader/profile/password/confirm\"" in response.text
+    assert "otp-panel-active" not in response.text
 
 
 def test_reseller_reports_section_is_removed(monkeypatch):
@@ -231,6 +338,316 @@ def test_reseller_reports_section_is_removed(monkeypatch):
     response = client.get("/portal/reseller/reports")
 
     assert response.status_code == 404
+
+
+def test_owner_logs_section_is_removed(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+
+    slugs = [slug for slug, *_ in main.data.portal_nav_for("owner")]
+    response = client.get("/portal/owner/logs")
+
+    assert "logs" not in slugs
+    assert response.status_code == 404
+
+
+def test_owner_products_render_product_cards_and_price_form(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(main.data, "count_products", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        main.data,
+        "list_products",
+        lambda *args, **kwargs: [
+            {
+                "product_id": 1,
+                "name": "Tocino Ala Eh",
+                "description": "Sweet pork tocino.",
+                "category": "Pork",
+                "available": 100,
+                "unit": "pack",
+                "base_price": 70,
+                "recipe_count": 2,
+                "is_active": True,
+            }
+        ],
+    )
+
+    response = client.get("/portal/owner/products")
+
+    assert response.status_code == 200
+    assert "owner-product-card" in response.text
+    assert "owner-product-image" in response.text
+    assert 'name="base_price"' in response.text
+    assert "Sweet pork tocino." not in response.text
+    assert "pack available" not in response.text
+    assert "recipe items" not in response.text
+    owner_css = open("app/static/css/portals/owner.css", encoding="utf-8").read()
+    assert "object-fit: cover" not in owner_css
+    assert "object-fit: contain" in owner_css
+    assert "repeat(2, minmax(0, 1fr))" in owner_css
+
+
+def test_owner_product_price_update_route_still_posts(monkeypatch):
+    calls = []
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main.data, "product_by_id", lambda product_id: {"product_id": product_id})
+    monkeypatch.setattr(main.data, "update_product_price", lambda *args: calls.append(args))
+
+    response = client.post(
+        "/portal/owner/products",
+        data={"product_id": 1, "base_price": 129},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert calls == [(1, 129.0)]
+
+
+def test_owner_accounts_render_responsive_cards(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(main.data, "count_accounts", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        main.data,
+        "list_accounts",
+        lambda *args, **kwargs: [
+            {"name": "Owner", "email": "owner@example.test", "account_type": "owner", "auth_provider": None, "status": "active"}
+        ],
+    )
+    monkeypatch.setattr(main.data, "list_team_leader_accounts", lambda *args, **kwargs: [{"account_id": 4, "name": "Sales Leader B"}])
+    monkeypatch.setattr(
+        main.data,
+        "list_reseller_assignments",
+        lambda *args, **kwargs: [
+            {
+                "reseller_id": 2,
+                "business_name": "Xort's store",
+                "reseller_status": "active",
+                "contact_person": "Xortoise",
+                "email": "xxortoise@gmail.com",
+                "team_leader_account_id": 4,
+                "team_leader_name": "Sales Leader B",
+            }
+        ],
+    )
+
+    response = client.get("/portal/owner/accounts")
+
+    assert response.status_code == 200
+    assert "owner-account-card" in response.text
+    assert "owner-assignment-card" in response.text
+    assert "/portal/owner/resellers/2/team-leader" in response.text
+
+
+def test_owner_reports_render_mobile_cards(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(main.data, "count_sales_reports", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        main.data,
+        "list_sales_reports",
+        lambda *args, **kwargs: [
+            {
+                "sales_report_id": 1,
+                "report_source": "team_leader",
+                "submitted_by": "Sales Leader B",
+                "period_start": main.date.today(),
+                "period_end": main.date.today(),
+                "total_sales": 700,
+                "total_orders": 1,
+                "notes": "Monthly report",
+                "items": [],
+            }
+        ],
+    )
+
+    response = client.get("/portal/owner/reports?q=sales&page=1")
+
+    assert response.status_code == 200
+    assert "owner-report-card" in response.text
+    assert "owner-report-table" in response.text
+
+
+def test_owner_forecasts_render_prophet_ui(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(main.data, "count_forecasts", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        main.data,
+        "latest_forecast_run",
+        lambda *args, **kwargs: {
+            "model_name": "Prophet demand forecast",
+            "input_period_start": main.date.today(),
+            "input_period_end": main.date.today(),
+            "forecast_horizon_days": 7,
+            "status": "completed",
+            "notes": "Completed with: Prophet, Baseline fallback.",
+        },
+    )
+    monkeypatch.setattr(
+        main.data,
+        "list_forecasts",
+        lambda *args, **kwargs: [
+            {
+                "product": "Tocino Ala Eh",
+                "forecast_date": main.date.today(),
+                "predicted_quantity": 12,
+                "confidence": "10 - 14 packs",
+                "model_name": "Prophet demand forecast",
+                "notes": "Completed with: Prophet.",
+            }
+        ],
+    )
+
+    response = client.get("/portal/owner/forecasts")
+
+    assert response.status_code == 200
+    assert "Prophet uses fulfilled reseller order history" in response.text
+    assert "owner-forecast-result-card" in response.text
+    assert "owner-horizon-picker" in response.text
+    assert 'value="30"' in response.text
+    assert 'data-forecast-horizon-value' in response.text
+    assert "10 - 14 packs" in response.text
+
+
+def test_owner_dashboard_renders_executive_sections(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        main.data,
+        "current_metrics",
+        lambda *args, **kwargs: {
+            "fulfilled_sales": 1500,
+            "pending_reseller_orders": 2,
+            "open_alerts": 0,
+            "active_resellers": 3,
+            "total_available": 180,
+        },
+    )
+    monkeypatch.setattr(
+        main.data,
+        "list_products",
+        lambda *args, **kwargs: [
+            {"product_id": 1, "name": "Tocino Ala Eh", "available": 90, "unit": "pack"}
+        ],
+    )
+    monkeypatch.setattr(
+        main.data,
+        "list_forecasts",
+        lambda *args, **kwargs: [
+            {
+                "forecast_result_id": 1,
+                "product": "Tocino Ala Eh",
+                "forecast_date": main.date.today(),
+                "predicted_quantity": 42,
+                "confidence": "85% - 95% range",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        main.data,
+        "reseller_sales_series",
+        lambda *args, **kwargs: [
+            {"sale_date": main.date.today(), "total_sales": 700, "order_count": 1}
+        ],
+    )
+    monkeypatch.setattr(
+        main.data,
+        "reseller_most_bought_products",
+        lambda *args, **kwargs: [
+            {"name": "Tocino Ala Eh", "total_quantity": 10, "unit": "pack", "total_amount": 700}
+        ],
+    )
+
+    response = client.get("/portal/owner/dashboard")
+
+    assert response.status_code == 200
+    assert "Forecast priority" in response.text
+    assert "Sales trend" in response.text
+    assert "Most bought products" in response.text
+    assert "Stock pulse" in response.text
+    assert "data-owner-sales-chart" in response.text
+    assert 'name="sales_period"' in response.text
+    assert "data-owner-sales-form" in response.text
+    assert "this.form.submit()" not in response.text
+    assert "Quarterly" in response.text
+    assert "Yearly" in response.text
+    assert "Open alerts" not in response.text
+
+
+def test_owner_sales_chart_endpoint_returns_period_json(monkeypatch):
+    client = TestClient(main.app)
+    today = main.date.today()
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(
+        main.data,
+        "reseller_sales_series",
+        lambda *args, **kwargs: [
+            {"sale_date": today, "total_sales": 700, "order_count": 1}
+        ],
+    )
+
+    response = client.get("/portal/owner/dashboard/sales-chart?sales_period=monthly")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["period"] == "monthly"
+    assert len(payload["rows"]) == 12
+    assert payload["rows"][-1]["sales"] == 700
+    assert payload["rows"][-1]["orders"] == 1
+
+
+def test_owner_sales_period_points_support_dashboard_granularities():
+    today = main.date(2026, 7, 21)
+
+    assert len(main.owner_sales_period_points("daily", today)[1]) == 31
+    assert len(main.owner_sales_period_points("weekly", today)[1]) == 12
+    assert len(main.owner_sales_period_points("monthly", today)[1]) == 12
+    assert len(main.owner_sales_period_points("quarterly", today)[1]) == 8
+    assert len(main.owner_sales_period_points("yearly", today)[1]) == 5
+
+
+def test_owner_dashboard_sales_chart_uses_continuous_line_series(monkeypatch):
+    today = main.date.today()
+    monkeypatch.setattr(
+        main.data,
+        "current_metrics",
+        lambda *args, **kwargs: {
+            "fulfilled_sales": 700,
+            "pending_reseller_orders": 0,
+            "open_alerts": 0,
+            "active_resellers": 1,
+            "total_available": 100,
+        },
+    )
+    monkeypatch.setattr(main.data, "list_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "list_forecasts", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "reseller_most_bought_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        main.data,
+        "reseller_sales_series",
+        lambda *args, **kwargs: [
+            {"sale_date": today, "total_sales": 700, "order_count": 1}
+        ],
+    )
+
+    context = main._owner_dashboard_context(None)
+
+    assert len(context["owner_sales_chart"]) == 31
+    assert context["owner_sales_chart"][-1]["sales"] == 700
+    assert context["owner_sales_chart"][0]["sales"] == 0
 
 
 def test_inventory_dashboard_renders_product_movement_chart(monkeypatch):
@@ -280,6 +697,20 @@ def test_payment_proof_route_is_registered_before_generic_portal_route():
     route_paths = [getattr(route, "path", "") for route in main.app.routes]
 
     assert route_paths.index("/portal/order-payment-proofs/{proof_id}") < route_paths.index("/portal/{role_key}/{section}")
+
+
+def test_portal_notifications_use_readable_color_scheme():
+    css = open("app/static/css/portal_base.css", encoding="utf-8").read()
+
+    assert "background: #fffdf6;" in css
+    assert "border-left: 5px solid var(--info);" in css
+    assert ".notification-item.warning" in css
+    assert "background: #fff8e8;" in css
+    assert ".notification-item.critical" in css
+    assert "background: #fff1ef;" in css
+    assert ".notification-item strong" in css
+    assert "color: var(--primary);" in css
+    assert ".notification-item.is-read span" in css
 
 
 def test_raw_materials_page_renders_only_raw_inventory(monkeypatch):

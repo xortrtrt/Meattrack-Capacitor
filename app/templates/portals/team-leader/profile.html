@@ -1,0 +1,48 @@
+<section class="content-grid two profile-layout">
+  <article class="panel profile-card">
+    <div class="panel-heading">
+      <h2>Profile</h2>
+      <span class="hint">Your team leader portal account details.</span>
+    </div>
+    <dl class="profile-details">
+      <div>
+        <dt>Name</dt>
+        <dd>{{ account_profile.name if account_profile else role.name }}</dd>
+      </div>
+      <div>
+        <dt>Email</dt>
+        <dd>{{ account_profile.email if account_profile else role.email }}</dd>
+      </div>
+      <div>
+        <dt>Role</dt>
+        <dd>{{ role.label }}</dd>
+      </div>
+    </dl>
+  </article>
+
+  <article class="panel">
+    <div class="panel-heading">
+      <h2>Change password</h2>
+      <span class="hint">Use 8+ characters with uppercase, lowercase, number, and special character. A 6-digit OTP will be sent after submitting.</span>
+    </div>
+    <form class="form-panel bare" action="/portal/team-leader/profile/password" method="post">
+      <label>
+        Current password
+        <input required type="password" name="current_password" autocomplete="current-password" />
+      </label>
+      <label>
+        New password
+        <input required type="password" name="new_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" />
+      </label>
+      <label>
+        Confirm new password
+        <input required type="password" name="confirm_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" />
+      </label>
+      <button class="button primary" type="submit">
+        <i data-lucide="mail-check"></i>
+        Send OTP
+      </button>
+    </form>
+  </article>
+
+</section>

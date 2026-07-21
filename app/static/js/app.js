@@ -57,6 +57,22 @@
             setOpen(toggle.getAttribute("aria-expanded") !== "true");
         });
 
+        document.addEventListener("pointerdown", (event) => {
+            if (toggle.getAttribute("aria-expanded") !== "true") {
+                return;
+            }
+            if (nav.contains(event.target) || toggle.contains(event.target)) {
+                return;
+            }
+            setOpen(false);
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                setOpen(false);
+            }
+        });
+
         nav.querySelectorAll("a").forEach((link) => {
             link.addEventListener("click", () => setOpen(false));
         });
@@ -101,6 +117,37 @@
     }
 
     bindPortalDrawer();
+
+    function bindForecastHorizonPicker() {
+        const form = document.querySelector("[data-forecast-horizon-form]");
+        if (!form) {
+            return;
+        }
+        const choices = Array.from(form.querySelectorAll("[data-forecast-horizon-choice]"));
+        const hiddenValue = form.querySelector("[data-forecast-horizon-value]");
+        const customWrap = form.querySelector("[data-forecast-custom-horizon]");
+        const customInput = form.querySelector("[data-forecast-horizon-custom]");
+        if (!choices.length || !hiddenValue || !customWrap || !customInput) {
+            return;
+        }
+
+        function syncHorizon() {
+            const selected = choices.find((choice) => choice.checked) || choices[0];
+            const customSelected = selected.value === "custom";
+            customWrap.hidden = !customSelected;
+            customInput.required = customSelected;
+            hiddenValue.value = customSelected ? customInput.value : selected.value;
+        }
+
+        choices.forEach((choice) => {
+            choice.addEventListener("change", syncHorizon);
+        });
+        customInput.addEventListener("input", syncHorizon);
+        form.addEventListener("submit", syncHorizon);
+        syncHorizon();
+    }
+
+    bindForecastHorizonPicker();
 
     const tabs = Array.from(document.querySelectorAll("[data-scroll-tab]"));
     if (tabs.length && "IntersectionObserver" in window) {
@@ -341,6 +388,31 @@
                     return;
                 }
                 closeModal();
+            }
+        });
+    }
+
+    function bindOtpModal() {
+        const modal = document.querySelector("[data-otp-modal]");
+        if (!modal) {
+            return;
+        }
+        const input = modal.querySelector("[data-otp-modal-input]");
+
+        function close() {
+            modal.hidden = true;
+            document.body.classList.remove("modal-is-open");
+        }
+
+        document.body.classList.add("modal-is-open");
+        input?.focus();
+
+        modal.querySelectorAll("[data-otp-modal-close]").forEach((button) => {
+            button.addEventListener("click", close);
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !modal.hidden) {
+                close();
             }
         });
     }
@@ -629,13 +701,259 @@
         });
     }
 
+    function bindOwnerSalesChartLegacy() {
+        const canvas = document.querySelector("[data-owner-sales-chart]");
+        const payload = document.querySelector("[data-owner-sales-json]");
+        if (!canvas || !payload) {
+            return;
+        }
+
+        let rows = [];
+        try {
+            rows = JSON.parse(payload.textContent || "[]");
+        } catch (error) {
+            rows = [];
+        }
+
+        if (!rows.length || !window.Chart) {
+            return;
+        }
+        const maxSales = Math.max(...rows.map((row) => Number(row.sales || 0)), 0);
+        const suggestedMax = Math.max(100, Math.ceil(maxSales / 100) * 100);
+
+        new window.Chart(canvas.getContext("2d"), {
+            type: "line",
+            data: {
+                labels: rows.map((row) => row.label),
+                datasets: [
+                    {
+                        label: "Fulfilled sales",
+                        data: rows.map((row) => Number(row.sales || 0)),
+                        borderColor: "#d7b621",
+                        backgroundColor: "rgba(215, 182, 33, 0.18)",
+                        pointBackgroundColor: "#5b3019",
+                        pointBorderColor: "#fff7dc",
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        tension: 0.32,
+                        fill: true,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        ticks: {
+                            color: "#675b44",
+                            maxRotation: 0,
+                            autoSkip: true,
+                        },
+                        grid: {
+                            display: false,
+                        },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        suggestedMax,
+                        ticks: {
+                            stepSize: 100,
+                            color: "#675b44",
+                            callback(value) {
+                                return `PHP ${Number(value).toLocaleString("en-US")}`;
+                            },
+                        },
+                        grid: {
+                            color: "rgba(215, 201, 154, 0.45)",
+                        },
+                    },
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: "#23150f",
+                            boxWidth: 14,
+                            boxHeight: 14,
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const row = rows[context.dataIndex] || {};
+                                return `${formatMoney(context.parsed.y)} · ${formatQuantity(row.orders)} orders`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        const fallback = document.querySelector("[data-owner-sales-fallback]");
+        if (fallback) {
+            fallback.hidden = true;
+        }
+    }
+
+    function bindOwnerSalesChart() {
+        const canvas = document.querySelector("[data-owner-sales-chart]");
+        const payload = document.querySelector("[data-owner-sales-json]");
+        const form = document.querySelector("[data-owner-sales-form]");
+        const periodSelect = form?.querySelector('select[name="sales_period"]');
+        if (!canvas || !payload || !window.Chart) {
+            return;
+        }
+
+        let rows = [];
+        try {
+            rows = JSON.parse(payload.textContent || "[]");
+        } catch (error) {
+            rows = [];
+        }
+        if (!rows.length) {
+            return;
+        }
+
+        function buildOptions(sourceRows) {
+            const maxSales = Math.max(...sourceRows.map((row) => Number(row.sales || 0)), 0);
+            const suggestedMax = Math.max(100, Math.ceil(maxSales / 100) * 100);
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        ticks: {
+                            color: "#675b44",
+                            maxRotation: 0,
+                            autoSkip: true,
+                        },
+                        grid: {
+                            display: false,
+                        },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        suggestedMax,
+                        ticks: {
+                            stepSize: 100,
+                            color: "#675b44",
+                            callback(value) {
+                                return `PHP ${Number(value).toLocaleString("en-US")}`;
+                            },
+                        },
+                        grid: {
+                            color: "rgba(215, 201, 154, 0.45)",
+                        },
+                    },
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: "#23150f",
+                            boxWidth: 14,
+                            boxHeight: 14,
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label(context) {
+                                const row = sourceRows[context.dataIndex] || {};
+                                return `${formatMoney(context.parsed.y)} · ${formatQuantity(row.orders)} orders`;
+                            },
+                        },
+                    },
+                },
+            };
+        }
+
+        function renderChart(nextRows) {
+            if (canvas.ownerSalesChart) {
+                canvas.ownerSalesChart.destroy();
+            }
+            canvas.ownerSalesChart = new window.Chart(canvas.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: nextRows.map((row) => row.label),
+                    datasets: [
+                        {
+                            label: "Fulfilled sales",
+                            data: nextRows.map((row) => Number(row.sales || 0)),
+                            borderColor: "#d7b621",
+                            backgroundColor: "rgba(215, 182, 33, 0.18)",
+                            pointBackgroundColor: "#5b3019",
+                            pointBorderColor: "#fff7dc",
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            tension: 0.32,
+                            fill: true,
+                        },
+                    ],
+                },
+                options: buildOptions(nextRows),
+            });
+        }
+
+        renderChart(rows);
+
+        const fallback = document.querySelector("[data-owner-sales-fallback]");
+        if (fallback) {
+            fallback.hidden = true;
+        }
+
+        if (!form || !periodSelect) {
+            return;
+        }
+
+        async function refreshChart() {
+            const endpoint = form.dataset.ownerSalesUrl || form.action || window.location.pathname;
+            const url = new URL(endpoint, window.location.origin);
+            const previousPeriod = new URLSearchParams(window.location.search).get("sales_period") || "daily";
+            url.searchParams.set("sales_period", periodSelect.value);
+            form.classList.add("is-loading");
+            periodSelect.disabled = true;
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        Accept: "application/json",
+                    },
+                });
+                if (!response.ok) {
+                    throw new Error("Chart data could not be loaded.");
+                }
+                const data = await response.json();
+                rows = Array.isArray(data.rows) ? data.rows : [];
+                if (!rows.length) {
+                    return;
+                }
+                payload.textContent = JSON.stringify(rows);
+                renderChart(rows);
+                const pageUrl = new URL(window.location.href);
+                pageUrl.searchParams.set("sales_period", data.period || periodSelect.value);
+                window.history.replaceState({}, "", pageUrl);
+            } catch (error) {
+                periodSelect.value = previousPeriod;
+            } finally {
+                periodSelect.disabled = false;
+                form.classList.remove("is-loading");
+            }
+        }
+
+        form.addEventListener("submit", (event) => {
+            event.preventDefault();
+            refreshChart();
+        });
+        periodSelect.addEventListener("change", refreshChart);
+    }
+
     bindQuantitySteppers();
     bindProductSearch();
     bindProductModal();
     bindProofModal();
+    bindOtpModal();
     bindCartAutosave();
     bindInventoryMovementChart();
     bindInventoryProductsPagination();
+    bindOwnerSalesChart();
 
     const widget = document.querySelector("[data-chatbot]");
     if (!widget) {
@@ -648,24 +966,64 @@
     const form = widget.querySelector("[data-chatbot-form]");
     const input = form.querySelector("input[name='message']");
     const messages = widget.querySelector("[data-chatbot-messages]");
+    const chatbotStorageKey = "meattrack_chatbot_messages_v1";
+    const chatbotStorageTtlMs = 24 * 60 * 60 * 1000;
+
+    function currentChatMessages() {
+        return Array.from(messages.querySelectorAll(".message")).map((bubble) => ({
+            text: bubble.textContent || "",
+            type: bubble.classList.contains("user-message") ? "user" : "bot",
+        })).filter((item) => item.text.trim());
+    }
+
+    function saveChatMessages() {
+        try {
+            window.localStorage.setItem(chatbotStorageKey, JSON.stringify({
+                savedAt: Date.now(),
+                messages: currentChatMessages(),
+            }));
+        } catch (error) {
+            // Ignore storage failures in private browsing or restricted webviews.
+        }
+    }
+
+    function restoreChatMessages() {
+        try {
+            const stored = JSON.parse(window.localStorage.getItem(chatbotStorageKey) || "null");
+            if (!stored || !Array.isArray(stored.messages) || Date.now() - Number(stored.savedAt || 0) > chatbotStorageTtlMs) {
+                window.localStorage.removeItem(chatbotStorageKey);
+                saveChatMessages();
+                return;
+            }
+            messages.innerHTML = "";
+            stored.messages.forEach((item) => addMessage(item.text, item.type, false));
+        } catch (error) {
+            saveChatMessages();
+        }
+    }
 
     function setOpen(open) {
         panel.hidden = !open;
+        widget.classList.toggle("is-open", open);
         toggle.setAttribute("aria-expanded", String(open));
         if (open) {
             input.focus();
         }
     }
 
-    function addMessage(text, type) {
+    function addMessage(text, type, shouldSave = true) {
         const bubble = document.createElement("div");
         bubble.className = `message ${type === 'user' ? 'user-message' : 'bot-message'}`;
         bubble.textContent = text;
         messages.appendChild(bubble);
         messages.scrollTop = messages.scrollHeight;
+        if (shouldSave) {
+            saveChatMessages();
+        }
         return bubble;
     }
 
+    restoreChatMessages();
     toggle.addEventListener("click", () => setOpen(panel.hidden));
     closeButton.addEventListener("click", () => setOpen(false));
     document.querySelectorAll("[data-open-chatbot]").forEach((button) => {
@@ -693,8 +1051,10 @@
             });
             const result = await response.json();
             loading.textContent = result.reply || "Please contact Batangas Premium directly for complete details.";
+            saveChatMessages();
         } catch (error) {
             loading.textContent = "Please contact Batangas Premium directly for complete details.";
+            saveChatMessages();
         }
     });
 })();

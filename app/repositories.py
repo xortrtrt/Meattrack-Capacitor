@@ -1,11 +1,15 @@
 from __future__ import annotations
+import calendar
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import logging
+import os
 import secrets
+import tempfile
 
 from app.database import fetch_all, fetch_one, execute_write, clean_row, get_transaction_cursor
 from app.config import DEFAULT_ACCOUNT_PASSWORD
-from app.security import hash_password, password_needs_rehash, verify_password
+from app.security import hash_password, password_needs_rehash, validate_password_policy, verify_password
 
 today = date.today()
 
@@ -179,6 +183,43 @@ CREATE TABLE IF NOT EXISTS user_consents (
 
 CREATE INDEX IF NOT EXISTS ix_user_consents_account_accepted
     ON user_consents (account_id, accepted_at DESC);
+
+CREATE TABLE IF NOT EXISTS account_password_otps (
+    account_password_otp_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    otp_hash text NOT NULL,
+    pending_password_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(otp_hash) <> ''),
+    CHECK (btrim(pending_password_hash) <> '')
+);
+
+ALTER TABLE account_password_otps ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS ix_account_password_otps_pending
+    ON account_password_otps (account_id, created_at DESC)
+    WHERE consumed_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS account_login_otps (
+    account_login_otp_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    otp_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(otp_hash) <> '')
+);
+
+ALTER TABLE account_login_otps ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS ix_account_login_otps_pending
+    ON account_login_otps (account_id, created_at DESC)
+    WHERE consumed_at IS NULL;
+
+ALTER TABLE inquiries
+    ADD COLUMN IF NOT EXISTS follow_up_sent_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS notifications (
     notification_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -394,7 +435,6 @@ portal_nav = {
         ("reports", "Reports", "bar-chart-3"),
         ("forecasts", "Forecasts", "line-chart"),
         ("accounts", "Accounts", "shield-check"),
-        ("logs", "Audit Logs", "scroll-text"),
     ],
 }
 
@@ -406,12 +446,14 @@ team_leader_nav_by_role = {
         ("finished-products", "Finished Products", "package-search"),
         ("batches", "Product Batches", "package-check"),
         ("logs", "Inventory Logs", "scroll-text"),
+        ("profile", "Profile", "user-cog"),
     ],
     "sales": [
         ("dashboard", "Dashboard", "layout-dashboard"),
         ("inquiries", "Inquiries", "user-check"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
+        ("profile", "Profile", "user-cog"),
     ],
 }
 
@@ -1241,9 +1283,20 @@ def list_alerts() -> list[dict]:
 def list_forecasts(limit: int | None = None, q: str = "", page: int | None = None, page_size: int = 10) -> list[dict]:
     query = """
         SELECT fr.forecast_result_id, p.name AS product, fr.forecast_date, fr.predicted_quantity,
-               ('85%% - 95%% range') AS confidence
+               fr.confidence_lower,
+               fr.confidence_upper,
+               CASE
+                   WHEN fr.confidence_lower IS NOT NULL AND fr.confidence_upper IS NOT NULL
+                   THEN trim(to_char(fr.confidence_lower, 'FM999999990.0')) || ' - ' || trim(to_char(fr.confidence_upper, 'FM999999990.0')) || ' packs'
+                   ELSE 'Range unavailable'
+               END AS confidence,
+               f.model_name,
+               f.forecast_horizon_days,
+               f.status,
+               f.notes
         FROM forecast_results fr
         JOIN inventory_items p ON p.item_id = fr.product_id
+        JOIN forecast_runs f ON f.forecast_run_id = fr.forecast_run_id
         WHERE p.item_type = 'finished_product'
     """
     params: list[object] = []
@@ -1263,6 +1316,24 @@ def list_forecasts(limit: int | None = None, q: str = "", page: int | None = Non
         query += " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
     return clean_row(fetch_all(query + ";", tuple(params) or None))
+
+
+def latest_forecast_run() -> dict | None:
+    row = fetch_one("""
+        SELECT forecast_run_id,
+               model_name,
+               input_period_start,
+               input_period_end,
+               forecast_horizon_days,
+               status,
+               started_at,
+               completed_at,
+               notes
+        FROM forecast_runs
+        ORDER BY forecast_run_id DESC
+        LIMIT 1;
+    """)
+    return clean_row(row) if row else None
 
 
 def count_forecasts(q: str = "") -> int:
@@ -1722,14 +1793,294 @@ def change_account_password(account_id: int, current_password: str, new_password
         raise ValueError("Reseller account was not found.")
     if not verify_password(current_password, account["password_hash"]):
         raise ValueError("Current password is incorrect.")
-    cleaned_password = new_password.strip()
-    if len(cleaned_password) < 8:
-        raise ValueError("New password must be at least 8 characters.")
+    cleaned_password = validate_password_policy(new_password)
     execute_write(
         "UPDATE accounts SET password_hash = %s WHERE account_id = %s;",
         (hash_password(cleaned_password), account_id),
     )
     add_log(account["name"], "changed_password", "Reseller profile")
+
+
+def request_account_password_change(
+    account_id: int,
+    current_password: str,
+    new_password: str,
+    allowed_account_types: tuple[str, ...] = ("reseller", "team_leader"),
+) -> dict:
+    ensure_system_tables()
+    account = fetch_one(
+        """
+        SELECT account_id, account_type, name, email, password_hash
+        FROM accounts
+        WHERE account_id = %s
+          AND is_active = true
+        LIMIT 1;
+        """,
+        (account_id,),
+    )
+    if not account or account["account_type"] not in allowed_account_types:
+        raise ValueError("Account was not found.")
+    if not verify_password(current_password, account["password_hash"]):
+        raise ValueError("Current password is incorrect.")
+    cleaned_password = validate_password_policy(new_password)
+
+    otp_code = f"{secrets.randbelow(1_000_000):06d}"
+    pending_password_hash = hash_password(cleaned_password)
+    otp_hash = hash_password(otp_code)
+    expires_at = datetime.now() + timedelta(minutes=10)
+
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE account_password_otps
+            SET consumed_at = now()
+            WHERE account_id = %s
+              AND consumed_at IS NULL;
+            """,
+            (account_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO account_password_otps (account_id, otp_hash, pending_password_hash, expires_at)
+            VALUES (%s, %s, %s, %s)
+            RETURNING account_password_otp_id;
+            """,
+            (account_id, otp_hash, pending_password_hash, expires_at),
+        )
+        otp = cur.fetchone()
+
+    profile_label = "Team leader profile" if account["account_type"] == "team_leader" else "Reseller profile"
+    add_log(account["name"], "requested_password_otp", profile_label)
+    return {
+        "otp_id": otp["account_password_otp_id"],
+        "account_id": account["account_id"],
+        "account_type": account["account_type"],
+        "name": account["name"],
+        "email": account["email"],
+        "otp_code": otp_code,
+    }
+
+
+def request_reseller_password_change(account_id: int, current_password: str, new_password: str) -> dict:
+    return request_account_password_change(account_id, current_password, new_password, ("reseller",))
+
+
+def cancel_reseller_password_change(account_id: int, otp_id: int | None = None) -> None:
+    ensure_system_tables()
+    params: list[object] = [account_id]
+    where = "account_id = %s AND consumed_at IS NULL"
+    if otp_id is not None:
+        where += " AND account_password_otp_id = %s"
+        params.append(otp_id)
+    execute_write(f"UPDATE account_password_otps SET consumed_at = now() WHERE {where};", tuple(params))
+
+
+def cancel_account_password_change(account_id: int, otp_id: int | None = None) -> None:
+    cancel_reseller_password_change(account_id, otp_id)
+
+
+def confirm_account_password_change(
+    account_id: int,
+    otp_code: str,
+    allowed_account_types: tuple[str, ...] = ("reseller", "team_leader"),
+) -> None:
+    ensure_system_tables()
+    cleaned_otp = "".join(ch for ch in otp_code.strip() if ch.isdigit())
+    if len(cleaned_otp) != 6:
+        raise ValueError("Enter the 6-digit OTP sent to your email.")
+
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT p.account_password_otp_id, p.otp_hash, p.pending_password_hash, a.name, a.account_type
+            FROM account_password_otps p
+            JOIN accounts a ON a.account_id = p.account_id
+            WHERE p.account_id = %s
+              AND p.consumed_at IS NULL
+              AND p.expires_at >= now()
+              AND a.is_active = true
+            ORDER BY p.created_at DESC
+            LIMIT 1
+            FOR UPDATE OF p;
+            """,
+            (account_id,),
+        )
+        pending = cur.fetchone()
+        if not pending:
+            raise ValueError("OTP expired or no password change request is pending.")
+        if pending["account_type"] not in allowed_account_types:
+            raise ValueError("Account was not found.")
+        if not verify_password(cleaned_otp, pending["otp_hash"]):
+            raise ValueError("OTP is incorrect.")
+        cur.execute(
+            "UPDATE accounts SET password_hash = %s WHERE account_id = %s;",
+            (pending["pending_password_hash"], account_id),
+        )
+        cur.execute(
+            "UPDATE account_password_otps SET consumed_at = now() WHERE account_password_otp_id = %s;",
+            (pending["account_password_otp_id"],),
+        )
+
+    profile_label = "Team leader profile OTP" if pending["account_type"] == "team_leader" else "Reseller profile OTP"
+    add_log(pending["name"], "changed_password", profile_label)
+
+
+def confirm_reseller_password_change(account_id: int, otp_code: str) -> None:
+    confirm_account_password_change(account_id, otp_code, ("reseller",))
+
+
+def request_login_otp(account_id: int) -> dict:
+    ensure_system_tables()
+    account = fetch_one(
+        """
+        SELECT account_id, account_type, team_leader_role, name, email, is_active
+        FROM accounts
+        WHERE account_id = %s
+        LIMIT 1;
+        """,
+        (account_id,),
+    )
+    if not account or not account["is_active"]:
+        raise ValueError("Account was not found.")
+
+    otp_code = f"{secrets.randbelow(1_000_000):06d}"
+    otp_hash = hash_password(otp_code)
+    expires_at = datetime.now() + timedelta(minutes=10)
+
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE account_login_otps
+            SET consumed_at = now()
+            WHERE account_id = %s
+              AND consumed_at IS NULL;
+            """,
+            (account_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO account_login_otps (account_id, otp_hash, expires_at)
+            VALUES (%s, %s, %s)
+            RETURNING account_login_otp_id;
+            """,
+            (account_id, otp_hash, expires_at),
+        )
+        otp = cur.fetchone()
+
+    clean = clean_row(account)
+    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    return {
+        "otp_id": otp["account_login_otp_id"],
+        "otp_code": otp_code,
+        "account": clean,
+    }
+
+
+def cancel_login_otp(account_id: int, otp_id: int | None = None) -> None:
+    ensure_system_tables()
+    params: list[object] = [account_id]
+    where = "account_id = %s AND consumed_at IS NULL"
+    if otp_id is not None:
+        where += " AND account_login_otp_id = %s"
+        params.append(otp_id)
+    execute_write(f"UPDATE account_login_otps SET consumed_at = now() WHERE {where};", tuple(params))
+
+
+def confirm_login_otp(account_id: int, otp_code: str) -> dict:
+    ensure_system_tables()
+    cleaned_otp = "".join(ch for ch in otp_code.strip() if ch.isdigit())
+    if len(cleaned_otp) != 6:
+        raise ValueError("Enter the 6-digit OTP sent to your email.")
+
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT p.account_login_otp_id, p.otp_hash,
+                   a.account_id, a.account_type, a.team_leader_role, a.name, a.email, a.is_active
+            FROM account_login_otps p
+            JOIN accounts a ON a.account_id = p.account_id
+            WHERE p.account_id = %s
+              AND p.consumed_at IS NULL
+              AND p.expires_at >= now()
+              AND a.is_active = true
+            ORDER BY p.created_at DESC
+            LIMIT 1
+            FOR UPDATE OF p;
+            """,
+            (account_id,),
+        )
+        pending = cur.fetchone()
+        if not pending:
+            raise ValueError("OTP expired or no login request is pending.")
+        if not verify_password(cleaned_otp, pending["otp_hash"]):
+            raise ValueError("OTP is incorrect.")
+        cur.execute(
+            "UPDATE account_login_otps SET consumed_at = now() WHERE account_login_otp_id = %s;",
+            (pending["account_login_otp_id"],),
+        )
+
+    clean = clean_row(pending)
+    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
+        clean["team_leader_role"] = "sales"
+    return clean
+
+
+def update_reseller_profile(
+    account_id: int,
+    name: str,
+    business_name: str,
+    contact_number: str,
+    address: str,
+) -> dict:
+    ensure_system_tables()
+    cleaned_name = " ".join(name.strip().split())
+    cleaned_business = " ".join(business_name.strip().split())
+    cleaned_contact = " ".join(contact_number.strip().split())
+    cleaned_address = " ".join(address.strip().split())
+    if not cleaned_name:
+        raise ValueError("Name is required.")
+    if not cleaned_business:
+        raise ValueError("Business name is required.")
+    if not cleaned_contact:
+        raise ValueError("Contact number is required.")
+    if not cleaned_address:
+        raise ValueError("Address is required.")
+
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT a.account_id, a.name, a.reseller_id
+            FROM accounts a
+            WHERE a.account_id = %s
+              AND a.account_type = 'reseller'
+              AND a.is_active = true
+            LIMIT 1
+            FOR UPDATE;
+            """,
+            (account_id,),
+        )
+        account = cur.fetchone()
+        if not account or account["reseller_id"] is None:
+            raise ValueError("Reseller account was not found.")
+        cur.execute(
+            "UPDATE accounts SET name = %s WHERE account_id = %s;",
+            (cleaned_name, account_id),
+        )
+        cur.execute(
+            """
+            UPDATE resellers
+            SET business_name = %s,
+                contact_person = %s,
+                contact_number = %s,
+                address = %s
+            WHERE reseller_id = %s;
+            """,
+            (cleaned_business, cleaned_name, cleaned_contact, cleaned_address, account["reseller_id"]),
+        )
+
+    add_log(cleaned_name, "updated_profile", "Reseller profile")
+    return reseller_account_profile(account_id)
 
 
 def account_portal_profile(account_id: int) -> dict | None:
@@ -2097,6 +2448,35 @@ def add_inquiry(name: str, business_name: str, email: str, contact_number: str, 
         dedupe_key=f"inquiry-{inq['inquiry_id']}",
     )
     return inq
+
+
+def due_inquiry_followups(limit: int = 20) -> list[dict]:
+    ensure_system_tables()
+    return clean_row(fetch_all(
+        """
+        SELECT inquiry_id, name, email, business_name, created_at
+        FROM inquiries
+        WHERE status = 'assigned'
+          AND follow_up_sent_at IS NULL
+          AND created_at <= now() - interval '1 day'
+        ORDER BY created_at ASC
+        LIMIT %s;
+        """,
+        (limit,),
+    ))
+
+
+def mark_inquiry_followup_sent(inquiry_id: int) -> None:
+    ensure_system_tables()
+    execute_write(
+        """
+        UPDATE inquiries
+        SET follow_up_sent_at = now()
+        WHERE inquiry_id = %s
+          AND follow_up_sent_at IS NULL;
+        """,
+        (inquiry_id,),
+    )
 
 
 def generate_temporary_password() -> str:
@@ -2621,6 +3001,9 @@ def reseller_account_profile(account_id: int) -> dict:
     row = fetch_one("""
         SELECT a.account_id, a.name, a.email, a.reseller_id,
                COALESCE(r.business_name, a.name) AS business_name,
+               r.contact_person,
+               r.contact_number,
+               r.address,
                r.team_leader_account_id,
                tl.name AS team_leader_name,
                tl.email AS team_leader_email
@@ -2637,6 +3020,9 @@ def reseller_account_profile(account_id: int) -> dict:
         reseller = fetch_one("""
             SELECT r.reseller_id,
                    r.business_name,
+                   r.contact_person,
+                   r.contact_number,
+                   r.address,
                    r.team_leader_account_id,
                    tl.name AS team_leader_name,
                    tl.email AS team_leader_email
@@ -2648,6 +3034,9 @@ def reseller_account_profile(account_id: int) -> dict:
         if reseller:
             row["reseller_id"] = reseller["reseller_id"]
             row["business_name"] = reseller["business_name"]
+            row["contact_person"] = reseller["contact_person"]
+            row["contact_number"] = reseller["contact_number"]
+            row["address"] = reseller["address"]
             row["team_leader_account_id"] = reseller["team_leader_account_id"]
             row["team_leader_name"] = reseller["team_leader_name"]
             row["team_leader_email"] = reseller["team_leader_email"]
@@ -3140,8 +3529,11 @@ def add_product_batch(product_id: int, batch_code: str, quantity: float, expiry_
     add_log("Maria Santos", "registered_product_batch", batch_code)
     return batch
 
-def add_account(account_type: str, name: str, email: str, team_leader_role: str | None = None) -> None:
+def add_account(account_type: str, name: str, email: str, team_leader_role: str | None = None) -> dict:
+    ensure_system_tables()
     reseller_id = None
+    cleaned_name = " ".join(name.strip().split())
+    cleaned_email = email.strip().lower()
     
     if account_type == "reseller":
         raise ValueError("Reseller accounts are created only by approving chatbot inquiries.")
@@ -3149,45 +3541,230 @@ def add_account(account_type: str, name: str, email: str, team_leader_role: str 
         team_leader_role = team_leader_role if team_leader_role in {"inventory", "sales"} else "sales"
     else:
         team_leader_role = None
-            
-    execute_write("""
+    if fetch_one("SELECT account_id FROM accounts WHERE lower(email) = lower(%s) LIMIT 1;", (cleaned_email,)):
+        raise ValueError("That email is already used by an existing portal account.")
+
+    temporary_password = generate_temporary_password()
+    account = execute_write("""
         INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role, is_active)
-        VALUES (%s, %s, %s, %s, %s, %s, true);
-    """, (account_type, reseller_id, name, email, hash_password(DEFAULT_ACCOUNT_PASSWORD), team_leader_role))
-    add_log("Owner", "created_account", email)
+        VALUES (%s, %s, %s, %s, %s, %s, true)
+        RETURNING account_id, account_type, team_leader_role, name, email;
+    """, (account_type, reseller_id, cleaned_name, cleaned_email, hash_password(temporary_password), team_leader_role), returning=True)
+    add_log("Owner", "created_account", cleaned_email)
+    clean = clean_row(account)
+    clean["temporary_password"] = temporary_password
+    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    return clean
+
+FORECAST_HISTORY_DAYS = 180
+PROPHET_MIN_HISTORY_POINTS = 3
+FORECAST_EVENT_PRIOR_SCALE = 8
+
+
+def product_sales_history(product_ids: list[int], start_date: date, end_date: date) -> dict[int, list[dict]]:
+    if not product_ids:
+        return {}
+    rows = clean_row(fetch_all("""
+        SELECT oi.product_id,
+               COALESCE(o.fulfilled_at::date, o.order_date) AS sale_date,
+               COALESCE(SUM(oi.quantity), 0) AS quantity
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.order_id
+        JOIN inventory_items p ON p.item_id = oi.product_id
+        WHERE o.order_type = 'reseller'
+          AND o.status = 'fulfilled'
+          AND p.item_type = 'finished_product'
+          AND oi.product_id = ANY(%s)
+          AND COALESCE(o.fulfilled_at::date, o.order_date) BETWEEN %s AND %s
+        GROUP BY oi.product_id, COALESCE(o.fulfilled_at::date, o.order_date)
+        ORDER BY oi.product_id, sale_date;
+    """, (product_ids, start_date, end_date)))
+    grouped: dict[int, list[dict]] = {product_id: [] for product_id in product_ids}
+    for row in rows:
+        grouped.setdefault(row["product_id"], []).append(row)
+    return grouped
+
+
+def forecast_business_events(start_date: date, end_date: date):
+    import pandas as pd
+
+    rows = []
+    for year in range(start_date.year, end_date.year + 1):
+        for month in range(1, 13):
+            rows.append({
+                "holiday": "payday_window",
+                "ds": date(year, month, 15),
+                "lower_window": -1,
+                "upper_window": 1,
+                "prior_scale": FORECAST_EVENT_PRIOR_SCALE,
+            })
+            rows.append({
+                "holiday": "month_end_payday_window",
+                "ds": date(year, month, calendar.monthrange(year, month)[1]),
+                "lower_window": -1,
+                "upper_window": 1,
+                "prior_scale": FORECAST_EVENT_PRIOR_SCALE,
+            })
+        rows.extend([
+            {
+                "holiday": "christmas_rush",
+                "ds": date(year, 12, 24),
+                "lower_window": -8,
+                "upper_window": 1,
+                "prior_scale": FORECAST_EVENT_PRIOR_SCALE,
+            },
+            {
+                "holiday": "new_year_rush",
+                "ds": date(year, 12, 31),
+                "lower_window": -2,
+                "upper_window": 1,
+                "prior_scale": FORECAST_EVENT_PRIOR_SCALE,
+            },
+            {
+                "holiday": "batangas_sublian_foundation_season",
+                "ds": date(year, 7, 23),
+                "lower_window": -13,
+                "upper_window": 0,
+                "prior_scale": FORECAST_EVENT_PRIOR_SCALE,
+            },
+        ])
+    frame = pd.DataFrame(rows)
+    return frame[(frame["ds"] >= start_date) & (frame["ds"] <= end_date)]
+
+
+def prophet_product_forecast(history_rows: list[dict], forecast_horizon_days: int) -> dict:
+    os.environ.setdefault("MPLCONFIGDIR", tempfile.gettempdir())
+    logging.getLogger("prophet").setLevel(logging.ERROR)
+    logging.getLogger("cmdstanpy").setLevel(logging.WARNING)
+    try:
+        import pandas as pd
+        from prophet import Prophet
+    except Exception as exc:
+        raise RuntimeError("Prophet is unavailable") from exc
+
+    forecast_end = date.today() + timedelta(days=forecast_horizon_days)
+    history_start = min(row["sale_date"] for row in history_rows)
+    custom_holidays = forecast_business_events(history_start, forecast_end)
+    frame = pd.DataFrame(
+        {
+            "ds": [row["sale_date"] for row in history_rows],
+            "y": [float(row["quantity"]) for row in history_rows],
+        }
+    )
+    model = Prophet(
+        daily_seasonality=False,
+        weekly_seasonality=True,
+        yearly_seasonality=False,
+        holidays=custom_holidays,
+        holidays_prior_scale=FORECAST_EVENT_PRIOR_SCALE,
+    )
+    model.add_country_holidays(country_name="PH")
+    model.fit(frame)
+    future = model.make_future_dataframe(periods=forecast_horizon_days, freq="D", include_history=False)
+    forecast = model.predict(future).tail(1).iloc[0]
+    predicted = max(0, round(float(forecast["yhat"]), 1))
+    lower = max(0, round(float(forecast.get("yhat_lower", predicted)), 1))
+    upper = max(lower, round(float(forecast.get("yhat_upper", predicted)), 1))
+    return {
+        "forecast_date": forecast["ds"].date(),
+        "predicted_quantity": predicted,
+        "confidence_lower": lower,
+        "confidence_upper": upper,
+        "method": "Prophet",
+    }
+
+
+def baseline_product_forecast(history_rows: list[dict], available: float, forecast_horizon_days: int) -> dict:
+    forecast_date = date.today() + timedelta(days=forecast_horizon_days)
+    quantities = [float(row["quantity"]) for row in history_rows if float(row["quantity"]) > 0]
+    if quantities:
+        predicted = round(sum(quantities) / len(quantities), 1)
+    else:
+        predicted = round(max(float(available) * 0.42, 1), 1)
+    predicted = max(1, predicted)
+    lower = max(0, round(predicted * 0.85, 1))
+    upper = max(lower, round(predicted * 1.15, 1))
+    return {
+        "forecast_date": forecast_date,
+        "predicted_quantity": predicted,
+        "confidence_lower": lower,
+        "confidence_upper": upper,
+        "method": "Baseline fallback",
+    }
+
 
 def add_forecast(model_name: str, forecast_horizon_days: int) -> None:
     owner = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'owner' LIMIT 1;")
     owner_id = owner["account_id"] if owner else None
-    
+    today_value = date.today()
+    history_start = today_value - timedelta(days=FORECAST_HISTORY_DAYS)
+
     run = execute_write("""
         INSERT INTO forecast_runs (run_by_account_id, model_name, input_period_start, input_period_end, forecast_horizon_days, status, started_at, completed_at, notes)
-        VALUES (%s, %s, %s, %s, %s, 'completed', %s, %s, 'Forecast run generated from dashboard.')
+        VALUES (%s, %s, %s, %s, %s, 'completed', %s, %s, %s)
         RETURNING forecast_run_id;
-    """, (owner_id, model_name, date.today() - timedelta(days=30), date.today(), forecast_horizon_days, datetime.now(), datetime.now()), returning=True)
+    """, (
+        owner_id,
+        model_name,
+        history_start,
+        today_value,
+        forecast_horizon_days,
+        datetime.now(),
+        datetime.now(),
+        f"Prophet demand forecast using {FORECAST_HISTORY_DAYS} days of fulfilled reseller order history, Philippine holidays, paydays, Christmas/New Year demand windows, and Batangas/Sublian season; baseline fallback used when history is insufficient.",
+    ), returning=True)
     
     run_id = run["forecast_run_id"]
     
-    prods = fetch_all("""
+    products = fetch_all("""
         SELECT item_id AS product_id, name
         FROM inventory_items
         WHERE item_type = 'finished_product';
     """)
-    for p in prods:
+    product_ids = [product["product_id"] for product in products]
+    histories = product_sales_history(product_ids, history_start, today_value)
+    methods_used = set()
+
+    for product in products:
         avail_res = fetch_one("""
             SELECT COALESCE(SUM(quantity_available), 0) AS val
             FROM inventory_batches
             WHERE item_id = %s
               AND quality_status = 'approved'
               AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE);
-        """, (p["product_id"],))
+        """, (product["product_id"],))
         avail = float(avail_res["val"])
-        pred = max(1, round(avail * 0.42, 1))
+        history_rows = histories.get(product["product_id"], [])
+        nonzero_points = [row for row in history_rows if float(row["quantity"]) > 0]
+        try:
+            if len(nonzero_points) >= PROPHET_MIN_HISTORY_POINTS:
+                forecast = prophet_product_forecast(nonzero_points, forecast_horizon_days)
+            else:
+                forecast = baseline_product_forecast(history_rows, avail, forecast_horizon_days)
+        except Exception:
+            forecast = baseline_product_forecast(history_rows, avail, forecast_horizon_days)
+        methods_used.add(forecast["method"])
         
         execute_write("""
             INSERT INTO forecast_results (forecast_run_id, product_id, forecast_date, predicted_quantity, confidence_lower, confidence_upper)
             VALUES (%s, %s, %s, %s, %s, %s);
-        """, (run_id, p["product_id"], date.today() + timedelta(days=forecast_horizon_days), pred, max(0, pred - 5), pred + 5))
+        """, (
+            run_id,
+            product["product_id"],
+            forecast["forecast_date"],
+            forecast["predicted_quantity"],
+            forecast["confidence_lower"],
+            forecast["confidence_upper"],
+        ))
+
+    execute_write("""
+        UPDATE forecast_runs
+        SET notes = %s
+        WHERE forecast_run_id = %s;
+    """, (
+        f"Completed with: {', '.join(sorted(methods_used))}. Prophet uses fulfilled reseller order quantities with Philippine holidays, payday windows, Christmas/New Year windows, and Batangas/Sublian season; baseline fallback covers products with fewer than {PROPHET_MIN_HISTORY_POINTS} selling days.",
+        run_id,
+    ))
         
     add_log("Owner", "forecast_completed", model_name)
     create_notification(

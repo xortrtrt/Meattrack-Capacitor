@@ -6,7 +6,7 @@
     <title>Store | Batangas Premium</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/public.css') }}?v=20260720-mobile-safe-1"
+      href="{{ url_for('static', path='css/public.css') }}?v=20260722-mobile-hero-logo-1"
     />
   </head>
   <body>
@@ -30,6 +30,9 @@
           <span>Menu</span>
         </button>
         <ul class="nav-links" id="public-nav" data-mobile-nav>
+          <li class="mobile-drawer-brand" aria-hidden="true">
+            <img src="{{ 'batangas_premium.png'|media_url }}" alt="" />
+          </li>
           <li><a href="/products">Store</a></li>
           <li><a href="/about">About Us</a></li>
           <li><a href="/partnerships">Partnerships</a></li>
@@ -159,6 +162,6 @@
     </footer>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260720-redesign-1"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260722-chatbot-persist-1"></script>
   </body>
 </html>

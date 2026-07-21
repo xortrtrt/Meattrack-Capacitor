@@ -20,7 +20,13 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import repositories as data
 from app.chatbot import process_chatbot_message
-from app.emailer import send_reseller_credentials
+from app.emailer import (
+    send_inquiry_status_update,
+    send_login_otp,
+    send_password_change_otp,
+    send_portal_credentials,
+    send_reseller_credentials,
+)
 from app.config import APP_ENV, CONSENT_VERSION, MEDIA_BASE_URL, SESSION_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL
 
 
@@ -40,11 +46,14 @@ class CachedStaticFiles(StaticFiles):
 
 
 app = FastAPI(title="MEATTRACK", version="0.1.0")
+PUBLIC_SESSION_SECONDS = 24 * 60 * 60
+PORTAL_SESSION_SECONDS = 2 * 60 * 60
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET_KEY,
     same_site="lax",
     https_only=APP_ENV == "production",
+    max_age=PUBLIC_SESSION_SECONDS,
 )
 app.mount("/static", CachedStaticFiles(directory=BASE_DIR / "static"), name="static")
 
@@ -456,15 +465,160 @@ def reseller_profile_context(request: Request) -> dict:
     return {
         "account_profile": account,
         "reseller_profile": reseller_profile,
+        "password_otp_pending": request.query_params.get("otp") == "1",
+    }
+
+
+def team_leader_profile_context(request: Request) -> dict:
+    account_id = session_account_id(request)
+    account = data.account_portal_profile(account_id) if account_id is not None else None
+    return {
+        "account_profile": account,
+        "password_otp_pending": request.query_params.get("otp") == "1",
+    }
+
+
+OWNER_SALES_PERIOD_OPTIONS = [
+    ("daily", "Daily"),
+    ("weekly", "Weekly"),
+    ("monthly", "Monthly"),
+    ("quarterly", "Quarterly"),
+    ("yearly", "Yearly"),
+]
+
+
+def add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def owner_sales_period_points(granularity: str, today_value: date) -> tuple[date, list[dict]]:
+    if granularity == "weekly":
+        end_week = today_value - timedelta(days=today_value.weekday())
+        start = end_week - timedelta(weeks=11)
+        points = [
+            {
+                "key": week_start.isoformat(),
+                "label": week_start.strftime("%b %d"),
+            }
+            for week_start in (start + timedelta(weeks=offset) for offset in range(12))
+        ]
+        return start, points
+
+    if granularity == "monthly":
+        start = add_months(today_value.replace(day=1), -11)
+        points = [
+            {
+                "key": month_start.strftime("%Y-%m"),
+                "label": month_start.strftime("%b %Y"),
+            }
+            for month_start in (add_months(start, offset) for offset in range(12))
+        ]
+        return start, points
+
+    if granularity == "quarterly":
+        current_quarter_month = ((today_value.month - 1) // 3) * 3 + 1
+        current_quarter = date(today_value.year, current_quarter_month, 1)
+        start = add_months(current_quarter, -21)
+        points = []
+        for offset in range(8):
+            quarter_start = add_months(start, offset * 3)
+            quarter = ((quarter_start.month - 1) // 3) + 1
+            points.append({
+                "key": f"{quarter_start.year}-Q{quarter}",
+                "label": f"Q{quarter} {quarter_start.year}",
+            })
+        return start, points
+
+    if granularity == "yearly":
+        start = date(today_value.year - 4, 1, 1)
+        points = [
+            {
+                "key": str(year),
+                "label": str(year),
+            }
+            for year in range(start.year, today_value.year + 1)
+        ]
+        return start, points
+
+    start = today_value - timedelta(days=30)
+    points = [
+        {
+            "key": current_day.isoformat(),
+            "label": current_day.strftime("%b %d"),
+        }
+        for current_day in (start + timedelta(days=offset) for offset in range((today_value - start).days + 1))
+    ]
+    return start, points
+
+
+def owner_sales_bucket_key(value: object, granularity: str) -> str:
+    if hasattr(value, "date"):
+        value = value.date()
+    if isinstance(value, str):
+        value = date.fromisoformat(value[:10])
+    if not isinstance(value, date):
+        raise ValueError("sale_date must be a date")
+
+    if granularity == "weekly":
+        return (value - timedelta(days=value.weekday())).isoformat()
+    if granularity == "monthly":
+        return value.strftime("%Y-%m")
+    if granularity == "quarterly":
+        quarter = ((value.month - 1) // 3) + 1
+        return f"{value.year}-Q{quarter}"
+    if granularity == "yearly":
+        return str(value.year)
+    return value.isoformat()
+
+
+def owner_sales_chart_context(request: Request | None = None) -> dict:
+    today_value = date.today()
+    requested_period = request.query_params.get("sales_period", "daily") if request is not None else "daily"
+    sales_period = requested_period if requested_period in {key for key, _ in OWNER_SALES_PERIOD_OPTIONS} else "daily"
+    sales_start, sales_points = owner_sales_period_points(sales_period, today_value)
+    sales_series = data.reseller_sales_series(sales_start, today_value, "fulfilled")
+    sales_chart_total = sum(row["total_sales"] for row in sales_series)
+    sales_chart_orders = sum(row["order_count"] for row in sales_series)
+    sales_by_bucket = {point["key"]: {"sales": 0, "orders": 0} for point in sales_points}
+    for row in sales_series:
+        bucket_key = owner_sales_bucket_key(row["sale_date"], sales_period)
+        if bucket_key in sales_by_bucket:
+            sales_by_bucket[bucket_key]["sales"] += row["total_sales"]
+            sales_by_bucket[bucket_key]["orders"] += row["order_count"]
+    sales_chart_rows = [
+        {
+            "label": point["label"],
+            "sales": sales_by_bucket[point["key"]]["sales"],
+            "orders": sales_by_bucket[point["key"]]["orders"],
+        }
+        for point in sales_points
+    ]
+    return {
+        "owner_sales_chart": sales_chart_rows,
+        "owner_sales_chart_total": sales_chart_total,
+        "owner_sales_chart_orders": sales_chart_orders,
+        "owner_sales_period": sales_period,
+        "owner_sales_period_options": OWNER_SALES_PERIOD_OPTIONS,
+        "owner_sales_chart_range": {
+            "start": sales_start.isoformat(),
+            "end": today_value.isoformat(),
+        },
     }
 
 
 def _owner_dashboard_context(request: Request) -> dict:
-    return {
+    chart_context = owner_sales_chart_context(request)
+    context = {
         "metrics": data.current_metrics(),
-        "products": data.list_products(),
-        "forecasts": data.list_forecasts(limit=5),
+        "products": data.list_products(page=1, page_size=8),
+        "forecasts": data.list_forecasts(limit=6),
+        "top_products": data.reseller_most_bought_products(limit=5),
     }
+    context.update(chart_context)
+    return context
 
 
 def _team_dashboard_context(request: Request) -> dict:
@@ -509,14 +663,17 @@ PORTAL_SECTION_LOADERS = {
         "sales_reports_page": (page := reports_page(request, "team_leader")),
         "sales_reports": page["items"],
     },
-    ("owner", "forecasts"): lambda request: {"forecasts_page": (page := forecasts_page(request)), "forecasts": page["items"]},
+    ("owner", "forecasts"): lambda request: {
+        "forecasts_page": (page := forecasts_page(request)),
+        "forecasts": page["items"],
+        "latest_forecast_run": data.latest_forecast_run(),
+    },
     ("owner", "accounts"): lambda request: {
         "accounts_page": (page := accounts_page(request)),
         "accounts": page["items"],
         "team_leaders": page["team_leaders"],
         "reseller_assignments": page["reseller_assignments"],
     },
-    ("owner", "logs"): lambda request: {"activity_logs_page": (page := logs_page(request)), "activity_logs": page["items"]},
     ("team-leader", "dashboard"): _team_dashboard_context,
     ("team-leader", "sales"): lambda request: {
         "products": data.list_products(),
@@ -550,6 +707,7 @@ PORTAL_SECTION_LOADERS = {
         "team_report_sales": data.team_sales_report_entries(team_leader_account_id=session_account_id(request)),
         "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=session_account_id(request)),
     },
+    ("team-leader", "profile"): team_leader_profile_context,
     ("reseller", "dashboard"): reseller_dashboard_context,
     ("reseller", "order"): lambda request: {
         "products_page": (page := product_page(request, page_size=8)),
@@ -651,16 +809,21 @@ async def parse_payment_proof_attachments(uploads: list[UploadFile]) -> list[dic
     return attachments
 
 
-def safe_portal_path(role_key: str, section: str, message: str = "", error: str = "") -> str:
+def safe_portal_path(role_key: str, section: str, message: str = "", error: str = "", **extra_params: str) -> str:
     if role_key not in data.roles:
         raise HTTPException(status_code=404)
-    if section not in {item[0] for item in data.portal_nav[role_key]}:
+    if role_key == "team-leader":
+        allowed_sections = {item[0] for nav in data.team_leader_nav_by_role.values() for item in nav}
+    else:
+        allowed_sections = {item[0] for item in data.portal_nav[role_key]}
+    if section not in allowed_sections:
         raise HTTPException(status_code=404)
-    query = ""
+    params = {key: value for key, value in extra_params.items() if value}
     if message:
-        query = "?" + urlencode({"message": message})
+        params["message"] = message
     if error:
-        query = "?" + urlencode({"error": error})
+        params["error"] = error
+    query = "?" + urlencode(params) if params else ""
     return f"/portal/{role_key}/{section}{query}"
 
 
@@ -728,10 +891,29 @@ def establish_portal_session(request: Request, account: dict) -> RedirectRespons
     request.session["role_key"] = role
     request.session["account_name"] = account["name"]
     request.session["account_email"] = account["email"]
+    request.session["portal_expires_at"] = int(datetime.now().timestamp()) + PORTAL_SESSION_SECONDS
     if role == "team-leader":
         request.session["team_leader_role"] = account.get("team_leader_role") or "sales"
     data.add_log(account["name"], "login", data.roles[role]["label"])
     return redirect_to(safe_portal_path(role, data.default_section_for(role, account.get("team_leader_role"))))
+
+
+def begin_login_otp(request: Request, account: dict, consent_source: str = "password_otp") -> RedirectResponse:
+    pending = data.request_login_otp(account["account_id"])
+    sent, email_message = send_login_otp(
+        to_email=account["email"],
+        name=account["name"],
+        otp_code=pending["otp_code"],
+    )
+    if not sent:
+        data.cancel_login_otp(account["account_id"], pending.get("otp_id"))
+        raise ValueError(email_message)
+    request.session.clear()
+    request.session["pending_login_account_id"] = account["account_id"]
+    request.session["pending_login_email"] = account["email"]
+    request.session["pending_login_consent_version"] = CONSENT_VERSION
+    request.session["pending_login_consent_source"] = consent_source
+    return redirect_to(path_with_query("/login", message="OTP sent to your account email. Enter it below to finish signing in."))
 
 
 @app.get("/media/{filename}")
@@ -746,8 +928,15 @@ async def media_asset(filename: str):
 
 
 def require_portal_session(request: Request, role_key: str) -> RedirectResponse | None:
-    if request.session.get("role_key") == role_key:
+    expires_at = request.session.get("portal_expires_at")
+    try:
+        expired = int(expires_at) <= int(datetime.now().timestamp())
+    except (TypeError, ValueError):
+        expired = True
+    if request.session.get("role_key") == role_key and not expired:
         return None
+    if request.session.get("role_key"):
+        request.session.clear()
     return redirect_to(path_with_query("/login", error="Please sign in to access that portal."))
 
 
@@ -758,8 +947,27 @@ def public_products() -> list[dict]:
         return []
 
 
+def dispatch_due_inquiry_followups() -> None:
+    try:
+        inquiries = data.due_inquiry_followups(limit=20)
+    except Exception:
+        return
+    for inquiry in inquiries:
+        sent, _message = send_inquiry_status_update(
+            to_email=inquiry["email"],
+            name=inquiry["name"],
+            business_name=inquiry["business_name"],
+        )
+        if sent:
+            try:
+                data.mark_inquiry_followup_sent(int(inquiry["inquiry_id"]))
+            except Exception:
+                continue
+
+
 @app.get("/")
 async def landing(request: Request, message: str = "", error: str = ""):
+    dispatch_due_inquiry_followups()
     return templates.TemplateResponse(
         request,
         "landing.html",
@@ -806,6 +1014,7 @@ async def create_public_inquiry(
 
 @app.post("/api/chatbot")
 async def chatbot_api(request: Request):
+    dispatch_due_inquiry_followups()
     payload = await request.json()
     message = str(payload.get("message", "")).strip()
     if len(message) < 2:
@@ -846,6 +1055,7 @@ async def chatbot_api(request: Request):
 
 @app.get("/login")
 async def login(request: Request, message: str = "", error: str = ""):
+    pending_login_account_id = request.session.get("pending_login_account_id")
     return templates.TemplateResponse(
         request,
         "login.html",
@@ -856,6 +1066,8 @@ async def login(request: Request, message: str = "", error: str = ""):
             "error": error,
             "social_auth_enabled": supabase_auth_ready(),
             "consent_version": CONSENT_VERSION,
+            "login_otp_pending": bool(pending_login_account_id),
+            "pending_login_email": request.session.get("pending_login_email", ""),
         },
     )
 
@@ -890,7 +1102,26 @@ async def submit_login(
     if account is None:
         return redirect_to(path_with_query("/login", error="Invalid email or password."))
 
-    data.record_user_consent(account["account_id"], CONSENT_VERSION, "password")
+    try:
+        return begin_login_otp(request, account, "password_otp")
+    except ValueError as exc:
+        return redirect_to(path_with_query("/login", error=str(exc)))
+
+
+@app.post("/login/otp")
+async def submit_login_otp(request: Request, otp_code: str = Form(...)):
+    account_id = request.session.get("pending_login_account_id")
+    if not account_id:
+        return redirect_to(path_with_query("/login", error="Login OTP session expired. Please sign in again."))
+    try:
+        account = data.confirm_login_otp(int(account_id), otp_code)
+        data.record_user_consent(
+            account["account_id"],
+            request.session.get("pending_login_consent_version") or CONSENT_VERSION,
+            request.session.get("pending_login_consent_source") or "password_otp",
+        )
+    except (TypeError, ValueError) as exc:
+        return redirect_to(path_with_query("/login", error=str(exc)))
     return establish_portal_session(request, account)
 
 
@@ -964,8 +1195,10 @@ async def auth_callback(request: Request, code: str = "", state: str = "", error
         request.session.clear()
         return redirect_to(path_with_query("/login", error="No portal account exists for this social login. Please use the credentials provided by Batangas Premium."))
 
-    data.record_user_consent(account["account_id"], CONSENT_VERSION, f"oauth:{provider}", provider)
-    return establish_portal_session(request, account)
+    try:
+        return begin_login_otp(request, account, f"oauth_otp:{provider}")
+    except ValueError as exc:
+        return redirect_to(path_with_query("/login", error=str(exc)))
 
 
 @app.get("/logout")
@@ -1002,6 +1235,23 @@ async def portal_default(request: Request, role_key: str):
     if guard:
         return guard
     return redirect_to(f"/portal/{role_key}/{data.default_section_for(role_key, session_team_leader_role(request))}")
+
+
+@app.get("/portal/owner/dashboard/sales-chart")
+async def owner_dashboard_sales_chart(request: Request):
+    guard = require_portal_session(request, "owner")
+    if guard:
+        return guard
+    chart_context = owner_sales_chart_context(request)
+    return JSONResponse(
+        {
+            "period": chart_context["owner_sales_period"],
+            "range": chart_context["owner_sales_chart_range"],
+            "total": chart_context["owner_sales_chart_total"],
+            "orders": chart_context["owner_sales_chart_orders"],
+            "rows": chart_context["owner_sales_chart"],
+        }
+    )
 
 
 @app.get("/portal/team-leader/inventory-items")
@@ -1084,7 +1334,7 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "unread_notifications": data.unread_notification_count(role_key, request.session.get("account_id")),
     }
     context.update(portal_section_context(role_key, section, request))
-    if role_key == "team-leader" and section == "inquiries":
+    if (role_key == "team-leader" and section == "inquiries") or (role_key == "owner" and section == "accounts"):
         context["credential_flash"] = request.session.pop("credential_flash", None)
 
     return templates.TemplateResponse(
@@ -1213,10 +1463,100 @@ async def reseller_profile_password(
     try:
         if new_password != confirm_password:
             raise ValueError("New password and confirmation do not match.")
-        data.change_account_password(account_id, current_password, new_password)
+        pending = data.request_reseller_password_change(account_id, current_password, new_password)
+        sent, email_message = send_password_change_otp(
+            to_email=pending["email"],
+            name=pending["name"],
+            otp_code=pending["otp_code"],
+        )
+        if not sent:
+            data.cancel_reseller_password_change(account_id, pending.get("otp_id"))
+            raise ValueError(email_message)
     except ValueError as exc:
         return redirect_to(safe_portal_path("reseller", "profile", error=str(exc)))
+    return redirect_to(safe_portal_path("reseller", "profile", otp="1", message="OTP sent to your account email. Enter it below to confirm your password change."))
+
+
+@app.post("/portal/reseller/profile/password/confirm")
+async def reseller_profile_password_confirm(request: Request, otp_code: str = Form(...)):
+    guard = require_portal_session(request, "reseller")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    if account_id is None:
+        return redirect_to(safe_portal_path("reseller", "profile", error="Your session expired. Please sign in again."))
+    try:
+        data.confirm_reseller_password_change(account_id, otp_code)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("reseller", "profile", otp="1", error=str(exc)))
     return redirect_to(safe_portal_path("reseller", "profile", message="Password updated."))
+
+
+@app.post("/portal/team-leader/profile/password")
+async def team_leader_profile_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    if account_id is None:
+        return redirect_to(safe_portal_path("team-leader", "profile", error="Your session expired. Please sign in again."))
+    try:
+        if new_password != confirm_password:
+            raise ValueError("New password and confirmation do not match.")
+        pending = data.request_account_password_change(account_id, current_password, new_password, ("team_leader",))
+        sent, email_message = send_password_change_otp(
+            to_email=pending["email"],
+            name=pending["name"],
+            otp_code=pending["otp_code"],
+        )
+        if not sent:
+            data.cancel_account_password_change(account_id, pending.get("otp_id"))
+            raise ValueError(email_message)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "profile", error=str(exc)))
+    return redirect_to(safe_portal_path("team-leader", "profile", otp="1", message="OTP sent to your account email. Enter it below to confirm your password change."))
+
+
+@app.post("/portal/team-leader/profile/password/confirm")
+async def team_leader_profile_password_confirm(request: Request, otp_code: str = Form(...)):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    if account_id is None:
+        return redirect_to(safe_portal_path("team-leader", "profile", error="Your session expired. Please sign in again."))
+    try:
+        data.confirm_account_password_change(account_id, otp_code, ("team_leader",))
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "profile", otp="1", error=str(exc)))
+    return redirect_to(safe_portal_path("team-leader", "profile", message="Password updated."))
+
+
+@app.post("/portal/reseller/profile")
+async def reseller_profile_update(
+    request: Request,
+    name: str = Form(...),
+    business_name: str = Form(...),
+    contact_number: str = Form(...),
+    address: str = Form(...),
+):
+    guard = require_portal_session(request, "reseller")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    if account_id is None:
+        return redirect_to(safe_portal_path("reseller", "profile", error="Your session expired. Please sign in again."))
+    try:
+        data.update_reseller_profile(account_id, name, business_name, contact_number, address)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("reseller", "profile", error=str(exc)))
+    request.session["account_name"] = " ".join(name.strip().split())
+    return redirect_to(safe_portal_path("reseller", "profile", message="Profile updated."))
 
 
 @app.post("/portal/team-leader/sales")
@@ -1450,10 +1790,25 @@ async def owner_account(
         if len(name.strip()) < 2:
             raise ValueError("Account name is required.")
         email = require_email(email)
-        data.add_account(account_type, name, email, team_leader_role=team_leader_role)
+        account = data.add_account(account_type, name, email, team_leader_role=team_leader_role)
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
-    return redirect_to(safe_portal_path("owner", "accounts", message="Account created."))
+    account_label = "team leader" if account_type == "team_leader" else "owner"
+    sent, email_message = send_portal_credentials(
+        to_email=account["email"],
+        name=account["name"],
+        temporary_password=account["temporary_password"],
+        account_label=account_label,
+    )
+    if not sent:
+        request.session["credential_flash"] = {
+            "email": account["email"],
+            "temporary_password": account["temporary_password"],
+            "business_name": account["name"],
+            "reason": email_message,
+        }
+        return redirect_to(safe_portal_path("owner", "accounts", message="Account created. Email was not sent, so show the credentials below once."))
+    return redirect_to(safe_portal_path("owner", "accounts", message="Account created and credentials were emailed."))
 
 
 @app.post("/portal/owner/resellers/{reseller_id}/team-leader")

@@ -18,6 +18,14 @@
         <dd>{{ reseller_profile.business_name if reseller_profile else "Pending reseller profile" }}</dd>
       </div>
       <div>
+        <dt>Contact number</dt>
+        <dd>{{ reseller_profile.contact_number if reseller_profile and reseller_profile.contact_number else "Not set" }}</dd>
+      </div>
+      <div>
+        <dt>Address</dt>
+        <dd>{{ reseller_profile.address if reseller_profile and reseller_profile.address else "Not set" }}</dd>
+      </div>
+      <div>
         <dt>Assigned sales leader</dt>
         <dd>
           {{ reseller_profile.team_leader_name if reseller_profile and reseller_profile.team_leader_name else "Unassigned" }}
@@ -31,8 +39,55 @@
 
   <article class="panel">
     <div class="panel-heading">
+      <h2>Edit personal information</h2>
+      <span class="hint">Your email is used for login and OTP confirmation, so it is not editable here.</span>
+    </div>
+    <form class="form-panel bare" action="/portal/reseller/profile" method="post">
+      <label>
+        Name / contact person
+        <input
+          required
+          type="text"
+          name="name"
+          value="{{ account_profile.name if account_profile else role.name }}"
+          autocomplete="name"
+        />
+      </label>
+      <label>
+        Business name
+        <input
+          required
+          type="text"
+          name="business_name"
+          value="{{ reseller_profile.business_name if reseller_profile else '' }}"
+          autocomplete="organization"
+        />
+      </label>
+      <label>
+        Contact number
+        <input
+          required
+          type="text"
+          name="contact_number"
+          value="{{ reseller_profile.contact_number if reseller_profile and reseller_profile.contact_number else '' }}"
+          autocomplete="tel"
+        />
+      </label>
+      <label>
+        Address
+        <textarea required name="address" rows="3" autocomplete="street-address">{{ reseller_profile.address if reseller_profile and reseller_profile.address else '' }}</textarea>
+      </label>
+      <button class="button primary" type="submit">
+        <i data-lucide="save"></i>
+        Save profile
+      </button>
+    </form>
+  </article>
+
+  <article class="panel">
+    <div class="panel-heading">
       <h2>Change password</h2>
-      <span class="hint">Use this after receiving a temporary password.</span>
+      <span class="hint">Use 8+ characters with uppercase, lowercase, number, and special character. A 6-digit OTP will be sent after submitting.</span>
     </div>
     <form class="form-panel bare" action="/portal/reseller/profile/password" method="post">
       <label>
@@ -41,16 +96,17 @@
       </label>
       <label>
         New password
-        <input required type="password" name="new_password" minlength="8" autocomplete="new-password" />
+        <input required type="password" name="new_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" />
       </label>
       <label>
         Confirm new password
-        <input required type="password" name="confirm_password" minlength="8" autocomplete="new-password" />
+        <input required type="password" name="confirm_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" />
       </label>
       <button class="button primary" type="submit">
-        <i data-lucide="key-round"></i>
-        Update password
+        <i data-lucide="mail-check"></i>
+        Send OTP
       </button>
     </form>
   </article>
+
 </section>
