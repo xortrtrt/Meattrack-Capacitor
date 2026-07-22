@@ -25,6 +25,6 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_FROM_EMAIL
-        value: noreply@quikcpick.sbs
+        value: noreply@quickpick.sbs
       - key: BREVO_FROM_NAME
         value: Batangas Premium

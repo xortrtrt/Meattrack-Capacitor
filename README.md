@@ -165,7 +165,7 @@ secret values when prompted:
 - `DATABASE_URL`: the Supabase Session pooler URL on port 5432;
 - `MEDIA_BASE_URL`: the public Supabase Storage `meattrack-assets/images` URL;
 - `BREVO_API_KEY`: required on Render Free for login OTP and account emails;
-- `BREVO_FROM_EMAIL`: `noreply@quikcpick.sbs`, using the authenticated Brevo sender domain;
+- `BREVO_FROM_EMAIL`: `noreply@quickpick.sbs`, using the authenticated Brevo sender domain;
 - `BREVO_FROM_NAME`: optional display name, defaults to `Batangas Premium`;
 - `OPENROUTER_API_KEY`: optional; leave empty to use the local chatbot fallback.
 
