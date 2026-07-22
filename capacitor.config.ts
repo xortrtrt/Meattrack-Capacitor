@@ -1,6 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-const configuredUrl = process.env.MOBILE_APP_URL?.trim().replace(/\/$/, '');
+const defaultMobileAppUrl = 'https://meattrack-api.onrender.com';
+const configuredUrl = (process.env.MOBILE_APP_URL?.trim() || defaultMobileAppUrl).replace(/\/$/, '');
 const allowCleartext = process.env.CAPACITOR_ALLOW_CLEARTEXT === 'true';
 
 let server: CapacitorConfig['server'];
