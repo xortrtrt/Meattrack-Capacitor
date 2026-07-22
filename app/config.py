@@ -26,7 +26,7 @@ if MEDIA_BASE_URL and not MEDIA_BASE_URL.startswith("https://"):
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
-CONSENT_VERSION = os.getenv("CONSENT_VERSION", "2026-07-20")
+CONSENT_VERSION = os.getenv("CONSENT_VERSION", "2026-07-22")
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
 BREVO_API_URL = os.getenv("BREVO_API_URL", "https://api.brevo.com/v3/smtp/email").strip()

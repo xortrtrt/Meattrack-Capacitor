@@ -1003,7 +1003,15 @@ section {
   line-height: 1;
 }
 
+.policy-shell h2 {
+  margin: 28px 0 8px;
+  color: var(--black);
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
 .policy-shell p {
+  margin: 0 0 14px;
   color: var(--muted);
 }
 
