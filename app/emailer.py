@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import json
-import smtplib
-from email.message import EmailMessage
-from html import escape
 from urllib import error, request
 
 from app.config import (
@@ -11,31 +8,15 @@ from app.config import (
     BREVO_API_URL,
     BREVO_FROM_EMAIL,
     BREVO_FROM_NAME,
-    RESEND_API_KEY,
-    RESEND_API_URL,
-    RESEND_FROM_EMAIL,
-    SMTP_FROM_EMAIL,
-    SMTP_HOST,
-    SMTP_PASSWORD,
-    SMTP_PORT,
-    SMTP_USERNAME,
 )
-
-
-def smtp_ready() -> bool:
-    return bool(SMTP_HOST and SMTP_PORT and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM_EMAIL)
 
 
 def brevo_ready() -> bool:
     return bool(BREVO_API_KEY and BREVO_API_URL and BREVO_FROM_EMAIL)
 
 
-def resend_ready() -> bool:
-    return bool(RESEND_API_KEY and RESEND_API_URL and RESEND_FROM_EMAIL)
-
-
 def email_ready() -> bool:
-    return brevo_ready() or resend_ready() or smtp_ready()
+    return brevo_ready()
 
 
 def _send_via_brevo(*, to_email: str, subject: str, body: str) -> None:
@@ -63,48 +44,21 @@ def _send_via_brevo(*, to_email: str, subject: str, body: str) -> None:
     with request.urlopen(http_request, timeout=15) as response:
         if response.status >= 400:
             raise RuntimeError(f"Brevo returned HTTP {response.status}")
-
-
-def _send_via_resend(*, to_email: str, subject: str, body: str) -> None:
-    payload = json.dumps(
-        {
-            "from": RESEND_FROM_EMAIL,
-            "to": [to_email],
-            "subject": subject,
-            "text": body,
-            "html": f'<pre style="font-family: sans-serif; white-space: pre-wrap;">{escape(body)}</pre>',
-        }
-    ).encode("utf-8")
-    http_request = request.Request(
-        RESEND_API_URL,
-        data=payload,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {RESEND_API_KEY}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-    )
-    with request.urlopen(http_request, timeout=15) as response:
-        if response.status >= 400:
-            raise RuntimeError(f"Resend returned HTTP {response.status}")
-
-
-def _send_via_smtp(*, to_email: str, subject: str, body: str) -> None:
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = SMTP_FROM_EMAIL
-    message["To"] = to_email
-    message.set_content(body)
-
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-        server.starttls()
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.send_message(message)
+        response_body = response.read().decode("utf-8", errors="replace")
+        try:
+            result = json.loads(response_body or "{}")
+        except json.JSONDecodeError:
+            result = {}
+        message_id = result.get("messageId") or "unavailable"
+        print(f"Email delivery accepted via brevo: messageId={message_id} to={to_email}", flush=True)
 
 
 def _log_email_failure(provider: str, exc: Exception) -> None:
     detail = f"HTTP {exc.code}" if isinstance(exc, error.HTTPError) else exc.__class__.__name__
+    if isinstance(exc, error.HTTPError):
+        response_body = exc.read().decode("utf-8", errors="replace")[:500]
+        if response_body:
+            detail = f"{detail}: {response_body}"
     if isinstance(exc, error.URLError) and getattr(exc, "reason", None):
         detail = f"URL error: {exc.reason.__class__.__name__}"
     print(f"Email delivery failed via {provider}: {detail}", flush=True)
@@ -119,23 +73,7 @@ def _send_email(*, to_email: str, subject: str, body: str, failure_message: str,
             return False, failure_message
         return True, success_message
 
-    if resend_ready():
-        try:
-            _send_via_resend(to_email=to_email, subject=subject, body=body)
-        except Exception as exc:
-            _log_email_failure("resend", exc)
-            return False, failure_message
-        return True, success_message
-
-    if smtp_ready():
-        try:
-            _send_via_smtp(to_email=to_email, subject=subject, body=body)
-        except Exception as exc:
-            _log_email_failure("smtp", exc)
-            return False, failure_message
-        return True, success_message
-
-    return False, "Email delivery is not configured."
+    return False, "Brevo email delivery is not configured."
 
 
 def send_reseller_credentials(

@@ -1,0 +1,316 @@
+---
+title: MEATTRACK Full Technical Entity Relationship Diagram — Appendix
+---
+erDiagram
+    DEPARTMENTS {
+        bigint department_id PK
+        text department_name UK
+        text description
+        timestamptz created_at
+    }
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email UK
+        text password_hash
+        uuid auth_user_id UK
+        text auth_provider
+        text team_leader_role
+        boolean is_active
+        timestamptz created_at
+    }
+
+    ACTIVITY_LOGS {
+        bigint activity_log_id PK
+        bigint account_id FK
+        text action
+        text entity_type
+        bigint entity_id
+        timestamptz created_at
+    }
+
+    MEDIA_ASSETS {
+        bigint media_asset_id PK
+        text filename UK
+        text content_type
+        bytea content
+        int size_bytes
+        text checksum_sha256
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    INQUIRIES {
+        bigint inquiry_id PK
+        text name
+        text contact_number
+        text email
+        text business_name
+        text message
+        text status
+        bigint assigned_team_leader_account_id FK
+        bigint reviewed_by_account_id FK
+        timestamptz reviewed_at
+        timestamptz follow_up_sent_at
+        timestamptz created_at
+    }
+
+    RESELLERS {
+        bigint reseller_id PK
+        bigint inquiry_id FK,UK
+        text business_name
+        text contact_person
+        text email UK
+        text contact_number
+        text address
+        text reseller_status
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz approved_at
+        timestamptz created_at
+    }
+
+    INVENTORY_ITEMS {
+        bigint item_id PK
+        text item_type
+        text category
+        text name
+        text description
+        text unit
+        numeric base_price
+        numeric quantity_available
+        boolean is_active
+        timestamptz created_at
+    }
+
+    INVENTORY_BATCHES {
+        bigint batch_id PK
+        bigint item_id FK
+        text batch_code UK
+        text source_type
+        numeric quantity_received
+        numeric quantity_available
+        text unit
+        date received_date
+        date expiry_date
+        text quality_status
+        timestamptz created_at
+    }
+
+    PRODUCT_RECIPES {
+        bigint recipe_id PK
+        bigint product_item_id FK
+        bigint material_item_id FK
+        numeric quantity_required
+        text unit
+    }
+
+    ORDERS {
+        bigint order_id PK
+        text order_type
+        bigint reseller_id FK
+        bigint created_by_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz approved_at
+        timestamptz order_date
+        text status
+        timestamptz fulfilled_at
+        numeric total_amount
+        text notes
+    }
+
+    ORDER_ITEMS {
+        bigint order_item_id PK
+        bigint order_id FK
+        bigint product_id FK
+        numeric quantity
+        text unit
+        numeric unit_price
+        numeric line_total
+    }
+
+    ORDER_PAYMENT_PROOFS {
+        bigint order_payment_proof_id PK
+        bigint order_id FK
+        bigint uploaded_by_account_id FK
+        text filename
+        text content_type
+        bytea content
+        int size_bytes
+        text checksum_sha256
+        timestamptz uploaded_at
+    }
+
+    RESELLER_CART_ITEMS {
+        bigint cart_item_id PK
+        bigint account_id FK
+        bigint product_id FK
+        numeric quantity
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    SALES_REPORTS {
+        bigint sales_report_id PK
+        text report_source
+        bigint submitted_by_account_id FK
+        bigint reseller_id FK
+        bigint department_id FK
+        date period_start
+        date period_end
+        numeric total_sales
+        int total_orders
+        text notes
+        timestamptz submitted_at
+    }
+
+    SALES_REPORT_ITEMS {
+        bigint sales_report_item_id PK
+        bigint sales_report_id FK
+        bigint product_id FK
+        numeric quantity_sold
+        text unit
+        numeric unit_price
+        numeric line_total
+    }
+
+    SALES_REPORT_ATTACHMENTS {
+        bigint sales_report_attachment_id PK
+        bigint sales_report_id FK
+        text filename
+        text content_type
+        bytea content
+        int size_bytes
+        text checksum_sha256
+        timestamptz uploaded_at
+    }
+
+    ALERTS {
+        bigint alert_id PK
+        text alert_type
+        text severity
+        bigint product_id FK
+        bigint product_batch_id FK
+        bigint raw_material_id FK
+        text message
+        text status
+        timestamptz triggered_at
+    }
+
+    FORECAST_RUNS {
+        bigint forecast_run_id PK
+        bigint run_by_account_id FK
+        text model_name
+        date input_period_start
+        date input_period_end
+        int forecast_horizon_days
+        text status
+        timestamptz started_at
+        timestamptz completed_at
+        text notes
+    }
+
+    FORECAST_RESULTS {
+        bigint forecast_result_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+        date forecast_date
+        numeric predicted_quantity
+        numeric confidence_lower
+        numeric confidence_upper
+        timestamptz created_at
+    }
+
+    USER_CONSENTS {
+        bigint user_consent_id PK
+        bigint account_id FK
+        text policy_version
+        text consent_source
+        text provider
+        timestamptz accepted_at
+    }
+
+    ACCOUNT_PASSWORD_OTPS {
+        bigint account_password_otp_id PK
+        bigint account_id FK
+        text otp_hash
+        text pending_password_hash
+        timestamptz expires_at
+        timestamptz consumed_at
+        timestamptz created_at
+    }
+
+    ACCOUNT_LOGIN_OTPS {
+        bigint account_login_otp_id PK
+        bigint account_id FK
+        text otp_hash
+        timestamptz expires_at
+        timestamptz consumed_at
+        timestamptz created_at
+    }
+
+    NOTIFICATIONS {
+        bigint notification_id PK
+        bigint recipient_account_id FK
+        text recipient_role
+        text category
+        text severity
+        text title
+        text message
+        text target_url
+        text source_type
+        bigint source_id
+        text dedupe_key UK
+        timestamptz read_at
+        timestamptz created_at
+    }
+
+    RESELLERS o|--o{ ACCOUNTS : "linked portal identity"
+    ACCOUNTS o|--o{ ACTIVITY_LOGS : "records actions"
+
+    ACCOUNTS o|--o{ INQUIRIES : "assigned leader"
+    ACCOUNTS o|--o{ INQUIRIES : "reviewing leader"
+    INQUIRIES o|--o| RESELLERS : "becomes"
+    ACCOUNTS o|--o{ RESELLERS : "assigned sales leader"
+    ACCOUNTS o|--o{ RESELLERS : "approves"
+
+    INVENTORY_ITEMS ||--o{ INVENTORY_BATCHES : "stocked as"
+    INVENTORY_ITEMS ||--o{ PRODUCT_RECIPES : "finished product"
+    INVENTORY_ITEMS ||--o{ PRODUCT_RECIPES : "raw material ingredient"
+
+    RESELLERS o|--o{ ORDERS : "places"
+    ACCOUNTS o|--o{ ORDERS : "creates"
+    ACCOUNTS o|--o{ ORDERS : "approves"
+    ORDERS ||--|{ ORDER_ITEMS : "contains"
+    INVENTORY_ITEMS ||--o{ ORDER_ITEMS : "ordered product"
+    ORDERS ||--o{ ORDER_PAYMENT_PROOFS : "has proofs"
+    ACCOUNTS o|--o{ ORDER_PAYMENT_PROOFS : "uploads"
+
+    ACCOUNTS ||--o{ RESELLER_CART_ITEMS : "owns"
+    INVENTORY_ITEMS ||--o{ RESELLER_CART_ITEMS : "selected product"
+
+    ACCOUNTS o|--o{ SALES_REPORTS : "submits"
+    RESELLERS o|--o{ SALES_REPORTS : "reported reseller"
+    DEPARTMENTS o|--o{ SALES_REPORTS : "classifies"
+    SALES_REPORTS ||--o{ SALES_REPORT_ITEMS : "contains"
+    INVENTORY_ITEMS ||--o{ SALES_REPORT_ITEMS : "reported product"
+    SALES_REPORTS ||--o{ SALES_REPORT_ATTACHMENTS : "has attachments"
+
+    INVENTORY_ITEMS o|--o{ ALERTS : "product alert"
+    INVENTORY_ITEMS o|--o{ ALERTS : "raw material alert"
+    INVENTORY_BATCHES o|--o{ ALERTS : "batch alert"
+
+    ACCOUNTS o|--o{ FORECAST_RUNS : "starts"
+    FORECAST_RUNS ||--|{ FORECAST_RESULTS : "produces"
+    INVENTORY_ITEMS ||--o{ FORECAST_RESULTS : "forecasted product"
+
+    ACCOUNTS ||--o{ USER_CONSENTS : "accepts policies"
+    ACCOUNTS ||--o{ ACCOUNT_PASSWORD_OTPS : "requests password OTP"
+    ACCOUNTS ||--o{ ACCOUNT_LOGIN_OTPS : "requests login OTP"
+    ACCOUNTS o|--o{ NOTIFICATIONS : "receives"
+
+    %% MEDIA_ASSETS is intentionally relationship-free. It is a dormant rollback table;
+    %% active public product and branding images are stored in Supabase Storage.

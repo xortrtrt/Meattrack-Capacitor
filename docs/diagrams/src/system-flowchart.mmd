@@ -1,0 +1,102 @@
+---
+title: MEATTRACK System Flowchart — Process
+---
+flowchart TB
+    START(["Potential reseller visits MEATTRACK"])
+
+    subgraph PUBLIC["1. Public website and chatbot qualification"]
+        direction LR
+        EXPLORE["Explore products and company information"] --> ASK["Ask the chatbot a question"]
+        ASK --> INTENT{"Reseller or distributor interest?"}
+        INTENT -- "No" --> FAQ["Return approved FAQ or optional OpenRouter answer"]
+        FAQ --> ASK
+        INTENT -- "Yes" --> COLLECT["Collect name, business, email, phone, location, and interest"]
+        COLLECT --> VALID{"Inputs valid and details confirmed?"}
+        VALID -- "No" --> CORRECT["Show validation message and request correction"]
+        CORRECT --> COLLECT
+        VALID -- "Yes" --> CONNECT{"Visitor agrees to contact a team leader?"}
+        CONNECT -- "No" --> CANCEL_LEAD(["Details are not submitted"])
+        CONNECT -- "Yes" --> ASSIGN["Create inquiry and assign next available sales team leader"]
+    end
+
+    subgraph ONBOARD["2. Reseller onboarding"]
+        direction LR
+        ASSIGN --> REVIEW["Assigned sales team leader reviews inquiry"]
+        REVIEW --> INQUIRY_DECISION{"Approve inquiry?"}
+        INQUIRY_DECISION -- "Reject" --> REJECT_LEAD["Mark inquiry rejected"]
+        REJECT_LEAD --> LEAD_NOTICE["Record notification and end application"]
+        INQUIRY_DECISION -- "Approve" --> UNIQUE{"Email unused and leader still assigned?"}
+        UNIQUE -- "No" --> APPROVAL_ERROR["Keep inquiry assigned and show error toast"]
+        APPROVAL_ERROR --> REVIEW
+        UNIQUE -- "Yes" --> ACCOUNT["Transaction creates reseller profile and portal account"]
+        ACCOUNT --> CREDS["Brevo sends temporary credentials"]
+    end
+
+    subgraph ACCESS["3. Secure portal access"]
+        direction LR
+        CREDS --> LOGIN["Enter email, password, and consent"]
+        LOGIN --> LOGIN_VALID{"Credentials valid?"}
+        LOGIN_VALID -- "No" --> LOGIN_ERROR["Show error toast"]
+        LOGIN_ERROR --> LOGIN
+        LOGIN_VALID -- "Yes" --> OTP["Send and verify 6-digit login OTP"]
+        OTP --> OTP_VALID{"OTP valid and unexpired?"}
+        OTP_VALID -- "No" --> OTP_ERROR["Reject OTP and allow retry"]
+        OTP_ERROR --> OTP
+        OTP_VALID -- "Yes" --> SESSION["Create role-based portal session for 2 hours"]
+    end
+
+    subgraph ORDERING["4. Reseller ordering and approval"]
+        direction LR
+        SESSION --> CATALOG["Search/filter products and choose quantities"]
+        CATALOG --> CART["Add or update persistent cart"]
+        CART --> CHECKOUT["Submit cart as pending reseller order"]
+        CHECKOUT --> PROOF["Upload JPG, PNG, or WebP proof of payment"]
+        PROOF --> ORDER_REVIEW["Assigned sales leader reviews order and proof"]
+        ORDER_REVIEW --> ORDER_DECISION{"Decision"}
+        ORDER_DECISION -- "Missing proof" --> PROOF_REQUIRED["Block approval and request payment proof"]
+        PROOF_REQUIRED --> PROOF
+        ORDER_DECISION -- "Reject" --> REJECT_ORDER["Mark rejected and notify reseller"]
+        ORDER_DECISION -- "Approve" --> APPROVE_ORDER["Mark approved and notify reseller"]
+        APPROVE_ORDER --> FULFILL["Sales leader marks order fulfilled"]
+        FULFILL --> FEFO["Deduct finished-product batches using FEFO"]
+        FEFO --> SALES_DATA["Update purchase history, metrics, and notifications"]
+    end
+
+    subgraph INVENTORY["5. Inventory production workflow"]
+        direction LR
+        RAW["Inventory leader creates raw material or adds quantity"] --> RECIPE["Create finished product and recipe requirements"]
+        RECIPE --> PRODUCTION["Enter product, batch code, quantity, and expiry date"]
+        PRODUCTION --> MATERIAL_CHECK{"Recipe configured and materials sufficient?"}
+        MATERIAL_CHECK -- "No" --> MATERIAL_ERROR["Show error; do not change inventory"]
+        MATERIAL_ERROR --> RAW
+        MATERIAL_CHECK -- "Yes" --> DEDUCT_RAW["Deduct required raw materials in one transaction"]
+        DEDUCT_RAW --> CREATE_BATCH["Create approved production batch"]
+        CREATE_BATCH --> EXPIRY{"Expires within 7 days?"}
+        EXPIRY -- "Yes" --> EXPIRY_NOTICE["Create expiry alert and notification"]
+        EXPIRY -- "No" --> STOCK_READY["Finished stock available"]
+        EXPIRY_NOTICE --> STOCK_READY
+        STOCK_READY --> FEFO
+    end
+
+    subgraph REPORTING["6. Reporting, analytics, and forecasting"]
+        direction LR
+        SALES_DATA --> TL_TOTALS["Aggregate fulfilled sales for assigned resellers"]
+        TL_TOTALS --> TL_REPORT["Sales team leader submits report to owner"]
+        TL_REPORT --> OWNER_DASH["Owner reviews reports, metrics, sales trend, and top products"]
+        SALES_DATA --> HISTORY["Collect 180 days of fulfilled reseller-order quantities"]
+        HISTORY --> ENOUGH{"At least 3 non-zero selling days for product?"}
+        ENOUGH -- "Yes" --> PROPHET["Prophet uses weekly seasonality, PH holidays, paydays, and local demand windows"]
+        ENOUGH -- "No" --> BASELINE["Use baseline fallback from observed demand or available stock"]
+        PROPHET --> FORECAST_RESULT["Save predicted quantity and confidence bounds"]
+        BASELINE --> FORECAST_RESULT
+        FORECAST_RESULT --> OWNER_DASH
+    end
+
+    START --> EXPLORE
+
+    classDef decision fill:#FFF4C7,color:#17120A,stroke:#8B6C00,stroke-width:2px;
+    classDef error fill:#F8DEDA,color:#4A130D,stroke:#B23B2F,stroke-width:2px;
+    classDef success fill:#E8F2DE,color:#17320E,stroke:#658B45,stroke-width:2px;
+    class INTENT,VALID,CONNECT,INQUIRY_DECISION,UNIQUE,LOGIN_VALID,OTP_VALID,ORDER_DECISION,MATERIAL_CHECK,EXPIRY,ENOUGH decision;
+    class CORRECT,APPROVAL_ERROR,LOGIN_ERROR,OTP_ERROR,PROOF_REQUIRED,MATERIAL_ERROR,REJECT_LEAD,REJECT_ORDER error;
+    class ACCOUNT,SESSION,APPROVE_ORDER,FEFO,STOCK_READY,SALES_DATA,FORECAST_RESULT success;

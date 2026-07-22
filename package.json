@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Capacitor mobile shell for the MEATTRACK FastAPI application",
   "scripts": {
+    "diagrams:build": "node tools/render-diagrams.mjs",
     "mobile:sync": "cap sync",
     "mobile:android": "cap open android",
     "mobile:run:android": "cap run android",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
+    "@mermaid-js/mermaid-cli": "11.16.0",
     "typescript": "^5.9.0"
   }
 }

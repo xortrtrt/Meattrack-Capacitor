@@ -165,15 +165,12 @@ secret values when prompted:
 - `DATABASE_URL`: the Supabase Session pooler URL on port 5432;
 - `MEDIA_BASE_URL`: the public Supabase Storage `meattrack-assets/images` URL;
 - `BREVO_API_KEY`: required on Render Free for login OTP and account emails;
-- `BREVO_FROM_EMAIL`: a verified Brevo sender email, for example your Gmail address;
+- `BREVO_FROM_EMAIL`: `noreply@quikcpick.sbs`, using the authenticated Brevo sender domain;
 - `BREVO_FROM_NAME`: optional display name, defaults to `Batangas Premium`;
-- `RESEND_API_KEY`: optional alternate HTTPS email provider;
-- `RESEND_FROM_EMAIL`: required only if using Resend instead of Brevo;
 - `OPENROUTER_API_KEY`: optional; leave empty to use the local chatbot fallback.
 
-Render Free blocks outbound SMTP ports, so Gmail SMTP is only a local fallback.
-Production email delivery uses Brevo first when `BREVO_API_KEY` is set, then
-Resend if configured, then SMTP only for local or paid environments.
+Email delivery uses Brevo's HTTPS API for both local development and Render.
+Render Free blocks outbound SMTP ports, so SMTP variables are not used.
 
 Render generates `SESSION_SECRET_KEY` automatically. Once `/health` reports a
 connected database, use the service's `https://...onrender.com` URL as the

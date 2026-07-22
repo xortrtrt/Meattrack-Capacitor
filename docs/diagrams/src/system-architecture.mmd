@@ -1,0 +1,75 @@
+---
+title: MEATTRACK System Architecture - Technology
+---
+flowchart LR
+    USERS["Stakeholders<br/>Potential reseller<br/>Reseller<br/>Sales team leader<br/>Inventory team leader<br/>Owner"]
+
+    subgraph CLIENTS["Client and presentation layer"]
+        direction TB
+        WEB["Responsive web browser<br/>desktop - tablet - mobile"]
+        MOBILE["Capacitor 8 native shell<br/>Android and iOS WebViews"]
+        UI["Jinja2 HTML<br/>local CSS and vanilla JavaScript<br/>Chart.js analytics"]
+    end
+
+    subgraph RENDER["Render Docker web service"]
+        direction TB
+        EDGE["Public HTTPS endpoint"]
+        SERVER["Uvicorn ASGI server"]
+        FASTAPI["FastAPI application"]
+        AUTH["Session authentication and role authorization<br/>consent - login OTP - password OTP"]
+        SERVICES["Business services<br/>chatbot and inquiry assignment<br/>cart, orders, payment proof, FEFO fulfillment<br/>inventory, recipes, production, and batches<br/>reports, notifications, and Prophet forecasting"]
+        REPO["Repository layer"]
+        POOL["psycopg2 threaded connection pool"]
+        EDGE --> SERVER --> FASTAPI
+        FASTAPI --> AUTH
+        FASTAPI --> SERVICES
+        AUTH --> REPO
+        SERVICES --> REPO --> POOL
+    end
+
+    subgraph DATA["Supabase data services"]
+        direction TB
+        POSTGRES["Supabase PostgreSQL<br/>RLS enabled<br/>application access only through FastAPI"]
+        STORAGE["Supabase Storage public CDN<br/>product and branding images"]
+    end
+
+    subgraph EXTERNAL["External HTTPS services"]
+        direction TB
+        BREVO["Brevo transactional email API<br/>OTPs - credentials - inquiry follow-up"]
+        OPENROUTER["OpenRouter API<br/>optional AI chatbot response"]
+    end
+
+    subgraph DELIVERY["Source control, deployment, and mobile builds"]
+        direction TB
+        GITHUB["GitHub repository"]
+        ACTIONS["GitHub Actions"]
+        BUILDS["Android APK and iOS simulator artifacts"]
+        GITHUB -->|"auto-deploy"| EDGE
+        GITHUB --> ACTIONS --> BUILDS --> MOBILE
+    end
+
+    USERS --> WEB
+    USERS --> MOBILE
+    WEB -->|"HTTPS"| EDGE
+    MOBILE -->|"HTTPS"| EDGE
+    FASTAPI --> UI
+    UI --> WEB
+    UI --> MOBILE
+
+    POOL -->|"PostgreSQL protocol over TLS"| POSTGRES
+    WEB -->|"public image CDN over HTTPS"| STORAGE
+    MOBILE -->|"public image CDN over HTTPS"| STORAGE
+    AUTH -->|"REST over HTTPS"| BREVO
+    SERVICES -->|"OpenAI-compatible REST over HTTPS"| OPENROUTER
+
+    DB_NOTE["Database credentials remain server-side.<br/>Browser and Capacitor clients never connect directly to PostgreSQL."]
+    DB_NOTE -.-> REPO
+
+    classDef stakeholder fill:#21110E,color:#FFF9E8,stroke:#D9AD10,stroke-width:2px;
+    classDef external fill:#F3E3A4,color:#17120A,stroke:#8B6C00,stroke-width:2px;
+    classDef data fill:#E8F2DE,color:#17320E,stroke:#658B45,stroke-width:2px;
+    classDef note fill:#FFFDF7,color:#17120A,stroke:#6D5930,stroke-dasharray:5 4;
+    class USERS stakeholder;
+    class BREVO,OPENROUTER external;
+    class POSTGRES,STORAGE data;
+    class DB_NOTE note;

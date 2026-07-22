@@ -1,0 +1,75 @@
+---
+title: MEATTRACK Use Case Diagram - People
+---
+flowchart LR
+    subgraph ACTORS["Stakeholders"]
+        direction TB
+        POT["Potential reseller"]
+        RES["Reseller"]
+        STL["Sales team leader"]
+        ITL["Inventory team leader"]
+        OWN["Owner"]
+    end
+
+    subgraph SYS["MEATTRACK System"]
+        direction TB
+
+        subgraph SHARED["Public and shared services"]
+            direction LR
+            UC_PUBLIC(["Browse products and company information"])
+            UC_CHAT(["Ask chatbot FAQs; provide and confirm reseller details"])
+            UC_ASSIGN(["Submit inquiry and assign an available sales team leader"])
+            UC_LOGIN(["Sign in with password, consent, and email OTP"])
+            UC_PROFILE(["Update profile and change password using OTP"])
+            UC_NOTIFY(["View and mark portal notifications as read"])
+        end
+
+        subgraph ROLE_CASES["Role-based portal capabilities"]
+            direction LR
+            UC_RESELLER(["Reseller portal<br/>Search and filter products<br/>Manage cart quantities<br/>Submit order for approval<br/>Upload proof of payment<br/>Track order status and purchase analytics"])
+            UC_SALES(["Sales team leader portal<br/>Review assigned inquiries<br/>Approve or reject reseller onboarding<br/>Review payment proofs and assigned orders<br/>Approve, reject, or fulfill orders<br/>View reseller purchases and submit owner report"])
+            UC_INVENTORY(["Inventory team leader portal<br/>Manage raw materials and quantities<br/>Create products and recipes<br/>Produce batches and deduct ingredients<br/>Monitor stock, expiry, movement analytics<br/>Review inventory-only logs"])
+            UC_OWNER(["Owner portal<br/>View executive sales analytics<br/>Manage product prices<br/>Create owner and team leader accounts<br/>Assign resellers to sales leaders<br/>Review reports and run Prophet forecasts"])
+        end
+    end
+
+    subgraph SUPPORT["Supporting services"]
+        direction TB
+        BREVO["Brevo email API<br/>login/password OTPs<br/>temporary credentials<br/>24-hour inquiry follow-up"]
+        OPENROUTER["OpenRouter AI API<br/>optional chatbot answers"]
+    end
+
+    POT --- UC_PUBLIC
+    POT --- UC_CHAT
+    UC_CHAT --> UC_ASSIGN
+
+    RES --- UC_LOGIN
+    RES --- UC_RESELLER
+    RES --- UC_PROFILE
+    RES --- UC_NOTIFY
+
+    STL --- UC_LOGIN
+    STL --- UC_SALES
+    STL --- UC_PROFILE
+    STL --- UC_NOTIFY
+
+    ITL --- UC_LOGIN
+    ITL --- UC_INVENTORY
+    ITL --- UC_PROFILE
+    ITL --- UC_NOTIFY
+
+    OWN --- UC_LOGIN
+    OWN --- UC_OWNER
+    OWN --- UC_NOTIFY
+
+    UC_CHAT -. "AI-assisted response" .-> OPENROUTER
+    UC_ASSIGN -. "credentials and follow-up" .-> BREVO
+    UC_LOGIN -. "login OTP" .-> BREVO
+    UC_PROFILE -. "password-change OTP" .-> BREVO
+    UC_SALES -. "reseller credentials" .-> BREVO
+    UC_OWNER -. "account credentials" .-> BREVO
+
+    classDef actor fill:#21110E,color:#FFF9E8,stroke:#D9AD10,stroke-width:2px;
+    classDef external fill:#F3E3A4,color:#17120A,stroke:#8B6C00,stroke-width:2px;
+    class POT,RES,STL,ITL,OWN actor;
+    class BREVO,OPENROUTER external;
