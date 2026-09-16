@@ -1,60 +1,128 @@
 # MEATTRACK
 
-MEATTRACK is a FastAPI and Jinja2 application for Batangas Premium's public
-website and role-based owner, team-leader, and reseller portals.
+MEATTRACK is Batangas Premium's web-based operations platform. It combines the
+public product website with secure owner, sales team leader, inventory team
+leader, and reseller portals in one FastAPI application.
 
-## Architecture
+The current release is designed for Docker-based local development and an
+Ubuntu VPS deployment. It uses a private PostgreSQL 16 database, local static
+assets, Nginx, and optional Brevo and OpenRouter integrations. It does not
+require Supabase, Render, Capacitor, or a separate frontend application.
 
-- FastAPI with server-rendered Jinja2 templates
-- HTML, CSS, and vanilla JavaScript frontend
-- PostgreSQL accessed only by the FastAPI backend through `psycopg2`
-- Password authentication with optional email OTP confirmation
-- Product and branding images served from `app/static/img`
-- Docker Compose for local development and VPS deployment
+## Current features
 
-The Compose files pin PostgreSQL 16 to match the existing MEATTRACK data
-volume. Upgrade PostgreSQL major versions only through a tested dump/restore.
+### Public website
 
-The development and production environments use the same PostgreSQL engine.
-Production does not require a hosted database, object-storage service, or native
-mobile wrapper.
+- Product catalog, company, partnership, privacy, and terms pages
+- Batangas Premium support chatbot with a safe local FAQ fallback
+- Guided reseller lead collection through the chatbot
+- Automatic assignment of reseller inquiries to sales team leaders
+- Local product imagery, fonts, icons, and chart assets
 
-## Local development with Docker
+### Reseller portal
 
-Requirements: Docker Desktop with Docker Compose.
+- Dashboard with account and order summaries
+- Searchable product catalog and shopping cart
+- Checkout and order-history tracking
+- Payment-proof upload for submitted orders
+- Profile updates and OTP-confirmed password changes
 
-1. Build and start the application, PostgreSQL, and local email capture:
+### Sales team leader portal
 
-   ```powershell
-   docker compose up -d --build
-   ```
+- Assigned reseller-inquiry review and approval
+- Reseller account creation with emailed temporary credentials
+- Payment-proof validation and reseller-order processing
+- Sales reports and reseller purchase summaries
+- Profile and OTP-confirmed password changes
 
-2. Open `http://127.0.0.1:8000`.
+### Inventory team leader portal
 
-The application uses the PostgreSQL database named `MeatTrack Database` by
-default. Do not run `tools/seed_database.py` against this database; that tool
-is retained only for isolated, disposable test environments.
+- Raw-material and finished-product inventory
+- Batch, expiry, and stock movement tracking
+- Product recipes and production recording
+- Inventory dashboards, movement analytics, and activity logs
+- Role-scoped access separate from the sales team leader portal
 
-Login OTP is disabled by default in development. Password-change OTP codes, or
-login OTP codes when `LOGIN_OTP_ENABLED=true`, are printed by the
-`mail-capture` service:
+### Owner portal
+
+- Executive dashboard and period-based sales charts
+- Product pricing management
+- Sales reports
+- Prophet demand forecasts with Philippine holidays and business events
+- Account management and reseller-to-team-leader assignment
+
+## Technology
+
+| Layer | Current implementation |
+| --- | --- |
+| Backend | Python 3.13, FastAPI, Uvicorn |
+| UI | Server-rendered Jinja2, HTML, CSS, vanilla JavaScript |
+| Database | PostgreSQL 16 through `psycopg2` connection pooling |
+| Authentication | Password login, signed sessions, optional email OTP |
+| Forecasting | Prophet and pandas |
+| Email | Brevo HTTPS API; local capture service during development |
+| Chatbot | Local approved FAQ fallback; optional OpenRouter model |
+| Deployment | Docker Compose, Nginx, Certbot, Ubuntu VPS |
+
+## Project structure
+
+```text
+app/                    FastAPI routes, data access, templates, and static files
+database/schema.sql     Baseline schema for a new PostgreSQL database
+database/migrations/    Ordered, checksum-protected production migrations
+deploy/nginx/           Reverse-proxy configuration for the VPS
+tests/                  Application and repository regression tests
+tools/                  Database import, migration, reset, and seed utilities
+compose.yml             Local development services
+compose.prod.yml        Production database and application services
+Dockerfile              Python 3.13 application image
+```
+
+## Quick start with Docker
+
+Requirements:
+
+- Docker Desktop or Docker Engine
+- Docker Compose v2
+
+Build and start the application, PostgreSQL, and the local email-capture
+service:
+
+```powershell
+docker compose up -d --build
+```
+
+Open <http://127.0.0.1:8000>. The PostgreSQL service is exposed only on
+`127.0.0.1:55433`, and the application is exposed only on
+`127.0.0.1:8000`.
+
+A fresh Docker volume is initialized from `database/schema.sql`. For an
+existing volume, apply any pending migrations:
+
+```powershell
+docker compose exec app python tools/migrate_database.py
+```
+
+Development login OTP is disabled by default. Password-change OTPs, and login
+OTPs when `LOGIN_OTP_ENABLED=true`, are printed by the local capture service:
 
 ```powershell
 docker compose logs -f mail-capture
 ```
 
-Useful commands:
+Other useful commands:
 
 ```powershell
 docker compose logs -f app
-docker compose exec app python tools/migrate_database.py
+docker compose restart app
 docker compose down
-docker compose down --volumes  # also removes the local database
+docker compose down --volumes  # deletes the local PostgreSQL volume
 ```
 
-## Local development without an app container
+## Run Python locally
 
-Start only PostgreSQL, then run FastAPI in a Python virtual environment:
+Use Docker only for PostgreSQL, then run the application in a virtual
+environment:
 
 ```powershell
 docker compose up -d db
@@ -70,60 +138,106 @@ The default native-development database URL is:
 postgresql://meattrack:meattrack@127.0.0.1:55433/MeatTrack%20Database
 ```
 
-## Database management
+## Configuration
 
-`database/schema.sql` is the baseline for a new database. Numbered production
-migrations live in `database/migrations` and are applied once by:
+Local defaults are defined in `compose.yml`. Production values belong in a
+private `.env.production` file that must never be committed.
+
+| Variable | Purpose | Production requirement |
+| --- | --- | --- |
+| `POSTGRES_DB` | Database name; defaults to `MeatTrack Database` | Recommended |
+| `POSTGRES_USER` | PostgreSQL role; defaults to `meattrack` | Recommended |
+| `POSTGRES_PASSWORD` | PostgreSQL password | Required |
+| `DATABASE_URL` | Optional full connection URL override | Optional |
+| `DATABASE_POOL_MIN` / `DATABASE_POOL_MAX` | Connection-pool bounds | Optional |
+| `SESSION_SECRET_KEY` | Signs browser sessions | Required |
+| `LOGIN_OTP_ENABLED` | Enables email OTP after password login | Defaults to `true` in production |
+| `CONSENT_VERSION` | Version recorded with accepted login consent | Optional |
+| `BREVO_API_KEY` | Brevo transactional-email API key | Required for live email |
+| `BREVO_FROM_EMAIL` | Verified sender address | Required for live email |
+| `BREVO_FROM_NAME` | Sender display name | Optional |
+| `OPENROUTER_API_KEY` | Enables the configured hosted chatbot model | Optional |
+| `OPENROUTER_MODEL` | OpenRouter model identifier | Optional |
+| `OWNER_PASSWORD` | Initial owner seed password | Required by production Compose |
+| `TEAM_LEADER_PASSWORD` | Initial team leader seed password | Required by production Compose |
+| `RESELLER_PASSWORD` | Initial reseller seed password | Required by production Compose |
+| `DEFAULT_ACCOUNT_PASSWORD` | Fallback for provisioned accounts | Required by production Compose |
+
+Generate unique production passwords and secrets. Never reuse the development
+defaults outside a disposable local environment.
+
+## Database lifecycle
+
+`database/schema.sql` is the baseline for empty databases. Numbered SQL files
+in `database/migrations/` upgrade existing databases. The migration runner
+records each filename and SHA-256 checksum in `schema_migrations` and rejects
+changes to migrations that have already run.
 
 ```powershell
-python tools/migrate_database.py
+.venv\Scripts\python.exe tools\migrate_database.py
 ```
 
-The migration runner creates the baseline only when the `accounts` table does
-not exist. Applied migration filenames and checksums are recorded in
-`schema_migrations`; changing an applied migration causes a hard failure.
-See `database/README.md` for backup, restore, and migration details.
+`tools/seed_database.py` drops and recreates the public schema. Use it only for
+disposable development or test databases; never run it against production or
+any database containing records that must be retained.
 
-## Testing
+See [`database/README.md`](database/README.md) for migration, backup, restore,
+and data-model details.
+
+## Importing existing PostgreSQL data
+
+The repository includes two one-time import helpers for older hosted
+PostgreSQL installations:
+
+- `tools/import_supabase_catalog.py` inspects the source catalog.
+- `tools/import_supabase_database.py` imports compatible database data.
+
+Treat imports as a controlled cutover: back up both systems, stop writes to the
+old application, test the import on a copy, apply migrations, compare row
+counts, and verify every portal before changing DNS.
+
+## Tests
+
+Install the development dependencies and run the regression suite:
 
 ```powershell
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-The test suite does not require a live database because database calls are
-isolated or mocked by the relevant tests.
+The tests mock or isolate database calls, so the normal suite does not require
+a live PostgreSQL server.
 
 ## Health check
 
-`GET /health` checks both FastAPI and its PostgreSQL connection. A healthy
-response is:
+`GET /health` verifies both the FastAPI process and its database connection.
+
+Healthy response:
 
 ```json
 {"status":"ok","database":"connected"}
 ```
 
+The endpoint returns HTTP `503` when PostgreSQL is unavailable.
+
 ## Hostinger VPS deployment
 
-The production configuration assumes an Ubuntu VPS with Docker Compose and
-host-level Nginx. PostgreSQL is private, and FastAPI is bound only to the VPS
-loopback interface.
+The production layout assumes an Ubuntu VPS with Docker Compose, host-level
+Nginx, and HTTPS managed by Certbot. PostgreSQL stays on a private Docker
+network, while FastAPI binds only to the VPS loopback interface.
 
-1. Install the Hostinger Ubuntu Docker template, or install Docker Engine and
-   Docker Compose on a clean Ubuntu VPS.
+1. Install Docker Engine and Docker Compose on the VPS.
 2. Point the domain's DNS records to the VPS.
-3. Clone this repository on the VPS.
-4. Create a private production environment file:
+3. Clone the repository and check out the release branch.
+4. Create the private environment file:
 
    ```bash
    touch .env.production
    chmod 600 .env.production
    ```
 
-5. Add unique production secrets. Set `POSTGRES_DB="MeatTrack Database"` and,
-   at minimum, configure `POSTGRES_PASSWORD`, `SESSION_SECRET_KEY`,
-   `DEFAULT_ACCOUNT_PASSWORD`, and the email delivery settings.
-6. Start PostgreSQL, apply the schema and migrations, then start the app:
+5. Add strong values for the required variables listed above.
+6. Start PostgreSQL, apply migrations, and build the application:
 
    ```bash
    docker compose --env-file .env.production -f compose.prod.yml up -d db
@@ -131,23 +245,26 @@ loopback interface.
    docker compose --env-file .env.production -f compose.prod.yml up -d --build app
    ```
 
-7. Copy `deploy/nginx/meattrack.conf` to `/etc/nginx/sites-available/meattrack`,
-   replace `YOUR_DOMAIN`, enable the site, test and reload Nginx, then let
-   Certbot add HTTPS and the HTTP-to-HTTPS redirect:
+7. Copy `deploy/nginx/meattrack.conf` to
+   `/etc/nginx/sites-available/meattrack`, replace `YOUR_DOMAIN`, enable the
+   site, and add HTTPS:
 
    ```bash
    sudo ln -s /etc/nginx/sites-available/meattrack /etc/nginx/sites-enabled/meattrack
    sudo nginx -t && sudo systemctl reload nginx
    sudo certbot --nginx -d YOUR_DOMAIN -d www.YOUR_DOMAIN --redirect
    ```
-8. Allow only SSH, HTTP, and HTTPS through the VPS firewall. Do not expose port
-   5432. The Compose file publishes the app only at `127.0.0.1:8000` for Nginx.
 
-### Production backup
+8. Allow only SSH, HTTP, and HTTPS through the firewall. Do not expose
+   PostgreSQL or port 8000 publicly.
+9. Confirm `/health`, login and OTP delivery, role permissions, ordering,
+   payment proofs, inventory actions, forecasts, email, and backups before
+   directing users to the new deployment.
 
-Create a local backup directory on the VPS and schedule a daily PostgreSQL
-custom-format dump. Copy backups to a second machine or storage provider and
-test restoration regularly.
+## Production backups
+
+Create regular custom-format PostgreSQL backups, copy them off the VPS, and
+test restoration periodically:
 
 ```bash
 mkdir -p backups
@@ -155,38 +272,29 @@ docker compose --env-file .env.production -f compose.prod.yml exec -T db \
   pg_dump -U meattrack -d "MeatTrack Database" -Fc > backups/meattrack-$(date +%F-%H%M).dump
 ```
 
-Keep at least one verified backup outside the VPS. A VPS snapshot is useful but
-is not a substitute for a database backup.
+A VPS snapshot is useful, but it is not a substitute for a verified database
+backup stored on another system.
 
-## Existing-data cutover
+## Local demo accounts
 
-If records currently live in another PostgreSQL instance:
+The disposable seed data uses these development-only credentials:
 
-1. Put the old application into maintenance mode.
-2. Create a final `pg_dump` in custom format and verify that the file is not
-   empty.
-3. Restore it into the VPS PostgreSQL container with `pg_restore`.
-4. Run `python tools/migrate_database.py` against the restored database.
-5. Compare row counts for accounts, inventory, orders, sales reports, and logs.
-6. Confirm login/OTP, every portal, images, email delivery, chatbot behavior,
-   uploads, `/health`, secure cookies, restart recovery, and backup restoration.
-7. Switch DNS only after these checks pass. Retain the old database backup until
-   the new deployment has completed an agreed observation period.
+| Role | Email | Password |
+| --- | --- | --- |
+| Owner | `patric.mapa@gmail.com` | `demo123` |
+| Sales team leader | `leader@batangaspremium.test` | `demo1234` |
+| Reseller | `reseller@lipafresh.test` | `demo1234` |
 
-## Demo accounts
+Change all seeded credentials before any shared or production deployment.
 
-- Owner: `patric.mapa@gmail.com` / `demo123`
-- Team Leader: `leader@batangaspremium.test` / `demo1234`
-- Reseller: `reseller@lipafresh.test` / `demo1234`
+## Security notes
 
-These credentials are for local seeded data only. Production passwords must be
-changed before any production seed or account creation.
-
-Set `LOGIN_OTP_ENABLED=true` to restore login OTP locally. Production enables
-login OTP by default.
-
-## Optional services
-
-- Brevo delivers login OTP and account emails when its API variables are set.
-- OpenRouter powers the chatbot when `OPENROUTER_API_KEY` is set; otherwise the
-  chatbot uses its approved local FAQ fallback.
+- All browser database access goes through FastAPI; PostgreSQL is never exposed
+  to the frontend.
+- Production session cookies are HTTPS-only and portal sessions expire after
+  two hours.
+- Passwords and OTPs are stored as salted PBKDF2 hashes.
+- Payment-proof downloads require an authenticated portal session.
+- Sort options and query filters are server-side allowlisted and parameterized.
+- Production secrets belong only in `.env.production` or another private
+  secret store.
