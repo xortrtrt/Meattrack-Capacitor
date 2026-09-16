@@ -43,8 +43,6 @@ def upsert_team_leader(cur, *, name: str, email: str, team_leader_role: str) -> 
                 email = %s,
                 password_hash = %s,
                 team_leader_role = %s,
-                auth_user_id = NULL,
-                auth_provider = NULL,
                 is_active = true
             WHERE account_id = %s
             RETURNING account_id;
@@ -57,9 +55,9 @@ def upsert_team_leader(cur, *, name: str, email: str, team_leader_role: str) -> 
         """
         INSERT INTO accounts (
             account_type, reseller_id, name, email, password_hash,
-            team_leader_role, auth_user_id, auth_provider, is_active
+            team_leader_role, is_active
         )
-        VALUES ('team_leader', NULL, %s, %s, %s, %s, NULL, NULL, true)
+        VALUES ('team_leader', NULL, %s, %s, %s, %s, true)
         RETURNING account_id;
         """,
         (name, email, password_hash, team_leader_role),
@@ -104,8 +102,6 @@ def reset_demo_hierarchy() -> dict:
                     email = %s,
                     password_hash = %s,
                     team_leader_role = 'inventory',
-                    auth_user_id = NULL,
-                    auth_provider = NULL,
                     reseller_id = NULL,
                     is_active = true
                 WHERE account_id = %s;

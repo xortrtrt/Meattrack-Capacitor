@@ -1,228 +1,192 @@
-# MEATTRACK Website
+# MEATTRACK
 
-FastAPI prototype for Batangas Premium's MEATTRACK public website and role-based portals.
+MEATTRACK is a FastAPI and Jinja2 application for Batangas Premium's public
+website and role-based owner, team-leader, and reseller portals.
 
-## Framework and Stack
+## Architecture
 
-- Backend framework: FastAPI
-- Template engine: Jinja2 server-rendered HTML
-- Frontend: HTML, CSS, and vanilla JavaScript
-- Database: Supabase PostgreSQL in production; local PostgreSQL for development
-- Database driver: psycopg2
-- Local app server: Uvicorn
-- Local database runtime: Docker PostgreSQL container
-- Mobile runtime: Capacitor 8 (Android native project)
+- FastAPI with server-rendered Jinja2 templates
+- HTML, CSS, and vanilla JavaScript frontend
+- PostgreSQL accessed only by the FastAPI backend through `psycopg2`
+- Password authentication with optional email OTP confirmation
+- Product and branding images served from `app/static/img`
+- Docker Compose for local development and VPS deployment
 
-This project is not using React, Vue, Angular, Laravel, Django, or Node.js for the main app.
+The Compose files pin PostgreSQL 16 to match the existing MEATTRACK data
+volume. Upgrade PostgreSQL major versions only through a tested dump/restore.
 
-## Run Locally
+The development and production environments use the same PostgreSQL engine.
+Production does not require a hosted database, object-storage service, or native
+mobile wrapper.
 
-Start the PostgreSQL Docker container first. The current local database connection expects:
+## Local development with Docker
 
-```text
-postgresql://meattrack:meattrack@127.0.0.1:5433/meattrack
-```
+Requirements: Docker Desktop with Docker Compose.
 
-Create your local environment file:
+1. Build and start the application, PostgreSQL, and local email capture:
 
-```powershell
-Copy-Item .env.example .env
-```
+   ```powershell
+   docker compose up -d --build
+   ```
 
-Then edit `.env` and fill in local secrets such as `DATABASE_URL`, `POSTGRES_PASSWORD`, `SESSION_SECRET_KEY`, `OPENROUTER_API_KEY`, and demo account passwords. The real `.env` file is ignored by Git.
+2. Open `http://127.0.0.1:8000`.
 
-If the database is empty or needs a reset, run:
+The application uses the PostgreSQL database named `MeatTrack Database` by
+default. Do not run `tools/seed_database.py` against this database; that tool
+is retained only for isolated, disposable test environments.
 
-```powershell
-.venv\Scripts\python.exe tools\seed_database.py
-```
-
-The seed script creates application records only. Images remain available from
-`app/static/img` locally and are uploaded separately to Supabase Storage for
-production.
-
-Then start FastAPI:
+Login OTP is disabled by default in development. Password-change OTP codes, or
+login OTP codes when `LOGIN_OTP_ENABLED=true`, are printed by the
+`mail-capture` service:
 
 ```powershell
+docker compose logs -f mail-capture
+```
+
+Useful commands:
+
+```powershell
+docker compose logs -f app
+docker compose exec app python tools/migrate_database.py
+docker compose down
+docker compose down --volumes  # also removes the local database
+```
+
+## Local development without an app container
+
+Start only PostgreSQL, then run FastAPI in a Python virtual environment:
+
+```powershell
+docker compose up -d db
+py -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe tools\migrate_database.py
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Then open:
+The default native-development database URL is:
 
 ```text
-http://127.0.0.1:8000
+postgresql://meattrack:meattrack@127.0.0.1:55433/MeatTrack%20Database
 ```
 
-The deployment health check is available at `GET /health` and verifies both the
-FastAPI service and its database connection.
+## Database management
 
-## Supabase Database
-
-MEATTRACK keeps all database operations on the FastAPI server. The mobile app
-does not contain the Supabase database password or connect directly to the
-database.
-
-1. Create a Supabase project and copy its direct or Session pooler connection
-   string from **Connect**. Session mode on port 5432 is usually the simplest
-   option for an IPv4-hosted FastAPI service.
-2. URL-encode special characters in the database password.
-3. Import the existing schema and data into a new/disposable project:
+`database/schema.sql` is the baseline for a new database. Numbered production
+migrations live in `database/migrations` and are applied once by:
 
 ```powershell
-$env:SUPABASE_DB_URL="postgresql://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@REGION.pooler.supabase.com:5432/postgres"
-.venv\Scripts\python.exe tools\migrate_to_supabase.py --reset
+python tools/migrate_database.py
 ```
 
-4. Set the hosted backend's `DATABASE_URL` to that Session pooler URL and append
-   `?sslmode=require`. Set a strong `SESSION_SECRET_KEY` there as well.
+The migration runner creates the baseline only when the `accounts` table does
+not exist. Applied migration filenames and checksums are recorded in
+`schema_migrations`; changing an applied migration causes a hard failure.
+See `database/README.md` for backup, restore, and migration details.
 
-The importer replaces only MEATTRACK tables, verifies key row counts, and then
-enables RLS without public policies. That prevents Supabase anon/authenticated
-API keys from bypassing FastAPI's authentication and business rules. See
-`database/README.md` for details.
-
-## Supabase Storage Images
-
-Production product and branding images are served from a public Supabase Storage
-bucket rather than PostgreSQL. Run the idempotent uploader locally with a secret
-key from **Project Settings -> API Keys**:
-
-```powershell
-$env:SUPABASE_URL="https://PROJECT_REF.supabase.co"
-$env:SUPABASE_SECRET_KEY="YOUR_LOCAL_SECRET_KEY"
-.venv\Scripts\python.exe tools\migrate_images_to_storage.py
-```
-
-The tool creates or updates the public `meattrack-assets` bucket, restricts it to
-JPEG/PNG files up to 5 MB, uploads `app/static/img` under `images/`, and verifies
-every uploaded file by size and SHA-256. It is safe to run again. Never place
-`SUPABASE_SECRET_KEY` in Render, GitHub, Capacitor, templates, or browser code.
-
-Copy the printed public folder URL into `MEDIA_BASE_URL` on Render. When that
-variable is empty, the app falls back to `/static/img` for local development.
-The old `media_assets` table and `tools/import_static_images.py` are retained for
-one rollback release but are no longer used by page requests or database seeding.
-
-## Capacitor Mobile App
-
-Because the current UI is rendered by FastAPI/Jinja, the native shell loads the
-deployed FastAPI site over HTTPS. Deploy the backend first (the included
-`Dockerfile` is ready for a container host), and confirm that
-`https://YOUR_DOMAIN/health` returns `{"status":"ok","database":"connected"}`.
-
-Install and generate the Android project:
-
-```powershell
-npm.cmd install
-npm.cmd exec cap add android
-```
-
-Select the deployed backend and sync it into Android:
-
-```powershell
-$env:MOBILE_APP_URL="https://YOUR_DOMAIN"
-npm.cmd run mobile:sync
-npm.cmd run mobile:android
-```
-
-Capacitor 8 requires Android Studio 2025.2.1 or newer and an Android SDK. Android
-Studio supplies the matching JDK. Every time the mobile URL or Capacitor
-configuration changes, run `npm.cmd run mobile:sync` again. The app refuses
-plain HTTP by default.
-
-For same-Wi-Fi development only, start Uvicorn on all interfaces and explicitly
-allow a LAN URL:
-
-```powershell
-.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-$env:MOBILE_APP_URL="http://YOUR_COMPUTER_IPV4:8000"
-$env:CAPACITOR_ALLOW_CLEARTEXT="true"
-npm.cmd run mobile:sync
-```
-
-If the local computer cannot run Android Studio, use the repository's
-**Build Android APK** GitHub Actions workflow. Choose **Run workflow**, enter the
-deployed FastAPI HTTPS URL, and download the `meattrack-android-debug` artifact
-after the job succeeds. The runner validates `/health`, installs Android SDK 36,
-syncs Capacitor, and builds the APK entirely in the cloud.
-
-The native iOS project is also included. For a free cloud build, use the
-**Build iOS Simulator App** GitHub Actions workflow, enter the same deployed
-FastAPI HTTPS URL, and download the `meattrack-ios-simulator` artifact. It uses
-macOS 26 and Xcode 26 to build an unsigned iOS Simulator `.app` bundle.
-
-The simulator artifact cannot be installed on a physical iPhone. A signed IPA,
-TestFlight build, or App Store release requires Apple signing credentials and an
-Apple Developer Program membership. Without signing, iPhone users can still open
-the deployed site in Safari and choose **Share -> Add to Home Screen**.
-
-## Deploy FastAPI on Render
-
-The included `render.yaml` defines a free Docker web service in Singapore. In
-Render, create a new Blueprint from this GitHub repository and supply these
-secret values when prompted:
-
-- `DATABASE_URL`: the Supabase Session pooler URL on port 5432;
-- `MEDIA_BASE_URL`: the public Supabase Storage `meattrack-assets/images` URL;
-- `BREVO_API_KEY`: required on Render Free for login OTP and account emails;
-- `BREVO_FROM_EMAIL`: `noreply@quickpick.sbs`, using the authenticated Brevo sender domain;
-- `BREVO_FROM_NAME`: optional display name, defaults to `Batangas Premium`;
-- `OPENROUTER_API_KEY`: optional; leave empty to use the local chatbot fallback.
-
-Email delivery uses Brevo's HTTPS API for both local development and Render.
-Render Free blocks outbound SMTP ports, so SMTP variables are not used.
-
-Render generates `SESSION_SECRET_KEY` automatically. Once `/health` reports a
-connected database, use the service's `https://...onrender.com` URL as the
-`mobile_app_url` input to the Android build workflow.
-
-The service intentionally remains on Render's free instance type. It can spin
-down after inactivity, so the first request may still be slow; warm portal
-requests use section-specific database reads.
-
-## Demo Logins
-
-The login form has one email/password flow. Credentials are verified against the `accounts` table in PostgreSQL, and the account type determines which dashboard opens.
-
-- Owner: `patric.mapa@gmail.com` / `demo123`
-- Team Leader: `leader@batangaspremium.test` / `demo1234`
-- Reseller: `reseller@lipafresh.test` / `demo1234`
-
-Passwords are stored in `accounts.password_hash`. The seed script stores PBKDF2 password hashes, and old plain-text local demo passwords are upgraded to hashes after a successful login.
-
-## Current Implementation
-
-- Public landing page for Batangas Premium.
-- Reseller Portal: dashboard, ordering, order history, sales reports, messages.
-- Team Leader Portal: daily dashboard, walk-in sales, recipe-based production, alerts, reseller inquiry approval/rejection, reseller order handling, reports.
-- Owner Portal: executive dashboard, product pricing, reports, forecasts, account management, audit logs.
-- Portal pages use `app/templates/portals/base.html` plus one role template per portal: `reseller.html`, `team_leader.html`, and `owner.html`.
-- CSS is split by surface: `public.css` for public pages, `login.css` for login, `portal_base.css` for shared portal layout, and `app/static/css/portals/` for role-specific portal overrides.
-- `app/repositories.py` reads and writes PostgreSQL data for the current UI flows; portal pages load only the datasets needed by their selected section.
-- Production images use the Supabase Storage public CDN. `/media/{filename}` remains as a compatibility redirect and performs no database query.
-- Rubik and Lucide are pinned, licensed, and served locally instead of loading from Google Fonts or Unpkg.
-- PostgreSQL schema lives in `database/schema.sql` and is intentionally simplified to the portal workflows currently implemented.
-
-## Tests
-
-Install the development dependencies and run the regression suite:
+## Testing
 
 ```powershell
 .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-The suite covers every portal role/section, exact data-loader selection,
-parameterized filters, the single-query dashboard metrics implementation,
-Storage upload verification, compatibility redirects, and local asset caching.
+The test suite does not require a live database because database calls are
+isolated or mocked by the relevant tests.
 
-## Chatbot Configuration
+## Health check
 
-The Batangas Premium support chatbot uses the OpenRouter-compatible OpenAI client format when an API key is configured.
+`GET /health` checks both FastAPI and its PostgreSQL connection. A healthy
+response is:
 
-```powershell
-$env:OPENROUTER_API_KEY="your_openrouter_key"
-$env:OPENROUTER_MODEL="openai/gpt-4o-mini"
+```json
+{"status":"ok","database":"connected"}
 ```
 
-If `OPENROUTER_API_KEY` is not set, the app uses a local fallback that only answers from the approved Batangas Premium FAQ information.
+## Hostinger VPS deployment
+
+The production configuration assumes an Ubuntu VPS with Docker Compose and
+host-level Nginx. PostgreSQL is private, and FastAPI is bound only to the VPS
+loopback interface.
+
+1. Install the Hostinger Ubuntu Docker template, or install Docker Engine and
+   Docker Compose on a clean Ubuntu VPS.
+2. Point the domain's DNS records to the VPS.
+3. Clone this repository on the VPS.
+4. Create a private production environment file:
+
+   ```bash
+   touch .env.production
+   chmod 600 .env.production
+   ```
+
+5. Add unique production secrets. Set `POSTGRES_DB="MeatTrack Database"` and,
+   at minimum, configure `POSTGRES_PASSWORD`, `SESSION_SECRET_KEY`,
+   `DEFAULT_ACCOUNT_PASSWORD`, and the email delivery settings.
+6. Start PostgreSQL, apply the schema and migrations, then start the app:
+
+   ```bash
+   docker compose --env-file .env.production -f compose.prod.yml up -d db
+   docker compose --env-file .env.production -f compose.prod.yml run --rm app python tools/migrate_database.py
+   docker compose --env-file .env.production -f compose.prod.yml up -d --build app
+   ```
+
+7. Copy `deploy/nginx/meattrack.conf` to `/etc/nginx/sites-available/meattrack`,
+   replace `YOUR_DOMAIN`, enable the site, test and reload Nginx, then let
+   Certbot add HTTPS and the HTTP-to-HTTPS redirect:
+
+   ```bash
+   sudo ln -s /etc/nginx/sites-available/meattrack /etc/nginx/sites-enabled/meattrack
+   sudo nginx -t && sudo systemctl reload nginx
+   sudo certbot --nginx -d YOUR_DOMAIN -d www.YOUR_DOMAIN --redirect
+   ```
+8. Allow only SSH, HTTP, and HTTPS through the VPS firewall. Do not expose port
+   5432. The Compose file publishes the app only at `127.0.0.1:8000` for Nginx.
+
+### Production backup
+
+Create a local backup directory on the VPS and schedule a daily PostgreSQL
+custom-format dump. Copy backups to a second machine or storage provider and
+test restoration regularly.
+
+```bash
+mkdir -p backups
+docker compose --env-file .env.production -f compose.prod.yml exec -T db \
+  pg_dump -U meattrack -d "MeatTrack Database" -Fc > backups/meattrack-$(date +%F-%H%M).dump
+```
+
+Keep at least one verified backup outside the VPS. A VPS snapshot is useful but
+is not a substitute for a database backup.
+
+## Existing-data cutover
+
+If records currently live in another PostgreSQL instance:
+
+1. Put the old application into maintenance mode.
+2. Create a final `pg_dump` in custom format and verify that the file is not
+   empty.
+3. Restore it into the VPS PostgreSQL container with `pg_restore`.
+4. Run `python tools/migrate_database.py` against the restored database.
+5. Compare row counts for accounts, inventory, orders, sales reports, and logs.
+6. Confirm login/OTP, every portal, images, email delivery, chatbot behavior,
+   uploads, `/health`, secure cookies, restart recovery, and backup restoration.
+7. Switch DNS only after these checks pass. Retain the old database backup until
+   the new deployment has completed an agreed observation period.
+
+## Demo accounts
+
+- Owner: `patric.mapa@gmail.com` / `demo123`
+- Team Leader: `leader@batangaspremium.test` / `demo1234`
+- Reseller: `reseller@lipafresh.test` / `demo1234`
+
+These credentials are for local seeded data only. Production passwords must be
+changed before any production seed or account creation.
+
+Set `LOGIN_OTP_ENABLED=true` to restore login OTP locally. Production enables
+login OTP by default.
+
+## Optional services
+
+- Brevo delivers login OTP and account emails when its API variables are set.
+- OpenRouter powers the chatbot when `OPENROUTER_API_KEY` is set; otherwise the
+  chatbot uses its approved local FAQ fallback.

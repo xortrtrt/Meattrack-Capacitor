@@ -152,29 +152,10 @@ stock_units = ["kg", "g", "ml"]
 content_units = ["g", "kg", "ml"]
 recipe_units = ["g", "kg", "ml"]
 
-MEDIA_ASSETS_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS media_assets (
-    media_asset_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    filename text NOT NULL UNIQUE,
-    content_type text NOT NULL,
-    content bytea NOT NULL,
-    size_bytes integer NOT NULL CHECK (size_bytes >= 0),
-    checksum_sha256 text NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (btrim(filename) <> ''),
-    CHECK (filename !~ '[\\\\/]'),
-    CHECK (btrim(content_type) <> ''),
-    CHECK (length(checksum_sha256) = 64)
-);
-"""
-
 SYSTEM_TABLES_READY = False
 
 SYSTEM_TABLES_SQL = """
 ALTER TABLE accounts
-    ADD COLUMN IF NOT EXISTS auth_user_id uuid,
-    ADD COLUMN IF NOT EXISTS auth_provider text,
     ADD COLUMN IF NOT EXISTS team_leader_role text;
 
 DO $$
@@ -194,10 +175,6 @@ UPDATE accounts
 SET team_leader_role = 'inventory'
 WHERE account_type = 'team_leader'
   AND team_leader_role IS NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_accounts_auth_user_id
-    ON accounts (auth_user_id)
-    WHERE auth_user_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS ix_accounts_team_leader_role
     ON accounts (team_leader_role)
@@ -406,24 +383,6 @@ def ensure_system_tables() -> None:
         return
     execute_write(SYSTEM_TABLES_SQL)
     SYSTEM_TABLES_READY = True
-
-
-def ensure_media_assets_table() -> None:
-    execute_write(MEDIA_ASSETS_TABLE_SQL)
-
-
-def media_asset_by_filename(filename: str):
-    ensure_media_assets_table()
-    row = fetch_one("""
-        SELECT filename, content_type, content, size_bytes, checksum_sha256, updated_at
-        FROM media_assets
-        WHERE filename = %s;
-    """, (filename,))
-    if row is None:
-        return None
-    cleaned = clean_row(row)
-    cleaned["content"] = bytes(cleaned["content"])
-    return cleaned
 
 
 def require_inventory_choice(value: object, choices: list[str], label: str) -> str:
@@ -1455,7 +1414,6 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
     return clean_row(fetch_all("""
         SELECT a.account_id, a.account_type, a.team_leader_role, a.reseller_id, a.name, a.email,
                (CASE WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status,
-               a.auth_provider,
                r.team_leader_account_id,
                tl.name AS team_leader_name
         FROM accounts a
@@ -1832,7 +1790,7 @@ def authenticate_account(email: str, password: str) -> dict | None:
     ensure_system_tables()
     account = fetch_one(
         """
-        SELECT account_id, account_type, team_leader_role, name, email, password_hash, is_active, auth_provider
+        SELECT account_id, account_type, team_leader_role, name, email, password_hash, is_active
         FROM accounts
         WHERE lower(email) = lower(%s)
         LIMIT 1;
@@ -2182,107 +2140,6 @@ def account_portal_profile(account_id: int) -> dict | None:
     if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
         clean["team_leader_role"] = "sales"
     return clean
-
-
-def social_login_account(
-    auth_user_id: str,
-    email: str,
-    name: str,
-    provider: str,
-    allow_reseller_signup: bool = False,
-) -> dict | None:
-    ensure_system_tables()
-    normalized_email = email.strip().lower()
-    display_name = " ".join((name or normalized_email.split("@")[0]).split()) or normalized_email
-
-    with get_transaction_cursor() as cur:
-        cur.execute(
-            """
-            SELECT account_id, account_type, team_leader_role, name, email, is_active, auth_provider
-            FROM accounts
-            WHERE auth_user_id = %s::uuid OR lower(email) = lower(%s)
-            ORDER BY CASE WHEN auth_user_id = %s::uuid THEN 0 ELSE 1 END
-            LIMIT 1
-            FOR UPDATE;
-            """,
-            (auth_user_id, normalized_email, auth_user_id),
-        )
-        account = cur.fetchone()
-
-        if account:
-            if not account["is_active"]:
-                return None
-            cur.execute(
-                """
-                UPDATE accounts
-                SET auth_user_id = COALESCE(auth_user_id, %s::uuid),
-                    auth_provider = %s
-                WHERE account_id = %s
-                RETURNING account_id, account_type, team_leader_role, name, email, is_active, auth_provider;
-                """,
-                (auth_user_id, provider, account["account_id"]),
-            )
-            account = cur.fetchone()
-        elif allow_reseller_signup:
-            cur.execute("""
-                SELECT account_id
-                FROM accounts
-                WHERE account_type = 'team_leader'
-                  AND is_active = true
-                ORDER BY account_id
-                LIMIT 1;
-            """)
-            leader = cur.fetchone()
-            leader_id = leader["account_id"] if leader else None
-            cur.execute(
-                """
-                INSERT INTO resellers (
-                    business_name, contact_person, email, contact_number, address,
-                    reseller_status, team_leader_account_id, approved_at
-                )
-                VALUES (%s, %s, %s, 'OAuth signup', 'Pending onboarding details', 'active', %s, %s)
-                RETURNING reseller_id;
-                """,
-                (display_name, display_name, normalized_email, leader_id, datetime.now()),
-            )
-            reseller = cur.fetchone()
-            cur.execute(
-                """
-                INSERT INTO accounts (
-                    account_type, reseller_id, name, email, password_hash,
-                    is_active, auth_user_id, auth_provider
-                )
-                VALUES ('reseller', %s, %s, %s, %s, true, %s::uuid, %s)
-                RETURNING account_id, account_type, team_leader_role, name, email, is_active, auth_provider;
-                """,
-                (
-                    reseller["reseller_id"],
-                    display_name,
-                    normalized_email,
-                    hash_password(secrets.token_urlsafe(32)),
-                    auth_user_id,
-                    provider,
-                ),
-            )
-            account = cur.fetchone()
-        else:
-            return None
-
-    clean = clean_row(account)
-    clean["role_key"] = role_key_for_account_type(clean["account_type"])
-    if clean["role_key"] == "reseller":
-        create_notification(
-            recipient_role="owner",
-            category="account",
-            severity="info",
-            title="New reseller account",
-            message=f"{clean['name']} signed in with {provider.title()} and was added as a reseller.",
-            target_url="/portal/owner/accounts",
-            source_type="accounts",
-            source_id=clean["account_id"],
-            dedupe_key=f"social-reseller-{clean['account_id']}",
-        )
-    return clean if clean["role_key"] else None
 
 
 def record_user_consent(account_id: int, policy_version: str, consent_source: str, provider: str | None = None) -> None:
@@ -3712,8 +3569,10 @@ def forecast_business_events(start_date: date, end_date: date):
                 "prior_scale": FORECAST_EVENT_PRIOR_SCALE,
             },
         ])
-    frame = pd.DataFrame(rows)
-    return frame[(frame["ds"] >= start_date) & (frame["ds"] <= end_date)]
+    # Keep every event in each relevant calendar year. Prophet safely ignores
+    # dates outside the fitted/predicted frame, while retaining the complete
+    # annual event definition makes short forecast windows deterministic.
+    return pd.DataFrame(rows)
 
 
 def prophet_product_forecast(history_rows: list[dict], forecast_horizon_days: int) -> dict:

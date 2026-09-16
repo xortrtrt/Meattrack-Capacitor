@@ -216,7 +216,32 @@ def test_reseller_profile_update_route_success(monkeypatch):
     assert parse_qs(urlsplit(response.headers["location"]).query)["message"] == ["Profile updated."]
 
 
-def test_login_requires_email_otp_before_portal_session(monkeypatch):
+def test_development_login_establishes_portal_session_without_otp(monkeypatch):
+    account = {
+        "account_id": 7,
+        "account_type": "owner",
+        "role_key": "owner",
+        "name": "Owner",
+        "email": "owner@example.test",
+    }
+    consent_calls = []
+    monkeypatch.setattr(main, "LOGIN_OTP_ENABLED", False)
+    monkeypatch.setattr(main.data, "authenticate_account", lambda email, password: account)
+    monkeypatch.setattr(main.data, "record_user_consent", lambda *args: consent_calls.append(args))
+    monkeypatch.setattr(main.data, "add_log", lambda *args, **kwargs: None)
+
+    response = TestClient(main.app).post(
+        "/login",
+        data={"email": "owner@example.test", "password": "demo1234", "consent": "yes"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/portal/owner/dashboard"
+    assert consent_calls == [(7, main.CONSENT_VERSION, "password_login")]
+
+
+def test_login_uses_email_otp_when_enabled(monkeypatch):
     calls = []
     account = {
         "account_id": 7,
@@ -225,6 +250,7 @@ def test_login_requires_email_otp_before_portal_session(monkeypatch):
         "name": "Owner",
         "email": "owner@example.test",
     }
+    monkeypatch.setattr(main, "LOGIN_OTP_ENABLED", True)
     monkeypatch.setattr(main.data, "authenticate_account", lambda email, password: account)
     monkeypatch.setattr(main.data, "request_login_otp", lambda account_id: {"otp_id": 4, "otp_code": "123456", "account": account})
     monkeypatch.setattr(main, "send_login_otp", lambda **kwargs: calls.append(kwargs) or (True, "sent"))
@@ -249,6 +275,7 @@ def test_login_otp_confirmation_establishes_portal_session(monkeypatch):
         "email": "owner@example.test",
     }
     consent_calls = []
+    monkeypatch.setattr(main, "LOGIN_OTP_ENABLED", True)
     monkeypatch.setattr(main.data, "confirm_login_otp", lambda account_id, otp_code: account)
     monkeypatch.setattr(main.data, "record_user_consent", lambda *args: consent_calls.append(args))
     monkeypatch.setattr(main.data, "add_log", lambda *args, **kwargs: None)
