@@ -1,10 +1,12 @@
 .git
+.gitignore
+.env
+.env.production
 .venv
-node_modules
-android
 __pycache__
+.pytest_cache
+node_modules
+tmp
+backups
 *.pyc
 *.log
-.env
-database/supabase_full_export.sql
-database/supabase_data_import.sql

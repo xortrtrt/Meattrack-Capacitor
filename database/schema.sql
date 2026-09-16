@@ -18,8 +18,6 @@ CREATE TABLE accounts (
     name text NOT NULL,
     email text NOT NULL,
     password_hash text NOT NULL,
-    auth_user_id uuid,
-    auth_provider text,
     team_leader_role text CHECK (team_leader_role IS NULL OR team_leader_role IN ('inventory', 'sales')),
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now()
@@ -32,21 +30,6 @@ CREATE TABLE activity_logs (
     entity_type text,
     entity_id bigint,
     created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE media_assets (
-    media_asset_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    filename text NOT NULL UNIQUE,
-    content_type text NOT NULL,
-    content bytea NOT NULL,
-    size_bytes integer NOT NULL CHECK (size_bytes >= 0),
-    checksum_sha256 text NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    updated_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (btrim(filename) <> ''),
-    CHECK (filename !~ '[\\/]'),
-    CHECK (btrim(content_type) <> ''),
-    CHECK (length(checksum_sha256) = 64)
 );
 
 CREATE TABLE inquiries (
@@ -329,8 +312,6 @@ CREATE TABLE notifications (
 );
 
 CREATE UNIQUE INDEX ux_accounts_email_lower ON accounts (lower(email));
-CREATE UNIQUE INDEX ux_accounts_auth_user_id ON accounts (auth_user_id)
-    WHERE auth_user_id IS NOT NULL;
 CREATE INDEX ix_accounts_team_leader_role ON accounts (team_leader_role)
     WHERE account_type = 'team_leader';
 CREATE UNIQUE INDEX ux_resellers_email_lower ON resellers (lower(email));

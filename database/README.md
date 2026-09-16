@@ -1,83 +1,73 @@
-# MEATTRACK Database Artifacts
+# MEATTRACK database
 
-This folder contains the simplified PostgreSQL database design used by the current FastAPI prototype.
+MEATTRACK uses standard PostgreSQL in development and production.
 
 ## Files
 
-- `schema.sql` - PostgreSQL DDL for the portal tables, keys, checks, and useful indexes.
-- `meattrack_erd.mmd` - Mermaid ER diagram matching the implemented schema.
-- `supabase_data_import.sql` - exported local rows prepared for the hosted import.
-- `supabase_security.sql` - enables RLS with no public Data API policies.
+- `schema.sql`: baseline schema for an empty database.
+- `migrations/*.sql`: ordered, idempotent changes for existing databases.
+- `meattrack_erd.mmd`: Mermaid ER diagram for the implemented data model.
+- `tools/migrate_database.py`: baseline and migration runner.
+- `tools/seed_database.py`: destructive local demo reset and seed utility.
 
-## Apply the Schema
+## Create or upgrade a database
 
-Create a PostgreSQL database, then run:
+Set `DATABASE_URL`, then run:
 
 ```powershell
-psql -d meattrack -f database/schema.sql
+.venv\Scripts\python.exe tools\migrate_database.py
 ```
 
-For local development, the reset-and-seed script applies this schema automatically:
+If `public.accounts` is absent, the runner applies `schema.sql`. It then applies
+each migration that is not already listed in `schema_migrations`. Its checksum
+guard rejects edits to migrations that have already run.
+
+For disposable local demo data only:
 
 ```powershell
 .venv\Scripts\python.exe tools\seed_database.py
 ```
 
-## Migrate to Supabase
+The seed utility drops and recreates the `public` schema. Never run it against a
+database whose records must be preserved.
 
-Use a new or disposable Supabase project, then copy the **direct** or **Session
-pooler** connection string from the project's Connect panel. The Session pooler
-on port 5432 is the most compatible choice on an IPv4-only network. Do not use
-the transaction pooler on port 6543 for the migration.
+## Back up and restore
 
-```powershell
-$env:SUPABASE_DB_URL="postgresql://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@REGION.pooler.supabase.com:5432/postgres"
-.venv\Scripts\python.exe tools\migrate_to_supabase.py --reset
+Create a custom-format backup:
+
+```bash
+pg_dump "$DATABASE_URL" --format=custom --file=meattrack.dump
 ```
 
-Alternatively, a note containing the Session pooler connection URL, or the
-database password plus project HTTPS URL, can be supplied without placing any
-secret in the repository:
+Restore into an empty target database:
 
-```powershell
-.venv\Scripts\python.exe tools\migrate_to_supabase.py --check --credentials-file "C:\path\to\supabase-credentials.txt"
-.venv\Scripts\python.exe tools\migrate_to_supabase.py --reset --credentials-file "C:\path\to\supabase-credentials.txt"
+```bash
+pg_restore --dbname "$DATABASE_URL" --clean --if-exists --no-owner meattrack.dump
+python tools/migrate_database.py
 ```
 
-`--reset` is mandatory because the importer replaces the MEATTRACK tables. It
-does not drop Supabase's `public` schema, so the platform's schema grants remain
-intact. After the import, set the deployed FastAPI service's `DATABASE_URL` to
-the same Session pooler URL with `?sslmode=require` and restart it.
+Before a production restore, retain the previous target backup and verify the
+source dump with `pg_restore --list meattrack.dump`.
 
-The security script enables RLS without client policies. This deliberately
-blocks the Supabase anon/authenticated Data API roles; all application access
-continues through FastAPI and its server-only database credential.
+## Migration rules
 
-The full export and data-import SQL files are intentionally ignored by Git
-because they contain application records and password hashes. Keep them local
-and transfer them only through an approved secure channel.
+- Never edit a migration that has already run in production.
+- Give each new migration a unique increasing numeric prefix.
+- Make migrations transactional and idempotent where PostgreSQL permits it.
+- Back up production immediately before schema changes.
+- Test both an empty installation and an upgrade from the previous release.
 
-## Simplified Table Set
+## Data model
 
-The schema keeps the tables used by the current screens:
+- Identity and access: `accounts`, `activity_logs`, login/password OTPs, and
+  consent history.
+- Department references: `departments`.
+- Reseller onboarding: `inquiries`, `resellers`.
+- Catalog and inventory: `inventory_items`, `inventory_batches`,
+  `product_recipes`, and `alerts`.
+- Sales: `orders`, `order_items`, payment proofs, carts, and sales reports.
+- Forecasting: `forecast_runs`, `forecast_results`.
+- Portal notifications: `notifications`.
 
-- identity and access: `accounts`, `activity_logs`;
-- department references: `departments`;
-- reseller onboarding: `inquiries`, `resellers`;
-- catalog and inventory: `inventory_items`, `inventory_batches`, `product_recipes`, `alerts`;
-- sales flow: `orders`, `order_items`, `sales_reports`;
-- forecasting: `forecast_runs`, `forecast_results`.
-
-The inventory model uses one item catalog for both raw materials and finished products. `inventory_items.item_type` separates `raw_material` rows from `finished_product` rows, while `category` keeps business labels such as Pork, Beef, Chicken, or product family. Raw-material stock is stored directly on `inventory_items.quantity_available`; finished product batches live in `inventory_batches`. Shipment, production-run, production-batch, production-material, raw-material batch, and inventory-ledger tables are intentionally omitted; finished product batch source is stored directly in `inventory_batches.source_type`.
-
-## Application Responsibilities
-
-The database keeps basic referential integrity and simple status/value checks. The FastAPI application still handles workflow logic such as:
-
-- choosing product batches by FEFO order;
-- checking product recipes before production;
-- deducting raw-material `inventory_items.quantity_available` when product batches are produced;
-- decrementing finished-product `inventory_batches.quantity_available` after fulfilled sales;
-- calculating order totals before inserting `orders` and `order_items`;
-- creating `alerts` for low stock or near-expiry batches;
-- writing `activity_logs` for user actions.
+Application workflow rules such as FEFO selection, recipe validation, inventory
+deduction, order total calculation, and audit logging remain in FastAPI.

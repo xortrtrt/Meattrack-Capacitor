@@ -1,16 +1,11 @@
 from __future__ import annotations
 
 import re
-import base64
 import hashlib
-import json
-import secrets
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
-from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -27,7 +22,7 @@ from app.emailer import (
     send_portal_credentials,
     send_reseller_credentials,
 )
-from app.config import APP_ENV, CONSENT_VERSION, MEDIA_BASE_URL, SESSION_SECRET_KEY, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL
+from app.config import APP_ENV, CONSENT_VERSION, LOGIN_OTP_ENABLED, SESSION_SECRET_KEY
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -77,6 +72,7 @@ PRODUCT_IMAGE_FILENAMES = {
     "trial package": "trial_package.jpg",
     "resellers package": "reseller_package.jpg",
     "area distributors package": "area_distributor_package.jpg",
+    "area distributor s package": "area_distributor_package.jpg",
     "triple garlic longganisa": "triple_garlic_longganisa.jpg",
 }
 
@@ -124,8 +120,6 @@ def product_image(value: str) -> str:
 
 def media_url(filename: str) -> str:
     encoded = quote(filename, safe="")
-    if MEDIA_BASE_URL:
-        return f"{MEDIA_BASE_URL}/{encoded}"
     return f"/static/img/{encoded}"
 
 
@@ -748,7 +742,7 @@ def portal_section_context(role_key: str, section: str, request: Request) -> dic
 
 @app.get("/health", include_in_schema=False)
 async def health():
-    """Deployment and mobile connectivity probe without exposing secrets."""
+    """Deployment probe that verifies the application and database."""
     try:
         result = data.database_health()
     except Exception:
@@ -836,56 +830,6 @@ def path_with_query(path: str, **params: str) -> str:
     if not clean:
         return path
     return path + "?" + urlencode(clean)
-
-
-def supabase_auth_ready() -> bool:
-    return bool(SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY)
-
-
-def pkce_pair() -> tuple[str, str]:
-    verifier = base64.urlsafe_b64encode(secrets.token_bytes(48)).rstrip(b"=").decode("ascii")
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    return verifier, challenge
-
-
-def json_request(url: str, payload: dict, access_token: str = "") -> dict:
-    headers = {
-        "apikey": SUPABASE_PUBLISHABLE_KEY,
-        "Content-Type": "application/json",
-    }
-    if access_token:
-        headers["Authorization"] = f"Bearer {access_token}"
-    request = UrlRequest(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-    with urlopen(request, timeout=20) as response:
-        if response.status < 200 or response.status >= 300:
-            raise HTTPException(status_code=502, detail="Supabase Auth rejected the request.")
-        return json.loads(response.read().decode("utf-8"))
-
-
-def get_supabase_user(access_token: str) -> dict:
-    request = UrlRequest(
-        f"{SUPABASE_URL}/auth/v1/user",
-        headers={
-            "apikey": SUPABASE_PUBLISHABLE_KEY,
-            "Authorization": f"Bearer {access_token}",
-        },
-        method="GET",
-    )
-    with urlopen(request, timeout=20) as response:
-        if response.status < 200 or response.status >= 300:
-            raise HTTPException(status_code=502, detail="Supabase Auth user lookup failed.")
-        return json.loads(response.read().decode("utf-8"))
-
-
-def account_name_from_user(user: dict, email: str) -> str:
-    metadata = user.get("user_metadata") or {}
-    return (
-        metadata.get("full_name")
-        or metadata.get("name")
-        or metadata.get("display_name")
-        or email.split("@")[0]
-    )
 
 
 def establish_portal_session(request: Request, account: dict) -> RedirectResponse:
@@ -1068,9 +1012,8 @@ async def login(request: Request, message: str = "", error: str = ""):
             "roles": data.roles,
             "message": message,
             "error": error,
-            "social_auth_enabled": supabase_auth_ready(),
             "consent_version": CONSENT_VERSION,
-            "login_otp_pending": bool(pending_login_account_id),
+            "login_otp_pending": LOGIN_OTP_ENABLED and bool(pending_login_account_id),
             "pending_login_email": request.session.get("pending_login_email", ""),
         },
     )
@@ -1106,14 +1049,20 @@ async def submit_login(
     if account is None:
         return redirect_to(path_with_query("/login", error="Invalid email or password."))
 
-    try:
-        return begin_login_otp(request, account, "password_otp")
-    except ValueError as exc:
-        return redirect_to(path_with_query("/login", error=str(exc)))
+    if LOGIN_OTP_ENABLED:
+        try:
+            return begin_login_otp(request, account, "password_otp")
+        except ValueError as exc:
+            return redirect_to(path_with_query("/login", error=str(exc)))
+
+    data.record_user_consent(account["account_id"], CONSENT_VERSION, "password_login")
+    return establish_portal_session(request, account)
 
 
 @app.post("/login/otp")
 async def submit_login_otp(request: Request, otp_code: str = Form(...)):
+    if not LOGIN_OTP_ENABLED:
+        return redirect_to(path_with_query("/login", error="Login OTP is disabled in this environment."))
     account_id = request.session.get("pending_login_account_id")
     if not account_id:
         return redirect_to(path_with_query("/login", error="Login OTP session expired. Please sign in again."))
@@ -1127,82 +1076,6 @@ async def submit_login_otp(request: Request, otp_code: str = Form(...)):
     except (TypeError, ValueError) as exc:
         return redirect_to(path_with_query("/login", error=str(exc)))
     return establish_portal_session(request, account)
-
-
-@app.post("/auth/oauth/{provider}")
-async def start_oauth(request: Request, provider: str, consent: str = Form("")):
-    if provider not in {"google", "facebook"}:
-        raise HTTPException(status_code=404)
-    if consent != "yes":
-        return redirect_to(path_with_query("/login", error="Please accept the privacy notice and terms to continue."))
-    if not supabase_auth_ready():
-        return redirect_to(path_with_query("/login", error="Social login is not configured yet."))
-
-    verifier, challenge = pkce_pair()
-    state = secrets.token_urlsafe(24)
-    request.session["oauth_state"] = state
-    request.session["oauth_verifier"] = verifier
-    request.session["oauth_provider"] = provider
-
-    redirect_url = str(request.url_for("auth_callback"))
-    authorize_url = f"{SUPABASE_URL}/auth/v1/authorize?" + urlencode(
-        {
-            "provider": provider,
-            "redirect_to": redirect_url,
-            "code_challenge": challenge,
-            "code_challenge_method": "s256",
-            "state": state,
-        }
-    )
-    return RedirectResponse(authorize_url, status_code=status.HTTP_303_SEE_OTHER)
-
-
-@app.get("/auth/callback")
-async def auth_callback(request: Request, code: str = "", state: str = "", error: str = "", error_description: str = ""):
-    if error:
-        return redirect_to(path_with_query("/login", error=error_description or "Social login was cancelled."))
-    if not code:
-        return redirect_to(path_with_query("/login", error="Social login did not return an authorization code."))
-    if state != request.session.get("oauth_state"):
-        request.session.clear()
-        return redirect_to(path_with_query("/login", error="Social login session expired. Please try again."))
-
-    verifier = request.session.get("oauth_verifier")
-    provider = request.session.get("oauth_provider", "social")
-    if not verifier or not supabase_auth_ready():
-        request.session.clear()
-        return redirect_to(path_with_query("/login", error="Social login session expired. Please try again."))
-
-    try:
-        token = json_request(
-            f"{SUPABASE_URL}/auth/v1/token?grant_type=pkce",
-            {"auth_code": code, "code_verifier": verifier},
-        )
-        user = token.get("user") or get_supabase_user(token["access_token"])
-    except (HTTPError, URLError, KeyError, TimeoutError, HTTPException):
-        request.session.clear()
-        return redirect_to(path_with_query("/login", error="Social login could not be completed."))
-
-    email = (user.get("email") or "").strip().lower()
-    if not email:
-        request.session.clear()
-        return redirect_to(path_with_query("/login", error="Your social account did not provide an email address."))
-
-    account = data.social_login_account(
-        str(user.get("id")),
-        email,
-        account_name_from_user(user, email),
-        provider,
-        allow_reseller_signup=False,
-    )
-    if account is None:
-        request.session.clear()
-        return redirect_to(path_with_query("/login", error="No portal account exists for this social login. Please use the credentials provided by Batangas Premium."))
-
-    try:
-        return begin_login_otp(request, account, f"oauth_otp:{provider}")
-    except ValueError as exc:
-        return redirect_to(path_with_query("/login", error=str(exc)))
 
 
 @app.get("/logout")

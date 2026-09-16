@@ -10,23 +10,13 @@ from app import main
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def test_media_route_redirects_without_querying_database(monkeypatch):
-    monkeypatch.setattr(
-        main.data,
-        "media_asset_by_filename",
-        lambda filename: (_ for _ in ()).throw(AssertionError("database media lookup was called")),
-    )
-    monkeypatch.setattr(
-        main,
-        "MEDIA_BASE_URL",
-        "https://example.supabase.co/storage/v1/object/public/meattrack-assets/images",
-    )
+def test_media_route_redirects_to_local_static_assets():
     client = TestClient(main.app)
 
     response = client.get("/media/background.jpg", follow_redirects=False)
 
     assert response.status_code == 307
-    assert response.headers["location"].endswith("/images/background.jpg")
+    assert response.headers["location"] == "/static/img/background.jpg"
     assert response.headers["cache-control"] == "public, max-age=3600"
     assert client.get("/media/bad!.png", follow_redirects=False).status_code == 404
 

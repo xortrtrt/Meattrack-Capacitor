@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 
@@ -12,20 +12,25 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 APP_ENV = os.getenv("APP_ENV", "development")
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "change-this-local-dev-secret")
+LOGIN_OTP_ENABLED = os.getenv(
+    "LOGIN_OTP_ENABLED",
+    "true" if APP_ENV == "production" else "false",
+).strip().lower() in {"1", "true", "yes", "on"}
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://meattrack:meattrack@127.0.0.1:5433/meattrack",
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if not DATABASE_URL:
+    database_user = quote(os.getenv("POSTGRES_USER", "meattrack"), safe="")
+    database_password = quote(os.getenv("POSTGRES_PASSWORD", "meattrack"), safe="")
+    database_host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+    database_port = os.getenv("POSTGRES_PORT", "55433")
+    database_name = quote(os.getenv("POSTGRES_DB", "MeatTrack Database"), safe="")
+    DATABASE_URL = (
+        f"postgresql://{database_user}:{database_password}"
+        f"@{database_host}:{database_port}/{database_name}"
+    )
 DATABASE_POOL_MIN = int(os.getenv("DATABASE_POOL_MIN", "1"))
 DATABASE_POOL_MAX = int(os.getenv("DATABASE_POOL_MAX", "5"))
 
-MEDIA_BASE_URL = os.getenv("MEDIA_BASE_URL", "").strip().rstrip("/")
-if MEDIA_BASE_URL and not MEDIA_BASE_URL.startswith("https://"):
-    raise ValueError("MEDIA_BASE_URL must use HTTPS")
-
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
 CONSENT_VERSION = os.getenv("CONSENT_VERSION", "2026-07-22")
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
@@ -35,15 +40,10 @@ BREVO_FROM_NAME = os.getenv("BREVO_FROM_NAME", "Batangas Premium").strip()
 
 
 def database_dsn(value: str = DATABASE_URL) -> str:
-    """Normalize hosted PostgreSQL URLs and require TLS for Supabase."""
+    """Normalize PostgreSQL URLs accepted by psycopg2."""
     if value.startswith("postgres://"):
         value = "postgresql://" + value.removeprefix("postgres://")
-    parts = urlsplit(value)
-    hostname = (parts.hostname or "").lower()
-    query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    if (hostname.endswith(".supabase.co") or hostname.endswith(".pooler.supabase.com")) and "sslmode" not in query:
-        query["sslmode"] = "require"
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    return value
 
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")

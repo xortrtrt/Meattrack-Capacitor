@@ -8,11 +8,11 @@ import psycopg2
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.config import DATABASE_URL, OWNER_PASSWORD, RESELLER_PASSWORD, TEAM_LEADER_PASSWORD
+from app.config import OWNER_PASSWORD, RESELLER_PASSWORD, TEAM_LEADER_PASSWORD, database_dsn
 from app.security import hash_password
 
 def main():
-    dsn = DATABASE_URL
+    dsn = database_dsn()
     print("Connecting to database...")
     conn = psycopg2.connect(dsn)
     conn.autocommit = False

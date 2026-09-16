@@ -417,7 +417,7 @@ def test_owner_accounts_render_responsive_cards(monkeypatch):
         main.data,
         "list_accounts",
         lambda *args, **kwargs: [
-            {"name": "Owner", "email": "owner@example.test", "account_type": "owner", "auth_provider": None, "status": "active"}
+            {"name": "Owner", "email": "owner@example.test", "account_type": "owner", "status": "active"}
         ],
     )
     monkeypatch.setattr(main.data, "list_team_leader_accounts", lambda *args, **kwargs: [{"account_id": 4, "name": "Sales Leader B"}])

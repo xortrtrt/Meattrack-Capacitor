@@ -1,0 +1,63 @@
+name: meattrack
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-MeatTrack Database}"
+      POSTGRES_USER: ${POSTGRES_USER:-meattrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - backend
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      LOGIN_OTP_ENABLED: ${LOGIN_OTP_ENABLED:-true}
+      DATABASE_URL: ""
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: "${POSTGRES_DB:-MeatTrack Database}"
+      POSTGRES_USER: ${POSTGRES_USER:-meattrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_POOL_MIN: ${DATABASE_POOL_MIN:-2}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?Set SESSION_SECRET_KEY in .env.production}
+      CONSENT_VERSION: ${CONSENT_VERSION:-2026-07-22}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
+      BREVO_FROM_EMAIL: ${BREVO_FROM_EMAIL:-}
+      BREVO_FROM_NAME: ${BREVO_FROM_NAME:-Batangas Premium}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?Set OWNER_PASSWORD in .env.production}
+      TEAM_LEADER_PASSWORD: ${TEAM_LEADER_PASSWORD:?Set TEAM_LEADER_PASSWORD in .env.production}
+      RESELLER_PASSWORD: ${RESELLER_PASSWORD:?Set RESELLER_PASSWORD in .env.production}
+      DEFAULT_ACCOUNT_PASSWORD: ${DEFAULT_ACCOUNT_PASSWORD:?Set DEFAULT_ACCOUNT_PASSWORD in .env.production}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+      - frontend
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+    internal: true
+  frontend:
