@@ -607,7 +607,14 @@ def count_inventory_batches(q: str = "", category: str = "") -> int:
     return int(row["total"])
 
 
-def list_products(q: str = "", category: str = "", page: int | None = None, page_size: int = 12, sort: str = "") -> list[dict]:
+def list_products(
+    q: str = "",
+    category: str = "",
+    page: int | None = None,
+    page_size: int = 12,
+    sort: str = "",
+    active_only: bool = False,
+) -> list[dict]:
     where_extra = []
     params: list[object] = []
     q = q.strip()
@@ -618,6 +625,8 @@ def list_products(q: str = "", category: str = "", page: int | None = None, page
     if category:
         where_extra.append("p.category = %s")
         params.append(category)
+    if active_only:
+        where_extra.append("p.is_active = true")
     paging_sql = ""
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
@@ -652,7 +661,7 @@ def list_products(q: str = "", category: str = "", page: int | None = None, page
     ), tuple(params) or None))
 
 
-def count_products(q: str = "", category: str = "") -> int:
+def count_products(q: str = "", category: str = "", active_only: bool = False) -> int:
     query = """
         SELECT COUNT(*) AS total
         FROM inventory_items p
@@ -667,6 +676,8 @@ def count_products(q: str = "", category: str = "") -> int:
     if category:
         query += " AND p.category = %s"
         params.append(category)
+    if active_only:
+        query += " AND p.is_active = true"
     row = fetch_one(query + ";", tuple(params) or None)
     return int(row["total"])
 
@@ -1804,38 +1815,83 @@ def reseller_cart_count(account_id: int) -> float:
     return float(row["total"] if row else 0)
 
 
+def _reseller_available_product(cur, product_id: int) -> dict | None:
+    cur.execute("""
+        SELECT p.item_id AS product_id, p.name, p.is_active,
+               COALESCE(SUM(pb.quantity_available) FILTER (
+                   WHERE pb.quality_status = 'approved'
+                     AND pb.expiry_date >= CURRENT_DATE
+               ), 0) AS available
+        FROM inventory_items p
+        LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
+        WHERE p.item_id = %s
+          AND p.item_type = 'finished_product'
+        GROUP BY p.item_id, p.name, p.is_active;
+    """, (product_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _require_reseller_quantity_available(product: dict | None, quantity: Decimal) -> None:
+    if product is None or not product["is_active"]:
+        raise ValueError("Unknown product")
+    available = Decimal(product["available"])
+    if quantity > available:
+        raise ValueError(
+            f"Only {display_decimal(available)} packs of {product['name']} are currently available. "
+            "Stock is not reserved until fulfillment."
+        )
+
+
 def add_reseller_cart_item(account_id: int, product_id: int, quantity: object) -> dict:
     ensure_system_tables()
-    product = product_by_id(product_id)
-    if product is None or not product.get("is_active", True):
-        raise ValueError("Unknown product")
     clean_quantity = measurements.parse_whole_packs(quantity)
-    row = execute_write("""
-        INSERT INTO reseller_cart_items (account_id, product_id, quantity)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (account_id, product_id)
-        DO UPDATE SET
-            quantity = reseller_cart_items.quantity + EXCLUDED.quantity,
-            updated_at = now()
-        RETURNING cart_item_id, account_id, product_id, quantity;
-    """, (account_id, product_id, clean_quantity), returning=True)
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0));",
+            (f"reseller-cart:{account_id}:{product_id}",),
+        )
+        product = _reseller_available_product(cur, product_id)
+        cur.execute("""
+            SELECT quantity
+            FROM reseller_cart_items
+            WHERE account_id = %s AND product_id = %s
+            FOR UPDATE;
+        """, (account_id, product_id))
+        existing = cur.fetchone()
+        requested_quantity = clean_quantity + (Decimal(existing["quantity"]) if existing else Decimal("0"))
+        _require_reseller_quantity_available(product, requested_quantity)
+        cur.execute("""
+            INSERT INTO reseller_cart_items (account_id, product_id, quantity)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (account_id, product_id)
+            DO UPDATE SET
+                quantity = reseller_cart_items.quantity + EXCLUDED.quantity,
+                updated_at = now()
+            RETURNING cart_item_id, account_id, product_id, quantity;
+        """, (account_id, product_id, clean_quantity))
+        row = cur.fetchone()
     return clean_row(row)
 
 
 def update_reseller_cart_item(account_id: int, product_id: int, quantity: object) -> None:
     ensure_system_tables()
     clean_quantity = measurements.parse_whole_packs(quantity)
-    product = product_by_id(product_id)
-    if product is None or not product.get("is_active", True):
-        raise ValueError("Unknown product")
-    execute_write("""
-        INSERT INTO reseller_cart_items (account_id, product_id, quantity)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (account_id, product_id)
-        DO UPDATE SET
-            quantity = EXCLUDED.quantity,
-            updated_at = now();
-    """, (account_id, product_id, clean_quantity))
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0));",
+            (f"reseller-cart:{account_id}:{product_id}",),
+        )
+        product = _reseller_available_product(cur, product_id)
+        _require_reseller_quantity_available(product, clean_quantity)
+        cur.execute("""
+            INSERT INTO reseller_cart_items (account_id, product_id, quantity)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (account_id, product_id)
+            DO UPDATE SET
+                quantity = EXCLUDED.quantity,
+                updated_at = now();
+        """, (account_id, product_id, clean_quantity))
 
 
 def remove_reseller_cart_item(account_id: int, product_id: int) -> None:
@@ -2731,11 +2787,18 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
 
     with get_transaction_cursor() as cur:
         cur.execute("""
-            SELECT item_id AS product_id, name, unit, base_price
-            FROM inventory_items
-            WHERE item_type = 'finished_product'
-              AND is_active = true
-              AND item_id = ANY(%s);
+            SELECT p.item_id AS product_id, p.name, p.unit, p.base_price, p.is_active,
+                   COALESCE((
+                       SELECT SUM(pb.quantity_available)
+                       FROM inventory_batches pb
+                       WHERE pb.item_id = p.item_id
+                         AND pb.quality_status = 'approved'
+                         AND pb.expiry_date >= CURRENT_DATE
+                   ), 0) AS available
+            FROM inventory_items p
+            WHERE p.item_type = 'finished_product'
+              AND p.is_active = true
+              AND p.item_id = ANY(%s);
         """, (list(quantities.keys()),))
         products = {row["product_id"]: row for row in cur.fetchall()}
         if len(products) != len(quantities):
@@ -2751,6 +2814,8 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
         lines = []
         for product_id, quantity in quantities.items():
             product = products[product_id]
+            if role == "reseller":
+                _require_reseller_quantity_available(product, quantity)
             line_total = (product["base_price"] * quantity).quantize(Decimal("0.01"))
             total += line_total
             lines.append((product_id, quantity, product["unit"], product["base_price"]))

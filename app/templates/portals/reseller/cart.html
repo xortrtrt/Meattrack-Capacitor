@@ -31,6 +31,7 @@
             <span class="reseller-product-category">{{ item.category }}</span>
             <strong>{{ item.name }}</strong>
             <small>{{ item.base_price|currency }}/{{ item.unit }}</small>
+            <small>{{ item.available|number }} packs currently available; not reserved.</small>
           </div>
           <form
             action="/portal/reseller/cart"
@@ -60,6 +61,7 @@
                     type="number"
                     min="1"
                     step="1"
+                    max="{{ item.available }}"
                     name="quantity"
                     value="{{ item.cart_quantity|number }}"
                     data-quantity-input
@@ -121,7 +123,8 @@
           </button>
         </form>
         <p class="hint">
-          Your order remains pending until the team leader reviews it.
+          Quantities are checked again when you submit. Stock is not reserved until fulfillment,
+          and your order remains pending until the team leader reviews it.
         </p>
       </aside>
     </div>

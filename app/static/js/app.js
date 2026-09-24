@@ -180,8 +180,10 @@
                 }
                 const step = Number(button.dataset.quantityStep || 0);
                 const min = Number(input.getAttribute("min") || 0);
+                const maxValue = input.getAttribute("max");
+                const max = maxValue === null || maxValue === "" ? Number.POSITIVE_INFINITY : Number(maxValue);
                 const value = Number(input.value || min || 0);
-                input.value = String(Math.max(min, value + step));
+                input.value = String(Math.min(max, Math.max(min, value + step)));
                 input.dispatchEvent(new Event("input", { bubbles: true }));
             });
         });
@@ -235,6 +237,7 @@
             const unit = card.dataset.productUnit || "pack";
             const productName = card.dataset.productName || "Product";
             const productCategory = card.dataset.productCategory || "Uncategorized";
+            const available = Number(card.dataset.productStock || 0);
 
             if (image) {
                 image.src = card.dataset.productImage || "";
@@ -263,9 +266,12 @@
             }
             if (quantity) {
                 quantity.value = "1";
+                quantity.max = String(Math.max(0, Math.floor(available)));
+                quantity.disabled = available < 1;
             }
             if (addButton) {
                 addButton.setAttribute("aria-label", `Add ${productName} to cart`);
+                addButton.disabled = available < 1;
             }
 
             modal.hidden = false;

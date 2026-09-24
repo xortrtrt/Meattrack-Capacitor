@@ -169,10 +169,17 @@ def paged(items: list[dict], total: int, page: int, page_size: int = 10, **filte
     }
 
 
-def product_page(request: Request, page_size: int = 12) -> dict:
+def product_page(request: Request, page_size: int = 12, active_only: bool = False) -> dict:
     filters = portal_filters(request)
-    items = data.list_products(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size, sort=filters["sort"])
-    total = data.count_products(q=filters["q"], category=filters["type"])
+    items = data.list_products(
+        q=filters["q"],
+        category=filters["type"],
+        page=filters["page"],
+        page_size=page_size,
+        sort=filters["sort"],
+        active_only=active_only,
+    )
+    total = data.count_products(q=filters["q"], category=filters["type"], active_only=active_only)
     return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
@@ -389,7 +396,7 @@ def reseller_cart_count(request: Request) -> float:
 
 
 def reseller_cart_context(request: Request) -> dict:
-    products = data.list_products()
+    products = data.list_products(active_only=True)
     account_id = session_account_id(request)
     items = data.list_reseller_cart_items(account_id) if account_id is not None else []
     total = sum((Decimal(str(item.get("line_total") or 0)) for item in items), Decimal("0.00"))
@@ -714,7 +721,7 @@ PORTAL_SECTION_LOADERS = {
     ("team-leader", "profile"): team_leader_profile_context,
     ("reseller", "dashboard"): reseller_dashboard_context,
     ("reseller", "order"): lambda request: {
-        "products_page": (page := product_page(request, page_size=8)),
+        "products_page": (page := product_page(request, page_size=8, active_only=True)),
         "products": page["items"],
         "product_categories": data.product_categories,
     },
@@ -896,7 +903,7 @@ def require_portal_session(request: Request, role_key: str) -> RedirectResponse 
 
 def public_products() -> list[dict]:
     try:
-        return data.list_products()
+        return data.list_products(active_only=True)
     except Exception:
         return []
 

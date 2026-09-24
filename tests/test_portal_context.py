@@ -168,10 +168,10 @@ def test_inventory_team_leader_sections_load_only_inventory_data(monkeypatch, ro
 
     if section == "inventory":
         assert calls["list_products"] == [
-            ((), {"q": "", "category": "", "page": 1, "page_size": 8, "sort": ""}),
+            ((), {"q": "", "category": "", "page": 1, "page_size": 8, "sort": "", "active_only": False}),
             ((), {}),
         ]
-        assert calls["count_products"] == [((), {"q": "", "category": ""})]
+        assert calls["count_products"] == [((), {"q": "", "category": "", "active_only": False})]
         assert calls["list_product_recipes"] == [((), {"product_ids": []})]
 
     if section == "raw-materials":
@@ -207,8 +207,8 @@ def test_section_filters_are_applied(monkeypatch):
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/order?q=tocino&type=Pork&page=2").status_code == 200
-    assert calls["list_products"] == [((), {"q": "tocino", "category": "Pork", "page": 2, "page_size": 8, "sort": ""})]
-    assert calls["count_products"] == [((), {"q": "tocino", "category": "Pork"})]
+    assert calls["list_products"] == [((), {"q": "tocino", "category": "Pork", "page": 2, "page_size": 8, "sort": "", "active_only": True})]
+    assert calls["count_products"] == [((), {"q": "tocino", "category": "Pork", "active_only": True})]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/history?q=order&status=pending&page=2").status_code == 200
@@ -217,7 +217,7 @@ def test_section_filters_are_applied(monkeypatch):
 
 
 def test_landing_page_does_not_load_metrics(monkeypatch):
-    monkeypatch.setattr(main.data, "list_products", lambda: [])
+    monkeypatch.setattr(main.data, "list_products", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         main.data,
         "current_metrics",

@@ -317,3 +317,65 @@ def test_production_atomically_records_consumption_and_output(strict_inventory_d
                 ("production_consumption", -2, batch["product_batch_id"]),
                 ("production_output", 4, batch["product_batch_id"]),
             ]
+
+
+@pytest.mark.postgres
+def test_reseller_catalog_hides_inactive_products(strict_inventory_database):
+    _, product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[5],
+        order_quantities=[],
+    )
+
+    assert [row["product_id"] for row in repositories.list_products(active_only=True)] == [product_id]
+    assert repositories.count_products(active_only=True) == 1
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE inventory_items SET is_active = false WHERE item_id = %s;", (product_id,))
+
+    assert repositories.list_products(active_only=True) == []
+    assert repositories.count_products(active_only=True) == 0
+    assert [row["product_id"] for row in repositories.list_products()] == [product_id]
+
+
+@pytest.mark.postgres
+def test_reseller_cart_and_checkout_reject_quantities_above_current_stock(strict_inventory_database):
+    _, product_id, batch_ids, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[5],
+        order_quantities=[],
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id = cursor.fetchone()[0]
+
+    first = repositories.add_reseller_cart_item(reseller_account_id, product_id, "3")
+    assert first["quantity"] == 3
+    second = repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
+    assert second["quantity"] == 5
+
+    with pytest.raises(ValueError, match="Only 5 packs.*not reserved"):
+        repositories.add_reseller_cart_item(reseller_account_id, product_id, "1")
+    with pytest.raises(ValueError, match="Only 5 packs.*not reserved"):
+        repositories.update_reseller_cart_item(reseller_account_id, product_id, "6")
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE inventory_batches SET quantity_available = 4 WHERE batch_id = %s;",
+                (batch_ids[0],),
+            )
+
+    with pytest.raises(ValueError, match="Only 4 packs.*not reserved"):
+        repositories.create_order_from_items(
+            "reseller",
+            [(product_id, "5")],
+            account_id=reseller_account_id,
+        )
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM orders;")
+            assert cursor.fetchone()[0] == 0
