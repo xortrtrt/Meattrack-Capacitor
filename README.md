@@ -181,6 +181,12 @@ changes to migrations that have already run.
 disposable development or test databases; never run it against production or
 any database containing records that must be retained.
 
+Migration `002_strict_inventory.sql` creates immutable opening-balance records
+and must be deployed while inventory and order writes are paused. Back up the
+database, stop application writes, run the migration, deploy the matching
+application build, verify ledger balances, and only then restore writes. Do not
+run the previous application build after this migration.
+
 See [`database/README.md`](database/README.md) for migration, backup, restore,
 and data-model details.
 
@@ -206,7 +212,14 @@ Install the development dependencies and run the regression suite:
 ```
 
 The tests mock or isolate database calls, so the normal suite does not require
-a live PostgreSQL server.
+a live PostgreSQL server. When the local Compose database is available, tests
+marked `postgres` also create and remove an isolated schema to verify locking,
+rollback, constraints, and ledger immutability. Run that release gate directly
+with:
+
+```powershell
+.venv\Scripts\python.exe -m pytest -q -m postgres
+```
 
 ## Health check
 

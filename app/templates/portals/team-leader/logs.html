@@ -1,7 +1,7 @@
 <section class="panel">
     <div class="panel-heading">
         <h2>Inventory logs</h2>
-        <span class="hint">Audit trail for raw-material, recipe, and production actions only.</span>
+        <span class="hint">Immutable stock receipts, production use, output, and sale deductions.</span>
     </div>
     <form class="filter-bar" method="get">
         <label>Search <input name="q" value="{{ activity_logs_page.filters.q }}" placeholder="Actor, action, entity"></label>
@@ -17,17 +17,30 @@
     </form>
     <div class="table-wrap">
         <table>
+            {% if activity_logs_page.inventory_movements %}
+            <thead><tr><th>Actor</th><th>Movement</th><th>Item</th><th>Quantity</th><th>Balance</th><th>Reference</th><th>Date</th></tr></thead>
+            {% else %}
             <thead><tr><th>Actor</th><th>Action</th><th>Entity</th><th>Date</th></tr></thead>
+            {% endif %}
             <tbody>
             {% for log in activity_logs %}
             <tr>
                 <td>{{ log.actor }}</td>
                 <td>{{ log.action.replace("_", " ") }}</td>
                 <td>{{ log.entity }}</td>
+                {% if activity_logs_page.inventory_movements %}
+                <td>{{ '+' if log.quantity_delta > 0 else '' }}{{ log.quantity_delta|number }} {{ log.unit }}</td>
+                <td>{{ log.balance_before|number }} → {{ log.balance_after|number }} {{ log.unit }}</td>
+                <td>
+                    {% if log.batch_code %}Batch {{ log.batch_code }}{% endif %}
+                    {% if log.order_id %}Order #{{ log.order_id }}{% endif %}
+                    {% if not log.batch_code and not log.order_id %}{{ log.note or '—' }}{% endif %}
+                </td>
+                {% endif %}
                 <td>{{ log.created_at|nice_date }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="4">No inventory logs yet.</td></tr>
+            <tr><td colspan="{{ 7 if activity_logs_page.inventory_movements else 4 }}">No inventory logs yet.</td></tr>
             {% endfor %}
             </tbody>
         </table>

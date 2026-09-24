@@ -54,11 +54,11 @@
                                     {% endif %}
                                 </td>
                                 <td data-label="Action">
-                                    {% set approval_blocked = order.status == "pending" and not order.payment_proofs %}
+                                    {% set approval_blocked = order.status != "pending" or not order.payment_proofs %}
                                     <div class="table-actions">
                                         <form action="/portal/team-leader/orders/{{ order.order_id }}/approve" method="post"><button class="icon-button" title="{{ 'Proof of payment required' if approval_blocked else 'Approve' }}" {% if order_locked or approval_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="check"></i></button></form>
                                         <form action="/portal/team-leader/orders/{{ order.order_id }}/reject" method="post"><button class="icon-button danger" title="Reject" {% if order_locked %}disabled aria-disabled="true"{% endif %}><i data-lucide="x"></i></button></form>
-                                        <form action="/portal/team-leader/orders/{{ order.order_id }}/fulfill" method="post"><button class="icon-button" title="Fulfill" {% if order_locked %}disabled aria-disabled="true"{% endif %}><i data-lucide="package-check"></i></button></form>
+                                        <form action="/portal/team-leader/orders/{{ order.order_id }}/fulfill" method="post"><button class="icon-button" title="{{ 'Approve order before fulfillment' if order.status != 'approved' else 'Fulfill' }}" {% if order.status != "approved" %}disabled aria-disabled="true"{% endif %}><i data-lucide="package-check"></i></button></form>
                                     </div>
                                 </td>
                             </tr>

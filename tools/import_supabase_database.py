@@ -100,6 +100,78 @@ def source_rows(source, table: str, columns: list[str]) -> list[tuple]:
         return cursor.fetchall()
 
 
+def validate_source_inventory(source) -> None:
+    required_item_columns = {"pack_size", "pack_size_unit", "pack_content_status"}
+    available_item_columns = set(insertable_columns(source, "inventory_items"))
+    if not required_item_columns.issubset(available_item_columns):
+        raise RuntimeError(
+            "The full source database predates strict pack metadata. "
+            "Migrate the source first or use import_supabase_catalog.py for normalized legacy catalog data."
+        )
+    checks = (
+        ("""
+            SELECT COUNT(*) FROM inventory_items
+            WHERE (item_type = 'raw_material' AND unit NOT IN ('kg', 'g', 'ml'))
+               OR (item_type = 'finished_product' AND unit <> 'pack')
+        """, "unsupported inventory item units"),
+        ("""
+            SELECT COUNT(*) FROM inventory_items
+            WHERE (item_type = 'raw_material' AND (
+                       pack_size IS NOT NULL OR pack_size_unit IS NOT NULL OR pack_content_status IS NOT NULL
+                   ))
+               OR (item_type = 'finished_product' AND (
+                       (pack_content_status = 'declared' AND pack_size > 0 AND pack_size_unit IN ('g', 'kg', 'ml'))
+                       OR
+                       (pack_content_status = 'unknown_legacy' AND pack_size IS NULL AND pack_size_unit IS NULL)
+                   ) IS NOT TRUE)
+        """, "invalid structured pack metadata"),
+        ("""
+            SELECT COUNT(*)
+            FROM product_recipes pr
+            JOIN inventory_items p ON p.item_id = pr.product_item_id
+            JOIN inventory_items rm ON rm.item_id = pr.material_item_id
+            WHERE p.item_type <> 'finished_product'
+               OR rm.item_type <> 'raw_material'
+               OR pr.unit <> rm.unit
+        """, "invalid recipe item types or units"),
+        ("""
+            SELECT COUNT(*)
+            FROM inventory_batches ib
+            JOIN inventory_items ii ON ii.item_id = ib.item_id
+            WHERE ii.item_type <> 'finished_product'
+               OR ib.unit <> 'pack'
+               OR ib.quantity_received <> trunc(ib.quantity_received)
+               OR ib.quantity_available <> trunc(ib.quantity_available)
+        """, "invalid finished-product batches"),
+        ("SELECT COUNT(*) FROM order_items WHERE quantity <> trunc(quantity)", "fractional order packs"),
+        ("SELECT COUNT(*) FROM reseller_cart_items WHERE quantity <> trunc(quantity)", "fractional cart packs"),
+        ("SELECT COUNT(*) FROM sales_report_items WHERE quantity_sold <> trunc(quantity_sold)", "fractional reported packs"),
+        ("""
+            SELECT COUNT(*) FROM order_items oi
+            JOIN inventory_items p ON p.item_id = oi.product_id
+            WHERE p.item_type <> 'finished_product' OR oi.unit <> 'pack'
+        """, "invalid order product types or units"),
+        ("""
+            SELECT COUNT(*) FROM reseller_cart_items rci
+            JOIN inventory_items p ON p.item_id = rci.product_id
+            WHERE p.item_type <> 'finished_product'
+        """, "invalid cart product types"),
+        ("""
+            SELECT COUNT(*) FROM sales_report_items sri
+            JOIN inventory_items p ON p.item_id = sri.product_id
+            WHERE p.item_type <> 'finished_product' OR sri.unit <> 'pack'
+        """, "invalid reported product types or units"),
+    )
+    failures: list[str] = []
+    with source.cursor() as cursor:
+        for query, label in checks:
+            cursor.execute(query)
+            if int(cursor.fetchone()[0]):
+                failures.append(label)
+    if failures:
+        raise RuntimeError("Source inventory validation failed: " + ", ".join(failures))
+
+
 def reset_identity_sequences(target, tables: list[str]) -> None:
     with target.cursor() as cursor:
         for table in tables:
@@ -168,6 +240,7 @@ def main() -> None:
 
     with psycopg2.connect(source_dsn, connect_timeout=15) as source:
         with psycopg2.connect(database_dsn()) as target:
+            validate_source_inventory(source)
             tables = importable_tables(source, target)
             print(f"Importable application tables: {len(tables)}")
             for table in tables:

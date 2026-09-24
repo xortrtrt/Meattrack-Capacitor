@@ -64,10 +64,14 @@ source dump with `pg_restore --list meattrack.dump`.
 - Department references: `departments`.
 - Reseller onboarding: `inquiries`, `resellers`.
 - Catalog and inventory: `inventory_items`, `inventory_batches`,
-  `product_recipes`, and `alerts`.
+  `product_recipes`, immutable `inventory_movements`, and `alerts`.
 - Sales: `orders`, `order_items`, payment proofs, carts, and sales reports.
 - Forecasting: `forecast_runs`, `forecast_results`.
 - Portal notifications: `notifications`.
 
-Application workflow rules such as FEFO selection, recipe validation, inventory
-deduction, order total calculation, and audit logging remain in FastAPI.
+Raw stock uses `kg`, `g`, or `ml` to three decimal places. Finished stock,
+carts, orders, batches, and sell-through quantities use whole `pack` units.
+Cross-table triggers enforce recipe and batch item types and units. Fulfillment
+locks FEFO batches and writes every deduction in the same transaction as the
+order status update. `inventory_movements` rejects update, delete, and truncate;
+opening rows define the audit boundary for databases upgraded by migration 002.

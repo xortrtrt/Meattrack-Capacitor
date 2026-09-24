@@ -1,14 +1,16 @@
 from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import logging
 import os
 import secrets
 import tempfile
+from threading import Lock
 
 from app.database import fetch_all, fetch_one, execute_write, clean_row, get_transaction_cursor
 from app.config import DEFAULT_ACCOUNT_PASSWORD
+from app import inventory_measurements as measurements
 from app.security import hash_password, password_needs_rehash, validate_password_policy, verify_password
 
 today = date.today()
@@ -87,6 +89,13 @@ LOG_SORTS = {
     "action_asc": "al.action ASC, al.activity_log_id DESC",
 }
 
+MOVEMENT_SORTS = {
+    "newest": "im.movement_id DESC",
+    "oldest": "im.movement_id ASC",
+    "actor_asc": "im.actor_name ASC, im.movement_id DESC",
+    "action_asc": "im.movement_type ASC, im.movement_id DESC",
+}
+
 
 def database_health() -> str:
     row = fetch_one("SELECT 1 AS ready")
@@ -105,10 +114,8 @@ def normalize_inventory_name(value: str, label: str = "Name") -> str:
 
 
 def parse_inventory_decimal(value: object, label: str, places: str) -> Decimal:
-    try:
-        return Decimal(str(value)).quantize(Decimal(places))
-    except (InvalidOperation, ValueError):
-        raise ValueError(f"{label} must be a number.")
+    scale = abs(Decimal(places).as_tuple().exponent)
+    return measurements.parse_decimal_exact(value, label, scale=scale)
 
 
 def display_decimal(value: Decimal) -> str:
@@ -116,43 +123,17 @@ def display_decimal(value: Decimal) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-UNIT_ALIASES = {
-    "kilogram": "kg",
-    "kilograms": "kg",
-    "kgs": "kg",
-    "gram": "g",
-    "grams": "g",
-    "gms": "g",
-    "milligram": "mg",
-    "milligrams": "mg",
-    "mgs": "mg",
-    "liter": "l",
-    "liters": "l",
-    "litre": "l",
-    "litres": "l",
-    "ltr": "l",
-    "ltrs": "l",
-    "milliliter": "ml",
-    "milliliters": "ml",
-    "millilitre": "ml",
-    "millilitres": "ml",
-}
-
-UNIT_FACTORS = {
-    "mg": ("weight", Decimal("0.001")),
-    "g": ("weight", Decimal("1")),
-    "kg": ("weight", Decimal("1000")),
-    "ml": ("volume", Decimal("1")),
-    "l": ("volume", Decimal("1000")),
-}
+UNIT_ALIASES = measurements.UNIT_ALIASES
+UNIT_FACTORS = measurements.UNIT_FACTORS
 
 raw_material_categories = ["meat", "raw_material"]
 product_categories = ["Chicken", "Pork", "Beef"]
-stock_units = ["kg", "g", "ml"]
-content_units = ["g", "kg", "ml"]
-recipe_units = ["g", "kg", "ml"]
+stock_units = list(measurements.STOCK_UNITS)
+content_units = list(measurements.CONTENT_UNITS)
+recipe_units = list(measurements.RECIPE_UNITS)
 
 SYSTEM_TABLES_READY = False
+SYSTEM_TABLES_LOCK = Lock()
 
 SYSTEM_TABLES_SQL = """
 ALTER TABLE accounts
@@ -381,8 +362,11 @@ def ensure_system_tables() -> None:
     global SYSTEM_TABLES_READY
     if SYSTEM_TABLES_READY:
         return
-    execute_write(SYSTEM_TABLES_SQL)
-    SYSTEM_TABLES_READY = True
+    with SYSTEM_TABLES_LOCK:
+        if SYSTEM_TABLES_READY:
+            return
+        execute_write(SYSTEM_TABLES_SQL)
+        SYSTEM_TABLES_READY = True
 
 
 def require_inventory_choice(value: object, choices: list[str], label: str) -> str:
@@ -394,27 +378,11 @@ def require_inventory_choice(value: object, choices: list[str], label: str) -> s
 
 
 def canonical_inventory_unit(unit: str, label: str = "Unit") -> str:
-    cleaned = normalize_inventory_text(unit, label).lower().replace(".", "")
-    return UNIT_ALIASES.get(cleaned, cleaned)
+    return measurements.canonical_unit(unit, label)
 
 
 def convert_inventory_quantity(quantity: Decimal, from_unit: str, to_unit: str, item_name: str) -> Decimal:
-    from_key = canonical_inventory_unit(from_unit, "Ingredient unit")
-    to_key = canonical_inventory_unit(to_unit, "Stock unit")
-    if from_key == to_key:
-        return quantity.quantize(Decimal("0.001"))
-    if from_key not in UNIT_FACTORS or to_key not in UNIT_FACTORS:
-        raise ValueError(f"{item_name} uses {to_unit}. Enter the recipe in {to_unit} or a compatible unit.")
-
-    from_family, from_factor = UNIT_FACTORS[from_key]
-    to_family, to_factor = UNIT_FACTORS[to_key]
-    if from_family != to_family:
-        raise ValueError(f"{item_name} uses {to_unit}. {from_unit} cannot be converted to {to_unit}.")
-
-    converted = ((quantity * from_factor) / to_factor).quantize(Decimal("0.001"))
-    if converted <= 0:
-        raise ValueError(f"{item_name} amount is too small for {to_unit} stock unit.")
-    return converted
+    return measurements.convert_quantity(quantity, from_unit, to_unit, item_name)
 
 
 roles = {
@@ -541,7 +509,8 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
                    WHEN 'raw_material' THEN 'Raw material'
                    WHEN 'finished_product' THEN 'Finished product'
                END AS item_type_label,
-               ii.category, ii.name, ii.unit, ii.base_price, ii.is_active,
+               ii.category, ii.name, ii.unit, ii.base_price,
+               ii.pack_size, ii.pack_size_unit, ii.pack_content_status, ii.is_active,
                CASE
                    WHEN ii.item_type = 'raw_material' THEN ii.quantity_available
                    ELSE COALESCE(SUM(ib.quantity_available) FILTER (
@@ -553,7 +522,8 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
         LEFT JOIN inventory_batches ib ON ib.item_id = ii.item_id
         WHERE {where_sql}
         GROUP BY ii.item_id, ii.item_type, ii.category, ii.name, ii.unit,
-                 ii.base_price, ii.quantity_available, ii.is_active
+                 ii.base_price, ii.pack_size, ii.pack_size_unit, ii.pack_content_status,
+                 ii.quantity_available, ii.is_active
         ORDER BY {order_sql}
         {paging_sql};
     """.format(where_sql=" AND ".join(where), order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
@@ -655,7 +625,7 @@ def list_products(q: str = "", category: str = "", page: int | None = None, page
     order_sql = safe_sort_sql(sort, PRODUCT_SORTS, "p.item_id")
     return clean_row(fetch_all("""
         SELECT p.item_id AS product_id, p.name, p.description, p.unit, p.base_price, p.is_active,
-               p.category,
+               p.category, p.pack_size, p.pack_size_unit, p.pack_content_status,
                (
                    SELECT COUNT(*)
                    FROM product_recipes pr
@@ -671,7 +641,8 @@ def list_products(q: str = "", category: str = "", page: int | None = None, page
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_type = 'finished_product'
           {where_extra}
-        GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category
+        GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category,
+                 p.pack_size, p.pack_size_unit, p.pack_content_status
         ORDER BY {order_sql}
         {paging_sql};
     """.format(
@@ -1535,6 +1506,76 @@ INVENTORY_LOG_ACTIONS = (
 )
 
 
+def list_inventory_movements(
+    q: str = "",
+    page: int | None = None,
+    page_size: int = 10,
+    sort: str = "",
+) -> list[dict]:
+    params: list[object] = []
+    where_sql = ""
+    q = q.strip()
+    if q:
+        search = f"%{q}%"
+        where_sql = """
+            WHERE im.actor_name ILIKE %s
+               OR im.movement_type ILIKE %s
+               OR ii.name ILIKE %s
+               OR COALESCE(ib.batch_code, '') ILIKE %s
+               OR COALESCE(im.order_id::text, '') ILIKE %s
+        """
+        params.extend([search, search, search, search, search])
+    paging_sql = ""
+    if page is not None:
+        paging_sql = " LIMIT %s OFFSET %s"
+        params.extend([page_size, (page - 1) * page_size])
+    order_sql = safe_sort_sql(sort, MOVEMENT_SORTS, MOVEMENT_SORTS["newest"])
+    return clean_row(fetch_all(f"""
+        SELECT im.movement_id,
+               im.actor_name AS actor,
+               im.movement_type AS action,
+               ii.name AS entity,
+               im.quantity_delta,
+               im.unit,
+               im.balance_before,
+               im.balance_after,
+               ib.batch_code,
+               im.order_id,
+               im.note,
+               im.created_at
+        FROM inventory_movements im
+        JOIN inventory_items ii ON ii.item_id = im.item_id
+        LEFT JOIN inventory_batches ib ON ib.batch_id = im.affected_batch_id
+        {where_sql}
+        ORDER BY {order_sql}
+        {paging_sql};
+    """, tuple(params) or None))
+
+
+def count_inventory_movements(q: str = "") -> int:
+    params: list[object] = []
+    where_sql = ""
+    q = q.strip()
+    if q:
+        search = f"%{q}%"
+        where_sql = """
+            WHERE im.actor_name ILIKE %s
+               OR im.movement_type ILIKE %s
+               OR ii.name ILIKE %s
+               OR COALESCE(ib.batch_code, '') ILIKE %s
+               OR COALESCE(im.order_id::text, '') ILIKE %s
+        """
+        params.extend([search, search, search, search, search])
+    row = fetch_one(f"""
+        SELECT COUNT(*) AS total
+        FROM inventory_movements im
+        JOIN inventory_items ii ON ii.item_id = im.item_id
+        LEFT JOIN inventory_batches ib ON ib.batch_id = im.affected_batch_id
+        {where_sql};
+    """, tuple(params) or None)
+    return int(row["total"])
+
+
 def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10, inventory_only: bool = False, sort: str = "") -> list[dict]:
     where = []
     params: list[object] = []
@@ -1666,10 +1707,47 @@ def __dir__():
 
 # ----------------- Write operations / Database modifiers -----------------
 
+def _inventory_actor_name(cur, actor_account_id: int | None) -> str:
+    if actor_account_id is None:
+        return "MEATTRACK"
+    cur.execute("SELECT name FROM accounts WHERE account_id = %s LIMIT 1;", (actor_account_id,))
+    actor = cur.fetchone()
+    return actor["name"] if actor else "MEATTRACK"
+
+
+def _insert_inventory_movement(
+    cur,
+    *,
+    item_id: int,
+    movement_type: str,
+    quantity_delta: Decimal,
+    unit: str,
+    balance_before: Decimal,
+    balance_after: Decimal,
+    actor_account_id: int | None,
+    actor_name: str,
+    affected_batch_id: int | None = None,
+    production_batch_id: int | None = None,
+    order_id: int | None = None,
+    note: str | None = None,
+) -> None:
+    cur.execute("""
+        INSERT INTO inventory_movements (
+            item_id, affected_batch_id, production_batch_id, order_id,
+            movement_type, quantity_delta, unit, balance_before, balance_after,
+            actor_account_id, actor_name, note
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+    """, (
+        item_id, affected_batch_id, production_batch_id, order_id,
+        movement_type, quantity_delta, unit, balance_before, balance_after,
+        actor_account_id, actor_name, note,
+    ))
+
 def product_by_id(product_id: int) -> dict | None:
     res = fetch_one("""
         SELECT p.item_id AS product_id, p.name, p.description, p.unit, p.base_price, p.is_active,
-               p.category,
+               p.category, p.pack_size, p.pack_size_unit, p.pack_content_status,
                (
                    SELECT COUNT(*)
                    FROM product_recipes pr
@@ -1685,7 +1763,8 @@ def product_by_id(product_id: int) -> dict | None:
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_id = %s
           AND p.item_type = 'finished_product'
-        GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category;
+        GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category,
+                 p.pack_size, p.pack_size_unit, p.pack_content_status;
     """, (product_id,))
     return clean_row(res)
 
@@ -1730,9 +1809,7 @@ def add_reseller_cart_item(account_id: int, product_id: int, quantity: object) -
     product = product_by_id(product_id)
     if product is None or not product.get("is_active", True):
         raise ValueError("Unknown product")
-    clean_quantity = parse_inventory_decimal(quantity, "Quantity", "0.001")
-    if clean_quantity <= 0:
-        raise ValueError("Quantity must be greater than zero.")
+    clean_quantity = measurements.parse_whole_packs(quantity)
     row = execute_write("""
         INSERT INTO reseller_cart_items (account_id, product_id, quantity)
         VALUES (%s, %s, %s)
@@ -1747,10 +1824,7 @@ def add_reseller_cart_item(account_id: int, product_id: int, quantity: object) -
 
 def update_reseller_cart_item(account_id: int, product_id: int, quantity: object) -> None:
     ensure_system_tables()
-    clean_quantity = parse_inventory_decimal(quantity, "Quantity", "0.001")
-    if clean_quantity <= 0:
-        remove_reseller_cart_item(account_id, product_id)
-        return
+    clean_quantity = measurements.parse_whole_packs(quantity)
     product = product_by_id(product_id)
     if product is None or not product.get("is_active", True):
         raise ValueError("Unknown product")
@@ -2539,34 +2613,89 @@ def reject_inquiry(inquiry_id: int, reviewing_team_leader_account_id: int | None
     add_log("Maria Santos", "rejected_reseller_inquiry", f"Inquiry #{inquiry_id}")
     return True
 
-def deduct_stock_fefo(product_id: int, quantity: float):
-    batches = fetch_all("""
-        SELECT ib.batch_id AS product_batch_id, ib.quantity_available
-        FROM inventory_batches ib
-        JOIN inventory_items ii ON ii.item_id = ib.item_id
-        WHERE ib.item_id = %s
-          AND ii.item_type = 'finished_product'
-          AND ib.quality_status = 'approved'
-          AND ib.quantity_available > 0
-          AND (ib.expiry_date IS NULL OR ib.expiry_date >= CURRENT_DATE)
-        ORDER BY ib.expiry_date ASC NULLS LAST, ib.batch_id ASC;
-    """, (product_id,))
-    
-    remaining = quantity
-    for b in batches:
-        if remaining <= 0:
-            break
-        b_id = b["product_batch_id"]
-        b_avail = float(b["quantity_available"])
-        take = min(b_avail, remaining)
-        
-        execute_write("""
+def _plan_fefo_allocations(cur, quantities: dict[int, Decimal]) -> list[dict]:
+    allocations: list[dict] = []
+    for product_id in sorted(quantities):
+        required = quantities[product_id]
+        cur.execute("""
+            SELECT ii.name, ii.unit
+            FROM inventory_items ii
+            WHERE ii.item_id = %s
+              AND ii.item_type = 'finished_product'
+              AND ii.is_active = true;
+        """, (product_id,))
+        product = cur.fetchone()
+        if product is None:
+            raise ValueError("Unknown product")
+
+        cur.execute("""
+            SELECT ib.batch_id, ib.quantity_available, ib.expiry_date
+            FROM inventory_batches ib
+            WHERE ib.item_id = %s
+              AND ib.quality_status = 'approved'
+              AND ib.quantity_available > 0
+              AND ib.expiry_date >= CURRENT_DATE
+            ORDER BY ib.expiry_date ASC, ib.batch_id ASC
+            FOR UPDATE;
+        """, (product_id,))
+        batches = cur.fetchall()
+        available = sum((Decimal(row["quantity_available"]) for row in batches), Decimal("0"))
+        if available < required:
+            raise ValueError(
+                f"Not enough {product['name']}. Required {display_decimal(required)} packs, "
+                f"available {display_decimal(available)} packs."
+            )
+
+        remaining = required
+        for batch in batches:
+            if remaining == 0:
+                break
+            before = Decimal(batch["quantity_available"])
+            take = min(before, remaining)
+            allocations.append({
+                "product_id": product_id,
+                "product_name": product["name"],
+                "unit": product["unit"],
+                "batch_id": batch["batch_id"],
+                "before": before,
+                "take": take,
+                "after": before - take,
+            })
+            remaining -= take
+    return allocations
+
+
+def _apply_fefo_allocations(
+    cur,
+    allocations: list[dict],
+    *,
+    order_id: int,
+    actor_account_id: int | None,
+    actor_name: str,
+) -> None:
+    for allocation in allocations:
+        cur.execute("""
             UPDATE inventory_batches
-            SET quantity_available = quantity_available - %s
-            WHERE batch_id = %s;
-        """, (take, b_id))
-        
-        remaining -= take
+            SET quantity_available = %s
+            WHERE batch_id = %s
+              AND quantity_available = %s;
+        """, (allocation["after"], allocation["batch_id"], allocation["before"]))
+        if cur.rowcount != 1:
+            raise RuntimeError("Inventory batch changed while it was locked.")
+        _insert_inventory_movement(
+            cur,
+            item_id=allocation["product_id"],
+            affected_batch_id=allocation["batch_id"],
+            order_id=order_id,
+            movement_type="sale_fulfillment",
+            quantity_delta=-allocation["take"],
+            unit=allocation["unit"],
+            balance_before=allocation["before"],
+            balance_after=allocation["after"],
+            actor_account_id=actor_account_id,
+            actor_name=actor_name,
+            note=f"Fulfilled order #{order_id}",
+        )
 
 def create_order_from_items(role: str, items: list[tuple[int, object]], notes: str = "", account_id: int | None = None) -> dict:
     if not items:
@@ -2578,17 +2707,15 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
             clean_product_id = int(product_id)
         except (TypeError, ValueError):
             raise ValueError("Unknown product")
-        clean_quantity = parse_inventory_decimal(quantity, "Quantity", "0.001")
-        if clean_quantity <= 0:
-            raise ValueError("Quantity must be greater than zero.")
+        clean_quantity = measurements.parse_whole_packs(quantity)
         quantities[clean_product_id] = quantities.get(clean_product_id, Decimal("0")) + clean_quantity
 
     order_type = "reseller" if role == "reseller" else "walk_in"
     reseller_id = None
-    created_by_name = "Maria Santos"
+    created_by_name = "MEATTRACK"
     team_leader_account_id = None
     creator_id = account_id
-    status = "pending" if role == "reseller" else "fulfilled"
+    status = "pending"
 
     if role == "reseller":
         if account_id is None:
@@ -2618,6 +2745,7 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
             cur.execute("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (created_by_name,))
             acc = cur.fetchone()
             creator_id = acc["account_id"] if acc else None
+        actor_name = _inventory_actor_name(cur, creator_id)
 
         total = Decimal("0.00")
         lines = []
@@ -2633,13 +2761,12 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
             RETURNING order_id, order_type, reseller_id, status, order_date, total_amount, notes;
         """, (
             order_type, reseller_id, creator_id,
-            creator_id if status == "fulfilled" else None,
-            datetime.now() if status == "fulfilled" else None,
-            status, date.today(),
-            datetime.now() if status == "fulfilled" else None,
+            creator_id if role != "reseller" else None,
+            datetime.now() if role != "reseller" else None,
+            status, date.today(), None,
             total.quantize(Decimal("0.01")), notes
         ))
-        ord_res = cur.fetchone()
+        ord_res = dict(cur.fetchone())
 
         order_id = ord_res["order_id"]
         for product_id, quantity, unit, unit_price in lines:
@@ -2648,10 +2775,24 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
                 VALUES (%s, %s, %s, %s, %s);
             """, (order_id, product_id, quantity, unit, unit_price))
 
-    if status == "fulfilled":
-        for product_id, quantity in quantities.items():
-            deduct_stock_fefo(product_id, float(quantity))
-        add_log("Maria Santos", "created_walk_in_sale", f"Order #{order_id}")
+        if role != "reseller":
+            allocations = _plan_fefo_allocations(cur, quantities)
+            _apply_fefo_allocations(
+                cur,
+                allocations,
+                order_id=order_id,
+                actor_account_id=creator_id,
+                actor_name=actor_name,
+            )
+            cur.execute("""
+                UPDATE orders
+                SET status = 'fulfilled', fulfilled_at = %s
+                WHERE order_id = %s;
+            """, (datetime.now(), order_id))
+            ord_res["status"] = "fulfilled"
+
+    if role != "reseller":
+        add_log(created_by_name, "created_walk_in_sale", f"Order #{order_id}")
     else:
         add_log(created_by_name, "created_reseller_order", f"Order #{order_id}")
         create_notification(
@@ -2669,105 +2810,110 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
     return clean_row(ord_res)
 
 
-def create_order(role: str, product_id: int, quantity: float, notes: str = "", account_id: int | None = None) -> dict:
+def create_order(role: str, product_id: int, quantity: object, notes: str = "", account_id: int | None = None) -> dict:
     return create_order_from_items(role, [(product_id, quantity)], notes, account_id=account_id)
 
 def decide_order(order_id: int, decision: str, team_leader_account_id: int | None = None) -> bool:
     ensure_system_tables()
-    if team_leader_account_id is None:
-        ord_res = fetch_one("SELECT * FROM orders WHERE order_id = %s;", (order_id,))
-    else:
-        ord_res = fetch_one("""
+    if decision not in {"approve", "reject", "fulfill"}:
+        return False
+
+    with get_transaction_cursor() as cur:
+        scope = ""
+        params: list[object] = [order_id]
+        if team_leader_account_id is not None:
+            scope = " AND r.team_leader_account_id = %s"
+            params.append(team_leader_account_id)
+        cur.execute(f"""
             SELECT o.*
             FROM orders o
             JOIN resellers r ON r.reseller_id = o.reseller_id
             WHERE o.order_id = %s
-              AND r.team_leader_account_id = %s;
-        """, (order_id, team_leader_account_id))
-    if not ord_res or ord_res["order_type"] != "reseller":
-        return False
-    if ord_res["status"] in {"fulfilled", "rejected"}:
-        return False
-    
-    leader_id = team_leader_account_id
-    if leader_id is None:
-        leader = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'team_leader' LIMIT 1;")
-        leader_id = leader["account_id"] if leader else None
-    
-    if decision == "approve":
-        proof = fetch_one(
-            """
-            SELECT 1
-            FROM order_payment_proofs
-            WHERE order_id = %s
-            LIMIT 1;
-            """,
-            (order_id,),
-        )
-        if not proof:
-            raise ValueError("Proof of payment is required before approving this order.")
-        execute_write("""
-            UPDATE orders 
-            SET status = 'approved', approved_by_account_id = %s, approved_at = %s 
-            WHERE order_id = %s;
-        """, (leader_id, datetime.now(), order_id))
-        add_log("Maria Santos", "approved_reseller_order", f"Order #{order_id}")
+              AND o.order_type = 'reseller'
+              {scope}
+            FOR UPDATE OF o;
+        """, tuple(params))
+        ord_res = dict(cur.fetchone())
+        if not ord_res:
+            return False
+
+        leader_id = team_leader_account_id
+        if leader_id is None:
+            cur.execute("SELECT account_id FROM accounts WHERE account_type = 'team_leader' ORDER BY account_id LIMIT 1;")
+            leader = cur.fetchone()
+            leader_id = leader["account_id"] if leader else None
+        actor_name = _inventory_actor_name(cur, leader_id)
+
+        if decision == "approve":
+            if ord_res["status"] != "pending":
+                return False
+            cur.execute("SELECT 1 FROM order_payment_proofs WHERE order_id = %s LIMIT 1;", (order_id,))
+            if not cur.fetchone():
+                raise ValueError("Proof of payment is required before approving this order.")
+            cur.execute("""
+                UPDATE orders
+                SET status = 'approved', approved_by_account_id = %s, approved_at = %s
+                WHERE order_id = %s;
+            """, (leader_id, datetime.now(), order_id))
+        elif decision == "reject":
+            if ord_res["status"] not in {"pending", "approved"}:
+                return False
+            cur.execute("""
+                UPDATE orders
+                SET status = 'rejected', approved_by_account_id = COALESCE(approved_by_account_id, %s),
+                    approved_at = COALESCE(approved_at, %s)
+                WHERE order_id = %s;
+            """, (leader_id, datetime.now(), order_id))
+        else:
+            if ord_res["status"] != "approved":
+                raise ValueError("Order must be approved before it can be fulfilled.")
+            cur.execute("""
+                SELECT product_id, SUM(quantity) AS quantity
+                FROM order_items
+                WHERE order_id = %s
+                GROUP BY product_id
+                ORDER BY product_id;
+            """, (order_id,))
+            quantities = {row["product_id"]: Decimal(row["quantity"]) for row in cur.fetchall()}
+            allocations = _plan_fefo_allocations(cur, quantities)
+            _apply_fefo_allocations(
+                cur,
+                allocations,
+                order_id=order_id,
+                actor_account_id=leader_id,
+                actor_name=actor_name,
+            )
+            cur.execute("""
+                UPDATE orders
+                SET status = 'fulfilled', fulfilled_at = %s
+                WHERE order_id = %s;
+            """, (datetime.now(), order_id))
+
+    action = {
+        "approve": "approved_reseller_order",
+        "reject": "rejected_reseller_order",
+        "fulfill": "fulfilled_reseller_order",
+    }[decision]
+    add_log(actor_name, action, f"Order #{order_id}")
+    notification = {
+        "approve": ("info", "Order approved", f"Your reseller order #{order_id} was approved."),
+        "reject": ("critical", "Order rejected", f"Your reseller order #{order_id} was rejected."),
+        "fulfill": ("info", "Order fulfilled", f"Your reseller order #{order_id} was marked fulfilled."),
+    }[decision]
+    try:
         create_notification(
             recipient_account_id=ord_res["created_by_account_id"],
             category="order",
-            severity="info",
-            title="Order approved",
-            message=f"Your reseller order #{order_id} was approved.",
+            severity=notification[0],
+            title=notification[1],
+            message=notification[2],
             target_url="/portal/reseller/history",
             source_type="orders",
             source_id=order_id,
-            dedupe_key=f"order-approved-{order_id}",
+            dedupe_key=f"order-{decision}-{order_id}",
         )
-        
-    elif decision == "reject":
-        execute_write("""
-            UPDATE orders 
-            SET status = 'rejected', approved_by_account_id = %s, approved_at = %s 
-            WHERE order_id = %s;
-        """, (leader_id, datetime.now(), order_id))
-        add_log("Maria Santos", "rejected_reseller_order", f"Order #{order_id}")
-        create_notification(
-            recipient_account_id=ord_res["created_by_account_id"],
-            category="order",
-            severity="critical",
-            title="Order rejected",
-            message=f"Your reseller order #{order_id} was rejected.",
-            target_url="/portal/reseller/history",
-            source_type="orders",
-            source_id=order_id,
-            dedupe_key=f"order-rejected-{order_id}",
-        )
-        
-    elif decision == "fulfill":
-        execute_write("""
-            UPDATE orders 
-            SET status = 'fulfilled', fulfilled_at = %s 
-            WHERE order_id = %s;
-        """, (datetime.now(), order_id))
-        
-        items = fetch_all("SELECT product_id, quantity FROM order_items WHERE order_id = %s;", (order_id,))
-        for item in items:
-            deduct_stock_fefo(item["product_id"], float(item["quantity"]))
-            
-        add_log("Maria Santos", "fulfilled_reseller_order", f"Order #{order_id}")
-        create_notification(
-            recipient_account_id=ord_res["created_by_account_id"],
-            category="order",
-            severity="info",
-            title="Order fulfilled",
-            message=f"Your reseller order #{order_id} was marked fulfilled.",
-            target_url="/portal/reseller/history",
-            source_type="orders",
-            source_id=order_id,
-            dedupe_key=f"order-fulfilled-{order_id}",
-        )
-    else:
-        return False
+    except Exception:
+        logging.exception("Order %s committed but its notification could not be created", order_id)
     return True
 
 
@@ -3095,9 +3241,10 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
             clean_product_id = int(product_id)
         except (TypeError, ValueError):
             raise ValueError("Unknown product.")
-        clean_quantity = parse_inventory_decimal(quantity, "Sold quantity", "0.001")
-        if clean_quantity <= 0:
+        raw_quantity = str(quantity).strip()
+        if not raw_quantity or raw_quantity == "0":
             continue
+        clean_quantity = measurements.parse_whole_packs(raw_quantity, "Sold quantity")
         if clean_product_id not in reportable:
             raise ValueError("You can only report products from fulfilled orders that still have an unreported balance.")
         remaining = Decimal(str(reportable[clean_product_id]["reportable_quantity"]))
@@ -3166,7 +3313,13 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
     return clean_row(rep)
 
 
-def add_raw_inventory_item(name: str, category: str, unit: str, quantity: float) -> dict:
+def add_raw_inventory_item(
+    name: str,
+    category: str,
+    unit: str,
+    quantity: object,
+    actor_account_id: int | None = None,
+) -> dict:
     item_name = normalize_inventory_name(name, "Item name")
     item_category = require_inventory_choice(category, raw_material_categories, "Category")
     item_unit = require_inventory_choice(unit, stock_units, "Unit")
@@ -3175,6 +3328,7 @@ def add_raw_inventory_item(name: str, category: str, unit: str, quantity: float)
         raise ValueError("Quantity must be greater than zero.")
 
     with get_transaction_cursor() as cur:
+        actor_name = _inventory_actor_name(cur, actor_account_id)
         cur.execute("""
             SELECT item_id, name, unit
             FROM inventory_items
@@ -3202,18 +3356,35 @@ def add_raw_inventory_item(name: str, category: str, unit: str, quantity: float)
         """, (item_name, item_category, item_unit, amount))
         item = cur.fetchone()
 
-    add_log("Maria Santos", "updated_raw_inventory", item_name)
+        _insert_inventory_movement(
+            cur,
+            item_id=item["raw_material_id"],
+            movement_type="raw_receipt",
+            quantity_delta=amount,
+            unit=item_unit,
+            balance_before=Decimal("0.000"),
+            balance_after=amount,
+            actor_account_id=actor_account_id,
+            actor_name=actor_name,
+            note="Initial raw-material receipt",
+        )
+
+    add_log(actor_name, "updated_raw_inventory", item_name)
     return clean_row(item)
 
 
-def add_raw_inventory_quantity(raw_material_id: int, quantity: float) -> dict:
+def add_raw_inventory_quantity(
+    raw_material_id: int,
+    quantity: object,
+    actor_account_id: int | None = None,
+) -> dict:
     amount = parse_inventory_decimal(quantity, "Quantity", "0.001")
     if amount <= 0:
         raise ValueError("Quantity must be greater than zero.")
 
     with get_transaction_cursor() as cur:
         cur.execute("""
-            SELECT item_id, name
+            SELECT item_id, name, unit, quantity_available
             FROM inventory_items
             WHERE item_id = %s
               AND item_type = 'raw_material'
@@ -3232,7 +3403,23 @@ def add_raw_inventory_quantity(raw_material_id: int, quantity: float) -> dict:
         """, (amount, raw_material_id))
         updated_item = cur.fetchone()
 
-    add_log("Maria Santos", "added_raw_inventory_quantity", item["name"])
+        actor_name = _inventory_actor_name(cur, actor_account_id)
+        before = Decimal(item["quantity_available"])
+        after = Decimal(updated_item["available"])
+        _insert_inventory_movement(
+            cur,
+            item_id=raw_material_id,
+            movement_type="raw_receipt",
+            quantity_delta=amount,
+            unit=item["unit"],
+            balance_before=before,
+            balance_after=after,
+            actor_account_id=actor_account_id,
+            actor_name=actor_name,
+            note="Raw-material quantity added",
+        )
+
+    add_log(actor_name, "added_raw_inventory_quantity", item["name"])
     return clean_row(updated_item)
 
 
@@ -3245,6 +3432,7 @@ def create_product_with_recipe(
     quantity_required_units: list[object],
     pack_size: object = "",
     pack_size_unit: str = "",
+    actor_account_id: int | None = None,
 ) -> dict:
     product_name = normalize_inventory_name(name, "Product name")
     product_category = require_inventory_choice(category, product_categories, "Category")
@@ -3306,15 +3494,21 @@ def create_product_with_recipe(
             raise ValueError("Choose valid raw inventory items.")
 
         cur.execute("""
-            INSERT INTO inventory_items (item_type, name, category, description, unit, base_price, quantity_available, is_active)
-            VALUES ('finished_product', %s, %s, %s, %s, %s, 0, true)
-            RETURNING item_id AS product_id, name, category, unit, base_price;
+            INSERT INTO inventory_items (
+                item_type, name, category, description, unit, base_price,
+                quantity_available, pack_size, pack_size_unit, pack_content_status, is_active
+            )
+            VALUES ('finished_product', %s, %s, %s, %s, %s, 0, %s, %s, 'declared', true)
+            RETURNING item_id AS product_id, name, category, unit, base_price,
+                      pack_size, pack_size_unit, pack_content_status;
         """, (
             product_name,
             product_category,
             product_description,
             product_unit,
             price,
+            size,
+            size_unit,
         ))
         product = cur.fetchone()
 
@@ -3331,14 +3525,51 @@ def create_product_with_recipe(
                 VALUES (%s, %s, %s, %s);
             """, (product["product_id"], material_id, converted_required, material["unit"]))
 
-    add_log("Maria Santos", "created_product_recipe", product_name)
+        actor_name = _inventory_actor_name(cur, actor_account_id)
+
+    add_log(actor_name, "created_product_recipe", product_name)
     return clean_row(product)
 
 
-def produce_product(product_id: int, batch_code: str, quantity: float, expiry_date: date) -> dict:
-    produced_quantity = parse_inventory_decimal(quantity, "Quantity", "0.001")
-    if produced_quantity <= 0:
-        raise ValueError("Quantity must be greater than zero.")
+def update_product_pack_content(
+    product_id: int,
+    pack_size: object,
+    pack_size_unit: str,
+    actor_account_id: int | None = None,
+) -> dict:
+    size = measurements.parse_decimal_exact(pack_size, "Contents per pack", scale=3, positive=True)
+    size_unit = measurements.require_unit(pack_size_unit, measurements.CONTENT_UNITS, "Contents unit")
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            UPDATE inventory_items
+            SET pack_size = %s,
+                pack_size_unit = %s,
+                pack_content_status = 'declared'
+            WHERE item_id = %s
+              AND item_type = 'finished_product'
+            RETURNING item_id AS product_id, name, pack_size, pack_size_unit, pack_content_status;
+        """, (size, size_unit, product_id))
+        product = cur.fetchone()
+        if product is None:
+            raise ValueError("Unknown product")
+        actor_name = _inventory_actor_name(cur, actor_account_id)
+    add_log(actor_name, "updated_product_pack_content", product["name"])
+    return clean_row(product)
+
+
+def produce_product(
+    product_id: int,
+    batch_code: str,
+    quantity: object,
+    expiry_date: date,
+    actor_account_id: int | None = None,
+) -> dict:
+    produced_quantity = measurements.parse_whole_packs(quantity, "Produced quantity")
+    clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
+    if len(clean_batch_code) < 4:
+        raise ValueError("Batch code is too short.")
+    if expiry_date < date.today():
+        raise ValueError("Expiry date cannot be in the past.")
 
     with get_transaction_cursor() as cur:
         cur.execute("""
@@ -3352,7 +3583,7 @@ def produce_product(product_id: int, batch_code: str, quantity: float, expiry_da
         if product is None:
             raise ValueError("Unknown product")
 
-        cur.execute("SELECT batch_id FROM inventory_batches WHERE batch_code = %s;", (batch_code,))
+        cur.execute("SELECT batch_id FROM inventory_batches WHERE batch_code = %s;", (clean_batch_code,))
         if cur.fetchone() is not None:
             raise ValueError("Batch code already exists.")
 
@@ -3386,22 +3617,57 @@ def produce_product(product_id: int, batch_code: str, quantity: float, expiry_da
             requirements.append({
                 "raw_material_id": row["raw_material_id"],
                 "name": row["raw_material_name"],
+                "unit": row["material_unit"],
                 "required": required,
+                "before": available,
+                "after": available - required,
             })
-
-        for requirement in requirements:
-            cur.execute("""
-                UPDATE inventory_items
-                SET quantity_available = quantity_available - %s
-                WHERE item_id = %s;
-            """, (requirement["required"], requirement["raw_material_id"]))
 
         cur.execute("""
             INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
             VALUES (%s, %s, 'production', %s, %s, %s, %s, %s, 'approved')
             RETURNING batch_id AS product_batch_id, item_id AS product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
-        """, (product_id, batch_code, produced_quantity, produced_quantity, product["unit"], date.today(), expiry_date))
+        """, (product_id, clean_batch_code, produced_quantity, produced_quantity, product["unit"], date.today(), expiry_date))
         batch = cur.fetchone()
+        actor_name = _inventory_actor_name(cur, actor_account_id)
+
+        for requirement in requirements:
+            cur.execute("""
+                UPDATE inventory_items
+                SET quantity_available = %s
+                WHERE item_id = %s
+                  AND quantity_available = %s;
+            """, (requirement["after"], requirement["raw_material_id"], requirement["before"]))
+            if cur.rowcount != 1:
+                raise RuntimeError("Raw-material stock changed while it was locked.")
+            _insert_inventory_movement(
+                cur,
+                item_id=requirement["raw_material_id"],
+                production_batch_id=batch["product_batch_id"],
+                movement_type="production_consumption",
+                quantity_delta=-requirement["required"],
+                unit=requirement["unit"],
+                balance_before=requirement["before"],
+                balance_after=requirement["after"],
+                actor_account_id=actor_account_id,
+                actor_name=actor_name,
+                note=f"Consumed for production batch {clean_batch_code}",
+            )
+
+        _insert_inventory_movement(
+            cur,
+            item_id=product_id,
+            affected_batch_id=batch["product_batch_id"],
+            production_batch_id=batch["product_batch_id"],
+            movement_type="production_output",
+            quantity_delta=produced_quantity,
+            unit=product["unit"],
+            balance_before=Decimal("0.000"),
+            balance_after=produced_quantity,
+            actor_account_id=actor_account_id,
+            actor_name=actor_name,
+            note=f"Produced batch {clean_batch_code}",
+        )
 
         days = (expiry_date - date.today()).days
         if days <= 7:
@@ -3411,18 +3677,18 @@ def produce_product(product_id: int, batch_code: str, quantity: float, expiry_da
             """, (
                 'warning' if days > 2 else 'critical',
                 product_id, batch["product_batch_id"],
-                f"{quantity:g} {product['unit']} expires in {days} day(s).",
+                f"{produced_quantity:g} {product['unit']} expires in {days} day(s).",
                 datetime.now()
             ))
 
-    add_log("Maria Santos", "produced_product_batch", batch_code)
+    add_log(actor_name, "produced_product_batch", clean_batch_code)
     if days <= 7:
         create_notification(
             recipient_role="team-leader",
             category="inventory",
             severity="critical" if days <= 2 else "warning",
             title="Batch expiry warning",
-            message=f"{product['name']} batch {batch_code} expires in {days} day(s).",
+            message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
             target_url="/portal/team-leader/inventory",
             source_type="inventory_batches",
             source_id=batch["product_batch_id"],
@@ -3431,44 +3697,79 @@ def produce_product(product_id: int, batch_code: str, quantity: float, expiry_da
     return clean_row(batch)
 
 
-def add_product_batch(product_id: int, batch_code: str, quantity: float, expiry_date: date, source_type: str) -> dict:
-    product = product_by_id(product_id)
-    if product is None:
-        raise ValueError("Unknown product")
+def add_product_batch(
+    product_id: int,
+    batch_code: str,
+    quantity: object,
+    expiry_date: date,
+    source_type: str = "direct_received",
+    actor_account_id: int | None = None,
+) -> dict:
+    clean_quantity = measurements.parse_whole_packs(quantity)
+    clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
+    if source_type != "direct_received":
+        raise ValueError("Direct batch registration must use the direct_received source type.")
+    if expiry_date < date.today():
+        raise ValueError("Expiry date cannot be in the past.")
 
-    batch = execute_write("""
-        INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'approved')
-        RETURNING batch_id AS product_batch_id, item_id AS product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
-    """, (product_id, batch_code, source_type, quantity, quantity, product["unit"], date.today(), expiry_date), returning=True)
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            SELECT item_id AS product_id, name, unit
+            FROM inventory_items
+            WHERE item_id = %s AND item_type = 'finished_product' AND is_active = true
+            FOR UPDATE;
+        """, (product_id,))
+        product = cur.fetchone()
+        if product is None:
+            raise ValueError("Unknown product")
+        actor_name = _inventory_actor_name(cur, actor_account_id)
+        cur.execute("""
+            INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
+            VALUES (%s, %s, 'direct_received', %s, %s, %s, %s, %s, 'approved')
+            RETURNING batch_id AS product_batch_id, item_id AS product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
+        """, (product_id, clean_batch_code, clean_quantity, clean_quantity, product["unit"], date.today(), expiry_date))
+        batch = cur.fetchone()
+        _insert_inventory_movement(
+            cur,
+            item_id=product_id,
+            affected_batch_id=batch["product_batch_id"],
+            movement_type="direct_finished_receipt",
+            quantity_delta=clean_quantity,
+            unit=product["unit"],
+            balance_before=Decimal("0.000"),
+            balance_after=clean_quantity,
+            actor_account_id=actor_account_id,
+            actor_name=actor_name,
+            note=f"Direct receipt batch {clean_batch_code}",
+        )
+
+        days = (expiry_date - date.today()).days
+        if days <= 7:
+            cur.execute("""
+                INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
+                VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
+            """, (
+                'warning' if days > 2 else 'critical',
+                product_id, batch["product_batch_id"],
+                f"{clean_quantity:g} {product['unit']} expires in {days} day(s).",
+                datetime.now(),
+            ))
     
-    batch = clean_row(batch)
-    
-    days = (expiry_date - date.today()).days
     if days <= 7:
-        execute_write("""
-            INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
-            VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
-        """, (
-            'warning' if days > 2 else 'critical',
-            product_id, batch["product_batch_id"],
-            f"{quantity:g} {product['unit']} expires in {days} day(s).",
-            datetime.now()
-        ))
         create_notification(
             recipient_role="team-leader",
             category="inventory",
             severity="critical" if days <= 2 else "warning",
             title="Batch expiry warning",
-            message=f"{product['name']} batch {batch_code} expires in {days} day(s).",
+            message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
             target_url="/portal/team-leader/inventory",
             source_type="inventory_batches",
             source_id=batch["product_batch_id"],
             dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
         )
         
-    add_log("Maria Santos", "registered_product_batch", batch_code)
-    return batch
+    add_log(actor_name, "registered_product_batch", clean_batch_code)
+    return clean_row(batch)
 
 def add_account(account_type: str, name: str, email: str, team_leader_role: str | None = None) -> dict:
     ensure_system_tables()

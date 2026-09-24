@@ -24,6 +24,7 @@ READ_FUNCTIONS = (
     "list_forecasts",
     "list_accounts",
     "list_activity_logs",
+    "list_inventory_movements",
     "list_inquiries",
     "list_orders",
     "list_inventory_items",
@@ -40,6 +41,7 @@ READ_FUNCTIONS = (
     "count_forecasts",
     "count_accounts",
     "count_activity_logs",
+    "count_inventory_movements",
     "team_sales_report_entries",
     "team_rejected_order_entries",
     "team_reseller_purchase_summary",
@@ -115,7 +117,7 @@ INVENTORY_EXPECTED_CALLS = {
     ("team-leader", "raw-materials"): {"list_inventory_items", "count_inventory_items", "list_notifications", "unread_notification_count"},
     ("team-leader", "finished-products"): {"list_inventory_items", "count_inventory_items", "list_notifications", "unread_notification_count"},
     ("team-leader", "batches"): {"list_inventory_batches", "count_inventory_batches", "list_notifications", "unread_notification_count"},
-    ("team-leader", "logs"): {"list_activity_logs", "count_activity_logs", "list_notifications", "unread_notification_count"},
+    ("team-leader", "logs"): {"list_inventory_movements", "count_inventory_movements", "list_notifications", "unread_notification_count"},
     ("team-leader", "profile"): {"list_notifications", "unread_notification_count"},
 }
 
@@ -161,8 +163,8 @@ def test_inventory_team_leader_sections_load_only_inventory_data(monkeypatch, ro
     if section == "dashboard":
         assert calls["inventory_product_movement_analytics"] == [((), {"days": 30, "limit": 8})]
     if section == "logs":
-        assert calls["list_activity_logs"] == [((), {"q": "", "page": 1, "page_size": 10, "inventory_only": True, "sort": ""})]
-        assert calls["count_activity_logs"] == [((), {"q": "", "inventory_only": True})]
+        assert calls["list_inventory_movements"] == [((), {"q": "", "page": 1, "page_size": 10, "sort": ""})]
+        assert calls["count_inventory_movements"] == [((), {"q": ""})]
 
     if section == "inventory":
         assert calls["list_products"] == [

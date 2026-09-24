@@ -99,13 +99,16 @@ def main():
         # 5. Finished Products
         print("Seeding finished product inventory items...")
         cur.execute("""
-            INSERT INTO inventory_items (item_type, name, description, unit, base_price, category, is_active) VALUES
-            ('finished_product', 'Pork Garlic Longganisa', 'Batangas Premium frozen garlic longganisa pack.', 'pack', 120.00, 'Pork', true),
-            ('finished_product', 'Tocino Ala Eh', 'Sweet cured frozen pork tocino pack.', 'pack', 130.00, 'Pork', true),
-            ('finished_product', 'Beef Tapa Ala Eh', 'Savory marinated premium frozen beef tapa pack.', 'pack', 180.00, 'Beef', true),
-            ('finished_product', 'Cheesy Overload Sausage', 'Ready-to-cook frozen cheese sausage pack.', 'pack', 150.00, 'Pork', true),
-            ('finished_product', 'Hungarian Sausage', 'Savory Hungarian sausage pack.', 'pack', 160.00, 'Beef', true),
-            ('finished_product', 'Bacon (Smoked)', 'Smoked pork bacon strips.', 'pack', 170.00, 'Pork', true)
+            INSERT INTO inventory_items (
+                item_type, name, description, unit, base_price, category,
+                pack_size, pack_size_unit, pack_content_status, is_active
+            ) VALUES
+            ('finished_product', 'Pork Garlic Longganisa', 'Pork Garlic Longganisa - 500 g per pack.', 'pack', 120.00, 'Pork', 500, 'g', 'declared', true),
+            ('finished_product', 'Tocino Ala Eh', 'Tocino Ala Eh - 500 g per pack.', 'pack', 130.00, 'Pork', 500, 'g', 'declared', true),
+            ('finished_product', 'Beef Tapa Ala Eh', 'Beef Tapa Ala Eh - 500 g per pack.', 'pack', 180.00, 'Beef', 500, 'g', 'declared', true),
+            ('finished_product', 'Cheesy Overload Sausage', 'Cheesy Overload Sausage - 450 g per pack.', 'pack', 150.00, 'Pork', 450, 'g', 'declared', true),
+            ('finished_product', 'Hungarian Sausage', 'Hungarian Sausage - 500 g per pack.', 'pack', 160.00, 'Beef', 500, 'g', 'declared', true),
+            ('finished_product', 'Bacon (Smoked)', 'Bacon (Smoked) - 450 g per pack.', 'pack', 170.00, 'Pork', 450, 'g', 'declared', true)
             RETURNING item_id, name;
         """)
         products = {name: item_id for item_id, name in cur.fetchall()}
@@ -142,6 +145,26 @@ def main():
             products['Tocino Ala Eh'], today - timedelta(days=2), today + timedelta(days=20),
             products['Beef Tapa Ala Eh'], today - timedelta(days=2), today + timedelta(days=10)
         ))
+
+        print("Creating opening inventory movements...")
+        cur.execute("""
+            INSERT INTO inventory_movements (
+                item_id, movement_type, quantity_delta, unit,
+                balance_before, balance_after, actor_name, note
+            )
+            SELECT item_id, 'opening_balance', quantity_available, unit,
+                   0, quantity_available, 'MEATTRACK', 'Seeded opening raw-material balance'
+            FROM inventory_items
+            WHERE item_type = 'raw_material';
+
+            INSERT INTO inventory_movements (
+                item_id, affected_batch_id, movement_type, quantity_delta, unit,
+                balance_before, balance_after, actor_name, note
+            )
+            SELECT item_id, batch_id, 'opening_balance', quantity_available, unit,
+                   0, quantity_available, 'MEATTRACK', 'Seeded opening finished-batch balance'
+            FROM inventory_batches;
+        """)
 
         # Commit everything
         conn.commit()

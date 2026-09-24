@@ -80,12 +80,34 @@ CREATE TABLE inventory_items (
     unit text NOT NULL,
     base_price numeric(12,2) NOT NULL DEFAULT 0 CHECK (base_price >= 0),
     quantity_available numeric(12,3) NOT NULL DEFAULT 0 CHECK (quantity_available >= 0),
+    pack_size numeric(12,3),
+    pack_size_unit text,
+    pack_content_status text,
     is_active boolean NOT NULL DEFAULT true,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (item_type, name),
     CHECK (btrim(unit) <> ''),
     CHECK (item_type = 'finished_product' OR base_price = 0),
-    CHECK (item_type = 'raw_material' OR quantity_available = 0)
+    CHECK (item_type = 'raw_material' OR quantity_available = 0),
+    CONSTRAINT inventory_items_measurement_contract_check CHECK (
+        (
+            item_type = 'raw_material'
+            AND unit IN ('kg', 'g', 'ml')
+            AND pack_size IS NULL
+            AND pack_size_unit IS NULL
+            AND pack_content_status IS NULL
+        )
+        OR
+        (
+            item_type = 'finished_product'
+            AND unit = 'pack'
+            AND (
+                (pack_content_status = 'declared' AND pack_size > 0 AND pack_size_unit IN ('g', 'kg', 'ml'))
+                OR
+                (pack_content_status = 'unknown_legacy' AND pack_size IS NULL AND pack_size_unit IS NULL)
+            )
+        )
+    )
 );
 
 CREATE TABLE inventory_batches (
@@ -103,6 +125,9 @@ CREATE TABLE inventory_batches (
         CHECK (quality_status IN ('pending', 'approved', 'rejected', 'expired', 'spoiled')),
     created_at timestamptz NOT NULL DEFAULT now(),
     CHECK (quantity_available <= quantity_received),
+    CONSTRAINT inventory_batches_whole_pack_check CHECK (
+        quantity_received = trunc(quantity_received) AND quantity_available = trunc(quantity_available)
+    ),
     CHECK (expiry_date >= received_date),
     CHECK (btrim(unit) <> '')
 );
@@ -140,7 +165,9 @@ CREATE TABLE order_items (
     quantity numeric(12,3) NOT NULL CHECK (quantity > 0),
     unit text NOT NULL DEFAULT 'pack',
     unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0),
-    line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity * unit_price, 2)) STORED
+    line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity * unit_price, 2)) STORED,
+    CONSTRAINT order_items_whole_pack_check CHECK (quantity = trunc(quantity)),
+    CONSTRAINT order_items_pack_unit_check CHECK (unit = 'pack')
 );
 
 CREATE TABLE order_payment_proofs (
@@ -166,7 +193,8 @@ CREATE TABLE reseller_cart_items (
     quantity numeric(12,3) NOT NULL CHECK (quantity > 0),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (account_id, product_id)
+    UNIQUE (account_id, product_id),
+    CONSTRAINT reseller_cart_items_whole_pack_check CHECK (quantity = trunc(quantity))
 );
 
 CREATE TABLE sales_reports (
@@ -192,7 +220,9 @@ CREATE TABLE sales_report_items (
     quantity_sold numeric(12,3) NOT NULL CHECK (quantity_sold > 0),
     unit text NOT NULL DEFAULT 'pack',
     unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0),
-    line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity_sold * unit_price, 2)) STORED
+    line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity_sold * unit_price, 2)) STORED,
+    CONSTRAINT sales_report_items_whole_pack_check CHECK (quantity_sold = trunc(quantity_sold)),
+    CONSTRAINT sales_report_items_pack_unit_check CHECK (unit = 'pack')
 );
 
 CREATE TABLE sales_report_attachments (
@@ -311,6 +341,184 @@ CREATE TABLE notifications (
     CHECK (btrim(message) <> '')
 );
 
+CREATE TABLE inventory_movements (
+    movement_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    item_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    affected_batch_id bigint REFERENCES inventory_batches(batch_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    production_batch_id bigint REFERENCES inventory_batches(batch_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    order_id bigint REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    movement_type text NOT NULL CHECK (movement_type IN (
+        'opening_balance', 'raw_receipt', 'production_consumption',
+        'production_output', 'direct_finished_receipt', 'sale_fulfillment'
+    )),
+    quantity_delta numeric(12,3) NOT NULL,
+    unit text NOT NULL,
+    balance_before numeric(12,3) NOT NULL CHECK (balance_before >= 0),
+    balance_after numeric(12,3) NOT NULL CHECK (balance_after >= 0),
+    actor_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    actor_name text NOT NULL,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (balance_after = balance_before + quantity_delta),
+    CHECK (quantity_delta <> 0 OR movement_type = 'opening_balance'),
+    CHECK (btrim(unit) <> ''),
+    CHECK (btrim(actor_name) <> '')
+);
+
+CREATE OR REPLACE FUNCTION validate_finished_product_reference()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    product_type text;
+BEGIN
+    SELECT item_type INTO product_type FROM inventory_items WHERE item_id = NEW.product_id;
+    IF product_type IS DISTINCT FROM 'finished_product' THEN
+        RAISE EXCEPTION 'Cart, order, and report lines must reference a finished product.';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_validate_cart_finished_product
+BEFORE INSERT OR UPDATE OF product_id ON reseller_cart_items
+FOR EACH ROW EXECUTE FUNCTION validate_finished_product_reference();
+CREATE TRIGGER trg_validate_order_item_finished_product
+BEFORE INSERT OR UPDATE OF product_id ON order_items
+FOR EACH ROW EXECUTE FUNCTION validate_finished_product_reference();
+CREATE TRIGGER trg_validate_report_item_finished_product
+BEFORE INSERT OR UPDATE OF product_id ON sales_report_items
+FOR EACH ROW EXECUTE FUNCTION validate_finished_product_reference();
+
+CREATE OR REPLACE FUNCTION validate_product_recipe_measurements()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    product_type text;
+    material_type text;
+    material_unit text;
+BEGIN
+    SELECT item_type INTO product_type FROM inventory_items WHERE item_id = NEW.product_item_id;
+    SELECT item_type, unit INTO material_type, material_unit FROM inventory_items WHERE item_id = NEW.material_item_id;
+    IF product_type IS DISTINCT FROM 'finished_product' THEN
+        RAISE EXCEPTION 'Recipe product must be a finished product.';
+    END IF;
+    IF material_type IS DISTINCT FROM 'raw_material' THEN
+        RAISE EXCEPTION 'Recipe ingredient must be a raw material.';
+    END IF;
+    IF NEW.unit IS DISTINCT FROM material_unit THEN
+        RAISE EXCEPTION 'Recipe unit must match the raw material stock unit.';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_validate_product_recipe_measurements
+BEFORE INSERT OR UPDATE ON product_recipes
+FOR EACH ROW EXECUTE FUNCTION validate_product_recipe_measurements();
+
+CREATE OR REPLACE FUNCTION validate_inventory_batch_measurements()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    product_type text;
+    product_unit text;
+BEGIN
+    SELECT item_type, unit INTO product_type, product_unit FROM inventory_items WHERE item_id = NEW.item_id;
+    IF product_type IS DISTINCT FROM 'finished_product' THEN
+        RAISE EXCEPTION 'Inventory batches may only belong to finished products.';
+    END IF;
+    IF NEW.unit IS DISTINCT FROM product_unit OR NEW.unit <> 'pack' THEN
+        RAISE EXCEPTION 'Inventory batch unit must match the finished product pack unit.';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_validate_inventory_batch_measurements
+BEFORE INSERT OR UPDATE ON inventory_batches
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_batch_measurements();
+
+CREATE OR REPLACE FUNCTION protect_inventory_item_measurements()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.item_type IS DISTINCT FROM OLD.item_type OR NEW.unit IS DISTINCT FROM OLD.unit THEN
+        IF EXISTS (
+            SELECT 1 FROM product_recipes
+            WHERE product_item_id = OLD.item_id OR material_item_id = OLD.item_id
+        ) OR EXISTS (
+            SELECT 1 FROM inventory_batches WHERE item_id = OLD.item_id
+        ) THEN
+            RAISE EXCEPTION 'Inventory item type and unit cannot change after recipes or batches exist.';
+        END IF;
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_protect_inventory_item_measurements
+BEFORE UPDATE OF item_type, unit ON inventory_items
+FOR EACH ROW EXECUTE FUNCTION protect_inventory_item_measurements();
+
+CREATE OR REPLACE FUNCTION validate_inventory_movement()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    affected_type text;
+    affected_unit text;
+    batch_item_id bigint;
+    production_item_type text;
+BEGIN
+    SELECT item_type, unit INTO affected_type, affected_unit FROM inventory_items WHERE item_id = NEW.item_id;
+    IF affected_type IS NULL THEN
+        RAISE EXCEPTION 'Inventory movement item does not exist.';
+    END IF;
+    IF NEW.unit IS DISTINCT FROM affected_unit THEN
+        RAISE EXCEPTION 'Inventory movement unit must match the item stock unit.';
+    END IF;
+    IF affected_type = 'raw_material' AND NEW.affected_batch_id IS NOT NULL THEN
+        RAISE EXCEPTION 'Raw material movements cannot have an affected finished batch.';
+    END IF;
+    IF affected_type = 'finished_product' AND NEW.affected_batch_id IS NULL THEN
+        RAISE EXCEPTION 'Finished product movements require an affected batch.';
+    END IF;
+    IF NEW.affected_batch_id IS NOT NULL THEN
+        SELECT item_id INTO batch_item_id FROM inventory_batches WHERE batch_id = NEW.affected_batch_id;
+        IF batch_item_id IS DISTINCT FROM NEW.item_id THEN
+            RAISE EXCEPTION 'Affected batch does not belong to the movement item.';
+        END IF;
+    END IF;
+    IF NEW.production_batch_id IS NOT NULL THEN
+        SELECT ii.item_type INTO production_item_type
+        FROM inventory_batches ib JOIN inventory_items ii ON ii.item_id = ib.item_id
+        WHERE ib.batch_id = NEW.production_batch_id;
+        IF production_item_type IS DISTINCT FROM 'finished_product' THEN
+            RAISE EXCEPTION 'Production batch must identify a finished-product batch.';
+        END IF;
+    END IF;
+    IF NEW.movement_type = 'production_consumption'
+       AND (affected_type <> 'raw_material' OR NEW.production_batch_id IS NULL OR NEW.quantity_delta >= 0) THEN
+        RAISE EXCEPTION 'Production consumption must deduct raw material for a production batch.';
+    END IF;
+    IF NEW.movement_type IN ('production_output', 'direct_finished_receipt')
+       AND (affected_type <> 'finished_product' OR NEW.quantity_delta <= 0) THEN
+        RAISE EXCEPTION 'Finished receipt movements must add finished stock.';
+    END IF;
+    IF NEW.movement_type = 'sale_fulfillment'
+       AND (affected_type <> 'finished_product' OR NEW.order_id IS NULL OR NEW.quantity_delta >= 0) THEN
+        RAISE EXCEPTION 'Sale fulfillment must deduct finished stock for an order.';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_validate_inventory_movement
+BEFORE INSERT ON inventory_movements
+FOR EACH ROW EXECUTE FUNCTION validate_inventory_movement();
+
+CREATE OR REPLACE FUNCTION reject_inventory_movement_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'Inventory movements are immutable.';
+END $$;
+
+CREATE TRIGGER trg_inventory_movements_no_update_delete
+BEFORE UPDATE OR DELETE ON inventory_movements
+FOR EACH ROW EXECUTE FUNCTION reject_inventory_movement_mutation();
+CREATE TRIGGER trg_inventory_movements_no_truncate
+BEFORE TRUNCATE ON inventory_movements
+FOR EACH STATEMENT EXECUTE FUNCTION reject_inventory_movement_mutation();
+
 CREATE UNIQUE INDEX ux_accounts_email_lower ON accounts (lower(email));
 CREATE INDEX ix_accounts_team_leader_role ON accounts (team_leader_role)
     WHERE account_type = 'team_leader';
@@ -336,5 +544,16 @@ CREATE INDEX ix_account_login_otps_pending ON account_login_otps (account_id, cr
     WHERE consumed_at IS NULL;
 CREATE INDEX ix_notifications_role_read_created ON notifications (recipient_role, read_at, created_at DESC);
 CREATE INDEX ix_notifications_account_read_created ON notifications (recipient_account_id, read_at, created_at DESC);
+CREATE UNIQUE INDEX ux_inventory_movements_sale_batch
+    ON inventory_movements (order_id, affected_batch_id, movement_type)
+    WHERE movement_type = 'sale_fulfillment';
+CREATE UNIQUE INDEX ux_inventory_movements_production_output
+    ON inventory_movements (affected_batch_id, movement_type)
+    WHERE movement_type = 'production_output';
+CREATE UNIQUE INDEX ux_inventory_movements_production_consumption
+    ON inventory_movements (production_batch_id, item_id, movement_type)
+    WHERE movement_type = 'production_consumption';
+CREATE INDEX ix_inventory_movements_created ON inventory_movements (created_at DESC, movement_id DESC);
+CREATE INDEX ix_inventory_movements_item_created ON inventory_movements (item_id, created_at DESC);
 
 COMMIT;

@@ -504,18 +504,34 @@ def test_reviewed_inquiry_hides_approval_actions(monkeypatch):
 
 def test_order_approval_requires_payment_proof(monkeypatch):
     monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(
-        repositories,
-        "fetch_one",
-        lambda query, params=None: {
-            "order_id": 7,
-            "order_type": "reseller",
-            "status": "pending",
-            "created_by_account_id": 9,
-        }
-        if "FROM orders" in query
-        else None,
-    )
+
+    class Cursor:
+        def __init__(self):
+            self.result = None
+
+        def execute(self, query, params=None):
+            if "FROM orders o" in query:
+                self.result = {
+                    "order_id": 7,
+                    "order_type": "reseller",
+                    "status": "pending",
+                    "created_by_account_id": 9,
+                }
+            elif "account_type = 'team_leader'" in query:
+                self.result = {"account_id": 4}
+            elif "SELECT name FROM accounts" in query:
+                self.result = {"name": "Sales Leader"}
+            elif "FROM order_payment_proofs" in query:
+                self.result = None
+
+        def fetchone(self):
+            return self.result
+
+    @contextmanager
+    def fake_transaction():
+        yield Cursor()
+
+    monkeypatch.setattr(repositories, "get_transaction_cursor", fake_transaction)
 
     with pytest.raises(ValueError, match="Proof of payment is required"):
         repositories.decide_order(7, "approve", team_leader_account_id=None)

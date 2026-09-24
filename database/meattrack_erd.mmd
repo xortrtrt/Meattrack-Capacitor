@@ -64,6 +64,9 @@ erDiagram
         text unit
         numeric base_price
         numeric quantity_available
+        numeric pack_size
+        text pack_size_unit
+        text pack_content_status
         boolean is_active
         timestamptz created_at
     }
@@ -88,6 +91,23 @@ erDiagram
         bigint material_item_id FK
         numeric quantity_required
         text unit
+    }
+
+    INVENTORY_MOVEMENTS {
+        bigint movement_id PK
+        bigint item_id FK
+        bigint affected_batch_id FK
+        bigint production_batch_id FK
+        bigint order_id FK
+        text movement_type
+        numeric quantity_delta
+        text unit
+        numeric balance_before
+        numeric balance_after
+        bigint actor_account_id FK
+        text actor_name
+        text note
+        timestamptz created_at
     }
 
     ORDERS {
@@ -175,6 +195,11 @@ erDiagram
     INVENTORY_ITEMS ||--o{ INVENTORY_BATCHES : stocked_as
     INVENTORY_ITEMS ||--o{ PRODUCT_RECIPES : "finished product"
     INVENTORY_ITEMS ||--o{ PRODUCT_RECIPES : "raw material"
+    INVENTORY_ITEMS ||--o{ INVENTORY_MOVEMENTS : changes
+    INVENTORY_BATCHES |o--o{ INVENTORY_MOVEMENTS : affects
+    INVENTORY_BATCHES |o--o{ INVENTORY_MOVEMENTS : produced_as
+    ORDERS |o--o{ INVENTORY_MOVEMENTS : fulfills
+    ACCOUNTS |o--o{ INVENTORY_MOVEMENTS : performs
     INVENTORY_BATCHES |o--o{ ALERTS : triggers
     INVENTORY_ITEMS |o--o{ ALERTS : triggers
 

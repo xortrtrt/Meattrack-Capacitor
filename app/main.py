@@ -268,9 +268,15 @@ def accounts_page(request: Request, page_size: int = 10) -> dict:
 
 def logs_page(request: Request, page_size: int = 10, inventory_only: bool = False) -> dict:
     filters = portal_filters(request)
-    items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=inventory_only, sort=filters["sort"])
-    total = data.count_activity_logs(q=filters["q"], inventory_only=inventory_only)
-    return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
+    if inventory_only:
+        items = data.list_inventory_movements(q=filters["q"], page=filters["page"], page_size=page_size, sort=filters["sort"])
+        total = data.count_inventory_movements(q=filters["q"])
+    else:
+        items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=False, sort=filters["sort"])
+        total = data.count_activity_logs(q=filters["q"], inventory_only=False)
+    page = paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
+    page["inventory_movements"] = inventory_only
+    return page
 
 
 def inventory_items_page(request: Request, page_size: int = 10) -> dict:
@@ -1234,7 +1240,7 @@ async def portal_notifications_read(request: Request, role_key: str):
 
 
 @app.post("/portal/reseller/order")
-async def reseller_order(request: Request, product_id: int = Form(...), quantity: float = Form(...), notes: str = Form("")):
+async def reseller_order(request: Request, product_id: int = Form(...), quantity: str = Form(...), notes: str = Form("")):
     guard = require_portal_session(request, "reseller")
     if guard:
         return guard
@@ -1242,7 +1248,6 @@ async def reseller_order(request: Request, product_id: int = Form(...), quantity
     if account_id is None:
         return redirect_to(safe_portal_path("reseller", "order", error="Your session expired. Please sign in again."))
     try:
-        require_positive_number(quantity, "Quantity")
         data.add_reseller_cart_item(account_id, product_id, quantity)
     except ValueError as exc:
         return redirect_to(safe_portal_path("reseller", "order", error=str(exc)))
@@ -1253,7 +1258,7 @@ async def reseller_order(request: Request, product_id: int = Form(...), quantity
 async def reseller_cart_update(
     request: Request,
     product_id: int = Form(...),
-    quantity: float = Form(0),
+    quantity: str = Form("0"),
     action: str = Form("update"),
 ):
     wants_json = request.headers.get("x-requested-with") == "fetch" or "application/json" in request.headers.get("accept", "")
@@ -1267,13 +1272,12 @@ async def reseller_cart_update(
         if wants_json:
             return JSONResponse({"ok": False, "error": "Your session expired. Please sign in again."}, status_code=401)
         return redirect_to(safe_portal_path("reseller", "cart", error="Your session expired. Please sign in again."))
-    if action == "remove" or quantity <= 0:
+    if action == "remove" or quantity.strip() == "0":
         data.remove_reseller_cart_item(account_id, product_id)
         if wants_json:
             return reseller_cart_payload(account_id, "Product removed from cart.")
         return redirect_to(safe_portal_path("reseller", "cart", message="Product removed from cart."))
     try:
-        require_positive_number(quantity, "Quantity")
         data.update_reseller_cart_item(account_id, product_id, quantity)
     except ValueError as exc:
         if wants_json:
@@ -1437,7 +1441,7 @@ async def reseller_profile_update(
 
 
 @app.post("/portal/team-leader/sales")
-async def team_walk_in_sale(request: Request, product_id: int = Form(...), quantity: float = Form(...), notes: str = Form("")):
+async def team_walk_in_sale(request: Request, product_id: int = Form(...), quantity: str = Form(...), notes: str = Form("")):
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
@@ -1450,7 +1454,7 @@ async def team_inventory_item(
     name: str = Form(...),
     category: str = Form(...),
     unit: str = Form(...),
-    quantity: float = Form(...),
+    quantity: str = Form(...),
 ):
     guard = require_portal_session(request, "team-leader")
     if guard:
@@ -1459,8 +1463,7 @@ async def team_inventory_item(
     if role_guard:
         return role_guard
     try:
-        require_positive_number(quantity, "Quantity")
-        data.add_raw_inventory_item(name, category, unit, quantity)
+        data.add_raw_inventory_item(name, category, unit, quantity, actor_account_id=session_account_id(request))
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "inventory", message="Raw inventory updated."))
@@ -1470,7 +1473,7 @@ async def team_inventory_item(
 async def team_inventory_item_quantity(
     request: Request,
     raw_material_id: int = Form(...),
-    quantity: float = Form(...),
+    quantity: str = Form(...),
 ):
     guard = require_portal_session(request, "team-leader")
     if guard:
@@ -1479,8 +1482,7 @@ async def team_inventory_item_quantity(
     if role_guard:
         return role_guard
     try:
-        require_positive_number(quantity, "Quantity")
-        data.add_raw_inventory_quantity(raw_material_id, quantity)
+        data.add_raw_inventory_quantity(raw_material_id, quantity, actor_account_id=session_account_id(request))
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "inventory", message="Raw inventory quantity added."))
@@ -1510,6 +1512,7 @@ async def team_product(request: Request):
             quantity_required_units,
             form.get("pack_size", ""),
             str(form.get("pack_size_unit", "")),
+            actor_account_id=session_account_id(request),
         )
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
@@ -1521,7 +1524,7 @@ async def team_production(
     request: Request,
     product_id: int = Form(...),
     batch_code: str = Form(...),
-    quantity: float = Form(...),
+    quantity: str = Form(...),
     expiry_date: date = Form(...),
 ):
     guard = require_portal_session(request, "team-leader")
@@ -1531,17 +1534,41 @@ async def team_production(
     if role_guard:
         return role_guard
     try:
-        if len(batch_code.strip()) < 4:
-            raise ValueError("Batch code is too short.")
-        require_positive_number(quantity, "Quantity")
-        if quantity != int(quantity):
-            raise ValueError("Produced quantity must be a whole number of packs.")
-        if expiry_date < date.today():
-            raise ValueError("Expiry date cannot be in the past.")
-        data.produce_product(product_id, batch_code.strip().upper(), quantity, expiry_date)
+        data.produce_product(
+            product_id,
+            batch_code,
+            quantity,
+            expiry_date,
+            actor_account_id=session_account_id(request),
+        )
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "inventory", message="Product produced and raw materials deducted."))
+
+
+@app.post("/portal/team-leader/products/{product_id}/pack-content")
+async def team_product_pack_content(
+    request: Request,
+    product_id: int,
+    pack_size: str = Form(...),
+    pack_size_unit: str = Form(...),
+):
+    guard = require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    role_guard = require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
+    try:
+        data.update_product_pack_content(
+            product_id,
+            pack_size,
+            pack_size_unit,
+            actor_account_id=session_account_id(request),
+        )
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("team-leader", "inventory", error=str(exc)))
+    return redirect_to(safe_portal_path("team-leader", "inventory", message="Pack content updated."))
 
 
 @app.post("/portal/team-leader/inquiries/{inquiry_id}/{decision}")

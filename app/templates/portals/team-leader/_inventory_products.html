@@ -25,6 +25,11 @@
         <h3>{{ product.name }}</h3>
         <strong>{{ product.available|number }} {{ product.unit }} available</strong>
         <small>{{ product.base_price|currency }}/{{ product.unit }}</small>
+        {% if product.pack_content_status == "declared" %}
+        <small>{{ product.pack_size|number }} {{ product.pack_size_unit }} declared net content</small>
+        {% else %}
+        <small class="muted">Net content not configured</small>
+        {% endif %}
         <span class="status-badge {{ 'active' if product.is_active else 'absent' }}">{{ 'Active' if product.is_active else 'Inactive' }}</span>
       </div>
     </article>

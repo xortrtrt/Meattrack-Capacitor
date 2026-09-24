@@ -266,12 +266,45 @@
         <span class="recipe-card-product">
           <strong>{{ product.name }}</strong>
           <small>{{ product.description }}</small>
+          {% if product.pack_content_status == "declared" %}
+          <small>Declared net content: {{ product.pack_size|number }} {{ product.pack_size_unit }} per pack</small>
+          {% else %}
+          <small class="muted">Declared net content is not configured for this legacy product.</small>
+          {% endif %}
         </span>
         <span class="recipe-count"
           >{{ recipe_rows|length }} ingredient{{ "" if recipe_rows|length == 1
           else "s" }}</span
         >
       </summary>
+      <form
+        class="form-panel bare"
+        action="/portal/team-leader/products/{{ product.product_id }}/pack-content"
+        method="post"
+      >
+        <div class="form-grid">
+          <label>
+            Declared contents per pack
+            <input
+              required
+              type="number"
+              min="0.001"
+              step="0.001"
+              name="pack_size"
+              value="{{ product.pack_size if product.pack_content_status == 'declared' else '' }}"
+            />
+          </label>
+          <label>
+            Contents unit
+            <select name="pack_size_unit" required>
+              {% for unit in content_units %}
+              <option value="{{ unit }}" {{ 'selected' if product.pack_size_unit == unit else '' }}>{{ unit }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <button class="button subtle" type="submit">Update pack content</button>
+      </form>
       {% if recipe_rows %}
       <div class="recipe-lines">
         <div class="recipe-line header">
