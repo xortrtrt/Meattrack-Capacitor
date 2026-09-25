@@ -63,6 +63,11 @@
         </div>
         <span class="owner-chip">{{ account.account_type.replace("_", " ") }}</span>
         <span class="status-badge active">{{ account.status }}</span>
+        {% if account.activation_status == "pending" %}
+        <form action="/portal/owner/accounts/{{ account.account_id }}/activation" method="post">
+          <button class="button subtle" type="submit">Resend activation</button>
+        </form>
+        {% endif %}
       </article>
       {% else %}
       <p class="hint">No accounts found for this filter.</p>

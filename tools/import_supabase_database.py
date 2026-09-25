@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import uuid
 from pathlib import Path
 
 import psycopg2
@@ -26,7 +27,23 @@ load_dotenv(PROJECT_ROOT / ".env")
 from app.config import database_dsn  # noqa: E402
 
 
-EXCLUDED_SOURCE_TABLES = {"media_assets", "schema_migrations"}
+EXCLUDED_SOURCE_TABLES = {
+    "media_assets", "schema_migrations", "web_sessions", "security_events",
+    "account_login_otps", "account_password_otps", "account_activation_tokens",
+    "notification_outbox",
+}
+REQUIRED_LEDGER_COLUMNS = {
+    "movement_id", "item_id", "movement_type", "quantity_delta", "unit",
+    "balance_before", "balance_after", "actor_name",
+}
+IMPORT_ORDER = (
+    "departments", "accounts", "inquiries", "resellers", "inventory_items",
+    "inventory_batches", "product_recipes", "orders", "order_items",
+    "order_payment_proofs", "reseller_cart_items", "sales_reports",
+    "sales_report_items", "sales_report_attachments", "alerts", "forecast_runs",
+    "forecast_results", "user_consents", "notifications", "notification_recipients",
+    "activity_logs", "inventory_movements",
+)
 
 
 def public_tables(connection) -> set[str]:
@@ -41,18 +58,18 @@ def public_tables(connection) -> set[str]:
         return {row[0] for row in cursor.fetchall()}
 
 
-def insertable_columns(connection, table: str) -> list[str]:
+def insertable_columns(connection, table: str, schema: str = "public") -> list[str]:
     with connection.cursor() as cursor:
         cursor.execute(
             """
             SELECT column_name
             FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = %s
+            WHERE table_name = %s
+              AND table_schema = %s
               AND is_generated = 'NEVER'
             ORDER BY ordinal_position;
             """,
-            (table,),
+            (table, schema),
         )
         return [row[0] for row in cursor.fetchall()]
 
@@ -82,7 +99,9 @@ def row_count(connection, table: str) -> int:
 def importable_tables(source, target) -> list[str]:
     source_tables = public_tables(source)
     target_tables = public_tables(target)
-    return sorted((source_tables & target_tables) - EXCLUDED_SOURCE_TABLES)
+    available = ((source_tables & target_tables) - EXCLUDED_SOURCE_TABLES) & set(IMPORT_ORDER)
+    order = {name: index for index, name in enumerate(IMPORT_ORDER)}
+    return sorted(available, key=lambda name: (order.get(name, len(order)), name))
 
 
 def common_columns(source, target, table: str) -> list[str]:
@@ -101,6 +120,12 @@ def source_rows(source, table: str, columns: list[str]) -> list[tuple]:
 
 
 def validate_source_inventory(source) -> None:
+    if "inventory_movements" not in public_tables(source):
+        raise RuntimeError("Full-database import requires inventory_movements; catalog-only legacy sources are not accepted.")
+    if not REQUIRED_LEDGER_COLUMNS.issubset(set(insertable_columns(source, "inventory_movements"))):
+        raise RuntimeError("Source inventory ledger does not match the authoritative movement schema.")
+    if "team_leader_account_id" not in set(insertable_columns(source, "orders")):
+        raise RuntimeError("Full-database source must be migrated to immutable order team-leader ownership first.")
     required_item_columns = {"pack_size", "pack_size_unit", "pack_content_status"}
     available_item_columns = set(insertable_columns(source, "inventory_items"))
     if not required_item_columns.issubset(available_item_columns):
@@ -146,6 +171,8 @@ def validate_source_inventory(source) -> None:
         ("SELECT COUNT(*) FROM order_items WHERE quantity <> trunc(quantity)", "fractional order packs"),
         ("SELECT COUNT(*) FROM reseller_cart_items WHERE quantity <> trunc(quantity)", "fractional cart packs"),
         ("SELECT COUNT(*) FROM sales_report_items WHERE quantity_sold <> trunc(quantity_sold)", "fractional reported packs"),
+        ("SELECT COUNT(*) FROM inventory_movements WHERE balance_after <> balance_before + quantity_delta", "invalid ledger equations"),
+        ("SELECT COUNT(*) FROM inventory_movements WHERE balance_before < 0 OR balance_after < 0", "negative ledger balances"),
         ("""
             SELECT COUNT(*) FROM order_items oi
             JOIN inventory_items p ON p.item_id = oi.product_id
@@ -171,6 +198,110 @@ def validate_source_inventory(source) -> None:
     if failures:
         raise RuntimeError("Source inventory validation failed: " + ", ".join(failures))
 
+    with source.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH latest AS (
+                SELECT DISTINCT ON (item_id) item_id, balance_after
+                FROM inventory_movements
+                WHERE affected_batch_id IS NULL
+                ORDER BY item_id, created_at DESC, movement_id DESC
+            )
+            SELECT count(*)
+            FROM inventory_items i LEFT JOIN latest l ON l.item_id = i.item_id
+            WHERE i.item_type = 'raw_material' AND l.balance_after IS DISTINCT FROM i.quantity_available;
+            """
+        )
+        raw_mismatches = int(cursor.fetchone()[0])
+        cursor.execute(
+            """
+            WITH latest AS (
+                SELECT DISTINCT ON (affected_batch_id) affected_batch_id, balance_after
+                FROM inventory_movements
+                WHERE affected_batch_id IS NOT NULL
+                ORDER BY affected_batch_id, created_at DESC, movement_id DESC
+            )
+            SELECT count(*)
+            FROM inventory_batches b LEFT JOIN latest l ON l.affected_batch_id = b.batch_id
+            WHERE l.balance_after IS DISTINCT FROM b.quantity_available;
+            """
+        )
+        batch_mismatches = int(cursor.fetchone()[0])
+    if raw_mismatches or batch_mismatches:
+        raise RuntimeError(
+            f"Source ledger reconciliation failed: {raw_mismatches} raw balance(s), {batch_mismatches} batch balance(s)."
+        )
+
+
+def require_pristine_target(target) -> None:
+    durable = public_tables(target) - EXCLUDED_SOURCE_TABLES
+    populated = [table for table in sorted(durable) if table != "schema_migrations" and row_count(target, table)]
+    if populated:
+        raise RuntimeError(
+            "Full database replacement is limited to an empty, disposable target. Existing data found in: "
+            + ", ".join(populated)
+        )
+
+
+def _defer_foreign_keys(cursor, schema: str) -> None:
+    cursor.execute(
+        """
+        SELECT c.relname, p.conname
+        FROM pg_constraint p
+        JOIN pg_class c ON c.oid = p.conrelid
+        WHERE p.contype = 'f' AND p.connamespace = %s::regnamespace;
+        """,
+        (schema,),
+    )
+    for relation, constraint in cursor.fetchall():
+        cursor.execute(
+            sql.SQL("ALTER TABLE {}.{} ALTER CONSTRAINT {} DEFERRABLE INITIALLY DEFERRED").format(
+                sql.Identifier(schema), sql.Identifier(relation), sql.Identifier(constraint)
+            )
+        )
+
+
+def _insert_rows(source, target_cursor, target, tables: list[str], schema: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    target_cursor.execute(sql.SQL("SET LOCAL search_path TO {}, public").format(sql.Identifier(schema)))
+    target_cursor.execute("SELECT set_config('meattrack.maintenance_import', 'on', true)")
+    target_cursor.execute("SET CONSTRAINTS ALL DEFERRED")
+    for table in tables:
+        source_columns = set(insertable_columns(source, table))
+        columns = [column for column in insertable_columns(target, table, schema) if column in source_columns]
+        rows = source_rows(source, table, columns)
+        counts[table] = len(rows)
+        if not rows:
+            continue
+        statement = sql.SQL("INSERT INTO {}.{} ({}) OVERRIDING SYSTEM VALUE VALUES %s").format(
+            sql.Identifier(schema), sql.Identifier(table), sql.SQL(", ").join(map(sql.Identifier, columns))
+        )
+        execute_values(target_cursor, statement, rows, page_size=500)
+    return counts
+
+
+def validate_in_staging_schema(source, target, tables: list[str]) -> None:
+    schema = f"import_validation_{uuid.uuid4().hex}"
+    baseline = (PROJECT_ROOT / "database" / "schema.sql").read_text(encoding="utf-8").strip()
+    baseline = baseline.removeprefix("BEGIN;").strip().removesuffix("COMMIT;").strip()
+    try:
+        with target.cursor() as cursor:
+            cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+            cursor.execute(sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(schema)))
+            cursor.execute(baseline)
+            _defer_foreign_keys(cursor, schema)
+            counts = _insert_rows(source, cursor, target, tables, schema)
+            for table, expected in counts.items():
+                cursor.execute(sql.SQL("SELECT count(*) FROM {}.{}").format(sql.Identifier(schema), sql.Identifier(table)))
+                if int(cursor.fetchone()[0]) != expected:
+                    raise RuntimeError(f"Staging count mismatch for {table}.")
+            cursor.execute(sql.SQL("SET LOCAL search_path TO {}, public").format(sql.Identifier(schema)))
+            validate_source_inventory(target)
+        target.rollback()
+    except Exception:
+        target.rollback()
+        raise
+
 
 def reset_identity_sequences(target, tables: list[str]) -> None:
     with target.cursor() as cursor:
@@ -194,25 +325,9 @@ def reset_identity_sequences(target, tables: list[str]) -> None:
 
 def replace_database(source, target, tables: list[str]) -> None:
     source_counts = {table: row_count(source, table) for table in tables}
-    table_list = sql.SQL(", ").join(map(sql.Identifier, tables))
     with target.cursor() as cursor:
-        cursor.execute("SET LOCAL session_replication_role = 'replica';")
-        cursor.execute(
-            sql.SQL("TRUNCATE TABLE {} RESTART IDENTITY CASCADE;").format(table_list)
-        )
-        for table in tables:
-            columns = common_columns(source, target, table)
-            rows = source_rows(source, table, columns)
-            if not rows:
-                continue
-            statement = sql.SQL(
-                "INSERT INTO {} ({}) OVERRIDING SYSTEM VALUE VALUES %s"
-            ).format(
-                sql.Identifier(table),
-                sql.SQL(", ").join(map(sql.Identifier, columns)),
-            )
-            execute_values(cursor, statement, rows, page_size=500)
-        cursor.execute("SET LOCAL session_replication_role = 'origin';")
+        _defer_foreign_keys(cursor, "public")
+        _insert_rows(source, cursor, target, tables, "public")
 
     reset_identity_sequences(target, tables)
 
@@ -232,7 +347,17 @@ def main() -> None:
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--check", action="store_true", help="Compare tables and row counts only.")
     action.add_argument("--apply", action="store_true", help="Replace all local application data.")
+    action.add_argument("--self-check", action="store_true", help="Validate importer safety invariants without connecting.")
+    parser.add_argument("--confirm-target", help="Required with --apply; must exactly match current_database().")
     args = parser.parse_args()
+
+    if args.self_check:
+        assert "schema_migrations" in EXCLUDED_SOURCE_TABLES
+        assert "web_sessions" in EXCLUDED_SOURCE_TABLES
+        assert "notification_outbox" in EXCLUDED_SOURCE_TABLES
+        assert "inventory_movements" not in EXCLUDED_SOURCE_TABLES
+        print("Importer safety self-check passed.")
+        return
 
     source_dsn = os.getenv("SUPABASE_DB_URL", "").strip()
     if not source_dsn:
@@ -240,6 +365,11 @@ def main() -> None:
 
     with psycopg2.connect(source_dsn, connect_timeout=15) as source:
         with psycopg2.connect(database_dsn()) as target:
+            with target.cursor() as cursor:
+                cursor.execute("SELECT current_database();")
+                target_name = cursor.fetchone()[0]
+            if args.apply and args.confirm_target != target_name:
+                parser.error(f"--apply requires --confirm-target {target_name!r}")
             validate_source_inventory(source)
             tables = importable_tables(source, target)
             print(f"Importable application tables: {len(tables)}")
@@ -247,7 +377,10 @@ def main() -> None:
                 print(f"{table}: source={row_count(source, table)}, local={row_count(target, table)}")
             if args.check:
                 return
+            require_pristine_target(target)
+            validate_in_staging_schema(source, target, tables)
             replace_database(source, target, tables)
+            validate_source_inventory(target)
     print("Full Supabase database import completed and verified.")
 
 

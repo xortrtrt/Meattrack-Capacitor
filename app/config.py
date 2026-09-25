@@ -12,6 +12,35 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 APP_ENV = os.getenv("APP_ENV", "development")
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "change-this-local-dev-secret")
+
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+AUTH_RATE_LIMIT_ENABLED = env_bool("AUTH_RATE_LIMIT_ENABLED", APP_ENV == "production")
+CSRF_PROTECTION_ENABLED = env_bool("CSRF_PROTECTION_ENABLED", APP_ENV == "production")
+BUSINESS_TIMEZONE = os.getenv("BUSINESS_TIMEZONE", "Asia/Manila").strip() or "Asia/Manila"
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "meattrack_session").strip() or "meattrack_session"
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8000").strip().rstrip("/")
+
+if APP_ENV == "production":
+    disabled_controls = [
+        name
+        for name, enabled in (
+            ("AUTH_RATE_LIMIT_ENABLED", AUTH_RATE_LIMIT_ENABLED),
+            ("CSRF_PROTECTION_ENABLED", CSRF_PROTECTION_ENABLED),
+        )
+        if not enabled
+    ]
+    if disabled_controls:
+        raise RuntimeError(
+            "Production startup refused: required security controls are disabled: "
+            + ", ".join(disabled_controls)
+        )
 LOGIN_OTP_ENABLED = os.getenv(
     "LOGIN_OTP_ENABLED",
     "true" if APP_ENV == "production" else "false",

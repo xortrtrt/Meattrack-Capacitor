@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="csrf-token" content="{{ csrf_token(request) }}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Activate account | MEATTRACK</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/login.css') }}" />
+  </head>
+  <body class="login-page">
+    <main class="login-wrapper">
+      <section class="login-card">
+        <div class="login-panel">
+          <h1>Activate your account</h1>
+          <p>Create your private password. This activation link can be used once and expires after 24 hours.</p>
+          {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+          <form class="login-form" action="/activate" method="post">
+            <input type="hidden" name="token" value="{{ token }}" />
+            <label>New password<input required type="password" name="new_password" autocomplete="new-password" minlength="8" /></label>
+            <label>Confirm password<input required type="password" name="confirm_password" autocomplete="new-password" minlength="8" /></label>
+            <button class="login-btn" type="submit">Activate account</button>
+          </form>
+          <a class="login-back" href="/login">Back to sign in</a>
+        </div>
+      </section>
+    </main>
+    <script src="{{ url_for('static', path='js/app.js') }}"></script>
+  </body>
+</html>

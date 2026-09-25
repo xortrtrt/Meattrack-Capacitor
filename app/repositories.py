@@ -1,7 +1,9 @@
 from __future__ import annotations
 import calendar
+import hashlib
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+import json
 import logging
 import os
 import secrets
@@ -11,9 +13,12 @@ from threading import Lock
 from app.database import fetch_all, fetch_one, execute_write, clean_row, get_transaction_cursor
 from app.config import DEFAULT_ACCOUNT_PASSWORD
 from app import inventory_measurements as measurements
+from app.business_time import business_now, business_today
+from app.security_controls import enforce_otp_attempt, enforce_otp_resend, record_event, record_otp_resend
+from app.web_sessions import revoke_account_sessions
 from app.security import hash_password, password_needs_rehash, validate_password_policy, verify_password
 
-today = date.today()
+today = business_today()
 
 
 def safe_sort_sql(sort: str, allowed: dict[str, str], default_sql: str) -> str:
@@ -121,6 +126,10 @@ def parse_inventory_decimal(value: object, label: str, places: str) -> Decimal:
 def display_decimal(value: Decimal) -> str:
     text = format(value.normalize(), "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def parse_money(value: object, label: str = "Amount") -> Decimal:
+    return measurements.parse_decimal_exact(value, label, scale=2, nonnegative=True)
 
 
 UNIT_ALIASES = measurements.UNIT_ALIASES
@@ -436,6 +445,7 @@ portal_nav = {
         ("reports", "Reports", "bar-chart-3"),
         ("forecasts", "Forecasts", "line-chart"),
         ("accounts", "Accounts", "shield-check"),
+        ("profile", "Profile", "user-cog"),
     ],
 }
 
@@ -831,10 +841,10 @@ def list_orders(
             where.append("o.created_by_account_id = %s")
             params.append(team_leader_account_id)
         elif order_type == "reseller":
-            where.append("r.team_leader_account_id = %s")
+            where.append("o.team_leader_account_id = %s")
             params.append(team_leader_account_id)
         else:
-            where.append("(o.created_by_account_id = %s OR r.team_leader_account_id = %s)")
+            where.append("(o.created_by_account_id = %s OR o.team_leader_account_id = %s)")
             params.extend([team_leader_account_id, team_leader_account_id])
     if reseller_account_id is not None:
         where.append("""o.reseller_id = (
@@ -863,12 +873,12 @@ def list_orders(
     orders = clean_row(fetch_all(f"""
         SELECT o.order_id, o.order_type, o.reseller_id,
                COALESCE(r.business_name, 'Retail counter') AS reseller,
-               r.team_leader_account_id,
+               o.team_leader_account_id,
                tl.name AS team_leader_name,
                o.status, o.order_date, o.total_amount, o.notes
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
-        LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
+        LEFT JOIN accounts tl ON tl.account_id = o.team_leader_account_id
         {where_sql}
         ORDER BY {order_sql}
         {"LIMIT %s" if limit is not None else ""}
@@ -918,24 +928,28 @@ def add_order_payment_proofs(account_id: int, order_id: int, attachments: list[d
     ensure_system_tables()
     if not attachments:
         raise ValueError("Attach at least one proof of payment screenshot.")
-    profile = reseller_account_profile(account_id)
-    order = fetch_one(
-        """
-        SELECT order_id, status
-        FROM orders
-        WHERE order_id = %s
-          AND order_type = 'reseller'
-          AND reseller_id = %s
-        LIMIT 1;
-        """,
-        (order_id, profile["reseller_id"]),
-    )
-    if not order:
-        raise ValueError("Order was not found.")
-    if order["status"] not in {"pending", "rejected"}:
-        raise ValueError("Proof of payment can only be uploaded while the order is pending or rejected.")
-    inserted = 0
     with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT o.order_id, o.status, o.team_leader_account_id, r.business_name
+            FROM orders o
+            JOIN resellers r ON r.reseller_id = o.reseller_id
+            JOIN accounts a ON a.reseller_id = r.reseller_id
+            WHERE o.order_id = %s AND o.order_type = 'reseller' AND a.account_id = %s
+            FOR UPDATE OF o;
+            """,
+            (order_id, account_id),
+        )
+        order = cur.fetchone()
+        if not order:
+            raise ValueError("Order was not found.")
+        if order["status"] != "pending":
+            raise ValueError("Proof of payment can only be uploaded while the order is pending.")
+        cur.execute("SELECT count(*) AS total FROM order_payment_proofs WHERE order_id = %s;", (order_id,))
+        existing = int(cur.fetchone()["total"])
+        if existing + len(attachments) > 3:
+            raise ValueError("An order can have at most three payment proof screenshots.")
+        inserted = 0
         for attachment in attachments:
             cur.execute(
                 """
@@ -956,18 +970,14 @@ def add_order_payment_proofs(account_id: int, order_id: int, attachments: list[d
                 ),
             )
             inserted += 1
-    add_log(profile["business_name"], "uploaded_payment_proof", f"Order #{order_id}")
-    create_notification(
-        recipient_account_id=profile["team_leader_account_id"],
-        category="order",
-        severity="info",
-        title="Payment proof uploaded",
-        message=f"{profile['business_name']} uploaded payment proof for order #{order_id}.",
-        target_url="/portal/team-leader/orders",
-        source_type="orders",
-        source_id=order_id,
-        dedupe_key=f"order-proof-{order_id}-{inserted}-{datetime.now().timestamp()}",
-    )
+        _add_log_cursor(cur, actor_account_id=account_id, action="uploaded_payment_proof", entity_type="orders", entity_id=order_id)
+        _create_notification_cursor(
+            cur, recipient_account_id=order["team_leader_account_id"], category="order", severity="info",
+            title="Payment proof uploaded",
+            message=f"{order['business_name']} uploaded payment proof for order #{order_id}.",
+            target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
+            dedupe_key=f"order-proof-{order_id}-{existing + inserted}",
+        )
     return inserted
 
 
@@ -982,7 +992,7 @@ def get_order_payment_proof(proof_id: int, account_id: int | None, role_key: str
                opp.content,
                opp.size_bytes,
                o.created_by_account_id,
-               r.team_leader_account_id
+               o.team_leader_account_id
         FROM order_payment_proofs opp
         JOIN orders o ON o.order_id = opp.order_id
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
@@ -1092,10 +1102,10 @@ def count_orders(
             where.append("o.created_by_account_id = %s")
             params.append(team_leader_account_id)
         elif order_type == "reseller":
-            where.append("r.team_leader_account_id = %s")
+            where.append("o.team_leader_account_id = %s")
             params.append(team_leader_account_id)
         else:
-            where.append("(o.created_by_account_id = %s OR r.team_leader_account_id = %s)")
+            where.append("(o.created_by_account_id = %s OR o.team_leader_account_id = %s)")
             params.extend([team_leader_account_id, team_leader_account_id])
     if reseller_account_id is not None:
         where.append("""o.reseller_id = (
@@ -1395,7 +1405,9 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
     order_sql = safe_sort_sql(sort, ACCOUNT_SORTS, ACCOUNT_SORTS["oldest"])
     return clean_row(fetch_all("""
         SELECT a.account_id, a.account_type, a.team_leader_role, a.reseller_id, a.name, a.email,
-               (CASE WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status,
+               a.activation_status,
+               (CASE WHEN a.activation_status = 'pending' THEN 'pending activation'
+                     WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status,
                r.team_leader_account_id,
                tl.name AS team_leader_name
         FROM accounts a
@@ -1482,29 +1494,25 @@ def list_reseller_assignments() -> list[dict]:
     """))
 
 
-def set_reseller_team_leader(reseller_id: int, team_leader_account_id: int) -> dict:
+def set_reseller_team_leader(reseller_id: int, team_leader_account_id: int, actor_account_id: int | None = None) -> dict:
     ensure_system_tables()
-    leader = fetch_one("""
-        SELECT account_id, name
-        FROM accounts
-        WHERE account_id = %s
-          AND account_type = 'team_leader'
-          AND is_active = true
-        LIMIT 1;
-    """, (team_leader_account_id,))
-    if not leader:
-        raise ValueError("Select an active team leader.")
-
-    reseller = execute_write("""
-        UPDATE resellers
-        SET team_leader_account_id = %s
-        WHERE reseller_id = %s
-        RETURNING reseller_id, business_name, team_leader_account_id;
-    """, (team_leader_account_id, reseller_id), returning=True)
-    if not reseller:
-        raise ValueError("Reseller was not found.")
-
-    add_log("MEATTRACK", "assigned_reseller_team_leader", f"{reseller['business_name']} -> {leader['name']}")
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            SELECT account_id, name FROM accounts
+            WHERE account_id = %s AND account_type = 'team_leader' AND is_active = true
+              AND team_leader_role = 'sales' LIMIT 1;
+        """, (team_leader_account_id,))
+        leader = cur.fetchone()
+        if not leader:
+            raise ValueError("Select an active sales team leader.")
+        cur.execute("""
+            UPDATE resellers SET team_leader_account_id = %s WHERE reseller_id = %s
+            RETURNING reseller_id, business_name, team_leader_account_id;
+        """, (team_leader_account_id, reseller_id))
+        reseller = cur.fetchone()
+        if not reseller:
+            raise ValueError("Reseller was not found.")
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="assigned_reseller_team_leader", entity_type="resellers", entity_id=reseller_id)
     return clean_row(reseller)
 
 
@@ -1920,14 +1928,14 @@ def authenticate_account(email: str, password: str) -> dict | None:
     ensure_system_tables()
     account = fetch_one(
         """
-        SELECT account_id, account_type, team_leader_role, name, email, password_hash, is_active
+        SELECT account_id, account_type, team_leader_role, name, email, password_hash, is_active, activation_status
         FROM accounts
         WHERE lower(email) = lower(%s)
         LIMIT 1;
         """,
         (email,),
     )
-    if account is None or not account["is_active"]:
+    if account is None or not account["is_active"] or account["activation_status"] != "active":
         return None
 
     if not verify_password(password, account["password_hash"]):
@@ -1977,9 +1985,10 @@ def request_account_password_change(
     account_id: int,
     current_password: str,
     new_password: str,
-    allowed_account_types: tuple[str, ...] = ("reseller", "team_leader"),
+    allowed_account_types: tuple[str, ...] = ("owner", "reseller", "team_leader"),
 ) -> dict:
     ensure_system_tables()
+    enforce_otp_resend(account_id)
     account = fetch_one(
         """
         SELECT account_id, account_type, name, email, password_hash
@@ -1999,7 +2008,7 @@ def request_account_password_change(
     otp_code = f"{secrets.randbelow(1_000_000):06d}"
     pending_password_hash = hash_password(cleaned_password)
     otp_hash = hash_password(otp_code)
-    expires_at = datetime.now() + timedelta(minutes=10)
+    expires_at = business_now() + timedelta(minutes=10)
 
     with get_transaction_cursor() as cur:
         cur.execute(
@@ -2021,7 +2030,13 @@ def request_account_password_change(
         )
         otp = cur.fetchone()
 
-    profile_label = "Team leader profile" if account["account_type"] == "team_leader" else "Reseller profile"
+    record_otp_resend(account_id)
+    record_event("otp_verify", f"account:{account_id}", succeeded=True)
+    profile_label = {
+        "team_leader": "Team leader profile",
+        "reseller": "Reseller profile",
+        "owner": "Owner profile",
+    }.get(account["account_type"], "Account profile")
     add_log(account["name"], "requested_password_otp", profile_label)
     return {
         "otp_id": otp["account_password_otp_id"],
@@ -2054,9 +2069,10 @@ def cancel_account_password_change(account_id: int, otp_id: int | None = None) -
 def confirm_account_password_change(
     account_id: int,
     otp_code: str,
-    allowed_account_types: tuple[str, ...] = ("reseller", "team_leader"),
+    allowed_account_types: tuple[str, ...] = ("owner", "reseller", "team_leader"),
 ) -> None:
     ensure_system_tables()
+    enforce_otp_attempt(account_id)
     cleaned_otp = "".join(ch for ch in otp_code.strip() if ch.isdigit())
     if len(cleaned_otp) != 6:
         raise ValueError("Enter the 6-digit OTP sent to your email.")
@@ -2083,6 +2099,7 @@ def confirm_account_password_change(
         if pending["account_type"] not in allowed_account_types:
             raise ValueError("Account was not found.")
         if not verify_password(cleaned_otp, pending["otp_hash"]):
+            record_event("otp_verify", f"account:{account_id}")
             raise ValueError("OTP is incorrect.")
         cur.execute(
             "UPDATE accounts SET password_hash = %s WHERE account_id = %s;",
@@ -2093,8 +2110,10 @@ def confirm_account_password_change(
             (pending["account_password_otp_id"],),
         )
 
-    profile_label = "Team leader profile OTP" if pending["account_type"] == "team_leader" else "Reseller profile OTP"
-    add_log(pending["name"], "changed_password", profile_label)
+    record_event("otp_verify", f"account:{account_id}", succeeded=True)
+    profile_label = "Team leader profile OTP" if pending["account_type"] == "team_leader" else "Account profile OTP"
+    revoke_account_sessions(account_id)
+    add_log(pending["name"], "changed_password", profile_label, actor_account_id=account_id)
 
 
 def confirm_reseller_password_change(account_id: int, otp_code: str) -> None:
@@ -2103,21 +2122,22 @@ def confirm_reseller_password_change(account_id: int, otp_code: str) -> None:
 
 def request_login_otp(account_id: int) -> dict:
     ensure_system_tables()
+    enforce_otp_resend(account_id)
     account = fetch_one(
         """
-        SELECT account_id, account_type, team_leader_role, name, email, is_active
+        SELECT account_id, account_type, team_leader_role, name, email, is_active, activation_status
         FROM accounts
         WHERE account_id = %s
         LIMIT 1;
         """,
         (account_id,),
     )
-    if not account or not account["is_active"]:
+    if not account or not account["is_active"] or account["activation_status"] != "active":
         raise ValueError("Account was not found.")
 
     otp_code = f"{secrets.randbelow(1_000_000):06d}"
     otp_hash = hash_password(otp_code)
-    expires_at = datetime.now() + timedelta(minutes=10)
+    expires_at = business_now() + timedelta(minutes=10)
 
     with get_transaction_cursor() as cur:
         cur.execute(
@@ -2138,6 +2158,9 @@ def request_login_otp(account_id: int) -> dict:
             (account_id, otp_hash, expires_at),
         )
         otp = cur.fetchone()
+
+    record_otp_resend(account_id)
+    record_event("otp_verify", f"account:{account_id}", succeeded=True)
 
     clean = clean_row(account)
     clean["role_key"] = role_key_for_account_type(clean["account_type"])
@@ -2168,13 +2191,14 @@ def confirm_login_otp(account_id: int, otp_code: str) -> dict:
         cur.execute(
             """
             SELECT p.account_login_otp_id, p.otp_hash,
-                   a.account_id, a.account_type, a.team_leader_role, a.name, a.email, a.is_active
+                   a.account_id, a.account_type, a.team_leader_role, a.name, a.email, a.is_active, a.activation_status
             FROM account_login_otps p
             JOIN accounts a ON a.account_id = p.account_id
             WHERE p.account_id = %s
               AND p.consumed_at IS NULL
               AND p.expires_at >= now()
               AND a.is_active = true
+              AND a.activation_status = 'active'
             ORDER BY p.created_at DESC
             LIMIT 1
             FOR UPDATE OF p;
@@ -2258,18 +2282,22 @@ def update_reseller_profile(
 def account_portal_profile(account_id: int) -> dict | None:
     ensure_system_tables()
     account = fetch_one("""
-        SELECT account_id, account_type, team_leader_role, name, email, is_active
+        SELECT account_id, account_type, team_leader_role, name, email, is_active, activation_status
         FROM accounts
         WHERE account_id = %s
         LIMIT 1;
     """, (account_id,))
-    if not account or not account["is_active"]:
+    if not account or not account["is_active"] or account["activation_status"] != "active":
         return None
     clean = clean_row(account)
     clean["role_key"] = role_key_for_account_type(clean["account_type"])
     if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
         clean["team_leader_role"] = "sales"
     return clean
+
+
+def active_session_account(account_id: int) -> dict | None:
+    return account_portal_profile(account_id)
 
 
 def record_user_consent(account_id: int, policy_version: str, consent_source: str, provider: str | None = None) -> None:
@@ -2281,6 +2309,63 @@ def record_user_consent(account_id: int, policy_version: str, consent_source: st
         """,
         (account_id, policy_version, consent_source, provider),
     )
+
+
+def _notification_recipient_ids(cur, recipient_role: str | None, recipient_account_id: int | None, category: str) -> list[int]:
+    if recipient_account_id is not None:
+        cur.execute("SELECT account_id FROM accounts WHERE account_id = %s AND is_active = true;", (recipient_account_id,))
+    elif recipient_role == "owner":
+        cur.execute("SELECT account_id FROM accounts WHERE account_type = 'owner' AND is_active = true;")
+    elif recipient_role == "reseller":
+        cur.execute("SELECT account_id FROM accounts WHERE account_type = 'reseller' AND is_active = true;")
+    elif recipient_role == "team-leader":
+        specialization = "inventory" if category == "inventory" else "sales"
+        cur.execute(
+            "SELECT account_id FROM accounts WHERE account_type = 'team_leader' AND team_leader_role = %s AND is_active = true;",
+            (specialization,),
+        )
+    else:
+        return []
+    return [int(row["account_id"]) for row in cur.fetchall()]
+
+
+def _create_notification_cursor(
+    cur,
+    *,
+    recipient_role: str | None = None,
+    recipient_account_id: int | None = None,
+    category: str,
+    severity: str = "info",
+    title: str,
+    message: str,
+    target_url: str | None = None,
+    source_type: str | None = None,
+    source_id: int | None = None,
+    dedupe_key: str | None = None,
+) -> int | None:
+    if recipient_role is None and recipient_account_id is None:
+        return None
+    cur.execute(
+        """
+        INSERT INTO notifications (
+            recipient_role, recipient_account_id, category, severity, title, message,
+            target_url, source_type, source_id, dedupe_key
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (dedupe_key) DO UPDATE SET dedupe_key = EXCLUDED.dedupe_key
+        RETURNING notification_id;
+        """,
+        (recipient_role, recipient_account_id, category, severity, title, message,
+         target_url, source_type, source_id, dedupe_key),
+    )
+    notification_id = int(cur.fetchone()["notification_id"])
+    recipients = _notification_recipient_ids(cur, recipient_role, recipient_account_id, category)
+    for account_id in recipients:
+        cur.execute(
+            "INSERT INTO notification_recipients (notification_id, account_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
+            (notification_id, account_id),
+        )
+    return notification_id
 
 
 def create_notification(
@@ -2299,41 +2384,27 @@ def create_notification(
     if recipient_role is None and recipient_account_id is None:
         return
     ensure_system_tables()
-    execute_write(
-        """
-        INSERT INTO notifications (
-            recipient_role, recipient_account_id, category, severity, title, message,
-            target_url, source_type, source_id, dedupe_key
+    with get_transaction_cursor() as cur:
+        _create_notification_cursor(
+            cur, recipient_role=recipient_role, recipient_account_id=recipient_account_id,
+            category=category, severity=severity, title=title, message=message,
+            target_url=target_url, source_type=source_type, source_id=source_id, dedupe_key=dedupe_key,
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (dedupe_key) DO NOTHING;
-        """,
-        (
-            recipient_role,
-            recipient_account_id,
-            category,
-            severity,
-            title,
-            message,
-            target_url,
-            source_type,
-            source_id,
-            dedupe_key,
-        ),
-    )
 
 
 def list_notifications(role_key: str, account_id: int | None = None, limit: int = 8) -> list[dict]:
     ensure_system_tables()
     return clean_row(fetch_all(
         """
-        SELECT notification_id, category, severity, title, message, target_url, read_at, created_at
-        FROM notifications
-        WHERE (recipient_role = %s OR recipient_account_id = %s)
-        ORDER BY read_at NULLS FIRST, created_at DESC
+        SELECT n.notification_id, n.category, n.severity, n.title, n.message, n.target_url,
+               nr.read_at, n.created_at
+        FROM notification_recipients nr
+        JOIN notifications n ON n.notification_id = nr.notification_id
+        WHERE nr.account_id = %s
+        ORDER BY nr.read_at NULLS FIRST, n.created_at DESC
         LIMIT %s;
         """,
-        (role_key, account_id, limit),
+        (account_id, limit),
     ))
 
 
@@ -2342,11 +2413,10 @@ def unread_notification_count(role_key: str, account_id: int | None = None) -> i
     row = fetch_one(
         """
         SELECT COUNT(*) AS total
-        FROM notifications
-        WHERE read_at IS NULL
-          AND (recipient_role = %s OR recipient_account_id = %s);
+        FROM notification_recipients
+        WHERE read_at IS NULL AND account_id = %s;
         """,
-        (role_key, account_id),
+        (account_id,),
     )
     return int(row["total"])
 
@@ -2355,12 +2425,11 @@ def mark_notifications_read(role_key: str, account_id: int | None = None) -> Non
     ensure_system_tables()
     execute_write(
         """
-        UPDATE notifications
+        UPDATE notification_recipients
         SET read_at = now()
-        WHERE read_at IS NULL
-          AND (recipient_role = %s OR recipient_account_id = %s);
+        WHERE read_at IS NULL AND account_id = %s;
         """,
-        (role_key, account_id),
+        (account_id,),
     )
 
 def current_metrics(team_leader_account_id: int | None = None, reseller_account_id: int | None = None) -> dict:
@@ -2379,20 +2448,10 @@ def current_metrics(team_leader_account_id: int | None = None, reseller_account_
         order_scope = """
                 AND (
                     created_by_account_id = %s
-                    OR reseller_id IN (
-                        SELECT reseller_id
-                        FROM resellers
-                        WHERE team_leader_account_id = %s
-                    )
+                    OR team_leader_account_id = %s
                 )
         """
-        pending_scope = """
-                AND reseller_id IN (
-                    SELECT reseller_id
-                    FROM resellers
-                    WHERE team_leader_account_id = %s
-                )
-        """
+        pending_scope = " AND team_leader_account_id = %s"
         active_reseller_scope = " AND team_leader_account_id = %s"
         params.extend([team_leader_account_id, team_leader_account_id, team_leader_account_id, team_leader_account_id])
 
@@ -2481,44 +2540,61 @@ def inventory_product_movement_analytics(days: int = 30, limit: int = 8) -> list
     """, (clean_days, clean_days, clean_limit)))
 
 
-def add_log(actor_name: str, action: str, entity_name: str) -> None:
-    acc = fetch_one("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (actor_name,))
-    acc_id = acc["account_id"] if acc else None
-    if not acc_id:
-        acc = fetch_one("SELECT account_id FROM accounts WHERE name = (SELECT business_name FROM resellers WHERE business_name = %s LIMIT 1) LIMIT 1;", (actor_name,))
-        acc_id = acc["account_id"] if acc else None
-    
-    execute_write("""
+def _add_log_cursor(
+    cur,
+    *,
+    actor_account_id: int | None,
+    action: str,
+    entity_type: str = "custom",
+    entity_id: int | None = None,
+) -> None:
+    cur.execute(
+        """
         INSERT INTO activity_logs (account_id, action, entity_type, entity_id, created_at)
-        VALUES (%s, %s, %s, %s, %s);
-    """, (acc_id, action, 'custom', 0, datetime.now()))
+        VALUES (%s, %s, %s, %s, now());
+        """,
+        (actor_account_id, action, entity_type, entity_id),
+    )
+
+
+def _enqueue_outbox_cursor(cur, event_type: str, payload: dict, dedupe_key: str) -> None:
+    cur.execute(
+        """
+        INSERT INTO notification_outbox (event_type, payload, dedupe_key)
+        VALUES (%s, %s::jsonb, %s)
+        ON CONFLICT (dedupe_key) DO NOTHING;
+        """,
+        (event_type, json.dumps(payload), dedupe_key),
+    )
+
+
+def add_log(actor_name: str, action: str, entity_name: str, actor_account_id: int | None = None) -> None:
+    with get_transaction_cursor() as cur:
+        acc_id = actor_account_id
+        if acc_id is None:
+            cur.execute("SELECT account_id FROM accounts WHERE name = %s LIMIT 1;", (actor_name,))
+            acc = cur.fetchone()
+            acc_id = acc["account_id"] if acc else None
+        _add_log_cursor(cur, actor_account_id=acc_id, action=action)
 
 def add_inquiry(name: str, business_name: str, email: str, contact_number: str, message: str) -> dict:
     leader = next_sales_team_leader()
     leader_id = leader["account_id"] if leader else None
-    
-    inq = execute_write("""
-        INSERT INTO inquiries (name, contact_number, email, business_name, message, status, assigned_team_leader_account_id)
-        VALUES (%s, %s, %s, %s, %s, 'assigned', %s)
-        RETURNING inquiry_id, name, contact_number, email, business_name, message, status, assigned_team_leader_account_id, created_at;
-    """, (name, contact_number, email, business_name, message, leader_id), returning=True)
-    
-    inq = clean_row(inq)
-    
-    add_log("MEATTRACK", "created_inquiry", f"Inquiry #{inq['inquiry_id']}")
-    create_notification(
-        recipient_account_id=leader_id,
-        recipient_role=None if leader_id else "owner",
-        category="inquiry",
-        severity="info",
-        title="New reseller inquiry",
-        message=f"{business_name} is waiting for review.",
-        target_url="/portal/team-leader/inquiries",
-        source_type="inquiries",
-        source_id=inq["inquiry_id"],
-        dedupe_key=f"inquiry-{inq['inquiry_id']}",
-    )
-    return inq
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            INSERT INTO inquiries (name, contact_number, email, business_name, message, status, assigned_team_leader_account_id)
+            VALUES (%s, %s, %s, %s, %s, 'assigned', %s)
+            RETURNING inquiry_id, name, contact_number, email, business_name, message, status, assigned_team_leader_account_id, created_at;
+        """, (name, contact_number, email, business_name, message, leader_id))
+        inq = cur.fetchone()
+        _add_log_cursor(cur, actor_account_id=None, action="created_inquiry", entity_type="inquiries", entity_id=inq["inquiry_id"])
+        _create_notification_cursor(
+            cur, recipient_account_id=leader_id, recipient_role=None if leader_id else "owner",
+            category="inquiry", severity="info", title="New reseller inquiry",
+            message=f"{business_name} is waiting for review.", target_url="/portal/team-leader/inquiries",
+            source_type="inquiries", source_id=inq["inquiry_id"], dedupe_key=f"inquiry-{inq['inquiry_id']}",
+        )
+    return clean_row(inq)
 
 
 def due_inquiry_followups(limit: int = 20) -> list[dict]:
@@ -2550,19 +2626,32 @@ def mark_inquiry_followup_sent(inquiry_id: int) -> None:
     )
 
 
-def generate_temporary_password() -> str:
-    token = secrets.token_urlsafe(9).replace("-", "").replace("_", "")
-    return f"BP-{token[:10]}"
+def _create_activation_token_cursor(cur, account_id: int) -> str:
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    cur.execute(
+        "UPDATE account_activation_tokens SET consumed_at = now() WHERE account_id = %s AND consumed_at IS NULL;",
+        (account_id,),
+    )
+    cur.execute(
+        """
+        INSERT INTO account_activation_tokens (account_id, token_hash, expires_at)
+        VALUES (%s, %s, now() + interval '24 hours');
+        """,
+        (account_id, token_hash),
+    )
+    return raw_token
 
 
 def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id: int | None = None) -> dict | None:
     ensure_system_tables()
-    temporary_password = generate_temporary_password()
     with get_transaction_cursor() as cur:
         cur.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE;", (inquiry_id,))
         inq = cur.fetchone()
         if not inq:
             return None
+        if inq["status"] not in {"pending", "assigned", "contacted"}:
+            raise ValueError(f"Inquiry is already {inq['status']} and cannot be reviewed again.")
         if approving_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, approving_team_leader_account_id}:
             return None
 
@@ -2611,62 +2700,70 @@ def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id:
             UPDATE inquiries
             SET status = 'approved', assigned_team_leader_account_id = %s, reviewed_by_account_id = %s, reviewed_at = %s
             WHERE inquiry_id = %s;
-        """, (leader_id, leader_id, datetime.now(), inquiry_id))
+        """, (leader_id, leader_id, business_now(), inquiry_id))
 
         cur.execute("""
             INSERT INTO resellers (inquiry_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, approved_at)
-            VALUES (%s, %s, %s, %s, %s, 'Pending onboarding details', 'active', %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, 'Pending onboarding details', 'pending', %s, %s, %s)
             RETURNING reseller_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, created_at;
-        """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, leader_id, datetime.now()))
+        """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, leader_id, business_now()))
         res = cur.fetchone()
 
         cur.execute("""
-            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
-            VALUES ('reseller', %s, %s, %s, %s, true)
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active, activation_status)
+            VALUES ('reseller', %s, %s, %s, %s, false, 'pending')
             RETURNING account_id, email;
-        """, (res["reseller_id"], res["business_name"], res["email"], hash_password(temporary_password)))
+        """, (res["reseller_id"], res["business_name"], res["email"], hash_password(secrets.token_urlsafe(32))))
         account = cur.fetchone()
 
         cur.execute("SELECT name, email FROM accounts WHERE account_id = %s;", (leader_id,))
         leader = cur.fetchone()
 
+        activation_token = _create_activation_token_cursor(cur, account["account_id"])
+        _add_log_cursor(
+            cur, actor_account_id=leader_id, action="approved_reseller_inquiry",
+            entity_type="inquiries", entity_id=inquiry_id,
+        )
+        _create_notification_cursor(
+            cur, recipient_role="owner", category="account", severity="info", title="Reseller approved",
+            message=f"{res['business_name']} was approved from inquiry #{inquiry_id}.",
+            target_url="/portal/owner/accounts", source_type="inquiries", source_id=inquiry_id,
+            dedupe_key=f"inquiry-approved-{inquiry_id}",
+        )
+        _enqueue_outbox_cursor(
+            cur, "account_activation",
+            {"to_email": account["email"], "name": res["business_name"], "account_label": "reseller",
+             "activation_path": f"/activate?token={activation_token}", "team_leader_name": leader["name"] if leader else "Sales team leader"},
+            f"account-activation-{account['account_id']}-{hashlib.sha256(activation_token.encode()).hexdigest()[:12]}",
+        )
+
     res = clean_row(res)
 
-    add_log(leader["name"] if leader else "Sales team leader", "approved_reseller_inquiry", f"Inquiry #{inquiry_id}")
-    create_notification(
-        recipient_role="owner",
-        category="account",
-        severity="info",
-        title="Reseller approved",
-        message=f"{res['business_name']} was approved from inquiry #{inquiry_id}.",
-        target_url="/portal/owner/accounts",
-        source_type="inquiries",
-        source_id=inquiry_id,
-        dedupe_key=f"inquiry-approved-{inquiry_id}",
-    )
     res["account_id"] = account["account_id"] if account else None
     res["account_email"] = account["email"] if account else res["email"]
-    res["temporary_password"] = temporary_password
     res["team_leader_name"] = leader["name"] if leader else "Assigned sales team leader"
     res["team_leader_email"] = leader["email"] if leader else ""
     return res
 
 def reject_inquiry(inquiry_id: int, reviewing_team_leader_account_id: int | None = None) -> bool:
-    inq = fetch_one("SELECT * FROM inquiries WHERE inquiry_id = %s;", (inquiry_id,))
-    if not inq:
-        return False
-    if reviewing_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, reviewing_team_leader_account_id}:
-        return False
-    
-    execute_write("""
-        UPDATE inquiries 
-        SET status = 'rejected', assigned_team_leader_account_id = %s, reviewed_by_account_id = %s, reviewed_at = %s
-        WHERE inquiry_id = %s;
-    """, (reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"], reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"], datetime.now(), inquiry_id))
-    
-
-    
-    add_log("Maria Santos", "rejected_reseller_inquiry", f"Inquiry #{inquiry_id}")
+    with get_transaction_cursor() as cur:
+        cur.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE;", (inquiry_id,))
+        inq = cur.fetchone()
+        if not inq:
+            return False
+        if inq["status"] not in {"pending", "assigned", "contacted"}:
+            raise ValueError(f"Inquiry is already {inq['status']} and cannot be reviewed again.")
+        if reviewing_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, reviewing_team_leader_account_id}:
+            return False
+        reviewer_id = reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"]
+        cur.execute(
+            """
+            UPDATE inquiries SET status = 'rejected', assigned_team_leader_account_id = %s,
+                reviewed_by_account_id = %s, reviewed_at = %s WHERE inquiry_id = %s;
+            """,
+            (reviewer_id, reviewer_id, business_now(), inquiry_id),
+        )
+        _add_log_cursor(cur, actor_account_id=reviewer_id, action="rejected_reseller_inquiry", entity_type="inquiries", entity_id=inquiry_id)
     return True
 
 def _plan_fefo_allocations(cur, quantities: dict[int, Decimal]) -> list[dict]:
@@ -2753,8 +2850,15 @@ def _apply_fefo_allocations(
             note=f"Fulfilled order #{order_id}",
         )
 
-def create_order_from_items(role: str, items: list[tuple[int, object]], notes: str = "", account_id: int | None = None) -> dict:
-    if not items:
+def create_order_from_items(
+    role: str,
+    items: list[tuple[int, object]],
+    notes: str = "",
+    account_id: int | None = None,
+    *,
+    checkout_cart: bool = False,
+) -> dict:
+    if not items and not checkout_cart:
         raise ValueError("Add at least one product to the cart.")
 
     quantities: dict[int, Decimal] = {}
@@ -2786,6 +2890,44 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
             created_by_name = account["name"]
 
     with get_transaction_cursor() as cur:
+        if checkout_cart:
+            if role != "reseller" or account_id is None:
+                raise ValueError("Cart checkout requires a signed-in reseller.")
+            cur.execute(
+                """
+                SELECT a.account_id, r.reseller_id, r.business_name, r.team_leader_account_id
+                FROM accounts a
+                JOIN resellers r ON r.reseller_id = a.reseller_id
+                WHERE a.account_id = %s AND a.account_type = 'reseller'
+                  AND a.is_active = true AND a.activation_status = 'active'
+                FOR UPDATE OF a, r;
+                """,
+                (account_id,),
+            )
+            locked_profile = cur.fetchone()
+            if not locked_profile or locked_profile["team_leader_account_id"] is None:
+                raise ValueError("Your account does not have an assigned sales team leader.")
+            reseller_id = locked_profile["reseller_id"]
+            created_by_name = locked_profile["business_name"]
+            team_leader_account_id = locked_profile["team_leader_account_id"]
+            cur.execute(
+                """
+                SELECT product_id, quantity
+                FROM reseller_cart_items
+                WHERE account_id = %s
+                ORDER BY product_id
+                FOR UPDATE;
+                """,
+                (account_id,),
+            )
+            locked_cart = cur.fetchall()
+            if not locked_cart:
+                raise ValueError("Your cart is empty.")
+            quantities = {
+                int(row["product_id"]): measurements.parse_whole_packs(row["quantity"])
+                for row in locked_cart
+            }
+
         cur.execute("""
             SELECT p.item_id AS product_id, p.name, p.unit, p.base_price, p.is_active,
                    COALESCE((
@@ -2821,14 +2963,15 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
             lines.append((product_id, quantity, product["unit"], product["base_price"]))
 
         cur.execute("""
-            INSERT INTO orders (order_type, reseller_id, created_by_account_id, approved_by_account_id, approved_at, status, order_date, fulfilled_at, total_amount, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO orders (order_type, reseller_id, created_by_account_id, team_leader_account_id,
+                                approved_by_account_id, approved_at, status, order_date, fulfilled_at, total_amount, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING order_id, order_type, reseller_id, status, order_date, total_amount, notes;
         """, (
-            order_type, reseller_id, creator_id,
+            order_type, reseller_id, creator_id, team_leader_account_id,
             creator_id if role != "reseller" else None,
-            datetime.now() if role != "reseller" else None,
-            status, date.today(), None,
+            business_now() if role != "reseller" else None,
+            status, business_now(), None,
             total.quantize(Decimal("0.01")), notes
         ))
         ord_res = dict(cur.fetchone())
@@ -2853,30 +2996,33 @@ def create_order_from_items(role: str, items: list[tuple[int, object]], notes: s
                 UPDATE orders
                 SET status = 'fulfilled', fulfilled_at = %s
                 WHERE order_id = %s;
-            """, (datetime.now(), order_id))
+            """, (business_now(), order_id))
             ord_res["status"] = "fulfilled"
 
-    if role != "reseller":
-        add_log(created_by_name, "created_walk_in_sale", f"Order #{order_id}")
-    else:
-        add_log(created_by_name, "created_reseller_order", f"Order #{order_id}")
-        create_notification(
-            recipient_account_id=team_leader_account_id,
-            category="order",
-            severity="warning",
-            title="Pending reseller order",
-            message=f"Order #{order_id} from {created_by_name} needs review.",
-            target_url="/portal/team-leader/orders",
-            source_type="orders",
-            source_id=order_id,
-            dedupe_key=f"reseller-order-{order_id}",
+        _add_log_cursor(
+            cur, actor_account_id=creator_id,
+            action="created_reseller_order" if role == "reseller" else "created_walk_in_sale",
+            entity_type="orders", entity_id=order_id,
         )
+        if role == "reseller":
+            _create_notification_cursor(
+                cur, recipient_account_id=team_leader_account_id, category="order", severity="warning",
+                title="Pending reseller order", message=f"Order #{order_id} from {created_by_name} needs review.",
+                target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
+                dedupe_key=f"reseller-order-{order_id}",
+            )
+        if checkout_cart:
+            cur.execute("DELETE FROM reseller_cart_items WHERE account_id = %s;", (account_id,))
     
     return clean_row(ord_res)
 
 
 def create_order(role: str, product_id: int, quantity: object, notes: str = "", account_id: int | None = None) -> dict:
     return create_order_from_items(role, [(product_id, quantity)], notes, account_id=account_id)
+
+
+def checkout_reseller_cart(account_id: int, notes: str = "") -> dict:
+    return create_order_from_items("reseller", [], notes, account_id=account_id, checkout_cart=True)
 
 def decide_order(order_id: int, decision: str, team_leader_account_id: int | None = None) -> bool:
     ensure_system_tables()
@@ -2887,12 +3033,11 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
         scope = ""
         params: list[object] = [order_id]
         if team_leader_account_id is not None:
-            scope = " AND r.team_leader_account_id = %s"
+            scope = " AND o.team_leader_account_id = %s"
             params.append(team_leader_account_id)
         cur.execute(f"""
             SELECT o.*
             FROM orders o
-            JOIN resellers r ON r.reseller_id = o.reseller_id
             WHERE o.order_id = %s
               AND o.order_type = 'reseller'
               {scope}
@@ -2919,7 +3064,7 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
                 UPDATE orders
                 SET status = 'approved', approved_by_account_id = %s, approved_at = %s
                 WHERE order_id = %s;
-            """, (leader_id, datetime.now(), order_id))
+            """, (leader_id, business_now(), order_id))
         elif decision == "reject":
             if ord_res["status"] not in {"pending", "approved"}:
                 return False
@@ -2928,7 +3073,7 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
                 SET status = 'rejected', approved_by_account_id = COALESCE(approved_by_account_id, %s),
                     approved_at = COALESCE(approved_at, %s)
                 WHERE order_id = %s;
-            """, (leader_id, datetime.now(), order_id))
+            """, (leader_id, business_now(), order_id))
         else:
             if ord_res["status"] != "approved":
                 raise ValueError("Order must be approved before it can be fulfilled.")
@@ -2952,33 +3097,25 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
                 UPDATE orders
                 SET status = 'fulfilled', fulfilled_at = %s
                 WHERE order_id = %s;
-            """, (datetime.now(), order_id))
+            """, (business_now(), order_id))
 
-    action = {
-        "approve": "approved_reseller_order",
-        "reject": "rejected_reseller_order",
-        "fulfill": "fulfilled_reseller_order",
-    }[decision]
-    add_log(actor_name, action, f"Order #{order_id}")
-    notification = {
-        "approve": ("info", "Order approved", f"Your reseller order #{order_id} was approved."),
-        "reject": ("critical", "Order rejected", f"Your reseller order #{order_id} was rejected."),
-        "fulfill": ("info", "Order fulfilled", f"Your reseller order #{order_id} was marked fulfilled."),
-    }[decision]
-    try:
-        create_notification(
-            recipient_account_id=ord_res["created_by_account_id"],
-            category="order",
-            severity=notification[0],
-            title=notification[1],
-            message=notification[2],
-            target_url="/portal/reseller/history",
-            source_type="orders",
-            source_id=order_id,
+        action = {
+            "approve": "approved_reseller_order",
+            "reject": "rejected_reseller_order",
+            "fulfill": "fulfilled_reseller_order",
+        }[decision]
+        _add_log_cursor(cur, actor_account_id=leader_id, action=action, entity_type="orders", entity_id=order_id)
+        notification = {
+            "approve": ("info", "Order approved", f"Your reseller order #{order_id} was approved."),
+            "reject": ("critical", "Order rejected", f"Your reseller order #{order_id} was rejected."),
+            "fulfill": ("info", "Order fulfilled", f"Your reseller order #{order_id} was marked fulfilled."),
+        }[decision]
+        _create_notification_cursor(
+            cur, recipient_account_id=ord_res["created_by_account_id"], category="order",
+            severity=notification[0], title=notification[1], message=notification[2],
+            target_url="/portal/reseller/history", source_type="orders", source_id=order_id,
             dedupe_key=f"order-{decision}-{order_id}",
         )
-    except Exception:
-        logging.exception("Order %s committed but its notification could not be created", order_id)
     return True
 
 
@@ -2990,7 +3127,7 @@ def team_sales_report_totals(period_start: date, period_end: date, team_leader_a
         scope_sql = """
           AND (
               (o.order_type = 'walk_in' AND o.created_by_account_id = %s)
-              OR (o.order_type = 'reseller' AND r.team_leader_account_id = %s)
+              OR (o.order_type = 'reseller' AND o.team_leader_account_id = %s)
           )
         """
         params.extend([team_leader_account_id, team_leader_account_id])
@@ -3021,7 +3158,7 @@ def team_sales_report_entries(team_leader_account_id: int | None = None) -> list
         scope_sql = """
           AND (
               (o.order_type = 'walk_in' AND o.created_by_account_id = %s)
-              OR (o.order_type = 'reseller' AND r.team_leader_account_id = %s)
+              OR (o.order_type = 'reseller' AND o.team_leader_account_id = %s)
           )
         """
         params.extend([team_leader_account_id, team_leader_account_id])
@@ -3052,7 +3189,7 @@ def team_rejected_order_entries(team_leader_account_id: int | None = None) -> li
     scope_sql = ""
     params: list[object] = []
     if team_leader_account_id is not None:
-        scope_sql = "AND r.team_leader_account_id = %s"
+        scope_sql = "AND o.team_leader_account_id = %s"
         params.append(team_leader_account_id)
     return clean_row(fetch_all(f"""
         SELECT o.order_id,
@@ -3084,7 +3221,7 @@ def team_reseller_purchase_summary(team_leader_account_id: int | None = None) ->
     scope_sql = ""
     params: list[object] = []
     if team_leader_account_id is not None:
-        scope_sql = "AND r.team_leader_account_id = %s"
+        scope_sql = "AND o.team_leader_account_id = %s"
         params.append(team_leader_account_id)
     return clean_row(fetch_all(f"""
         SELECT r.reseller_id,
@@ -3101,7 +3238,7 @@ def team_reseller_purchase_summary(team_leader_account_id: int | None = None) ->
         JOIN order_items oi ON oi.order_id = o.order_id
         JOIN inventory_items p ON p.item_id = oi.product_id
         WHERE o.order_type = 'reseller'
-          AND o.status IN ('approved', 'fulfilled')
+          AND o.status = 'fulfilled'
           AND p.item_type = 'finished_product'
           {scope_sql}
         GROUP BY r.reseller_id, r.business_name, p.item_id, p.name, oi.unit
@@ -3138,13 +3275,14 @@ def add_sales_report(
         dep = fetch_one("SELECT department_id FROM departments LIMIT 1;")
         department_id = dep["department_id"] if dep else 1
         
-    rep = execute_write("""
-        INSERT INTO sales_reports (report_source, submitted_by_account_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING sales_report_id, report_source, period_start, period_end, total_sales, total_orders, notes;
-    """, (source, acc_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes), returning=True)
-    
-    add_log(actor_name, "submitted_sales_report", f"Report #{rep['sales_report_id']}")
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            INSERT INTO sales_reports (report_source, submitted_by_account_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING sales_report_id, report_source, period_start, period_end, total_sales, total_orders, notes;
+        """, (source, acc_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes))
+        rep = cur.fetchone()
+        _add_log_cursor(cur, actor_account_id=acc_id, action="submitted_sales_report", entity_type="sales_reports", entity_id=rep["sales_report_id"])
     return clean_row(rep)
 
 
@@ -3362,19 +3500,14 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
                 attachment["size_bytes"],
                 attachment["checksum_sha256"],
             ))
-
-    add_log(profile["business_name"], "submitted_reseller_sell_through_report", f"Report #{rep['sales_report_id']}")
-    create_notification(
-        recipient_account_id=profile["team_leader_account_id"],
-        category="report",
-        severity="info",
-        title="Reseller sales report submitted",
-        message=f"{profile['business_name']} submitted sell-through report #{rep['sales_report_id']}.",
-        target_url="/portal/team-leader/reports",
-        source_type="sales_reports",
-        source_id=rep["sales_report_id"],
-        dedupe_key=f"reseller-report-{rep['sales_report_id']}",
-    )
+        _add_log_cursor(cur, actor_account_id=profile["account_id"], action="submitted_reseller_sell_through_report", entity_type="sales_reports", entity_id=rep["sales_report_id"])
+        _create_notification_cursor(
+            cur, recipient_account_id=profile["team_leader_account_id"], category="report", severity="info",
+            title="Reseller sales report submitted",
+            message=f"{profile['business_name']} submitted sell-through report #{rep['sales_report_id']}.",
+            target_url="/portal/team-leader/reports", source_type="sales_reports",
+            source_id=rep["sales_report_id"], dedupe_key=f"reseller-report-{rep['sales_report_id']}",
+        )
     return clean_row(rep)
 
 
@@ -3433,8 +3566,7 @@ def add_raw_inventory_item(
             actor_name=actor_name,
             note="Initial raw-material receipt",
         )
-
-    add_log(actor_name, "updated_raw_inventory", item_name)
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_raw_inventory", entity_type="inventory_items", entity_id=item["raw_material_id"])
     return clean_row(item)
 
 
@@ -3483,8 +3615,7 @@ def add_raw_inventory_quantity(
             actor_name=actor_name,
             note="Raw-material quantity added",
         )
-
-    add_log(actor_name, "added_raw_inventory_quantity", item["name"])
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="added_raw_inventory_quantity", entity_type="inventory_items", entity_id=raw_material_id)
     return clean_row(updated_item)
 
 
@@ -3591,8 +3722,7 @@ def create_product_with_recipe(
             """, (product["product_id"], material_id, converted_required, material["unit"]))
 
         actor_name = _inventory_actor_name(cur, actor_account_id)
-
-    add_log(actor_name, "created_product_recipe", product_name)
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="created_product_recipe", entity_type="inventory_items", entity_id=product["product_id"])
     return clean_row(product)
 
 
@@ -3618,7 +3748,7 @@ def update_product_pack_content(
         if product is None:
             raise ValueError("Unknown product")
         actor_name = _inventory_actor_name(cur, actor_account_id)
-    add_log(actor_name, "updated_product_pack_content", product["name"])
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_product_pack_content", entity_type="inventory_items", entity_id=product_id)
     return clean_row(product)
 
 
@@ -3633,7 +3763,7 @@ def produce_product(
     clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
     if len(clean_batch_code) < 4:
         raise ValueError("Batch code is too short.")
-    if expiry_date < date.today():
+    if expiry_date < business_today():
         raise ValueError("Expiry date cannot be in the past.")
 
     with get_transaction_cursor() as cur:
@@ -3692,7 +3822,7 @@ def produce_product(
             INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
             VALUES (%s, %s, 'production', %s, %s, %s, %s, %s, 'approved')
             RETURNING batch_id AS product_batch_id, item_id AS product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
-        """, (product_id, clean_batch_code, produced_quantity, produced_quantity, product["unit"], date.today(), expiry_date))
+        """, (product_id, clean_batch_code, produced_quantity, produced_quantity, product["unit"], business_today(), expiry_date))
         batch = cur.fetchone()
         actor_name = _inventory_actor_name(cur, actor_account_id)
 
@@ -3734,7 +3864,7 @@ def produce_product(
             note=f"Produced batch {clean_batch_code}",
         )
 
-        days = (expiry_date - date.today()).days
+        days = (expiry_date - business_today()).days
         if days <= 7:
             cur.execute("""
                 INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
@@ -3743,22 +3873,17 @@ def produce_product(
                 'warning' if days > 2 else 'critical',
                 product_id, batch["product_batch_id"],
                 f"{produced_quantity:g} {product['unit']} expires in {days} day(s).",
-                datetime.now()
+                business_now()
             ))
-
-    add_log(actor_name, "produced_product_batch", clean_batch_code)
-    if days <= 7:
-        create_notification(
-            recipient_role="team-leader",
-            category="inventory",
-            severity="critical" if days <= 2 else "warning",
-            title="Batch expiry warning",
-            message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
-            target_url="/portal/team-leader/inventory",
-            source_type="inventory_batches",
-            source_id=batch["product_batch_id"],
-            dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
-        )
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="produced_product_batch", entity_type="inventory_batches", entity_id=batch["product_batch_id"])
+        if days <= 7:
+            _create_notification_cursor(
+                cur, recipient_role="team-leader", category="inventory",
+                severity="critical" if days <= 2 else "warning", title="Batch expiry warning",
+                message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
+                target_url="/portal/team-leader/inventory", source_type="inventory_batches",
+                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
+            )
     return clean_row(batch)
 
 
@@ -3774,7 +3899,7 @@ def add_product_batch(
     clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
     if source_type != "direct_received":
         raise ValueError("Direct batch registration must use the direct_received source type.")
-    if expiry_date < date.today():
+    if expiry_date < business_today():
         raise ValueError("Expiry date cannot be in the past.")
 
     with get_transaction_cursor() as cur:
@@ -3792,7 +3917,7 @@ def add_product_batch(
             INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
             VALUES (%s, %s, 'direct_received', %s, %s, %s, %s, %s, 'approved')
             RETURNING batch_id AS product_batch_id, item_id AS product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
-        """, (product_id, clean_batch_code, clean_quantity, clean_quantity, product["unit"], date.today(), expiry_date))
+        """, (product_id, clean_batch_code, clean_quantity, clean_quantity, product["unit"], business_today(), expiry_date))
         batch = cur.fetchone()
         _insert_inventory_movement(
             cur,
@@ -3808,7 +3933,7 @@ def add_product_batch(
             note=f"Direct receipt batch {clean_batch_code}",
         )
 
-        days = (expiry_date - date.today()).days
+        days = (expiry_date - business_today()).days
         if days <= 7:
             cur.execute("""
                 INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
@@ -3817,23 +3942,17 @@ def add_product_batch(
                 'warning' if days > 2 else 'critical',
                 product_id, batch["product_batch_id"],
                 f"{clean_quantity:g} {product['unit']} expires in {days} day(s).",
-                datetime.now(),
+                business_now(),
             ))
-    
-    if days <= 7:
-        create_notification(
-            recipient_role="team-leader",
-            category="inventory",
-            severity="critical" if days <= 2 else "warning",
-            title="Batch expiry warning",
-            message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
-            target_url="/portal/team-leader/inventory",
-            source_type="inventory_batches",
-            source_id=batch["product_batch_id"],
-            dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
-        )
-        
-    add_log(actor_name, "registered_product_batch", clean_batch_code)
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="registered_product_batch", entity_type="inventory_batches", entity_id=batch["product_batch_id"])
+        if days <= 7:
+            _create_notification_cursor(
+                cur, recipient_role="team-leader", category="inventory",
+                severity="critical" if days <= 2 else "warning", title="Batch expiry warning",
+                message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
+                target_url="/portal/team-leader/inventory", source_type="inventory_batches",
+                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
+            )
     return clean_row(batch)
 
 def add_account(account_type: str, name: str, email: str, team_leader_role: str | None = None) -> dict:
@@ -3851,17 +3970,90 @@ def add_account(account_type: str, name: str, email: str, team_leader_role: str 
     if fetch_one("SELECT account_id FROM accounts WHERE lower(email) = lower(%s) LIMIT 1;", (cleaned_email,)):
         raise ValueError("That email is already used by an existing portal account.")
 
-    temporary_password = generate_temporary_password()
-    account = execute_write("""
-        INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role, is_active)
-        VALUES (%s, %s, %s, %s, %s, %s, true)
-        RETURNING account_id, account_type, team_leader_role, name, email;
-    """, (account_type, reseller_id, cleaned_name, cleaned_email, hash_password(temporary_password), team_leader_role), returning=True)
-    add_log("Owner", "created_account", cleaned_email)
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role,
+                                  is_active, activation_status)
+            VALUES (%s, %s, %s, %s, %s, %s, false, 'pending')
+            RETURNING account_id, account_type, team_leader_role, name, email;
+        """, (account_type, reseller_id, cleaned_name, cleaned_email, hash_password(secrets.token_urlsafe(32)), team_leader_role))
+        account = cur.fetchone()
+        activation_token = _create_activation_token_cursor(cur, account["account_id"])
+        cur.execute("SELECT account_id FROM accounts WHERE account_type = 'owner' AND is_active = true ORDER BY account_id LIMIT 1;")
+        owner = cur.fetchone()
+        _add_log_cursor(cur, actor_account_id=owner["account_id"] if owner else None, action="created_account", entity_type="accounts", entity_id=account["account_id"])
+        _enqueue_outbox_cursor(
+            cur, "account_activation",
+            {"to_email": account["email"], "name": account["name"],
+             "account_label": "team leader" if account_type == "team_leader" else "owner",
+             "activation_path": f"/activate?token={activation_token}"},
+            f"account-activation-{account['account_id']}-{hashlib.sha256(activation_token.encode()).hexdigest()[:12]}",
+        )
     clean = clean_row(account)
-    clean["temporary_password"] = temporary_password
     clean["role_key"] = role_key_for_account_type(clean["account_type"])
     return clean
+
+
+def activate_account(raw_token: str, new_password: str) -> dict:
+    token = raw_token.strip()
+    if not token:
+        raise ValueError("Activation link is invalid or expired.")
+    password = validate_password_policy(new_password)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT t.activation_token_id, a.account_id, a.account_type, a.team_leader_role, a.name, a.email
+            FROM account_activation_tokens t
+            JOIN accounts a ON a.account_id = t.account_id
+            WHERE t.token_hash = %s AND t.consumed_at IS NULL AND t.expires_at >= now()
+              AND a.activation_status = 'pending'
+            FOR UPDATE OF t, a;
+            """,
+            (token_hash,),
+        )
+        account = cur.fetchone()
+        if not account:
+            raise ValueError("Activation link is invalid or expired.")
+        cur.execute(
+            """
+            UPDATE accounts SET password_hash = %s, is_active = true,
+                activation_status = 'active', activated_at = now() WHERE account_id = %s;
+            """,
+            (hash_password(password), account["account_id"]),
+        )
+        cur.execute(
+            """
+            UPDATE resellers SET reseller_status = 'active'
+            WHERE reseller_id = (SELECT reseller_id FROM accounts WHERE account_id = %s)
+              AND reseller_status = 'pending';
+            """,
+            (account["account_id"],),
+        )
+        cur.execute("UPDATE account_activation_tokens SET consumed_at = now() WHERE activation_token_id = %s;", (account["activation_token_id"],))
+        _add_log_cursor(cur, actor_account_id=account["account_id"], action="activated_account", entity_type="accounts", entity_id=account["account_id"])
+    clean = clean_row(account)
+    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    return clean
+
+
+def resend_activation(account_id: int, actor_account_id: int) -> None:
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            "SELECT account_id, name, email, account_type FROM accounts WHERE account_id = %s AND activation_status = 'pending' FOR UPDATE;",
+            (account_id,),
+        )
+        account = cur.fetchone()
+        if not account:
+            raise ValueError("Pending account was not found.")
+        token = _create_activation_token_cursor(cur, account_id)
+        _enqueue_outbox_cursor(
+            cur, "account_activation",
+            {"to_email": account["email"], "name": account["name"], "account_label": account["account_type"].replace("_", " "),
+             "activation_path": f"/activate?token={token}"},
+            f"account-activation-{account_id}-{hashlib.sha256(token.encode()).hexdigest()[:12]}",
+        )
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="resent_activation", entity_type="accounts", entity_id=account_id)
 
 FORECAST_HISTORY_DAYS = 180
 PROPHET_MIN_HISTORY_POINTS = 3
@@ -3951,7 +4143,7 @@ def prophet_product_forecast(history_rows: list[dict], forecast_horizon_days: in
     except Exception as exc:
         raise RuntimeError("Prophet is unavailable") from exc
 
-    forecast_end = date.today() + timedelta(days=forecast_horizon_days)
+    forecast_end = business_today() + timedelta(days=forecast_horizon_days)
     history_start = min(row["sale_date"] for row in history_rows)
     custom_holidays = forecast_business_events(history_start, forecast_end)
     frame = pd.DataFrame(
@@ -3984,7 +4176,7 @@ def prophet_product_forecast(history_rows: list[dict], forecast_horizon_days: in
 
 
 def baseline_product_forecast(history_rows: list[dict], available: float, forecast_horizon_days: int) -> dict:
-    forecast_date = date.today() + timedelta(days=forecast_horizon_days)
+    forecast_date = business_today() + timedelta(days=forecast_horizon_days)
     quantities = [float(row["quantity"]) for row in history_rows if float(row["quantity"]) > 0]
     if quantities:
         predicted = round(sum(quantities) / len(quantities), 1)
@@ -4005,26 +4197,9 @@ def baseline_product_forecast(history_rows: list[dict], available: float, foreca
 def add_forecast(model_name: str, forecast_horizon_days: int) -> None:
     owner = fetch_one("SELECT account_id FROM accounts WHERE account_type = 'owner' LIMIT 1;")
     owner_id = owner["account_id"] if owner else None
-    today_value = date.today()
+    today_value = business_today()
     history_start = today_value - timedelta(days=FORECAST_HISTORY_DAYS)
 
-    run = execute_write("""
-        INSERT INTO forecast_runs (run_by_account_id, model_name, input_period_start, input_period_end, forecast_horizon_days, status, started_at, completed_at, notes)
-        VALUES (%s, %s, %s, %s, %s, 'completed', %s, %s, %s)
-        RETURNING forecast_run_id;
-    """, (
-        owner_id,
-        model_name,
-        history_start,
-        today_value,
-        forecast_horizon_days,
-        datetime.now(),
-        datetime.now(),
-        f"Prophet demand forecast using {FORECAST_HISTORY_DAYS} days of fulfilled reseller order history, Philippine holidays, paydays, Christmas/New Year demand windows, and Batangas/Sublian season; baseline fallback used when history is insufficient.",
-    ), returning=True)
-    
-    run_id = run["forecast_run_id"]
-    
     products = fetch_all("""
         SELECT item_id AS product_id, name
         FROM inventory_items
@@ -4033,6 +4208,7 @@ def add_forecast(model_name: str, forecast_horizon_days: int) -> None:
     product_ids = [product["product_id"] for product in products]
     histories = product_sales_history(product_ids, history_start, today_value)
     methods_used = set()
+    results = []
 
     for product in products:
         avail_res = fetch_one("""
@@ -4053,48 +4229,45 @@ def add_forecast(model_name: str, forecast_horizon_days: int) -> None:
         except Exception:
             forecast = baseline_product_forecast(history_rows, avail, forecast_horizon_days)
         methods_used.add(forecast["method"])
-        
-        execute_write("""
-            INSERT INTO forecast_results (forecast_run_id, product_id, forecast_date, predicted_quantity, confidence_lower, confidence_upper)
-            VALUES (%s, %s, %s, %s, %s, %s);
-        """, (
-            run_id,
-            product["product_id"],
-            forecast["forecast_date"],
-            forecast["predicted_quantity"],
-            forecast["confidence_lower"],
-            forecast["confidence_upper"],
-        ))
+        results.append((product["product_id"], forecast))
 
-    execute_write("""
-        UPDATE forecast_runs
-        SET notes = %s
-        WHERE forecast_run_id = %s;
-    """, (
-        f"Completed with: {', '.join(sorted(methods_used))}. Prophet uses fulfilled reseller order quantities with Philippine holidays, payday windows, Christmas/New Year windows, and Batangas/Sublian season; baseline fallback covers products with fewer than {PROPHET_MIN_HISTORY_POINTS} selling days.",
-        run_id,
-    ))
-        
-    add_log("Owner", "forecast_completed", model_name)
-    create_notification(
-        recipient_role="owner",
-        category="forecast",
-        severity="info",
-        title="Forecast updated",
-        message=f"{model_name} generated a {forecast_horizon_days}-day demand forecast.",
-        target_url="/portal/owner/dashboard",
-        source_type="forecast_runs",
-        source_id=run_id,
-        dedupe_key=f"forecast-run-{run_id}",
+    notes = (
+        f"Completed with: {', '.join(sorted(methods_used))}. Prophet uses fulfilled reseller order quantities "
+        f"with Philippine holidays, payday windows, Christmas/New Year windows, and Batangas/Sublian season; "
+        f"baseline fallback covers products with fewer than {PROPHET_MIN_HISTORY_POINTS} selling days."
     )
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            INSERT INTO forecast_runs (run_by_account_id, model_name, input_period_start, input_period_end,
+                forecast_horizon_days, status, started_at, completed_at, notes)
+            VALUES (%s, %s, %s, %s, %s, 'completed', %s, %s, %s)
+            RETURNING forecast_run_id;
+        """, (owner_id, model_name, history_start, today_value, forecast_horizon_days,
+              business_now(), business_now(), notes))
+        run_id = cur.fetchone()["forecast_run_id"]
+        for product_id, forecast in results:
+            cur.execute("""
+                INSERT INTO forecast_results (forecast_run_id, product_id, forecast_date,
+                    predicted_quantity, confidence_lower, confidence_upper)
+                VALUES (%s, %s, %s, %s, %s, %s);
+            """, (run_id, product_id, forecast["forecast_date"], forecast["predicted_quantity"],
+                  forecast["confidence_lower"], forecast["confidence_upper"]))
+        _add_log_cursor(cur, actor_account_id=owner_id, action="forecast_completed", entity_type="forecast_runs", entity_id=run_id)
+        _create_notification_cursor(
+            cur, recipient_role="owner", category="forecast", severity="info", title="Forecast updated",
+            message=f"{model_name} generated a {forecast_horizon_days}-day demand forecast.",
+            target_url="/portal/owner/dashboard", source_type="forecast_runs", source_id=run_id,
+            dedupe_key=f"forecast-run-{run_id}",
+        )
 
-def update_product_price(product_id: int, base_price: float) -> None:
-    execute_write("""
-        UPDATE inventory_items
-        SET base_price = %s
-        WHERE item_id = %s
-          AND item_type = 'finished_product';
-    """, (base_price, product_id))
-    
-    prod = fetch_one("SELECT name FROM inventory_items WHERE item_id = %s AND item_type = 'finished_product';", (product_id,))
-    add_log("Owner", "updated_product_price", prod["name"] if prod else f"Product #{product_id}")
+def update_product_price(product_id: int, base_price: object, actor_account_id: int | None = None) -> None:
+    clean_price = parse_money(base_price, "Base price")
+    with get_transaction_cursor() as cur:
+        cur.execute("""
+            UPDATE inventory_items SET base_price = %s
+            WHERE item_id = %s AND item_type = 'finished_product'
+            RETURNING item_id;
+        """, (clean_price, product_id))
+        if not cur.fetchone():
+            raise ValueError("Unknown product.")
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_product_price", entity_type="inventory_items", entity_id=product_id)

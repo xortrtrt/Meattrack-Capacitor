@@ -36,6 +36,10 @@ services:
     command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       APP_ENV: development
+      AUTH_RATE_LIMIT_ENABLED: "false"
+      CSRF_PROTECTION_ENABLED: "false"
+      BUSINESS_TIMEZONE: Asia/Manila
+      APP_BASE_URL: http://127.0.0.1:8000
       LOGIN_OTP_ENABLED: ${LOGIN_OTP_ENABLED:-false}
       DATABASE_URL: ""
       POSTGRES_HOST: db
@@ -60,6 +64,38 @@ services:
       DEFAULT_ACCOUNT_PASSWORD: ${DEFAULT_ACCOUNT_PASSWORD:-demo1234}
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      mail-capture:
+        condition: service_started
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    environment: &worker-environment
+      APP_ENV: development
+      AUTH_RATE_LIMIT_ENABLED: "false"
+      CSRF_PROTECTION_ENABLED: "false"
+      BUSINESS_TIMEZONE: Asia/Manila
+      APP_BASE_URL: http://127.0.0.1:8000
+      DATABASE_URL: ""
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: "${POSTGRES_DB:-MeatTrack Database}"
+      POSTGRES_USER: ${POSTGRES_USER:-meattrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meattrack}
+      DATABASE_POOL_MIN: 1
+      DATABASE_POOL_MAX: 3
+      BREVO_API_KEY: local-development
+      BREVO_API_URL: http://mail-capture:8025/v3/smtp/email
+      BREVO_FROM_EMAIL: local@meattrack.test
+      BREVO_FROM_NAME: ${BREVO_FROM_NAME:-Batangas Premium}
     volumes:
       - .:/app
     depends_on:

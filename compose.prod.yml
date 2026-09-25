@@ -23,6 +23,10 @@ services:
     restart: unless-stopped
     environment:
       APP_ENV: production
+      AUTH_RATE_LIMIT_ENABLED: "true"
+      CSRF_PROTECTION_ENABLED: "true"
+      BUSINESS_TIMEZONE: Asia/Manila
+      APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL in .env.production}
       LOGIN_OTP_ENABLED: ${LOGIN_OTP_ENABLED:-true}
       DATABASE_URL: ""
       POSTGRES_HOST: db
@@ -53,6 +57,36 @@ services:
     networks:
       - backend
       - frontend
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    healthcheck:
+      disable: true
+    environment:
+      APP_ENV: production
+      AUTH_RATE_LIMIT_ENABLED: "true"
+      CSRF_PROTECTION_ENABLED: "true"
+      BUSINESS_TIMEZONE: Asia/Manila
+      APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL in .env.production}
+      DATABASE_URL: ""
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: "${POSTGRES_DB:-MeatTrack Database}"
+      POSTGRES_USER: ${POSTGRES_USER:-meattrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_POOL_MIN: 1
+      DATABASE_POOL_MAX: 3
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
+      BREVO_FROM_EMAIL: ${BREVO_FROM_EMAIL:-}
+      BREVO_FROM_NAME: ${BREVO_FROM_NAME:-Batangas Premium}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
 
 volumes:
   postgres_data:

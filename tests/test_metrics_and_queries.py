@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from decimal import Decimal
 
 import pytest
@@ -125,7 +126,7 @@ def test_team_leader_order_scope_is_parameterized(monkeypatch):
     repositories.list_orders(order_type="reseller", team_leader_account_id=42)
     repositories.count_orders(order_type="reseller", team_leader_account_id=42)
 
-    assert "r.team_leader_account_id = %s" in calls[0][0]
+    assert "o.team_leader_account_id = %s" in calls[0][0]
     assert calls[0][1] == ("reseller", 42)
 
 
@@ -155,8 +156,8 @@ def test_team_reseller_purchase_summary_uses_real_order_scope(monkeypatch):
 
     repositories.team_reseller_purchase_summary(team_leader_account_id=42)
 
-    assert "o.status IN ('approved', 'fulfilled')" in calls[0][0]
-    assert "r.team_leader_account_id = %s" in calls[0][0]
+    assert "o.status = 'fulfilled'" in calls[0][0]
+    assert "o.team_leader_account_id = %s" in calls[0][0]
     assert calls[0][1] == (42,)
 
 
@@ -320,14 +321,21 @@ def test_add_forecast_uses_prophet_when_history_is_sufficient(monkeypatch):
             ]
         return []
 
-    def fake_execute_write(query, params=None, returning=False):
-        writes.append((query, params, returning))
-        if returning:
+    class Cursor:
+        def execute(self, query, params=None):
+            writes.append((query, params))
+
+        def fetchone(self):
             return {"forecast_run_id": 99}
-        return None
+
+    @contextmanager
+    def transaction():
+        yield Cursor()
 
     monkeypatch.setattr(repositories, "fetch_all", fake_fetch_all)
-    monkeypatch.setattr(repositories, "execute_write", fake_execute_write)
+    monkeypatch.setattr(repositories, "get_transaction_cursor", transaction)
+    monkeypatch.setattr(repositories, "_add_log_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repositories, "_create_notification_cursor", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         repositories,
         "prophet_product_forecast",
@@ -345,8 +353,9 @@ def test_add_forecast_uses_prophet_when_history_is_sufficient(monkeypatch):
     forecast_writes = [call for call in writes if "INSERT INTO forecast_results" in call[0]]
     assert len(forecast_writes) == 1
     assert forecast_writes[0][1][3:] == (12, 9, 15)
-    assert any("Completed with: Prophet" in call[1][0] for call in writes if "UPDATE forecast_runs" in call[0])
-    assert any("Philippine holidays" in call[1][0] for call in writes if "UPDATE forecast_runs" in call[0])
+    run_write = next(call for call in writes if "INSERT INTO forecast_runs" in call[0])
+    assert "Completed with: Prophet" in run_write[1][-1]
+    assert "Philippine holidays" in run_write[1][-1]
 
 
 def test_forecast_business_events_include_paydays_and_batangas_season():
@@ -441,14 +450,21 @@ def test_add_forecast_falls_back_when_history_is_insufficient(monkeypatch):
             return [{"product_id": 10, "name": "Tocino Ala Eh"}]
         return []
 
-    def fake_execute_write(query, params=None, returning=False):
-        writes.append((query, params, returning))
-        if returning:
+    class Cursor:
+        def execute(self, query, params=None):
+            writes.append((query, params))
+
+        def fetchone(self):
             return {"forecast_run_id": 100}
-        return None
+
+    @contextmanager
+    def transaction():
+        yield Cursor()
 
     monkeypatch.setattr(repositories, "fetch_all", fake_fetch_all)
-    monkeypatch.setattr(repositories, "execute_write", fake_execute_write)
+    monkeypatch.setattr(repositories, "get_transaction_cursor", transaction)
+    monkeypatch.setattr(repositories, "_add_log_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repositories, "_create_notification_cursor", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         repositories,
         "prophet_product_forecast",
@@ -460,4 +476,5 @@ def test_add_forecast_falls_back_when_history_is_insufficient(monkeypatch):
     forecast_writes = [call for call in writes if "INSERT INTO forecast_results" in call[0]]
     assert len(forecast_writes) == 1
     assert forecast_writes[0][1][3:] == (42.0, 35.7, 48.3)
-    assert any("Baseline fallback" in call[1][0] for call in writes if "UPDATE forecast_runs" in call[0])
+    run_write = next(call for call in writes if "INSERT INTO forecast_runs" in call[0])
+    assert "Baseline fallback" in run_write[1][-1]

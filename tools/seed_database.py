@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+from datetime import timedelta
+import hashlib
 from pathlib import Path
 import sys
 
@@ -9,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import OWNER_PASSWORD, RESELLER_PASSWORD, TEAM_LEADER_PASSWORD, database_dsn
+from app.business_time import business_today
 from app.security import hash_password
 
 def main():
@@ -29,10 +31,23 @@ def main():
             
         print("Applying database schema...")
         cur.execute(schema_sql)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version text PRIMARY KEY,
+                checksum_sha256 text NOT NULL,
+                applied_at timestamptz NOT NULL DEFAULT now()
+            );
+        """)
+        for migration in sorted((PROJECT_ROOT / "database" / "migrations").glob("*.sql")):
+            content = migration.read_text(encoding="utf-8")
+            cur.execute(
+                "INSERT INTO schema_migrations (version, checksum_sha256) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
+                (migration.name, hashlib.sha256(content.encode("utf-8")).hexdigest()),
+            )
         conn.commit()
         print("Schema applied successfully.")
         
-        today = date.today()
+        today = business_today()
         # 1. Departments
         print("Seeding departments...")
         cur.execute("""
@@ -66,8 +81,8 @@ def main():
         
         # Team Leader (Maria Santos)
         cur.execute("""
-            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
-            VALUES ('team_leader', NULL, 'Maria Santos', 'leader@batangaspremium.test', %s, true)
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role, is_active)
+            VALUES ('team_leader', NULL, 'Maria Santos', 'leader@batangaspremium.test', %s, 'sales', true)
             RETURNING account_id;
         """, (hash_password(TEAM_LEADER_PASSWORD),))
         leader_account_id = cur.fetchone()[0]
@@ -82,8 +97,9 @@ def main():
         
         # Update resellers approved_by
         cur.execute("""
-            UPDATE resellers SET approved_by_account_id = %s, approved_at = %s WHERE reseller_id = %s;
-        """, (leader_account_id, today - timedelta(days=30), resellers['Lipa Fresh Mart']))
+            UPDATE resellers SET approved_by_account_id = %s, team_leader_account_id = %s,
+                approved_at = %s WHERE reseller_id = %s;
+        """, (leader_account_id, leader_account_id, today - timedelta(days=30), resellers['Lipa Fresh Mart']))
         
         # 4. Inventory Items
         print("Seeding raw material inventory items...")

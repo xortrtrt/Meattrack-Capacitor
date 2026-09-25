@@ -20,6 +20,8 @@ CREATE TABLE accounts (
     password_hash text NOT NULL,
     team_leader_role text CHECK (team_leader_role IS NULL OR team_leader_role IN ('inventory', 'sales')),
     is_active boolean NOT NULL DEFAULT true,
+    activation_status text NOT NULL DEFAULT 'active' CHECK (activation_status IN ('pending', 'active')),
+    activated_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -78,7 +80,7 @@ CREATE TABLE inventory_items (
     name text NOT NULL,
     description text,
     unit text NOT NULL,
-    base_price numeric(12,2) NOT NULL DEFAULT 0 CHECK (base_price >= 0),
+    base_price numeric(12,2) NOT NULL DEFAULT 0 CHECK (base_price >= 0 AND base_price NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)),
     quantity_available numeric(12,3) NOT NULL DEFAULT 0 CHECK (quantity_available >= 0),
     pack_size numeric(12,3),
     pack_size_unit text,
@@ -148,6 +150,7 @@ CREATE TABLE orders (
         CHECK (order_type IN ('walk_in', 'reseller')),
     reseller_id bigint REFERENCES resellers(reseller_id) ON UPDATE CASCADE ON DELETE SET NULL,
     created_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    team_leader_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
     approved_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
     approved_at timestamptz,
     order_date timestamptz NOT NULL DEFAULT now(),
@@ -164,7 +167,7 @@ CREATE TABLE order_items (
     product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
     quantity numeric(12,3) NOT NULL CHECK (quantity > 0),
     unit text NOT NULL DEFAULT 'pack',
-    unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0),
+    unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0 AND unit_price NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)),
     line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity * unit_price, 2)) STORED,
     CONSTRAINT order_items_whole_pack_check CHECK (quantity = trunc(quantity)),
     CONSTRAINT order_items_pack_unit_check CHECK (unit = 'pack')
@@ -219,7 +222,7 @@ CREATE TABLE sales_report_items (
     product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
     quantity_sold numeric(12,3) NOT NULL CHECK (quantity_sold > 0),
     unit text NOT NULL DEFAULT 'pack',
-    unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0),
+    unit_price numeric(12,2) NOT NULL CHECK (unit_price >= 0 AND unit_price NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)),
     line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity_sold * unit_price, 2)) STORED,
     CONSTRAINT sales_report_items_whole_pack_check CHECK (quantity_sold = trunc(quantity_sold)),
     CONSTRAINT sales_report_items_pack_unit_check CHECK (unit = 'pack')
@@ -339,6 +342,53 @@ CREATE TABLE notifications (
     CHECK (btrim(category) <> ''),
     CHECK (btrim(title) <> ''),
     CHECK (btrim(message) <> '')
+);
+
+CREATE TABLE notification_recipients (
+    notification_id bigint NOT NULL REFERENCES notifications(notification_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    read_at timestamptz,
+    PRIMARY KEY (notification_id, account_id)
+);
+
+CREATE TABLE web_sessions (
+    token_hash char(64) PRIMARY KEY,
+    account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    data jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(data) = 'object'),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    CHECK (length(token_hash) = 64)
+);
+
+CREATE TABLE security_events (
+    security_event_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_type text NOT NULL CHECK (btrim(event_type) <> ''),
+    subject_key text NOT NULL CHECK (btrim(subject_key) <> ''),
+    succeeded boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE account_activation_tokens (
+    activation_token_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    token_hash char(64) NOT NULL UNIQUE CHECK (length(token_hash) = 64),
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE notification_outbox (
+    outbox_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_type text NOT NULL CHECK (btrim(event_type) <> ''),
+    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object'),
+    dedupe_key text NOT NULL UNIQUE,
+    attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 8),
+    next_attempt_at timestamptz NOT NULL DEFAULT now(),
+    locked_at timestamptz,
+    sent_at timestamptz,
+    last_error text,
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE inventory_movements (
@@ -519,6 +569,79 @@ CREATE TRIGGER trg_inventory_movements_no_truncate
 BEFORE TRUNCATE ON inventory_movements
 FOR EACH STATEMENT EXECUTE FUNCTION reject_inventory_movement_mutation();
 
+CREATE OR REPLACE FUNCTION enforce_inquiry_status_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.status = OLD.status THEN RETURN NEW; END IF;
+    IF OLD.status IN ('approved', 'rejected', 'closed', 'onboarded') THEN
+        RAISE EXCEPTION 'Inquiry status % is terminal.', OLD.status;
+    END IF;
+    IF NEW.status IN ('approved', 'rejected') AND OLD.status IN ('pending', 'assigned', 'contacted') THEN RETURN NEW; END IF;
+    IF OLD.status = 'pending' AND NEW.status IN ('assigned', 'contacted') THEN RETURN NEW; END IF;
+    IF OLD.status = 'assigned' AND NEW.status = 'contacted' THEN RETURN NEW; END IF;
+    RAISE EXCEPTION 'Invalid inquiry status transition: % -> %.', OLD.status, NEW.status;
+END $$;
+CREATE TRIGGER trg_enforce_inquiry_status_transition
+BEFORE UPDATE OF status ON inquiries FOR EACH ROW EXECUTE FUNCTION enforce_inquiry_status_transition();
+
+CREATE OR REPLACE FUNCTION enforce_order_status_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.status = OLD.status THEN RETURN NEW; END IF;
+    IF OLD.status IN ('rejected', 'fulfilled', 'cancelled') THEN RAISE EXCEPTION 'Order status % is terminal.', OLD.status; END IF;
+    IF OLD.status = 'pending' AND NEW.status = 'approved' THEN
+        IF OLD.order_type = 'reseller' AND NOT EXISTS (SELECT 1 FROM order_payment_proofs WHERE order_id = OLD.order_id) THEN
+            RAISE EXCEPTION 'Proof of payment is required before approval.';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF OLD.status = 'approved' AND NEW.status = 'fulfilled' THEN RETURN NEW; END IF;
+    IF OLD.status IN ('pending', 'approved') AND NEW.status = 'rejected' THEN RETURN NEW; END IF;
+    IF OLD.order_type = 'walk_in' AND OLD.status = 'pending' AND NEW.status = 'fulfilled' THEN RETURN NEW; END IF;
+    RAISE EXCEPTION 'Invalid order status transition: % -> %.', OLD.status, NEW.status;
+END $$;
+CREATE TRIGGER trg_enforce_order_status_transition
+BEFORE UPDATE OF status ON orders FOR EACH ROW EXECUTE FUNCTION enforce_order_status_transition();
+
+CREATE OR REPLACE FUNCTION enforce_order_team_leader_snapshot()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.team_leader_account_id IS DISTINCT FROM NEW.team_leader_account_id THEN
+        RAISE EXCEPTION 'Order team leader ownership is immutable.';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER trg_enforce_order_team_leader_snapshot
+BEFORE UPDATE OF team_leader_account_id ON orders FOR EACH ROW EXECUTE FUNCTION enforce_order_team_leader_snapshot();
+
+CREATE OR REPLACE FUNCTION validate_order_team_leader_snapshot()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.order_type = 'reseller' AND NOT EXISTS (
+        SELECT 1 FROM accounts a WHERE a.account_id = NEW.team_leader_account_id
+          AND a.account_type = 'team_leader' AND a.team_leader_role = 'sales'
+    ) THEN RAISE EXCEPTION 'Reseller orders require a sales team leader ownership snapshot.'; END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER trg_validate_order_team_leader_snapshot
+BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION validate_order_team_leader_snapshot();
+
+CREATE OR REPLACE FUNCTION enforce_payment_proof_limit()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE order_status text; proof_count integer;
+BEGIN
+    IF current_setting('meattrack.maintenance_import', true) = 'on' THEN RETURN NEW; END IF;
+    SELECT status INTO order_status FROM orders WHERE order_id = NEW.order_id FOR UPDATE;
+    IF order_status IS DISTINCT FROM 'pending' THEN
+        RAISE EXCEPTION 'Payment proof uploads are allowed only for pending orders.';
+    END IF;
+    SELECT count(*) INTO proof_count FROM order_payment_proofs WHERE order_id = NEW.order_id;
+    IF proof_count >= 3 THEN RAISE EXCEPTION 'An order can have at most three payment proofs.'; END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER trg_enforce_payment_proof_limit
+BEFORE INSERT ON order_payment_proofs FOR EACH ROW EXECUTE FUNCTION enforce_payment_proof_limit();
+
 CREATE UNIQUE INDEX ux_accounts_email_lower ON accounts (lower(email));
 CREATE INDEX ix_accounts_team_leader_role ON accounts (team_leader_role)
     WHERE account_type = 'team_leader';
@@ -544,6 +667,16 @@ CREATE INDEX ix_account_login_otps_pending ON account_login_otps (account_id, cr
     WHERE consumed_at IS NULL;
 CREATE INDEX ix_notifications_role_read_created ON notifications (recipient_role, read_at, created_at DESC);
 CREATE INDEX ix_notifications_account_read_created ON notifications (recipient_account_id, read_at, created_at DESC);
+CREATE INDEX ix_notification_recipients_account_unread ON notification_recipients (account_id, read_at, notification_id DESC);
+CREATE INDEX ix_web_sessions_account ON web_sessions (account_id);
+CREATE INDEX ix_web_sessions_expiry ON web_sessions (expires_at);
+CREATE INDEX ix_security_events_window ON security_events (event_type, subject_key, created_at DESC);
+CREATE UNIQUE INDEX ux_account_activation_pending ON account_activation_tokens (account_id) WHERE consumed_at IS NULL;
+CREATE INDEX ix_notification_outbox_due ON notification_outbox (next_attempt_at, outbox_id)
+    WHERE sent_at IS NULL AND attempt_count < 8;
+CREATE INDEX ix_orders_team_leader_date ON orders (team_leader_account_id, order_date DESC);
+CREATE UNIQUE INDEX ux_alert_batch_open_type ON alerts (product_batch_id, alert_type)
+    WHERE product_batch_id IS NOT NULL AND status IN ('open', 'acknowledged');
 CREATE UNIQUE INDEX ux_inventory_movements_sale_batch
     ON inventory_movements (order_id, affected_batch_id, movement_type)
     WHERE movement_type = 'sale_fulfillment';

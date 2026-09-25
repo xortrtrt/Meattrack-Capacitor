@@ -1,0 +1,13 @@
+<section class="content-grid single-column">
+  <article class="card">
+    <span class="eyebrow">Account security</span>
+    <h2>{{ account_profile.name }}</h2>
+    <p>{{ account_profile.email }}</p>
+    <form class="form-panel bare" action="/portal/owner/profile/password" method="post">
+      <label>Current password<input required type="password" name="current_password" autocomplete="current-password" /></label>
+      <label>New password<input required type="password" name="new_password" autocomplete="new-password" minlength="8" /></label>
+      <label>Confirm password<input required type="password" name="confirm_password" autocomplete="new-password" minlength="8" /></label>
+      <button class="button primary" type="submit">Send confirmation code</button>
+    </form>
+  </article>
+</section>

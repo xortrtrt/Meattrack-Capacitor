@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: meattrack_test
+          POSTGRES_USER: meattrack
+          POSTGRES_PASSWORD: meattrack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U meattrack -d meattrack_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      APP_ENV: development
+      AUTH_RATE_LIMIT_ENABLED: "false"
+      CSRF_PROTECTION_ENABLED: "false"
+      BUSINESS_TIMEZONE: Asia/Manila
+      DATABASE_URL: postgresql://meattrack:meattrack@127.0.0.1:5432/meattrack_test
+      REQUIRE_POSTGRES_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements-dev.txt
+      - run: python -m compileall -q app tools tests
+      - run: python tools/migrate_database.py
+      - run: pytest -q
+      - run: python tools/import_supabase_database.py --self-check
+
+  production-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - name: Production refuses disabled controls
+        shell: bash
+        run: |
+          if APP_ENV=production AUTH_RATE_LIMIT_ENABLED=false CSRF_PROTECTION_ENABLED=true python -c "import app.config"; then exit 1; fi
+          if APP_ENV=production AUTH_RATE_LIMIT_ENABLED=true CSRF_PROTECTION_ENABLED=false python -c "import app.config"; then exit 1; fi
+      - name: Production accepts enabled controls
+        run: python -c "import app.config"
+        env:
+          APP_ENV: production
+          AUTH_RATE_LIMIT_ENABLED: "true"
+          CSRF_PROTECTION_ENABLED: "true"

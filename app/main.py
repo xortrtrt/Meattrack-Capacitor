@@ -2,27 +2,42 @@ from __future__ import annotations
 
 import re
 import hashlib
+import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from starlette.middleware.sessions import SessionMiddleware
 
 from app import repositories as data
+from app.business_time import business_now, business_today
 from app.chatbot import process_chatbot_message
 from app.emailer import (
-    send_inquiry_status_update,
     send_login_otp,
     send_password_change_otp,
-    send_portal_credentials,
-    send_reseller_credentials,
 )
-from app.config import APP_ENV, CONSENT_VERSION, LOGIN_OTP_ENABLED, SESSION_SECRET_KEY
+from app.config import (
+    APP_ENV,
+    AUTH_RATE_LIMIT_ENABLED,
+    CONSENT_VERSION,
+    CSRF_PROTECTION_ENABLED,
+    LOGIN_OTP_ENABLED,
+)
+from app.security_controls import (
+    csrf_token,
+    enforce_chatbot,
+    enforce_csrf,
+    enforce_lead,
+    enforce_otp_attempt,
+    enforce_password_login,
+    record_event,
+    record_password_login,
+)
+from app.web_sessions import DatabaseSessionMiddleware, rotate_session
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -40,19 +55,21 @@ class CachedStaticFiles(StaticFiles):
         return response
 
 
-app = FastAPI(title="MEATTRACK", version="0.1.0")
+app = FastAPI(title="MEATTRACK", version="0.1.0", dependencies=[Depends(enforce_csrf)])
 PUBLIC_SESSION_SECONDS = 24 * 60 * 60
 PORTAL_SESSION_SECONDS = 2 * 60 * 60
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=SESSION_SECRET_KEY,
-    same_site="lax",
-    https_only=APP_ENV == "production",
-    max_age=PUBLIC_SESSION_SECONDS,
-)
+app.add_middleware(DatabaseSessionMiddleware)
 app.mount("/static", CachedStaticFiles(directory=BASE_DIR / "static"), name="static")
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates.env.globals["csrf_token"] = csrf_token
+
+if APP_ENV != "production" and (not AUTH_RATE_LIMIT_ENABLED or not CSRF_PROTECTION_ENABLED):
+    logging.getLogger(__name__).warning(
+        "Local development security controls: AUTH_RATE_LIMIT_ENABLED=%s, CSRF_PROTECTION_ENABLED=%s",
+        AUTH_RATE_LIMIT_ENABLED,
+        CSRF_PROTECTION_ENABLED,
+    )
 
 PRODUCT_IMAGE_FILENAMES = {
     "bacon smoked": "bacon_smoked.jpg",
@@ -432,7 +449,7 @@ def reseller_dashboard_context(request: Request) -> dict:
             reseller_profile = data.reseller_account_profile(account_id)
         except ValueError:
             reseller_profile = None
-    default_end = date.today()
+    default_end = business_today()
     default_start = default_end - timedelta(days=29)
     start_date = date_filter(request.query_params.get("start_date"), default_start)
     end_date = date_filter(request.query_params.get("end_date"), default_end)
@@ -586,7 +603,7 @@ def owner_sales_bucket_key(value: object, granularity: str) -> str:
 
 
 def owner_sales_chart_context(request: Request | None = None) -> dict:
-    today_value = date.today()
+    today_value = business_today()
     requested_period = request.query_params.get("sales_period", "daily") if request is not None else "daily"
     sales_period = requested_period if requested_period in {key for key, _ in OWNER_SALES_PERIOD_OPTIONS} else "daily"
     sales_start, sales_points = owner_sales_period_points(sales_period, today_value)
@@ -685,6 +702,7 @@ PORTAL_SECTION_LOADERS = {
         "team_leaders": page["team_leaders"],
         "reseller_assignments": page["reseller_assignments"],
     },
+    ("owner", "profile"): lambda request: {"account_profile": data.account_portal_profile(session_account_id(request))},
     ("team-leader", "dashboard"): _team_dashboard_context,
     ("team-leader", "sales"): lambda request: {
         "products": data.list_products(),
@@ -852,9 +870,10 @@ def establish_portal_session(request: Request, account: dict) -> RedirectRespons
     request.session["role_key"] = role
     request.session["account_name"] = account["name"]
     request.session["account_email"] = account["email"]
-    request.session["portal_expires_at"] = int(datetime.now().timestamp()) + PORTAL_SESSION_SECONDS
+    request.session["portal_expires_at"] = int(business_now().timestamp()) + PORTAL_SESSION_SECONDS
     if role == "team-leader":
         request.session["team_leader_role"] = account.get("team_leader_role") or "sales"
+    rotate_session(request)
     data.add_log(account["name"], "login", data.roles[role]["label"])
     return redirect_to(safe_portal_path(role, data.default_section_for(role, account.get("team_leader_role"))))
 
@@ -891,11 +910,15 @@ async def media_asset(filename: str):
 def require_portal_session(request: Request, role_key: str) -> RedirectResponse | None:
     expires_at = request.session.get("portal_expires_at")
     try:
-        expired = int(expires_at) <= int(datetime.now().timestamp())
+        expired = int(expires_at) <= int(business_now().timestamp())
     except (TypeError, ValueError):
         expired = True
-    if request.session.get("role_key") == role_key and not expired:
-        return None
+    account_id = request.session.get("account_id")
+    if request.session.get("role_key") == role_key and not expired and account_id:
+        account = data.active_session_account(int(account_id))
+        if account and account["role_key"] == role_key:
+            if role_key != "team-leader" or account.get("team_leader_role") == request.session.get("team_leader_role"):
+                return None
     if request.session.get("role_key"):
         request.session.clear()
     return redirect_to(path_with_query("/login", error="Please sign in to access that portal."))
@@ -908,27 +931,8 @@ def public_products() -> list[dict]:
         return []
 
 
-def dispatch_due_inquiry_followups() -> None:
-    try:
-        inquiries = data.due_inquiry_followups(limit=20)
-    except Exception:
-        return
-    for inquiry in inquiries:
-        sent, _message = send_inquiry_status_update(
-            to_email=inquiry["email"],
-            name=inquiry["name"],
-            business_name=inquiry["business_name"],
-        )
-        if sent:
-            try:
-                data.mark_inquiry_followup_sent(int(inquiry["inquiry_id"]))
-            except Exception:
-                continue
-
-
 @app.get("/")
 async def landing(request: Request, message: str = "", error: str = ""):
-    dispatch_due_inquiry_followups()
     return templates.TemplateResponse(
         request,
         "landing.html",
@@ -975,7 +979,10 @@ async def create_public_inquiry(
 
 @app.post("/api/chatbot")
 async def chatbot_api(request: Request):
-    dispatch_due_inquiry_followups()
+    try:
+        enforce_chatbot(request)
+    except ValueError as exc:
+        return JSONResponse({"reply": str(exc)}, status_code=429)
     payload = await request.json()
     message = str(payload.get("message", "")).strip()
     if len(message) < 2:
@@ -985,10 +992,15 @@ async def chatbot_api(request: Request):
     assigned_team_leader = None
     if result.get("action") == "create_lead":
         lead = result.get("lead") or {}
+        lead_email = require_email(str(lead.get("email", "")).strip())
+        try:
+            enforce_lead(request, lead_email)
+        except ValueError as exc:
+            return JSONResponse({"reply": str(exc)}, status_code=429)
         inquiry = data.add_inquiry(
             str(lead.get("name", "")).strip(),
             str(lead.get("business_name", "")).strip(),
-            require_email(str(lead.get("email", "")).strip()),
+            lead_email,
             str(lead.get("contact_number", "")).strip(),
             "\n".join(
                 [
@@ -1042,6 +1054,37 @@ async def terms(request: Request):
     return templates.TemplateResponse(request, "terms.html", {"request": request, "consent_version": CONSENT_VERSION})
 
 
+@app.get("/activate")
+async def activation_page(request: Request, token: str = "", error: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "activate.html",
+        {"request": request, "token": token, "error": error},
+    )
+
+
+@app.post("/activate")
+async def activation_submit(
+    request: Request,
+    token: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    try:
+        if new_password != confirm_password:
+            raise ValueError("Password and confirmation do not match.")
+        account = data.activate_account(token, new_password)
+    except ValueError as exc:
+        return templates.TemplateResponse(
+            request,
+            "activate.html",
+            {"request": request, "token": token, "error": str(exc)},
+            status_code=400,
+        )
+    rotate_session(request)
+    return redirect_to(path_with_query("/login", message=f"{account['name']} is activated. You can now sign in."))
+
+
 @app.post("/login")
 async def submit_login(
     request: Request,
@@ -1051,6 +1094,7 @@ async def submit_login(
 ):
     try:
         email = require_email(email)
+        enforce_password_login(request, email)
         if consent != "yes":
             raise ValueError("Please accept the privacy notice and terms to continue.")
         if len(password.strip()) < 4:
@@ -1060,7 +1104,9 @@ async def submit_login(
 
     account = data.authenticate_account(email, password)
     if account is None:
+        record_password_login(request, email, False)
         return redirect_to(path_with_query("/login", error="Invalid email or password."))
+    record_password_login(request, email, True)
 
     if LOGIN_OTP_ENABLED:
         try:
@@ -1080,6 +1126,7 @@ async def submit_login_otp(request: Request, otp_code: str = Form(...)):
     if not account_id:
         return redirect_to(path_with_query("/login", error="Login OTP session expired. Please sign in again."))
     try:
+        enforce_otp_attempt(int(account_id))
         account = data.confirm_login_otp(int(account_id), otp_code)
         data.record_user_consent(
             account["account_id"],
@@ -1087,11 +1134,13 @@ async def submit_login_otp(request: Request, otp_code: str = Form(...)):
             request.session.get("pending_login_consent_source") or "password_otp",
         )
     except (TypeError, ValueError) as exc:
+        record_event("otp_verify", f"account:{account_id}")
         return redirect_to(path_with_query("/login", error=str(exc)))
+    record_event("otp_verify", f"account:{account_id}", succeeded=True)
     return establish_portal_session(request, account)
 
 
-@app.get("/logout")
+@app.post("/logout")
 async def logout(request: Request):
     request.session.clear()
     response = redirect_to(path_with_query("/login"))
@@ -1224,9 +1273,6 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "unread_notifications": data.unread_notification_count(role_key, request.session.get("account_id")),
     }
     context.update(portal_section_context(role_key, section, request))
-    if (role_key == "team-leader" and section == "inquiries") or (role_key == "owner" and section == "accounts"):
-        context["credential_flash"] = request.session.pop("credential_flash", None)
-
     return templates.TemplateResponse(
         request,
         PORTAL_TEMPLATES[role_key],
@@ -1303,13 +1349,8 @@ async def reseller_cart_checkout(request: Request, notes: str = Form("")):
     account_id = session_account_id(request)
     if account_id is None:
         return redirect_to(safe_portal_path("reseller", "cart", error="Your session expired. Please sign in again."))
-    cart_items = data.list_reseller_cart_items(account_id)
-    if not cart_items:
-        return redirect_to(safe_portal_path("reseller", "cart", error="Your cart is empty."))
     try:
-        items = [(item["product_id"], item["cart_quantity"]) for item in cart_items]
-        data.create_order_from_items("reseller", items, notes.strip(), account_id=account_id)
-        data.clear_reseller_cart(account_id)
+        data.checkout_reseller_cart(account_id, notes.strip())
     except ValueError as exc:
         return redirect_to(safe_portal_path("reseller", "cart", error=str(exc)))
     return redirect_to(safe_portal_path("reseller", "history", message="Order submitted for team leader approval."))
@@ -1423,6 +1464,62 @@ async def team_leader_profile_password_confirm(request: Request, otp_code: str =
     except ValueError as exc:
         return redirect_to(safe_portal_path("team-leader", "profile", otp="1", error=str(exc)))
     return redirect_to(safe_portal_path("team-leader", "profile", message="Password updated."))
+
+
+@app.post("/portal/owner/profile/password")
+async def owner_profile_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    guard = require_portal_session(request, "owner")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    try:
+        if account_id is None:
+            raise ValueError("Your session expired. Please sign in again.")
+        if new_password != confirm_password:
+            raise ValueError("New password and confirmation do not match.")
+        pending = data.request_account_password_change(account_id, current_password, new_password, ("owner",))
+        sent, email_message = send_password_change_otp(
+            to_email=pending["email"], name=pending["name"], otp_code=pending["otp_code"]
+        )
+        if not sent:
+            data.cancel_account_password_change(account_id, pending.get("otp_id"))
+            raise ValueError(email_message)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("owner", "profile", error=str(exc)))
+    return redirect_to(safe_portal_path("owner", "profile", otp="1", message="OTP sent to your email."))
+
+
+@app.post("/portal/owner/profile/password/confirm")
+async def owner_profile_password_confirm(request: Request, otp_code: str = Form(...)):
+    guard = require_portal_session(request, "owner")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    try:
+        if account_id is None:
+            raise ValueError("Your session expired. Please sign in again.")
+        data.confirm_account_password_change(account_id, otp_code, ("owner",))
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("owner", "profile", otp="1", error=str(exc)))
+    request.session.clear()
+    return redirect_to(path_with_query("/login", message="Password updated. Sign in again."))
+
+
+@app.post("/portal/owner/accounts/{account_id}/activation")
+async def owner_resend_activation(request: Request, account_id: int):
+    guard = require_portal_session(request, "owner")
+    if guard:
+        return guard
+    try:
+        data.resend_activation(account_id, session_account_id(request) or 0)
+    except ValueError as exc:
+        return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
+    return redirect_to(safe_portal_path("owner", "accounts", message="A new activation link was queued."))
 
 
 @app.post("/portal/reseller/profile")
@@ -1593,24 +1690,13 @@ async def team_inquiry_decision(request: Request, inquiry_id: int, decision: str
                 return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
         except ValueError as exc:
             return redirect_to(safe_portal_path("team-leader", "inquiries", error=str(exc)))
-        sent, email_message = send_reseller_credentials(
-            to_email=reseller["account_email"],
-            business_name=reseller["business_name"],
-            temporary_password=reseller["temporary_password"],
-            team_leader_name=reseller.get("team_leader_name") or request.session.get("account_name") or "Sales team leader",
-        )
-        if not sent:
-            request.session["credential_flash"] = {
-                "email": reseller["account_email"],
-                "temporary_password": reseller["temporary_password"],
-                "business_name": reseller["business_name"],
-                "reason": email_message,
-            }
-            return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved. Email was not sent, so show the credentials below once."))
-        return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved and reseller credentials were emailed."))
+        return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved. A single-use activation email was queued."))
     if decision == "reject":
-        if not data.reject_inquiry(inquiry_id, reviewing_team_leader_account_id=session_account_id(request)):
-            return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
+        try:
+            if not data.reject_inquiry(inquiry_id, reviewing_team_leader_account_id=session_account_id(request)):
+                return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
+        except ValueError as exc:
+            return redirect_to(safe_portal_path("team-leader", "inquiries", error=str(exc)))
         return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry rejected."))
     raise HTTPException(status_code=404)
 
@@ -1666,16 +1752,16 @@ async def team_report(
 
 
 @app.post("/portal/owner/products")
-async def owner_product(request: Request, product_id: int = Form(...), base_price: float = Form(...)):
+async def owner_product(request: Request, product_id: int = Form(...), base_price: str = Form(...)):
     guard = require_portal_session(request, "owner")
     if guard:
         return guard
     try:
-        require_nonnegative_number(base_price, "Base price")
+        parsed_price = data.parse_money(base_price, "Base price")
         product = data.product_by_id(product_id)
         if product is None:
             raise ValueError("Unknown product.")
-        data.update_product_price(product_id, base_price)
+        data.update_product_price(product_id, parsed_price, actor_account_id=session_account_id(request))
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "products", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "products", message="Product pricing updated."))
@@ -1704,22 +1790,7 @@ async def owner_account(
         account = data.add_account(account_type, name, email, team_leader_role=team_leader_role)
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
-    account_label = "team leader" if account_type == "team_leader" else "owner"
-    sent, email_message = send_portal_credentials(
-        to_email=account["email"],
-        name=account["name"],
-        temporary_password=account["temporary_password"],
-        account_label=account_label,
-    )
-    if not sent:
-        request.session["credential_flash"] = {
-            "email": account["email"],
-            "temporary_password": account["temporary_password"],
-            "business_name": account["name"],
-            "reason": email_message,
-        }
-        return redirect_to(safe_portal_path("owner", "accounts", message="Account created. Email was not sent, so show the credentials below once."))
-    return redirect_to(safe_portal_path("owner", "accounts", message="Account created and credentials were emailed."))
+    return redirect_to(safe_portal_path("owner", "accounts", message="Account created. A single-use activation email was queued."))
 
 
 @app.post("/portal/owner/resellers/{reseller_id}/team-leader")
@@ -1728,7 +1799,7 @@ async def owner_reseller_team_leader(request: Request, reseller_id: int, team_le
     if guard:
         return guard
     try:
-        data.set_reseller_team_leader(reseller_id, team_leader_account_id)
+        data.set_reseller_team_leader(reseller_id, team_leader_account_id, actor_account_id=session_account_id(request))
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "accounts", error=str(exc)))
     return redirect_to(safe_portal_path("owner", "accounts", message="Reseller team leader updated."))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import os
 import uuid
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -26,6 +27,8 @@ def strict_inventory_database():
     try:
         admin = psycopg2.connect(database.DSN)
     except psycopg2.OperationalError:
+        if os.getenv("REQUIRE_POSTGRES_TESTS") == "1":
+            pytest.fail("PostgreSQL integration tests are required but PostgreSQL is unavailable")
         pytest.skip("Local PostgreSQL is unavailable")
     admin.autocommit = True
     with admin.cursor() as cursor:
@@ -56,7 +59,9 @@ def strict_inventory_database():
         admin.close()
 
 
-def _seed_fulfillment(scoped_dsn: str, *, batch_quantities: list[int], order_quantities: list[int]):
+def _seed_fulfillment(
+    scoped_dsn: str, *, batch_quantities: list[int], order_quantities: list[int], order_status: str = "approved"
+):
     with psycopg2.connect(scoped_dsn) as connection:
         with connection.cursor() as cursor:
             cursor.execute("""
@@ -116,11 +121,11 @@ def _seed_fulfillment(scoped_dsn: str, *, batch_quantities: list[int], order_qua
                 cursor.execute("""
                     INSERT INTO orders (
                         order_type, reseller_id, created_by_account_id,
-                        approved_by_account_id, approved_at, status, total_amount
+                        team_leader_account_id, approved_by_account_id, approved_at, status, total_amount
                     )
-                    VALUES ('reseller', %s, %s, %s, now(), 'approved', %s)
+                    VALUES ('reseller', %s, %s, %s, %s, now(), %s, %s)
                     RETURNING order_id;
-                """, (reseller_id, reseller_account_id, leader_id, quantity * 100))
+                """, (reseller_id, reseller_account_id, leader_id, leader_id, order_status, quantity * 100))
                 order_id = cursor.fetchone()[0]
                 order_ids.append(order_id)
                 cursor.execute("""
@@ -132,12 +137,58 @@ def _seed_fulfillment(scoped_dsn: str, *, batch_quantities: list[int], order_qua
 
 @pytest.mark.postgres
 def test_latest_baseline_accepts_all_numbered_migrations(strict_inventory_database):
-    migration_sql = Path("database/migrations/002_strict_inventory.sql").read_text(encoding="utf-8")
     with psycopg2.connect(strict_inventory_database) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(migration_sql)
+            for migration in sorted(Path("database/migrations").glob("*.sql")):
+                cursor.execute(migration.read_text(encoding="utf-8"))
             cursor.execute("SELECT to_regclass('inventory_movements');")
             assert cursor.fetchone()[0] == "inventory_movements"
+
+
+@pytest.mark.postgres
+def test_hardening_constraints_reject_invalid_transitions_and_owner_changes(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[10], order_quantities=[1]
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE orders SET status = 'fulfilled' WHERE order_id = %s;", (order_ids[0],))
+            with pytest.raises(psycopg2.Error, match="terminal"):
+                cursor.execute("UPDATE orders SET status = 'approved' WHERE order_id = %s;", (order_ids[0],))
+            connection.rollback()
+
+            with pytest.raises(psycopg2.Error, match="ownership is immutable"):
+                cursor.execute("UPDATE orders SET team_leader_account_id = NULL WHERE order_id = %s;", (order_ids[0],))
+            connection.rollback()
+
+            cursor.execute(
+                """
+                INSERT INTO inquiries (name, contact_number, email, business_name, status)
+                VALUES ('Person', '0917', 'person@test.local', 'Store', 'rejected') RETURNING inquiry_id;
+                """
+            )
+            inquiry_id = cursor.fetchone()[0]
+            with pytest.raises(psycopg2.Error, match="terminal"):
+                cursor.execute("UPDATE inquiries SET status = 'approved' WHERE inquiry_id = %s;", (inquiry_id,))
+
+
+@pytest.mark.postgres
+def test_payment_proof_limit_and_pending_only_are_database_enforced(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[10], order_quantities=[1]
+    )
+    order_id = order_ids[0]
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            with pytest.raises(psycopg2.Error, match="pending orders"):
+                cursor.execute(
+                    """
+                    INSERT INTO order_payment_proofs
+                        (order_id, filename, content_type, content, size_bytes, checksum_sha256)
+                    VALUES (%s, 'proof.png', 'image/png', '\\x00', 1, %s);
+                    """,
+                    (order_id, "0" * 64),
+                )
 
 
 @pytest.mark.postgres
@@ -212,10 +263,8 @@ def test_pending_order_cannot_be_fulfilled(strict_inventory_database):
         strict_inventory_database,
         batch_quantities=[5],
         order_quantities=[2],
+        order_status="pending",
     )
-    with psycopg2.connect(strict_inventory_database) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE orders SET status = 'pending' WHERE order_id = %s;", (order_ids[0],))
 
     with pytest.raises(ValueError, match="approved before"):
         repositories.decide_order(order_ids[0], "fulfill", team_leader_account_id=leader_id)

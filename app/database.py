@@ -4,7 +4,7 @@ from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 from threading import Lock
 
-from app.config import DATABASE_POOL_MAX, DATABASE_POOL_MIN, database_dsn
+from app.config import BUSINESS_TIMEZONE, DATABASE_POOL_MAX, DATABASE_POOL_MIN, database_dsn
 
 DSN = database_dsn()
 
@@ -32,6 +32,7 @@ def get_db_cursor():
     try:
         # RealDictCursor maps column names to dictionary keys
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT set_config('TimeZone', %s, false)", (BUSINESS_TIMEZONE,))
             yield cur
             conn.commit()
     except Exception as e:
@@ -46,6 +47,7 @@ def get_transaction_cursor():
     conn = connection_pool.getconn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT set_config('TimeZone', %s, false)", (BUSINESS_TIMEZONE,))
             yield cur
         conn.commit()
     except Exception as e:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -397,7 +398,7 @@ def test_owner_product_price_update_route_still_posts(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(main.data, "product_by_id", lambda product_id: {"product_id": product_id})
-    monkeypatch.setattr(main.data, "update_product_price", lambda *args: calls.append(args))
+    monkeypatch.setattr(main.data, "update_product_price", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     response = client.post(
         "/portal/owner/products",
@@ -406,7 +407,7 @@ def test_owner_product_price_update_route_still_posts(monkeypatch):
     )
 
     assert response.status_code == 303
-    assert calls == [(1, 129.0)]
+    assert calls == [((1, Decimal("129.00")), {"actor_account_id": None})]
 
 
 def test_owner_accounts_render_responsive_cards(monkeypatch):

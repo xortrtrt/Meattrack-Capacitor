@@ -59,15 +59,16 @@ source dump with `pg_restore --list meattrack.dump`.
 
 ## Data model
 
-- Identity and access: `accounts`, `activity_logs`, login/password OTPs, and
-  consent history.
+- Identity and access: `accounts`, activation tokens, PostgreSQL web sessions,
+  security events, activity logs, login/password OTPs, and consent history.
 - Department references: `departments`.
 - Reseller onboarding: `inquiries`, `resellers`.
 - Catalog and inventory: `inventory_items`, `inventory_batches`,
   `product_recipes`, immutable `inventory_movements`, and `alerts`.
 - Sales: `orders`, `order_items`, payment proofs, carts, and sales reports.
 - Forecasting: `forecast_runs`, `forecast_results`.
-- Portal notifications: `notifications`.
+- Portal notifications: `notifications`, per-account `notification_recipients`,
+  and the durable `notification_outbox` processed by `app.worker`.
 
 Raw stock uses `kg`, `g`, or `ml` to three decimal places. Finished stock,
 carts, orders, batches, and sell-through quantities use whole `pack` units.

@@ -76,36 +76,6 @@ def _send_email(*, to_email: str, subject: str, body: str, failure_message: str,
     return False, "Brevo email delivery is not configured."
 
 
-def send_reseller_credentials(
-    *,
-    to_email: str,
-    business_name: str,
-    temporary_password: str,
-    team_leader_name: str,
-) -> tuple[bool, str]:
-    return _send_email(
-        to_email=to_email,
-        subject="Batangas Premium reseller portal access",
-        body="\n".join(
-            [
-                f"Hello {business_name},",
-                "",
-                "Your Batangas Premium reseller portal account has been created.",
-                "",
-                f"Email: {to_email}",
-                f"Temporary password: {temporary_password}",
-                "",
-                "Please sign in and change your password after first access if the portal asks you to do so.",
-                f"Assigned team leader: {team_leader_name}",
-                "",
-                "Batangas Premium",
-            ]
-        ),
-        failure_message="Credential email could not be sent.",
-        success_message="Credential email sent.",
-    )
-
-
 def send_password_change_otp(*, to_email: str, name: str, otp_code: str) -> tuple[bool, str]:
     return _send_email(
         to_email=to_email,
@@ -150,36 +120,6 @@ def send_login_otp(*, to_email: str, name: str, otp_code: str) -> tuple[bool, st
     )
 
 
-def send_portal_credentials(
-    *,
-    to_email: str,
-    name: str,
-    temporary_password: str,
-    account_label: str,
-) -> tuple[bool, str]:
-    return _send_email(
-        to_email=to_email,
-        subject="Batangas Premium portal account created",
-        body="\n".join(
-            [
-                f"Hello {name},",
-                "",
-                f"Your Batangas Premium {account_label} portal account has been created.",
-                "",
-                f"Email: {to_email}",
-                f"Temporary password: {temporary_password}",
-                "",
-                "When you sign in, an OTP will be sent to this email for confirmation.",
-                "After signing in, open Profile to change your password.",
-                "",
-                "Batangas Premium",
-            ]
-        ),
-        failure_message="Credential email could not be sent.",
-        success_message="Credential email sent.",
-    )
-
-
 def send_inquiry_status_update(*, to_email: str, name: str, business_name: str) -> tuple[bool, str]:
     return _send_email(
         to_email=to_email,
@@ -198,4 +138,27 @@ def send_inquiry_status_update(*, to_email: str, name: str, business_name: str) 
         ),
         failure_message="Inquiry update email could not be sent.",
         success_message="Inquiry update email sent.",
+    )
+
+
+def send_account_activation(*, to_email: str, name: str, account_label: str, activation_url: str) -> tuple[bool, str]:
+    return _send_email(
+        to_email=to_email,
+        subject="Activate your Batangas Premium portal account",
+        body="\n".join(
+            [
+                f"Hello {name},",
+                "",
+                f"Your Batangas Premium {account_label} account is ready.",
+                "Use this single-use link within 24 hours to create your password:",
+                "",
+                activation_url,
+                "",
+                "If you did not expect this account, ignore this email and contact Batangas Premium.",
+                "",
+                "Batangas Premium",
+            ]
+        ),
+        failure_message="Activation email could not be sent.",
+        success_message="Activation email sent.",
     )

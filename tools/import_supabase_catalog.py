@@ -104,6 +104,9 @@ def validate_and_normalize_catalog(
             else:
                 item.update({"pack_size": None, "pack_size_unit": None, "pack_content_status": "unknown_legacy"})
             item["unit"] = "pack"
+            item["base_price"] = measurements.parse_decimal_exact(
+                item.get("base_price"), f"{name} base price", scale=2, nonnegative=True
+            )
         key = (item_type, name)
         if key in item_lookup:
             raise ValueError(f"Duplicate catalog item: {item_type} {name}.")

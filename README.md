@@ -30,7 +30,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 ### Sales team leader portal
 
 - Assigned reseller-inquiry review and approval
-- Reseller account creation with emailed temporary credentials
+- Reseller account creation with single-use, 24-hour activation links
 - Payment-proof validation and reseller-order processing
 - Sales reports and reseller purchase summaries
 - Profile and OTP-confirmed password changes
@@ -58,7 +58,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 | Backend | Python 3.13, FastAPI, Uvicorn |
 | UI | Server-rendered Jinja2, HTML, CSS, vanilla JavaScript |
 | Database | PostgreSQL 16 through `psycopg2` connection pooling |
-| Authentication | Password login, signed sessions, optional email OTP |
+| Authentication | Password login, PostgreSQL-backed opaque sessions, optional email OTP |
 | Forecasting | Prophet and pandas |
 | Email | Brevo HTTPS API; local capture service during development |
 | Chatbot | Local approved FAQ fallback; optional OpenRouter model |
@@ -85,8 +85,8 @@ Requirements:
 - Docker Desktop or Docker Engine
 - Docker Compose v2
 
-Build and start the application, PostgreSQL, and the local email-capture
-service:
+Build and start the application, PostgreSQL, durable worker, and local
+email-capture service:
 
 ```powershell
 docker compose up -d --build
@@ -119,6 +119,10 @@ docker compose down
 docker compose down --volumes  # deletes the local PostgreSQL volume
 ```
 
+CSRF protection and authentication throttling are explicitly disabled in the
+disposable local Compose environment. Production forces both controls on and
+refuses to start if either one is disabled.
+
 ## Run Python locally
 
 Use Docker only for PostgreSQL, then run the application in a virtual
@@ -150,7 +154,11 @@ private `.env.production` file that must never be committed.
 | `POSTGRES_PASSWORD` | PostgreSQL password | Required |
 | `DATABASE_URL` | Optional full connection URL override | Optional |
 | `DATABASE_POOL_MIN` / `DATABASE_POOL_MAX` | Connection-pool bounds | Optional |
-| `SESSION_SECRET_KEY` | Signs browser sessions | Required |
+| `SESSION_SECRET_KEY` | Deployment secret retained for compatibility | Required |
+| `AUTH_RATE_LIMIT_ENABLED` | Enables login, OTP, chatbot, and lead throttles | Must be `true` |
+| `CSRF_PROTECTION_ENABLED` | Enables token and origin checks on unsafe requests | Must be `true` |
+| `BUSINESS_TIMEZONE` | Business timezone; defaults to `Asia/Manila` | Recommended |
+| `APP_BASE_URL` | Public HTTPS origin used in activation emails | Required |
 | `LOGIN_OTP_ENABLED` | Enables email OTP after password login | Defaults to `true` in production |
 | `CONSENT_VERSION` | Version recorded with accepted login consent | Optional |
 | `BREVO_API_KEY` | Brevo transactional-email API key | Required for live email |
@@ -186,6 +194,11 @@ and must be deployed while inventory and order writes are paused. Back up the
 database, stop application writes, run the migration, deploy the matching
 application build, verify ledger balances, and only then restore writes. Do not
 run the previous application build after this migration.
+
+Migration `003_system_hardening.sql` adds order ownership snapshots, individual
+notification recipients, server-side sessions, activation tokens, rate-event
+storage, transition guards, and the durable outbox. Apply it in the same write
+maintenance window, then start both the `app` and `worker` services.
 
 See [`database/README.md`](database/README.md) for migration, backup, restore,
 and data-model details.
@@ -255,7 +268,7 @@ network, while FastAPI binds only to the VPS loopback interface.
    ```bash
    docker compose --env-file .env.production -f compose.prod.yml up -d db
    docker compose --env-file .env.production -f compose.prod.yml run --rm app python tools/migrate_database.py
-   docker compose --env-file .env.production -f compose.prod.yml up -d --build app
+   docker compose --env-file .env.production -f compose.prod.yml up -d --build app worker
    ```
 
 7. Copy `deploy/nginx/meattrack.conf` to
@@ -304,8 +317,11 @@ Change all seeded credentials before any shared or production deployment.
 
 - All browser database access goes through FastAPI; PostgreSQL is never exposed
   to the frontend.
-- Production session cookies are HTTPS-only and portal sessions expire after
-  two hours.
+- Browser cookies carry only a random opaque identifier; session contents stay
+  in PostgreSQL. Production cookies are HTTPS-only and portal sessions expire
+  after two hours.
+- Production enforces CSRF validation and database-backed rate limits. Local
+  development keeps both controls off unless explicitly enabled.
 - Passwords and OTPs are stored as salted PBKDF2 hashes.
 - Payment-proof downloads require an authenticated portal session.
 - Sort options and query filters are server-side allowlisted and parameterized.

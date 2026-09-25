@@ -304,28 +304,11 @@ def test_portal_session_expires_after_timestamp():
     assert request.session == {}
 
 
-def test_dispatch_due_inquiry_followups_sends_and_marks(monkeypatch):
-    sent = []
-    marked = []
-    monkeypatch.setattr(
-        main.data,
-        "due_inquiry_followups",
-        lambda limit=20: [
-            {
-                "inquiry_id": 2,
-                "name": "Potential Reseller",
-                "email": "lead@example.test",
-                "business_name": "Lead Store",
-            }
-        ],
-    )
-    monkeypatch.setattr(main, "send_inquiry_status_update", lambda **kwargs: sent.append(kwargs) or (True, "sent"))
-    monkeypatch.setattr(main.data, "mark_inquiry_followup_sent", lambda inquiry_id: marked.append(inquiry_id))
+def test_inquiry_followups_are_not_dispatched_by_web_requests():
+    from app import worker
 
-    main.dispatch_due_inquiry_followups()
-
-    assert sent == [{"to_email": "lead@example.test", "name": "Potential Reseller", "business_name": "Lead Store"}]
-    assert marked == [2]
+    assert not hasattr(main, "dispatch_due_inquiry_followups")
+    assert callable(worker.enqueue_due_inquiry_followups)
 
 
 def test_team_leader_password_route_sends_otp(monkeypatch):
@@ -377,6 +360,7 @@ def test_duplicate_email_approval_keeps_inquiry_unapproved(monkeypatch):
             if "SELECT * FROM inquiries" in self.query:
                 return {
                     "inquiry_id": 2,
+                    "status": "assigned",
                     "assigned_team_leader_account_id": 4,
                     "email": "owner@example.test",
                     "business_name": "Demo Store",
@@ -422,8 +406,9 @@ def test_successful_approval_creates_reseller_account_and_marks_approved(monkeyp
 
         def fetchone(self):
             if "SELECT * FROM inquiries" in self.query:
-                return {
-                    "inquiry_id": 3,
+                    return {
+                        "inquiry_id": 3,
+                        "status": "assigned",
                     "assigned_team_leader_account_id": 4,
                     "email": "reseller@example.test",
                     "business_name": "Demo Store",
@@ -463,6 +448,10 @@ def test_successful_approval_creates_reseller_account_and_marks_approved(monkeyp
     monkeypatch.setattr(repositories, "get_transaction_cursor", fake_transaction)
     monkeypatch.setattr(repositories, "add_log", lambda *args, **kwargs: None)
     monkeypatch.setattr(repositories, "create_notification", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repositories, "_create_activation_token_cursor", lambda *args: "activation-token")
+    monkeypatch.setattr(repositories, "_add_log_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repositories, "_create_notification_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(repositories, "_enqueue_outbox_cursor", lambda *args, **kwargs: None)
 
     result = repositories.add_reseller_from_inquiry(3, approving_team_leader_account_id=4)
 
