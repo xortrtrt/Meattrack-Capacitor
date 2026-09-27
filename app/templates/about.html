@@ -7,7 +7,7 @@
     <title>About Us | Batangas Premium</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/public.css') }}?v=20260722-mobile-hero-logo-1"
+      href="{{ url_for('static', path='css/public.css') }}?v=20260927-chatbot-ui-7"
     />
   </head>
   <body>
@@ -119,13 +119,14 @@
         aria-expanded="false"
         aria-controls="chatbot-panel"
       >
+        <i data-lucide="message-circle" aria-hidden="true"></i>
         <span class="chat-text">Chat with us</span>
       </button>
-      <section class="chatbot-panel" id="chatbot-panel" hidden>
+      <section class="chatbot-panel" id="chatbot-panel" role="dialog" aria-label="Batangas Premium support" hidden>
         <header class="chatbot-header">
-          <div>
-            <strong>Batangas Premium</strong>
-            <span>Questions about products, ordering, or partnerships?</span>
+          <div class="chatbot-identity">
+            <strong>BP ChatBot</strong>
+            <span>Products · Orders · Resellers</span>
           </div>
           <button
             class="close-btn"
@@ -133,7 +134,7 @@
             data-chatbot-close
             aria-label="Close chat"
           >
-            x
+            <i data-lucide="x" aria-hidden="true"></i>
           </button>
         </header>
         <div class="chatbot-messages" data-chatbot-messages>
@@ -146,10 +147,13 @@
             name="message"
             type="text"
             autocomplete="off"
-            placeholder="Ask us anything..."
+            placeholder="Type your message..."
             required
           />
-          <button type="submit" aria-label="Send message">Send</button>
+          <button class="chatbot-send" type="submit" aria-label="Send message">
+            <span data-chatbot-send-label>Send</span>
+            <i data-lucide="arrow-up" aria-hidden="true"></i>
+          </button>
         </form>
       </section>
     </aside>
@@ -183,6 +187,6 @@
     </footer>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260722-chatbot-persist-1"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260927-chatbot-ui-7"></script>
   </body>
 </html>

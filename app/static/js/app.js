@@ -71,9 +71,21 @@
             return;
         }
 
-        function setOpen(open) {
+        let returnFocusOnClose = false;
+
+        function setOpen(open, options = {}) {
             toggle.setAttribute("aria-expanded", String(open));
+            toggle.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
             nav.classList.toggle("is-open", open);
+            document.body.classList.toggle("mobile-menu-open", open);
+
+            if (open) {
+                returnFocusOnClose = true;
+                window.requestAnimationFrame(() => nav.querySelector("a")?.focus());
+            } else if (options.restoreFocus && returnFocusOnClose) {
+                toggle.focus();
+                returnFocusOnClose = false;
+            }
         }
 
         toggle.addEventListener("click", () => {
@@ -92,6 +104,28 @@
 
         document.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
+                setOpen(false, { restoreFocus: true });
+                return;
+            }
+            if (event.key !== "Tab" || toggle.getAttribute("aria-expanded") !== "true") {
+                return;
+            }
+            const focusable = [toggle, ...nav.querySelectorAll("a, button")].filter(
+                (element) => !element.hasAttribute("disabled") && element.getClientRects().length > 0
+            );
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first?.focus();
+            }
+        });
+
+        window.addEventListener("resize", () => {
+            if (window.innerWidth > 1100 && toggle.getAttribute("aria-expanded") === "true") {
                 setOpen(false);
             }
         });
@@ -102,6 +136,179 @@
     }
 
     bindMobileMenu("[data-mobile-nav-toggle]", "[data-mobile-nav]");
+
+    function bindLandingExperience() {
+        if (!document.body.classList.contains("landing-page")) {
+            return;
+        }
+
+        const nav = document.querySelector("[data-landing-nav]");
+        const hero = document.querySelector(".landing-hero");
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        let frameRequested = false;
+
+        function updateLandingScrollState() {
+            nav?.classList.toggle("is-scrolled", window.scrollY > 28);
+            document.body.classList.toggle("landing-has-scrolled", window.scrollY > 120);
+            if (!prefersReducedMotion && hero && window.innerWidth > 1100) {
+                const shift = Math.min(34, window.scrollY * 0.055);
+                hero.style.setProperty("--hero-shift", `${shift}px`);
+            } else if (hero) {
+                hero.style.setProperty("--hero-shift", "0px");
+            }
+            frameRequested = false;
+        }
+
+        function requestLandingScrollUpdate() {
+            if (frameRequested) {
+                return;
+            }
+            frameRequested = true;
+            window.requestAnimationFrame(updateLandingScrollState);
+        }
+
+        updateLandingScrollState();
+        window.addEventListener("scroll", requestLandingScrollUpdate, { passive: true });
+
+        if (prefersReducedMotion) {
+            return;
+        }
+
+        document.body.classList.add("landing-motion-ready", "landing-reveal-ready");
+        const revealNodes = Array.from(
+            document.querySelectorAll("[data-landing-reveal], [data-landing-reveal-item]")
+        );
+        revealNodes.forEach((node, index) => {
+            if (node.hasAttribute("data-landing-reveal-item")) {
+                node.style.setProperty("--landing-reveal-delay", `${(index % 3) * 70}ms`);
+            }
+        });
+
+        if (!("IntersectionObserver" in window)) {
+            revealNodes.forEach((node) => node.classList.add("is-visible"));
+            return;
+        }
+
+        const revealObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting) {
+                    return;
+                }
+                entry.target.classList.add("is-visible");
+                observer.unobserve(entry.target);
+            });
+        }, { rootMargin: "0px 0px -10% 0px", threshold: 0.08 });
+
+        revealNodes.forEach((node) => revealObserver.observe(node));
+    }
+
+    bindLandingExperience();
+
+    function bindLandingProductModal() {
+        const modal = document.querySelector("[data-landing-product-modal]");
+        if (!modal) {
+            return;
+        }
+
+        const panel = modal.querySelector(".landing-product-modal-panel");
+        const closeButton = modal.querySelector(".landing-product-modal-close");
+        const image = modal.querySelector("[data-landing-product-modal-image]");
+        const category = modal.querySelector("[data-landing-product-modal-category]");
+        const name = modal.querySelector("[data-landing-product-modal-name]");
+        const price = modal.querySelector("[data-landing-product-modal-price]");
+        const pack = modal.querySelector("[data-landing-product-modal-pack]");
+        const inquireButton = modal.querySelector("[data-landing-product-inquire]");
+        let lastFocused = null;
+
+        function openModal(product) {
+            const productName = product.dataset.productName || "Batangas Premium product";
+            lastFocused = document.activeElement;
+
+            if (image) {
+                image.src = product.dataset.productImage || "";
+                image.alt = productName;
+            }
+            if (category) {
+                category.textContent = product.dataset.productCategory || "Frozen product";
+            }
+            if (name) {
+                name.textContent = productName;
+            }
+            if (price) {
+                price.textContent = product.dataset.productPrice || "Ask for current pricing";
+            }
+            if (pack) {
+                pack.textContent = product.dataset.productPack || "Frozen retail pack";
+            }
+            if (inquireButton) {
+                inquireButton.dataset.chatbotPrompt = `I'm interested in ${productName}. Can you tell me more?`;
+            }
+
+            modal.hidden = false;
+            document.body.classList.add("modal-is-open");
+            window.requestAnimationFrame(() => {
+                modal.classList.add("is-open");
+                closeButton?.focus();
+            });
+        }
+
+        function closeModal() {
+            if (modal.hidden) {
+                return;
+            }
+            modal.classList.remove("is-open");
+            modal.hidden = true;
+            document.body.classList.remove("modal-is-open");
+            if (lastFocused && typeof lastFocused.focus === "function") {
+                lastFocused.focus();
+            }
+        }
+
+        document.querySelectorAll("[data-landing-product-open]").forEach((trigger) => {
+            trigger.addEventListener("click", () => {
+                const product = trigger.closest("[data-landing-product]");
+                if (product) {
+                    openModal(product);
+                }
+            });
+        });
+
+        modal.querySelectorAll("[data-landing-product-modal-close]").forEach((trigger) => {
+            trigger.addEventListener("click", closeModal);
+        });
+        inquireButton?.addEventListener("click", closeModal);
+
+        document.addEventListener("keydown", (event) => {
+            if (modal.hidden) {
+                return;
+            }
+            if (event.key === "Escape") {
+                closeModal();
+                return;
+            }
+            if (event.key !== "Tab" || !panel) {
+                return;
+            }
+
+            const focusable = Array.from(
+                panel.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])')
+            );
+            if (!focusable.length) {
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    }
+
+    bindLandingProductModal();
 
     function bindPortalDrawer() {
         const toggle = document.querySelector("[data-portal-nav-toggle]");
@@ -1029,9 +1236,105 @@
     const closeButton = widget.querySelector("[data-chatbot-close]");
     const form = widget.querySelector("[data-chatbot-form]");
     const input = form.querySelector("input[name='message']");
+    const sendButton = form.querySelector("button[type='submit']");
+    const sendLabel = sendButton.querySelector("[data-chatbot-send-label]");
     const messages = widget.querySelector("[data-chatbot-messages]");
     const chatbotStorageKey = "meattrack_chatbot_messages_v1";
     const chatbotStorageTtlMs = 24 * 60 * 60 * 1000;
+    const defaultSuggestions = ["View products", "Delivery details", "Become a reseller"];
+    const newChatWelcome = "Welcome to Batangas Premium. How can I help you today?";
+    let activeSuggestions = [...defaultSuggestions];
+    let requestPending = false;
+
+    messages.setAttribute("role", "log");
+    messages.setAttribute("aria-live", "polite");
+    messages.setAttribute("aria-label", "Chat conversation");
+    input.maxLength = 500;
+
+    const suggestions = document.createElement("div");
+    suggestions.className = "chatbot-suggestions";
+    suggestions.setAttribute("aria-label", "Suggested replies");
+    form.before(suggestions);
+
+    const resetButton = document.createElement("button");
+    resetButton.type = "button";
+    resetButton.className = "chatbot-reset";
+    resetButton.textContent = "New chat";
+    resetButton.setAttribute("aria-label", "Start a new conversation");
+    closeButton.before(resetButton);
+
+    function setBusy(busy) {
+        requestPending = busy;
+        input.disabled = busy;
+        sendButton.disabled = busy;
+        suggestions.querySelectorAll("button").forEach((button) => {
+            button.classList.toggle("is-disabled", busy);
+            button.setAttribute("aria-disabled", String(busy));
+        });
+        sendLabel.textContent = busy ? "Sending" : "Send";
+        sendButton.classList.toggle("is-sending", busy);
+        form.setAttribute("aria-busy", String(busy));
+    }
+
+    function renderSuggestions(items = []) {
+        const nextSuggestions = (Array.isArray(items) ? items : [])
+            .map((label) => String(label).trim())
+            .filter(Boolean)
+            .slice(0, 5);
+        if (nextSuggestions.length) {
+            activeSuggestions = nextSuggestions;
+        }
+
+        const fragment = document.createDocumentFragment();
+        activeSuggestions.forEach((label) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "chatbot-suggestion";
+            button.textContent = label;
+            button.classList.toggle("is-disabled", requestPending);
+            button.setAttribute("aria-disabled", String(requestPending));
+            button.addEventListener("click", () => {
+                if (requestPending) {
+                    return;
+                }
+                input.value = String(label);
+                form.requestSubmit();
+            });
+            fragment.appendChild(button);
+        });
+        suggestions.replaceChildren(fragment);
+    }
+
+    async function typeBotReply(bubble, reply) {
+        const text = String(reply || "Please contact Batangas Premium directly for complete details.");
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        bubble.removeAttribute("aria-label");
+
+        if (reduceMotion || text.length < 2) {
+            bubble.textContent = text;
+            return;
+        }
+
+        const characters = Array.from(text);
+        const chunkSize = characters.length > 180 ? 3 : characters.length > 90 ? 2 : 1;
+        const delay = Math.max(14, Math.min(30, Math.round(1400 / Math.ceil(characters.length / chunkSize))));
+        const previousLiveSetting = messages.getAttribute("aria-live") || "polite";
+
+        messages.setAttribute("aria-live", "off");
+        bubble.setAttribute("aria-label", text);
+        bubble.classList.add("is-typing");
+        bubble.textContent = "";
+
+        for (let index = 0; index < characters.length; index += chunkSize) {
+            bubble.textContent += characters.slice(index, index + chunkSize).join("");
+            messages.scrollTop = messages.scrollHeight;
+            await new Promise((resolve) => window.setTimeout(resolve, delay));
+        }
+
+        bubble.classList.remove("is-typing");
+        bubble.removeAttribute("aria-label");
+        messages.setAttribute("aria-live", previousLiveSetting);
+    }
 
     function currentChatMessages() {
         return Array.from(messages.querySelectorAll(".message")).map((bubble) => ({
@@ -1045,6 +1348,7 @@
             window.localStorage.setItem(chatbotStorageKey, JSON.stringify({
                 savedAt: Date.now(),
                 messages: currentChatMessages(),
+                suggestions: activeSuggestions,
             }));
         } catch (error) {
             // Ignore storage failures in private browsing or restricted webviews.
@@ -1061,6 +1365,12 @@
             }
             messages.innerHTML = "";
             stored.messages.forEach((item) => addMessage(item.text, item.type, false));
+            if (Array.isArray(stored.suggestions) && stored.suggestions.length) {
+                activeSuggestions = stored.suggestions
+                    .map((label) => String(label).trim())
+                    .filter(Boolean)
+                    .slice(0, 5);
+            }
         } catch (error) {
             saveChatMessages();
         }
@@ -1071,6 +1381,7 @@
         widget.classList.toggle("is-open", open);
         toggle.setAttribute("aria-expanded", String(open));
         if (open) {
+            messages.scrollTop = messages.scrollHeight;
             input.focus();
         }
     }
@@ -1088,17 +1399,64 @@
     }
 
     restoreChatMessages();
+    renderSuggestions(activeSuggestions);
     toggle.addEventListener("click", () => setOpen(panel.hidden));
-    closeButton.addEventListener("click", () => setOpen(false));
+    closeButton.addEventListener("click", () => {
+        setOpen(false);
+        toggle.focus();
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !panel.hidden) {
+            setOpen(false);
+            toggle.focus();
+        }
+    });
+    resetButton.addEventListener("click", async () => {
+        if (requestPending) {
+            return;
+        }
+        setBusy(true);
+        input.value = "";
+        messages.innerHTML = "";
+        activeSuggestions = [...defaultSuggestions];
+        renderSuggestions(defaultSuggestions);
+        try {
+            window.localStorage.removeItem(chatbotStorageKey);
+        } catch (error) {
+            // The in-memory transcript is still reset when storage is unavailable.
+        }
+
+        try {
+            const response = await fetch("/api/chatbot", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "reset" }),
+            });
+            if (!response.ok) {
+                throw new Error("Unable to reset the server-side conversation.");
+            }
+        } catch (error) {
+            // Keep the local new-chat experience usable if the network is temporarily unavailable.
+        } finally {
+            const resetMessage = addMessage("", "bot", false);
+            await typeBotReply(resetMessage, newChatWelcome);
+            saveChatMessages();
+            setBusy(false);
+            input.focus();
+        }
+    });
     document.querySelectorAll("[data-open-chatbot]").forEach((button) => {
         button.addEventListener("click", () => {
             setOpen(true);
-            input.value = "I want to be a reseller";
+            input.value = button.dataset.chatbotPrompt || "I want to be a reseller";
         });
     });
 
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (requestPending) {
+            return;
+        }
         const question = input.value.trim();
         if (!question) {
             return;
@@ -1106,6 +1464,8 @@
         input.value = "";
         addMessage(question, "user");
         const loading = addMessage("Checking approved Batangas Premium information...", "bot");
+        loading.setAttribute("aria-label", "Assistant is responding");
+        setBusy(true);
 
         try {
             const response = await fetch("/api/chatbot", {
@@ -1114,11 +1474,20 @@
                 body: JSON.stringify({ message: question }),
             });
             const result = await response.json();
-            loading.textContent = result.reply || "Please contact Batangas Premium directly for complete details.";
+            loading.removeAttribute("aria-label");
+            await typeBotReply(
+                loading,
+                result.reply || "Please contact Batangas Premium directly for complete details.",
+            );
+            renderSuggestions(result.suggestions || []);
             saveChatMessages();
         } catch (error) {
-            loading.textContent = "Please contact Batangas Premium directly for complete details.";
+            await typeBotReply(loading, "I couldn't connect right now. Please check your connection and try again.");
+            input.value = question;
             saveChatMessages();
+        } finally {
+            setBusy(false);
+            input.focus();
         }
     });
 })();

@@ -230,60 +230,123 @@ def test_landing_page_does_not_load_metrics(monkeypatch):
     assert response.status_code == 200
 
 
-def test_landing_mobile_catalog_is_compact_and_drawer_based(monkeypatch):
-    monkeypatch.setattr(
-        main.data,
-        "list_products",
-        lambda: [
-            {
-                "name": "Tocino Ala Eh",
-                "description": "Tocino - 500 g per pack.",
-                "category": "Pork",
-                "base_price": 70,
-            }
-        ],
-    )
+def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatch):
+    calls = []
+    products = [
+        {
+            "name": f"Featured Product {index}",
+            "description": "Internal note: set final price in Owner portal.",
+            "category": "Pork",
+            "base_price": 60 + index,
+        }
+        for index in range(1, 9)
+    ]
+
+    def list_products(*args, **kwargs):
+        calls.append((args, kwargs))
+        return products[: kwargs.get("page_size", len(products))]
+
+    monkeypatch.setattr(main.data, "list_products", list_products)
     response = TestClient(main.app).get("/")
     css = open("app/static/css/public.css", encoding="utf-8").read()
 
     assert response.status_code == 200
-    assert 'id="store" class="products-section section-band"' in response.text
+    assert calls == [((), {"active_only": True, "page": 1, "page_size": 6})]
+    assert response.text.count('class="landing-product"') == 6
+    assert "Featured Product 6" in response.text
+    assert "Featured Product 7" not in response.text
+    assert "set final price in Owner portal" not in response.text
+    assert 'href="/products"' not in response.text
+    assert response.text.count("data-landing-product-open") == 12
+    assert "data-landing-product-modal" in response.text
+    assert "data-landing-product-modal-image" in response.text
+    assert "Ask about this product" in response.text
+    assert 'id="store" class="landing-products"' in response.text
+    assert 'id="partnerships"' in response.text
+    assert 'id="about"' in response.text
+    assert 'id="inquiry"' in response.text
+    assert "Premium flavor, ready for your next sale." in response.text
+    assert response.text.count("data-open-chatbot") >= 3
     assert "mobile-drawer-brand" in response.text
     assert "batangas_premium.png" in response.text
-    assert "store-intro" not in response.text
-    assert "Product-first cards" not in response.text
-    assert "Reseller Packages" not in response.text
-    assert ".logo {\n  display: none;" in css
-    assert "justify-content: center;" in css
-    assert ".nav-links li:last-child {\n  position: absolute;" in css
-    assert "right: 0;" in css
-    assert "inset: calc(14px + env(safe-area-inset-top)) auto auto 14px;" in css
-    assert ".nav-title {\n    display: none;" in css
-    assert ".nav-links li:last-child {\n    grid-column: auto;\n    position: static;" in css
-    assert ".mobile-drawer-brand {\n    display: grid;" in css
-    assert "justify-items: center;" in css
-    assert ".mobile-drawer-brand img" in css
-    assert "width: 112px;" in css
-    assert "width: min(210px, 70vw);" in css
-    assert "justify-self: center;" in css
-    assert "margin-inline: auto;" in css
-    assert "pointer-events: none;" in css
-    assert "background: transparent" in css
-    assert "translateX(-105%)" in css
+    assert ".landing-page .landing-nav" in css
+    assert ".landing-product-grid" in css
+    assert ".landing-product-modal-panel" in css
     assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
-    assert ".product-card p {\n    display: none;" in css
-    assert "width: 44px;" in css
-    assert "bottom: calc(10px + env(safe-area-inset-bottom));" in css
-    assert "width: min(356px, calc(100vw - 20px));" in css
+    assert "@media (prefers-reduced-motion: reduce)" in css
     assert ".chatbot-widget.is-open .chatbot-toggle" in css
     app_js = open("app/static/js/app.js", encoding="utf-8").read()
+    assert "function bindLandingExperience()" in app_js
+    assert "function bindLandingProductModal()" in app_js
+    assert 'button.dataset.chatbotPrompt || "I want to be a reseller"' in app_js
+    assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in app_js
     assert 'widget.classList.toggle("is-open", open);' in app_js
     assert 'document.addEventListener("pointerdown", (event) =>' in app_js
     assert "nav.contains(event.target) || toggle.contains(event.target)" in app_js
     assert "meattrack_chatbot_messages_v1" in app_js
     assert "24 * 60 * 60 * 1000" in app_js
+    assert "async function typeBotReply(bubble, reply)" in app_js
+    assert 'suggestions.querySelectorAll("button")' in app_js
+    assert "activeSuggestions = nextSuggestions" in app_js
+    assert "suggestions.replaceChildren(fragment)" in app_js
+    assert "suggestions: activeSuggestions" in app_js
+    assert "Array.isArray(stored.suggestions)" in app_js
+    assert "await typeBotReply(resetMessage, newChatWelcome)" in app_js
+    assert 'bubble.classList.add("is-typing")' in app_js
+    assert "@keyframes chatbot-caret" in css
+    assert "20260927-chatbot-ui-7" in response.text
+    assert "BP ChatBot" in response.text
+    assert "chatbot-avatar" not in response.text
+    assert 'role="dialog" aria-label="Batangas Premium support"' in response.text
+    assert 'data-lucide="message-circle"' in response.text
+    assert 'data-chatbot-send-label' in response.text
+    assert "Premium support concierge" in css
+    assert "padding: 0 !important" in css
     assert "function bindOtpModal()" in app_js
     assert "data-otp-modal-input" in app_js
+
+
+def test_products_page_renders_complete_active_catalog(monkeypatch):
+    calls = []
+    products = [
+        {
+            "name": "Tocino Ala Eh",
+            "description": "Internal note: set final price in Owner portal.",
+            "category": "Pork",
+            "base_price": 70,
+        },
+        {
+            "name": "Beef Longganisa",
+            "description": "Internal note: set final price in Owner portal.",
+            "category": "Beef",
+            "base_price": 75,
+        },
+    ]
+
+    def list_products(*args, **kwargs):
+        calls.append((args, kwargs))
+        return products
+
+    monkeypatch.setattr(main.data, "list_products", list_products)
+    response = TestClient(main.app).get("/products")
+
+    assert response.status_code == 200
+    assert calls == [((), {"active_only": True})]
+    assert '<body class="catalog-page">' in response.text
+    assert "Tocino Ala Eh" in response.text
+    assert "Beef Longganisa" in response.text
+    assert "set final price in Owner portal" not in response.text
+
+
+def test_landing_empty_catalog_shows_chat_fallback(monkeypatch):
+    monkeypatch.setattr(main.data, "list_products", lambda *args, **kwargs: [])
+
+    response = TestClient(main.app).get("/")
+
+    assert response.status_code == 200
+    assert "Catalog update in progress" in response.text
+    assert "Ask us what is available today." in response.text
+    assert "data-open-chatbot" in response.text
 
 
 def test_login_page_removes_social_buttons_and_uses_glass_styles():

@@ -4,21 +4,29 @@
     <meta charset="utf-8" />
     <meta name="csrf-token" content="{{ csrf_token(request) }}" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Batangas Premium | Frozen Meat Products</title>
+    <meta
+      name="description"
+      content="Batangas Premium frozen meat products and partnership opportunities for resellers, outlets, and distributors."
+    />
+    <meta name="theme-color" content="#0d0c0b" />
+    <title>Batangas Premium | Frozen Meat Products &amp; Reseller Opportunities</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/public.css') }}?v=20260722-mobile-hero-logo-1"
+      href="{{ url_for('static', path='css/public.css') }}?v=20260927-chatbot-ui-7"
     />
   </head>
   <body class="landing-page">
-    <nav class="navbar">
+    <nav class="navbar landing-nav" aria-label="Primary navigation" data-landing-nav>
       <div class="nav-container">
-        <span class="nav-title">Batangas Premium</span>
+        <a class="landing-brand" href="#home" aria-label="Batangas Premium home">
+          <img src="{{ 'batangas_premium.png'|media_url }}" alt="Batangas Premium" />
+        </a>
         <button
           class="mobile-nav-toggle"
           type="button"
           aria-expanded="false"
           aria-controls="public-nav"
+          aria-label="Open navigation"
           data-mobile-nav-toggle
         >
           <i data-lucide="menu"></i>
@@ -29,220 +37,283 @@
             <img src="{{ 'batangas_premium.png'|media_url }}" alt="" />
           </li>
           <li><a href="#home" data-scroll-tab>Home</a></li>
-          <li><a href="#store" data-scroll-tab>Store</a></li>
-          <li><a href="#about" data-scroll-tab>About</a></li>
-          <li><a href="#partnerships" data-scroll-tab>Partnerships</a></li>
+          <li><a href="#store" data-scroll-tab>Featured</a></li>
+          <li><a href="#partnerships" data-scroll-tab>Partner</a></li>
+          <li><a href="#about" data-scroll-tab>Our Story</a></li>
           <li><a href="#inquiry" data-scroll-tab>Contact</a></li>
           <li><a href="/login" class="btn-portal">Portal Login</a></li>
         </ul>
       </div>
     </nav>
 
-    <section
-      id="home"
-      class="hero"
-      style="background-image: url('{{ 'background.jpg'|media_url }}')"
-    >
-      <div class="hero-overlay"></div>
-      <div class="hero-content">
-        <div class="hero-center">
+    <header id="home" class="landing-hero">
+      <div
+        class="landing-hero-media"
+        style="background-image: url('{{ 'background.jpg'|media_url }}')"
+        aria-hidden="true"
+        data-hero-media
+      ></div>
+      <div class="landing-hero-shade" aria-hidden="true"></div>
+      <div class="landing-hero-inner">
+        <div class="landing-hero-copy">
           <img
             src="{{ 'batangas_premium.png'|media_url }}"
-            alt="Batangas Premium Logo"
-            class="hero-logo"
+            alt="Batangas Premium"
+            class="landing-hero-logo"
+            data-hero-item
           />
-          <h1>Batangas Premium</h1>
-          <p class="tagline">
-            <mark>Ala Eh! Pagkakasarap-sarap nire!</mark> Premium frozen meat
-            products for homes, resellers, and local outlets.
-          </p>
-          <div class="quality-row" aria-label="Brand quality highlights">
-            <span>Pure</span>
-            <span>Guaranteed</span>
-            <span>Quality</span>
-          </div>
-          <div class="hero-buttons">
-            <a href="#store" class="btn btn-primary">Explore Store</a>
-            <a href="#inquiry" class="btn btn-secondary">Become a Partner</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    {% if message or error %}
-    <div class="alert {{ 'alert-error' if error else 'alert-success' }}">
-      {{ error or message }}
-    </div>
-    {% endif %}
-
-    <section id="store" class="products-section section-band">
-      <div class="container">
-        <div class="section-header">
-          <h2>Featured Frozen Products</h2>
-          <p>Retail packs and reseller-ready products in one compact catalog.</p>
-        </div>
-        <div class="products-grid">
-          {% for product in products %}
-          <article class="product-card">
-            <a class="product-media" href="#inquiry">
-              <img
-                src="{{ product.name|product_image|media_url }}"
-                alt="{{ product.name }}"
-                loading="lazy"
-              />
-            </a>
-            <div class="product-card-body">
-              <span class="product-category">{{ product.category }}</span>
-              <h3>{{ product.name }}</h3>
-              <p>{{ product.description }}</p>
-              <div class="product-meta">
-                <strong class="product-price">{{ product.base_price|currency }}</strong>
-                <a class="product-cta" href="#inquiry">Inquire</a>
-              </div>
-            </div>
-          </article>
-          {% endfor %}
-        </div>
-      </div>
-    </section>
-
-    <section id="about" class="about-section section-band">
-      <div class="container about-content">
-        <div class="about-text">
-          <h2>From Engineers to Entrepreneurs</h2>
-          <p>
-            Batangas Premium was founded on June 22, 2020, by Nicko Jay
-            Landicho and Weng Opena. The brand grew from skinless longganisa
-            into a trusted frozen meat line serving homes, resellers, and local
-            outlets.
-          </p>
-          <p>
-            The system behind MEATTRACK supports that growth with inventory,
-            sales, reseller ordering, and demand forecasting in one workflow.
-          </p>
-          <div class="about-stats">
-            <div class="stat">
-              <span class="stat-value">June 2020</span>
-              <span class="stat-label">Founded</span>
-            </div>
-            <div class="stat">
-              <span class="stat-value">5,000+</span>
-              <span class="stat-label">Distributor reach</span>
-            </div>
-            <div class="stat">
-              <span class="stat-value">10 Regions</span>
-              <span class="stat-label">Luzon and Visayas</span>
-            </div>
-          </div>
-        </div>
-        <div class="about-features">
-          <div class="feature-box">
-            <span class="feature-icon">MEATS</span>
-            <h4>Premium Products</h4>
-            <p>Longganisa, tapa, tocino, ham, bacon, and specialty meats.</p>
-          </div>
-          <div class="feature-box">
-            <span class="feature-icon">QC</span>
-            <h4>Quality Standards</h4>
-            <p>Consistent handling, batch visibility, and expiry monitoring.</p>
-          </div>
-          <div class="feature-box">
-            <span class="feature-icon">REACH</span>
-            <h4>Wide Reach</h4>
-            <p>Distribution activity across major Luzon and Visayas regions.</p>
-          </div>
-          <div class="feature-box">
-            <span class="feature-icon">TEAM</span>
-            <h4>Partner Growth</h4>
-            <p>Programs for resellers, outlet partners, and distributors.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="partnerships" class="partnerships-section section-band">
-      <div class="container">
-        <h2>Partnership Opportunities</h2>
-        <div class="partnership-grid">
-          <div class="partnership-card">
-            <h3>Reseller Program</h3>
-            <p>Carry Batangas Premium products with competitive reseller rates.</p>
-            <ul class="benefits-list">
-              <li>Wholesale pricing</li>
-              <li>Flexible order quantities</li>
-              <li>Sales support</li>
-            </ul>
-          </div>
-          <div class="partnership-card featured">
-            <h3>City Outlet</h3>
-            <p>Bring frozen products closer to local buyers in your area.</p>
-            <ul class="benefits-list">
-              <li>Area-focused selling</li>
-              <li>Higher margins</li>
-              <li>Business guidance</li>
-            </ul>
-          </div>
-          <div class="partnership-card">
-            <h3>Distributor Network</h3>
-            <p>Expand through volume-based supply and wider coverage.</p>
-            <ul class="benefits-list">
-              <li>Volume discounts</li>
-              <li>Logistics coordination</li>
-              <li>Growth incentives</li>
-            </ul>
-          </div>
-        </div>
-        <div class="button-row center-actions">
-          <a class="btn btn-primary" href="#inquiry">Start reseller chat</a>
-        </div>
-      </div>
-    </section>
-
-    <section id="inquiry" class="inquiry-section">
-      <div class="container">
-        <h2>Let's Connect</h2>
-        <p class="inquiry-intro">
-          Interested in products, reseller rates, or city outlet opportunities?
-          Start with the chatbot so your details can be confirmed and assigned to an available sales team leader.
-        </p>
-
-        <div class="inquiry-wrapper">
-          <div class="inquiry-form inquiry-chat-card">
-            <h3>Reseller inquiries are handled through chat</h3>
-            <p>
-              The chatbot answers common questions first, confirms your details,
-              then assigns the inquiry to an available sales team leader.
+          <p class="landing-eyebrow" data-hero-item>Ala Eh! Pagkakasarap-sarap nire!</p>
+          <div class="landing-hero-message">
+            <h1 data-hero-item>Premium flavor, ready for your next sale.</h1>
+            <p class="landing-hero-intro" data-hero-item>
+              Stock trusted frozen favorites with flexible options and hands-on support for growing local sellers.
             </p>
-            <button type="button" class="btn btn-primary btn-large" data-open-chatbot>
+          </div>
+          <div class="landing-hero-actions" data-hero-item>
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot>
+              Start reseller inquiry
+            </button>
+            <a href="#store" class="btn landing-btn-secondary">Browse products</a>
+          </div>
+        </div>
+      </div>
+      <a class="landing-scroll-cue" href="#store" aria-label="Scroll to featured products">
+        <span>Discover</span>
+        <i data-lucide="arrow-down"></i>
+      </a>
+    </header>
+
+    <main>
+      {% if message or error %}
+      <div class="alert {{ 'alert-error' if error else 'alert-success' }}">
+        {{ error or message }}
+      </div>
+      {% endif %}
+
+      <section id="store" class="landing-products" aria-labelledby="featured-title" data-landing-reveal>
+        <div class="landing-shell">
+          <div class="landing-section-heading landing-section-heading-split">
+            <div>
+              <p class="landing-kicker">Featured selection</p>
+              <h2 id="featured-title">Frozen favorites people come back for.</h2>
+            </div>
+            <div class="landing-section-aside">
+              <p>Retail-ready staples and crowd favorites from the Batangas Premium catalog.</p>
+              <p class="landing-product-hint">
+                <i data-lucide="mouse-pointer-click"></i>
+                Select a product for a closer look.
+              </p>
+            </div>
+          </div>
+
+          {% if products %}
+          <div class="landing-product-grid">
+            {% for product in products %}
+            <article
+              class="landing-product"
+              data-landing-reveal-item
+              data-landing-product
+              data-product-name="{{ product.name }}"
+              data-product-category="{{ product.category }}"
+              data-product-price="{{ product.base_price|currency }}"
+              data-product-image="{{ product.name|product_image|media_url }}"
+              data-product-pack="{% if product.pack_size and product.pack_size_unit %}{{ product.pack_size|number }} {{ product.pack_size_unit }} per pack{% else %}Frozen retail pack{% endif %}"
+            >
+              <button
+                class="landing-product-media"
+                type="button"
+                data-landing-product-open
+                aria-label="View details for {{ product.name }}"
+              >
+                <img
+                  src="{{ product.name|product_image|media_url }}"
+                  alt="{{ product.name }}"
+                  loading="{{ 'eager' if loop.index <= 3 else 'lazy' }}"
+                />
+              </button>
+              <div class="landing-product-copy">
+                <span>{{ product.category }}</span>
+                <h3>
+                  <button type="button" data-landing-product-open>{{ product.name }}</button>
+                </h3>
+                <strong>{{ product.base_price|currency }}</strong>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="landing-empty-state" data-landing-reveal-item>
+            <p class="landing-kicker">Catalog update in progress</p>
+            <h3>Ask us what is available today.</h3>
+            <p>Our team can share the current product list, reseller rates, and package options through chat.</p>
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot>Open reseller chat</button>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section
+        id="partnerships"
+        class="landing-partnerships"
+        aria-labelledby="partnerships-title"
+        data-landing-reveal
+      >
+        <div class="landing-shell">
+          <div class="landing-section-heading landing-section-heading-light">
+            <p class="landing-kicker">Ways to grow</p>
+            <h2 id="partnerships-title">Start where you are. Scale with support.</h2>
+            <p>Choose the path that fits your market today. We will help you understand the next step.</p>
+          </div>
+
+          <div class="landing-partner-paths">
+            <article class="landing-partner-path" data-landing-reveal-item>
+              <span>01</span>
+              <h3>Reseller</h3>
+              <p>Begin with flexible quantities, reseller pricing, and practical sales support.</p>
+              <strong>Best for individual sellers</strong>
+            </article>
+            <article class="landing-partner-path" data-landing-reveal-item>
+              <span>02</span>
+              <h3>City Outlet</h3>
+              <p>Build a reliable local supply point with area-focused selling and business guidance.</p>
+              <strong>Best for established local shops</strong>
+            </article>
+            <article class="landing-partner-path" data-landing-reveal-item>
+              <span>03</span>
+              <h3>Distributor</h3>
+              <p>Serve a wider territory through volume supply, logistics coordination, and growth incentives.</p>
+              <strong>Best for regional operators</strong>
+            </article>
+          </div>
+
+          <div class="landing-partner-action">
+            <p>Not sure which path fits? Tell us about your location and selling experience.</p>
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot>
+              Start reseller inquiry
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="about" class="landing-story" aria-labelledby="story-title" data-landing-reveal>
+        <div class="landing-shell landing-story-grid">
+          <div class="landing-story-mark" aria-hidden="true">
+            <span>Since</span>
+            <strong>2020</strong>
+            <em>Padre Garcia, Batangas</em>
+          </div>
+          <div class="landing-story-copy">
+            <p class="landing-kicker">Built in Batangas</p>
+            <h2 id="story-title">From engineers to entrepreneurs.</h2>
+            <p class="landing-story-lead">
+              Founded by Nicko Jay Landicho and Weng Opena, Batangas Premium grew from skinless longganisa into a frozen meat line serving homes, resellers, and local outlets.
+            </p>
+            <p>
+              Behind the brand, MEATTRACK keeps inventory, sales, reseller orders, and demand forecasting connected in one operating workflow.
+            </p>
+            <dl class="landing-facts">
+              <div>
+                <dt>5,000+</dt>
+                <dd>Distributor reach</dd>
+              </div>
+              <div>
+                <dt>10 regions</dt>
+                <dd>Across Luzon and Visayas</dd>
+              </div>
+              <div>
+                <dt>One workflow</dt>
+                <dd>From stock to reseller order</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section id="inquiry" class="landing-contact" aria-labelledby="contact-title" data-landing-reveal>
+        <div class="landing-shell">
+          <div class="landing-contact-main">
+            <p class="landing-kicker">Let&rsquo;s grow locally</p>
+            <h2 id="contact-title">Bring Batangas Premium to your market.</h2>
+            <p>Start in chat. We will confirm your details and connect you with an available sales team leader.</p>
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot>
               Open reseller chat
             </button>
-            <p class="hint">
-              Public sign-up is disabled. Portal accounts are created only by Batangas Premium team leaders.
-            </p>
+            <small>Portal accounts are created by Batangas Premium team leaders after inquiry review.</small>
           </div>
-
-          <div class="contact-info">
-            <h3>Contact Details</h3>
-            <div class="info-item">
-              <strong>Address</strong>
+          <address class="landing-contact-details">
+            <div>
+              <span>Call</span>
+              <a href="tel:+639353356483">0935 335 6483</a>
+            </div>
+            <div>
+              <span>Email</span>
+              <a href="mailto:batangas.premium@yahoo.com">batangas.premium@yahoo.com</a>
+            </div>
+            <div>
+              <span>Visit</span>
               <p>Pansol, Padre Garcia<br />Batangas, Philippines</p>
             </div>
-            <div class="info-item">
-              <strong>Phone</strong>
-              <p>0935 335 6483</p>
-            </div>
-            <div class="info-item">
-              <strong>Email</strong>
-              <p>batangas.premium@yahoo.com</p>
-            </div>
-            <div class="info-item">
-              <strong>Hours</strong>
+            <div>
+              <span>Hours</span>
               <p>Monday - Saturday<br />7:00 AM - 5:00 PM</p>
             </div>
-          </div>
+          </address>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
+
+    <div class="landing-product-modal" data-landing-product-modal hidden>
+      <button
+        class="landing-product-modal-backdrop"
+        type="button"
+        data-landing-product-modal-close
+        aria-label="Close product details"
+      ></button>
+      <section
+        class="landing-product-modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="landing-product-modal-title"
+        aria-describedby="landing-product-modal-description"
+      >
+        <button
+          class="landing-product-modal-close"
+          type="button"
+          data-landing-product-modal-close
+          aria-label="Close product details"
+        >
+          <i data-lucide="x"></i>
+        </button>
+        <div class="landing-product-modal-media">
+          <img src="" alt="" data-landing-product-modal-image />
+        </div>
+        <div class="landing-product-modal-copy">
+          <p class="landing-kicker" data-landing-product-modal-category></p>
+          <h2 id="landing-product-modal-title" data-landing-product-modal-name></h2>
+          <p class="landing-product-modal-description" id="landing-product-modal-description">
+            A premium frozen favorite from Batangas Premium, packed for convenient home cooking and local resale.
+          </p>
+          <dl class="landing-product-modal-details">
+            <div>
+              <dt>Retail price</dt>
+              <dd data-landing-product-modal-price></dd>
+            </div>
+            <div>
+              <dt>Package</dt>
+              <dd data-landing-product-modal-pack></dd>
+            </div>
+          </dl>
+          <button
+            type="button"
+            class="btn landing-btn-primary landing-product-modal-inquire"
+            data-open-chatbot
+            data-landing-product-inquire
+          >
+            Ask about this product
+          </button>
+        </div>
+      </section>
+    </div>
 
     <aside class="chatbot-widget" data-chatbot>
       <button
@@ -251,13 +322,14 @@
         aria-expanded="false"
         aria-controls="chatbot-panel"
       >
+        <i data-lucide="message-circle" aria-hidden="true"></i>
         <span class="chat-text">Chat with us</span>
       </button>
-      <section class="chatbot-panel" id="chatbot-panel" hidden>
+      <section class="chatbot-panel" id="chatbot-panel" role="dialog" aria-label="Batangas Premium support" hidden>
         <header class="chatbot-header">
-          <div>
-            <strong>Batangas Premium</strong>
-            <span>Questions about products, ordering, or partnerships?</span>
+          <div class="chatbot-identity">
+            <strong>BP ChatBot</strong>
+            <span>Products · Orders · Resellers</span>
           </div>
           <button
             class="close-btn"
@@ -265,7 +337,7 @@
             data-chatbot-close
             aria-label="Close chat"
           >
-            x
+            <i data-lucide="x" aria-hidden="true"></i>
           </button>
         </header>
         <div class="chatbot-messages" data-chatbot-messages>
@@ -278,44 +350,34 @@
             name="message"
             type="text"
             autocomplete="off"
-            placeholder="Ask us anything..."
+            placeholder="Type your message..."
             required
           />
-          <button type="submit" aria-label="Send message">Send</button>
+          <button class="chatbot-send" type="submit" aria-label="Send message">
+            <span data-chatbot-send-label>Send</span>
+            <i data-lucide="arrow-up" aria-hidden="true"></i>
+          </button>
         </form>
       </section>
     </aside>
 
-    <footer class="footer">
-      <div class="container">
-        <div class="footer-content">
-          <div class="footer-section">
-            <h4>Batangas Premium</h4>
-            <p>Quality frozen meat products crafted with tradition and care.</p>
-          </div>
-          <div class="footer-section">
-            <h4>Quick Links</h4>
-            <ul>
-              <li><a href="/products">Store</a></li>
-              <li><a href="#about">About</a></li>
-              <li><a href="#partnerships">Partnerships</a></li>
-              <li><a href="#inquiry">Contact</a></li>
-              <li><a href="/login">Portal</a></li>
-            </ul>
-          </div>
-          <div class="footer-section">
-            <h4>Get In Touch</h4>
-            <p>0935 335 6483</p>
-            <p>batangas.premium@yahoo.com</p>
-          </div>
+    <footer class="landing-footer">
+      <div class="landing-shell">
+        <div>
+          <strong>Batangas Premium</strong>
+          <span>Pure. Guaranteed. Quality.</span>
         </div>
-        <div class="footer-bottom">
-          <p>&copy; 2020 Batangas Premium. All rights reserved.</p>
-        </div>
+        <nav aria-label="Footer navigation">
+          <a href="#store">Products</a>
+          <a href="#partnerships">Partner</a>
+          <a href="#about">Our Story</a>
+          <a href="/login">Portal</a>
+        </nav>
+        <p>&copy; 2020 Batangas Premium. All rights reserved.</p>
       </div>
     </footer>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260722-chatbot-persist-1"></script>
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260927-chatbot-ui-7"></script>
   </body>
 </html>

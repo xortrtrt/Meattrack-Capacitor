@@ -924,8 +924,10 @@ def require_portal_session(request: Request, role_key: str) -> RedirectResponse 
     return redirect_to(path_with_query("/login", error="Please sign in to access that portal."))
 
 
-def public_products() -> list[dict]:
+def public_products(limit: int | None = None) -> list[dict]:
     try:
+        if limit is not None:
+            return data.list_products(active_only=True, page=1, page_size=limit)
         return data.list_products(active_only=True)
     except Exception:
         return []
@@ -940,14 +942,21 @@ async def landing(request: Request, message: str = "", error: str = ""):
             "request": request,
             "message": message,
             "error": error,
-            "products": public_products(),
+            "products": public_products(limit=6),
         },
     )
 
 
 @app.get("/products")
 async def products(request: Request):
-    return RedirectResponse("/#store", status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    return templates.TemplateResponse(
+        request,
+        "products.html",
+        {
+            "request": request,
+            "products": public_products(),
+        },
+    )
 
 
 @app.get("/about")
@@ -980,14 +989,35 @@ async def create_public_inquiry(
 @app.post("/api/chatbot")
 async def chatbot_api(request: Request):
     try:
+        payload = await request.json()
+    except (TypeError, ValueError):
+        return JSONResponse({"reply": "Please send a valid chat message."}, status_code=400)
+    if not isinstance(payload, dict):
+        return JSONResponse({"reply": "Please send a valid chat message."}, status_code=400)
+    if payload.get("action") == "reset":
+        request.session["chatbot_state"] = {}
+        return JSONResponse(
+            {
+                "reply": "Conversation reset. How can I help with Batangas Premium today?",
+                "lead_created": False,
+                "assigned_team_leader": None,
+                "suggestions": ["View products", "Delivery details", "Become a reseller"],
+            }
+        )
+    try:
         enforce_chatbot(request)
     except ValueError as exc:
         return JSONResponse({"reply": str(exc)}, status_code=429)
-    payload = await request.json()
     message = str(payload.get("message", "")).strip()
     if len(message) < 2:
         return JSONResponse({"reply": "Please contact Batangas Premium directly for complete details."})
-    result = process_chatbot_message(message, request.session.get("chatbot_state") or {})
+    if len(message) > 500:
+        return JSONResponse({"reply": "Please keep your message under 500 characters."}, status_code=400)
+    result = process_chatbot_message(
+        message,
+        request.session.get("chatbot_state") or {},
+        catalog=public_products(),
+    )
     lead_created = False
     assigned_team_leader = None
     if result.get("action") == "create_lead":
@@ -1023,7 +1053,14 @@ async def chatbot_api(request: Request):
         request.session["chatbot_state"] = result.get("state") or {}
         reply = result["reply"]
     data.add_log("Website visitor", "used_chatbot", "Public support widget")
-    return JSONResponse({"reply": reply, "lead_created": lead_created, "assigned_team_leader": assigned_team_leader})
+    return JSONResponse(
+        {
+            "reply": reply,
+            "lead_created": lead_created,
+            "assigned_team_leader": assigned_team_leader,
+            "suggestions": result.get("suggestions") or [],
+        }
+    )
 
 
 @app.get("/login")
