@@ -38,7 +38,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall -q app tools tests
       - run: python tools/migrate_database.py
-      - run: pytest -q
+      - run: python -m pytest -q
       - run: python tools/import_supabase_database.py --self-check
 
   production-security:
