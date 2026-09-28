@@ -43,6 +43,8 @@ jobs:
 
   production-security:
     runs-on: ubuntu-latest
+    env:
+      RATE_LIMIT_HASH_KEY: ci-production-rate-limit-test-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
