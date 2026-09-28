@@ -11,7 +11,6 @@ import tempfile
 from threading import Lock
 
 from app.database import fetch_all, fetch_one, execute_write, clean_row, get_transaction_cursor
-from app.config import DEFAULT_ACCOUNT_PASSWORD
 from app import inventory_measurements as measurements
 from app.business_time import business_now, business_today
 from app.security_controls import enforce_otp_attempt, enforce_otp_resend, record_event, record_otp_resend
@@ -461,6 +460,7 @@ team_leader_nav_by_role = {
     ],
     "sales": [
         ("dashboard", "Dashboard", "layout-dashboard"),
+        ("live-chat", "Live Chat", "messages-square"),
         ("inquiries", "Inquiries", "user-check"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
@@ -2577,15 +2577,25 @@ def add_log(actor_name: str, action: str, entity_name: str, actor_account_id: in
             acc_id = acc["account_id"] if acc else None
         _add_log_cursor(cur, actor_account_id=acc_id, action=action)
 
-def add_inquiry(name: str, business_name: str, email: str, contact_number: str, message: str) -> dict:
+def add_inquiry(
+    name: str,
+    business_name: str,
+    email: str,
+    contact_number: str,
+    message: str,
+    chat_conversation_id: str | None = None,
+) -> dict:
     leader = next_sales_team_leader()
     leader_id = leader["account_id"] if leader else None
     with get_transaction_cursor() as cur:
         cur.execute("""
-            INSERT INTO inquiries (name, contact_number, email, business_name, message, status, assigned_team_leader_account_id)
-            VALUES (%s, %s, %s, %s, %s, 'assigned', %s)
+            INSERT INTO inquiries (
+                name, contact_number, email, business_name, message, status,
+                assigned_team_leader_account_id, chat_conversation_id
+            )
+            VALUES (%s, %s, %s, %s, %s, 'assigned', %s, %s)
             RETURNING inquiry_id, name, contact_number, email, business_name, message, status, assigned_team_leader_account_id, created_at;
-        """, (name, contact_number, email, business_name, message, leader_id))
+        """, (name, contact_number, email, business_name, message, leader_id, chat_conversation_id))
         inq = cur.fetchone()
         _add_log_cursor(cur, actor_account_id=None, action="created_inquiry", entity_type="inquiries", entity_id=inq["inquiry_id"])
         _create_notification_cursor(

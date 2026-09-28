@@ -7,6 +7,7 @@ from app.config import APP_BASE_URL
 from app.database import get_transaction_cursor
 from app.emailer import send_account_activation, send_inquiry_status_update
 from app.web_sessions import cleanup_expired_sessions
+from app import live_chat
 
 
 LOGGER = logging.getLogger("meattrack.worker")
@@ -198,11 +199,23 @@ def cleanup_ephemeral_security_data() -> None:
         cur.execute("DELETE FROM account_activation_tokens WHERE consumed_at < now() - interval '30 days'")
 
 
+def retry_live_chat_publications() -> None:
+    if not live_chat.LIVE_CHAT_ENABLED or not live_chat.ABLY_API_KEY:
+        return
+    for message in live_chat.pending_messages():
+        try:
+            live_chat.publish_message(message, str(message["conversation_id"]))
+        except live_chat.AblyUnavailable as exc:
+            live_chat.mark_publish_failed(int(message["chat_message_id"]), str(exc))
+
+
 def run_once() -> None:
     enqueue_due_inquiry_followups()
     scan_batch_expiry()
     cleanup_expired_sessions()
     cleanup_ephemeral_security_data()
+    live_chat.maintenance()
+    retry_live_chat_publications()
     while process_one_outbox():
         pass
 

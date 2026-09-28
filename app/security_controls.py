@@ -1,16 +1,99 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, status
 
-from app.config import APP_ENV, AUTH_RATE_LIMIT_ENABLED, CSRF_PROTECTION_ENABLED
+from app.config import APP_ENV, AUTH_RATE_LIMIT_ENABLED, CSRF_PROTECTION_ENABLED, RATE_LIMIT_HASH_KEY
 from app.database import get_transaction_cursor
 
 
 def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+class RateLimitExceeded(ValueError):
+    def __init__(self, message: str, retry_after: int):
+        super().__init__(message)
+        self.retry_after = max(1, int(retry_after))
+
+
+def _rate_subject(value: str) -> str:
+    return hmac.new(
+        RATE_LIMIT_HASH_KEY.encode("utf-8"),
+        value.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _session_rate_id(request: Request) -> str:
+    value = request.session.get("rate_limit_id")
+    if not value:
+        value = secrets.token_urlsafe(18)
+        request.session["rate_limit_id"] = value
+    return str(value)
+
+
+def consume_rate_limit(
+    event_type: str,
+    subject: str,
+    limit: int,
+    window_seconds: int,
+    message: str,
+) -> None:
+    """Atomically consume a fixed-window allowance in PostgreSQL."""
+    if not AUTH_RATE_LIMIT_ENABLED:
+        return
+    subject_hash = _rate_subject(subject)
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO rate_limit_buckets (
+                event_type, subject_hash, window_seconds, bucket_started_at,
+                request_count, expires_at
+            )
+            VALUES (
+                %s, %s, %s,
+                to_timestamp(floor(extract(epoch FROM now()) / %s) * %s),
+                1,
+                to_timestamp(floor(extract(epoch FROM now()) / %s) * %s) + make_interval(secs => %s)
+            )
+            ON CONFLICT (event_type, subject_hash, window_seconds, bucket_started_at)
+            DO UPDATE SET request_count = rate_limit_buckets.request_count + 1
+            WHERE rate_limit_buckets.request_count < %s
+            RETURNING extract(epoch FROM (expires_at - now()))::integer AS retry_after;
+            """,
+            (
+                event_type,
+                subject_hash,
+                window_seconds,
+                window_seconds,
+                window_seconds,
+                window_seconds,
+                window_seconds,
+                window_seconds,
+                limit,
+            ),
+        )
+        row = cur.fetchone()
+        if row:
+            return
+        cur.execute(
+            """
+            SELECT greatest(1, extract(epoch FROM (expires_at - now()))::integer) AS retry_after
+            FROM rate_limit_buckets
+            WHERE event_type = %s AND subject_hash = %s AND window_seconds = %s
+              AND expires_at > now()
+            ORDER BY bucket_started_at DESC
+            LIMIT 1;
+            """,
+            (event_type, subject_hash, window_seconds),
+        )
+        blocked = cur.fetchone()
+    raise RateLimitExceeded(message, int(blocked["retry_after"] if blocked else window_seconds))
 
 
 def csrf_token(request: Request) -> str:
@@ -105,12 +188,31 @@ def record_otp_resend(account_id: int) -> None:
 
 
 def enforce_chatbot(request: Request) -> None:
-    key = request.scope.get("meattrack.session_token") or client_ip(request)
-    enforce_limit("chatbot", str(key), 30, "1 minute", "Chat limit reached. Please wait a minute.")
-    record_event("chatbot", str(key))
+    consume_rate_limit("chatbot_session", f"session:{_session_rate_id(request)}", 20, 60, "Chat limit reached. Please wait a moment.")
+    consume_rate_limit("chatbot_ip", f"ip:{client_ip(request)}", 60, 600, "Chat limit reached for this network. Please try again later.")
+
+
+def enforce_chatbot_reset(request: Request) -> None:
+    consume_rate_limit("chatbot_reset", f"session:{_session_rate_id(request)}", 5, 600, "Too many new-chat requests. Please wait before resetting again.")
+    consume_rate_limit("chatbot_reset_ip", f"ip:{client_ip(request)}", 20, 600, "Too many new-chat requests from this network. Please wait before resetting again.")
+
+
+def enforce_live_message(request: Request, *, account_id: int | None = None) -> None:
+    identity = f"account:{account_id}" if account_id is not None else f"session:{_session_rate_id(request)}"
+    consume_rate_limit("live_message", identity, 30, 60, "Live-chat message limit reached. Please wait a moment.")
+    consume_rate_limit("live_message_ip", f"ip:{client_ip(request)}", 120, 600, "Live-chat message limit reached for this network.")
+
+
+def enforce_handoff(request: Request) -> None:
+    consume_rate_limit("live_handoff", f"session:{_session_rate_id(request)}", 3, 3600, "Live-chat request limit reached. Please try again later.")
+    consume_rate_limit("live_handoff_ip", f"ip:{client_ip(request)}", 10, 3600, "Live-chat request limit reached for this network.")
+
+
+def enforce_ably_token(request: Request, *, account_id: int | None = None) -> None:
+    identity = f"account:{account_id}" if account_id is not None else f"session:{_session_rate_id(request)}"
+    consume_rate_limit("ably_token", identity, 10, 60, "Too many live-chat connection attempts. Please wait a moment.")
 
 
 def enforce_lead(request: Request, email: str) -> None:
-    key = f"{email.lower()}|{client_ip(request)}"
-    enforce_limit("chatbot_lead", key, 3, "1 day", "Lead submission limit reached. Please contact Batangas Premium directly.")
-    record_event("chatbot_lead", key)
+    consume_rate_limit("chatbot_lead_contact", f"email:{email.lower()}", 3, 86400, "Lead submission limit reached. Please contact Batangas Premium directly.")
+    consume_rate_limit("chatbot_lead_ip", f"ip:{client_ip(request)}", 3, 86400, "Lead submission limit reached. Please contact Batangas Premium directly.")

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, follow" />
+    <meta name="theme-color" content="#0d0c0b" />
+    <title>Page Not Found | Batangas Premium</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/error.css') }}?v=20260928-1" />
+    <script src="{{ url_for('static', path='js/error.js') }}?v=20260928-1" defer></script>
+  </head>
+  <body>
+    <div class="error-page">
+      <div
+        class="error-media"
+        style="background-image: url('{{ 'background.jpg'|media_url }}')"
+        aria-hidden="true"
+      >
+        <span class="error-scan-line"></span>
+      </div>
+      <div class="error-code" aria-hidden="true">404</div>
+
+      <header class="error-header">
+        <a class="error-brand" href="/" aria-label="Batangas Premium home">
+          <span>Batangas</span>
+          <strong>Premium</strong>
+        </a>
+        <div class="error-status" aria-label="Page status: not found">
+          <span></span>
+          Page not found
+        </div>
+      </header>
+
+      <main class="error-main">
+        <section class="error-copy" aria-labelledby="error-title">
+          <p class="error-eyebrow">Error 404 <span></span> Lost in transit</p>
+          <h1 id="error-title">This cut isn't<br />on the menu.</h1>
+          <p class="error-intro">
+            The page may have moved or the address may be incomplete. Let’s get you back to something fresh.
+          </p>
+          <div class="error-actions">
+            <a class="error-primary" href="/">
+              Back to home
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </a>
+            <button class="error-secondary" type="button" data-error-back>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M19 12H5M11 18l-6-6 6-6" />
+              </svg>
+              Go back
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="error-footer">
+        <p>Batangas Premium</p>
+        <a href="/products">Browse products <span aria-hidden="true">↗</span></a>
+      </footer>
+    </div>
+  </body>
+</html>

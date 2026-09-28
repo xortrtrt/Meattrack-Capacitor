@@ -1,6 +1,7 @@
 from datetime import timedelta
 import hashlib
 from pathlib import Path
+import secrets
 import sys
 
 import psycopg2
@@ -9,9 +10,22 @@ import psycopg2
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.config import OWNER_PASSWORD, RESELLER_PASSWORD, TEAM_LEADER_PASSWORD, database_dsn
+from app.config import APP_BASE_URL, database_dsn
 from app.business_time import business_today
 from app.security import hash_password
+
+
+def create_activation_link(cur, account_id: int) -> str:
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    cur.execute(
+        """
+        INSERT INTO account_activation_tokens (account_id, token_hash, expires_at)
+        VALUES (%s, %s, now() + interval '24 hours');
+        """,
+        (account_id, token_hash),
+    )
+    return f"{APP_BASE_URL}/activate?token={raw_token}"
 
 def main():
     dsn = database_dsn()
@@ -19,6 +33,7 @@ def main():
     conn = psycopg2.connect(dsn)
     conn.autocommit = False
     cur = conn.cursor()
+    activation_links: list[tuple[str, str]] = []
 
     try:
         print("Resetting public schema...")
@@ -64,7 +79,7 @@ def main():
         print("Seeding resellers...")
         cur.execute("""
             INSERT INTO resellers (business_name, contact_person, email, contact_number, address, reseller_status, created_at) VALUES
-            ('Lipa Fresh Mart', 'Carlo Mendoza', 'reseller@lipafresh.test', '0917 204 1198', 'Poblacion, Lipa City', 'active', %s)
+            ('Lipa Fresh Mart', 'Carlo Mendoza', 'reseller@lipafresh.test', '0917 204 1198', 'Poblacion, Lipa City', 'pending', %s)
             RETURNING reseller_id, business_name;
         """, (today - timedelta(days=30),))
         resellers = {name: res_id for res_id, name in cur.fetchall()}
@@ -73,27 +88,30 @@ def main():
         print("Seeding accounts...")
         # Owner account
         cur.execute("""
-            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
-            VALUES ('owner', NULL, 'Patric Mapa', 'patric.mapa@gmail.com', %s, true)
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active, activation_status)
+            VALUES ('owner', NULL, 'Patric Mapa', 'patric.mapa@gmail.com', %s, false, 'pending')
             RETURNING account_id;
-        """, (hash_password(OWNER_PASSWORD),))
-        cur.fetchone()
+        """, (hash_password(secrets.token_urlsafe(32)),))
+        owner_account_id = cur.fetchone()[0]
+        activation_links.append(("Owner", create_activation_link(cur, owner_account_id)))
         
         # Team Leader (Maria Santos)
         cur.execute("""
-            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role, is_active)
-            VALUES ('team_leader', NULL, 'Maria Santos', 'leader@batangaspremium.test', %s, 'sales', true)
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role, is_active, activation_status)
+            VALUES ('team_leader', NULL, 'Maria Santos', 'leader@batangaspremium.test', %s, 'sales', false, 'pending')
             RETURNING account_id;
-        """, (hash_password(TEAM_LEADER_PASSWORD),))
+        """, (hash_password(secrets.token_urlsafe(32)),))
         leader_account_id = cur.fetchone()[0]
+        activation_links.append(("Sales team leader", create_activation_link(cur, leader_account_id)))
         
         # Reseller (Lipa Fresh Mart)
         cur.execute("""
-            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active)
-            VALUES ('reseller', %s, 'Lipa Fresh Mart', 'reseller@lipafresh.test', %s, true)
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, is_active, activation_status)
+            VALUES ('reseller', %s, 'Lipa Fresh Mart', 'reseller@lipafresh.test', %s, false, 'pending')
             RETURNING account_id;
-        """, (resellers['Lipa Fresh Mart'], hash_password(RESELLER_PASSWORD)))
-        cur.fetchone()
+        """, (resellers['Lipa Fresh Mart'], hash_password(secrets.token_urlsafe(32))))
+        reseller_account_id = cur.fetchone()[0]
+        activation_links.append(("Reseller", create_activation_link(cur, reseller_account_id)))
         
         # Update resellers approved_by
         cur.execute("""
@@ -185,6 +203,9 @@ def main():
         # Commit everything
         conn.commit()
         print("Database baseline seeding completed successfully!")
+        print("No account passwords were seeded. Set each password through its one-time activation link:")
+        for label, link in activation_links:
+            print(f"{label}: {link}")
         
     except Exception as e:
         conn.rollback()

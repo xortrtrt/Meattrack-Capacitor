@@ -23,6 +23,9 @@ def env_bool(name: str, default: bool) -> bool:
 
 AUTH_RATE_LIMIT_ENABLED = env_bool("AUTH_RATE_LIMIT_ENABLED", APP_ENV == "production")
 CSRF_PROTECTION_ENABLED = env_bool("CSRF_PROTECTION_ENABLED", APP_ENV == "production")
+RATE_LIMIT_HASH_KEY = os.getenv("RATE_LIMIT_HASH_KEY", "").strip()
+if not RATE_LIMIT_HASH_KEY and APP_ENV != "production":
+    RATE_LIMIT_HASH_KEY = SESSION_SECRET_KEY + ":rate-limits"
 BUSINESS_TIMEZONE = os.getenv("BUSINESS_TIMEZONE", "Asia/Manila").strip() or "Asia/Manila"
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "meattrack_session").strip() or "meattrack_session"
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:8000").strip().rstrip("/")
@@ -41,6 +44,8 @@ if APP_ENV == "production":
             "Production startup refused: required security controls are disabled: "
             + ", ".join(disabled_controls)
         )
+    if not RATE_LIMIT_HASH_KEY:
+        raise RuntimeError("Production startup refused: RATE_LIMIT_HASH_KEY is required.")
 LOGIN_OTP_ENABLED = os.getenv(
     "LOGIN_OTP_ENABLED",
     "true" if APP_ENV == "production" else "false",
@@ -78,7 +83,17 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/ap
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 
-OWNER_PASSWORD = os.getenv("OWNER_PASSWORD", "demo123")
-TEAM_LEADER_PASSWORD = os.getenv("TEAM_LEADER_PASSWORD", "demo1234")
-RESELLER_PASSWORD = os.getenv("RESELLER_PASSWORD", "demo1234")
-DEFAULT_ACCOUNT_PASSWORD = os.getenv("DEFAULT_ACCOUNT_PASSWORD", "demo1234")
+ABLY_API_KEY = os.getenv("ABLY_API_KEY", "").strip()
+ABLY_TOKEN_SIGNING_KEY = os.getenv("ABLY_TOKEN_SIGNING_KEY", "").strip() or ABLY_API_KEY
+ABLY_REST_BASE_URL = os.getenv("ABLY_REST_BASE_URL", "https://rest.ably.io").strip().rstrip("/")
+LIVE_CHAT_ENABLED = env_bool("LIVE_CHAT_ENABLED", bool(ABLY_API_KEY))
+ABLY_TOKEN_TTL_SECONDS = int(os.getenv("ABLY_TOKEN_TTL_SECONDS", "900"))
+LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS = int(os.getenv("LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS", "120"))
+LIVE_CHAT_PRESENCE_STALE_SECONDS = int(os.getenv("LIVE_CHAT_PRESENCE_STALE_SECONDS", "45"))
+LIVE_CHAT_RECONNECT_GRACE_SECONDS = int(os.getenv("LIVE_CHAT_RECONNECT_GRACE_SECONDS", "60"))
+CHAT_TRANSCRIPT_RETENTION_DAYS = int(os.getenv("CHAT_TRANSCRIPT_RETENTION_DAYS", "30"))
+
+if APP_ENV == "production" and LIVE_CHAT_ENABLED and not ABLY_API_KEY:
+    raise RuntimeError("Production startup refused: ABLY_API_KEY is required when live chat is enabled.")
+if APP_ENV == "production" and LIVE_CHAT_ENABLED and not ABLY_TOKEN_SIGNING_KEY:
+    raise RuntimeError("Production startup refused: ABLY_TOKEN_SIGNING_KEY is required when live chat is enabled.")

@@ -16,6 +16,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 - Product catalog, company, partnership, privacy, and terms pages
 - Batangas Premium support chatbot with a safe local FAQ fallback
 - Guided reseller lead collection through the chatbot
+- Ably-powered live chat between anonymous prospects and available sales team leaders
 - Automatic assignment of reseller inquiries to sales team leaders
 - Local product imagery, fonts, icons, and chart assets
 
@@ -34,6 +35,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 - Payment-proof validation and reseller-order processing
 - Sales reports and reseller purchase summaries
 - Profile and OTP-confirmed password changes
+- Live prospect queue, availability controls, and real-time conversations
 
 ### Inventory team leader portal
 
@@ -61,7 +63,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 | Authentication | Password login, PostgreSQL-backed opaque sessions, optional email OTP |
 | Forecasting | Prophet and pandas |
 | Email | Brevo HTTPS API; local capture service during development |
-| Chatbot | Local approved FAQ fallback; optional OpenRouter model |
+| Chatbot | Local approved FAQ fallback; optional OpenRouter model; Ably live messaging |
 | Deployment | Docker Compose, Nginx, Certbot, Ubuntu VPS |
 
 ## Project structure
@@ -119,9 +121,9 @@ docker compose down
 docker compose down --volumes  # deletes the local PostgreSQL volume
 ```
 
-CSRF protection and authentication throttling are explicitly disabled in the
-disposable local Compose environment. Production forces both controls on and
-refuses to start if either one is disabled.
+CSRF protection and atomic request throttling are enabled in the local Compose
+environment and production. Production refuses to start if either control is
+disabled.
 
 ## Run Python locally
 
@@ -155,6 +157,7 @@ private `.env.production` file that must never be committed.
 | `DATABASE_URL` | Optional full connection URL override | Optional |
 | `DATABASE_POOL_MIN` / `DATABASE_POOL_MAX` | Connection-pool bounds | Optional |
 | `SESSION_SECRET_KEY` | Deployment secret retained for compatibility | Required |
+| `RATE_LIMIT_HASH_KEY` | HMAC secret used to pseudonymize rate-limit identities | Required |
 | `AUTH_RATE_LIMIT_ENABLED` | Enables login, OTP, chatbot, and lead throttles | Must be `true` |
 | `CSRF_PROTECTION_ENABLED` | Enables token and origin checks on unsafe requests | Must be `true` |
 | `BUSINESS_TIMEZONE` | Business timezone; defaults to `Asia/Manila` | Recommended |
@@ -166,10 +169,12 @@ private `.env.production` file that must never be committed.
 | `BREVO_FROM_NAME` | Sender display name | Optional |
 | `OPENROUTER_API_KEY` | Enables the configured hosted chatbot model | Optional |
 | `OPENROUTER_MODEL` | OpenRouter model identifier | Optional |
-| `OWNER_PASSWORD` | Initial owner seed password | Required by production Compose |
-| `TEAM_LEADER_PASSWORD` | Initial team leader seed password | Required by production Compose |
-| `RESELLER_PASSWORD` | Initial reseller seed password | Required by production Compose |
-| `DEFAULT_ACCOUNT_PASSWORD` | Fallback for provisioned accounts | Required by production Compose |
+| `LIVE_CHAT_ENABLED` | Enables anonymous prospect live chat | Defaults to `true` in production |
+| `ABLY_API_KEY` | Server-only Ably REST key used to publish support events | Required when live chat is enabled |
+| `ABLY_TOKEN_SIGNING_KEY` | Optional separate key used only to sign subscribe-only browser JWTs; falls back to `ABLY_API_KEY` | Recommended |
+| `ABLY_TOKEN_TTL_SECONDS` | Browser token lifetime; defaults to 900 seconds | Optional |
+| `LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS` | Queue wait before contact fallback; defaults to 120 seconds | Optional |
+| `CHAT_TRANSCRIPT_RETENTION_DAYS` | Closed transcript retention; defaults to 30 days | Optional |
 
 Generate unique production passwords and secrets. Never reuse the development
 defaults outside a disposable local environment.
@@ -199,6 +204,18 @@ Migration `003_system_hardening.sql` adds order ownership snapshots, individual
 notification recipients, server-side sessions, activation tokens, rate-event
 storage, transition guards, and the durable outbox. Apply it in the same write
 maintenance window, then start both the `app` and `worker` services.
+
+Migration `004_live_chat.sql` adds anonymous prospect conversations, durable
+messages, sales-team-leader presence, and atomic rate-limit buckets. Apply it
+before enabling `LIVE_CHAT_ENABLED`.
+
+For least-privilege Ably setup, create two server-only keys. Give
+`ABLY_API_KEY` `publish` access to `support:*` and `leader:*`, and give
+`ABLY_TOKEN_SIGNING_KEY` `subscribe` access to those same namespaces. If one
+key is used for both variables, it must have both `publish` and `subscribe`
+because Ably JWT capabilities cannot exceed the signing key's capabilities.
+Browser JWTs issued by MEATTRACK still contain only exact-channel `subscribe`
+permissions and never include `publish` or `history`.
 
 See [`database/README.md`](database/README.md) for migration, backup, restore,
 and data-model details.
@@ -301,17 +318,16 @@ docker compose --env-file .env.production -f compose.prod.yml exec -T db \
 A VPS snapshot is useful, but it is not a substitute for a verified database
 backup stored on another system.
 
-## Local demo accounts
+## Account credentials
 
-The disposable seed data uses these development-only credentials:
+Portal authentication uses only password hashes stored in the `accounts`
+table. The application has no environment-based default or fallback account
+passwords. New accounts remain inactive until the recipient follows a one-time
+activation link and chooses a password that satisfies the password policy.
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Owner | `patric.mapa@gmail.com` | `demo123` |
-| Sales team leader | `leader@batangaspremium.test` | `demo1234` |
-| Reseller | `reseller@lipafresh.test` | `demo1234` |
-
-Change all seeded credentials before any shared or production deployment.
+The destructive development seed utility follows the same rule: it creates
+pending accounts and prints short-lived activation links instead of assigning
+shared demo passwords.
 
 ## Security notes
 

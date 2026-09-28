@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import hashlib
 import logging
@@ -14,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import repositories as data
+from app import live_chat
 from app.business_time import business_now, business_today
 from app.chatbot import process_chatbot_message
 from app.emailer import (
@@ -26,12 +28,18 @@ from app.config import (
     CONSENT_VERSION,
     CSRF_PROTECTION_ENABLED,
     LOGIN_OTP_ENABLED,
+    LIVE_CHAT_ENABLED,
 )
 from app.security_controls import (
+    RateLimitExceeded,
     csrf_token,
+    enforce_ably_token,
     enforce_chatbot,
+    enforce_chatbot_reset,
     enforce_csrf,
+    enforce_handoff,
     enforce_lead,
+    enforce_live_message,
     enforce_otp_attempt,
     enforce_password_login,
     record_event,
@@ -63,6 +71,22 @@ app.mount("/static", CachedStaticFiles(directory=BASE_DIR / "static"), name="sta
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals["csrf_token"] = csrf_token
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data:; font-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self' https://*.ably.io wss://*.ably.io; "
+        "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    )
+    return response
 
 if APP_ENV != "production" and (not AUTH_RATE_LIMIT_ENABLED or not CSRF_PROTECTION_ENABLED):
     logging.getLogger(__name__).warning(
@@ -145,6 +169,20 @@ templates.env.filters["number"] = number
 templates.env.filters["nice_date"] = nice_date
 templates.env.filters["product_image"] = product_image
 templates.env.filters["media_url"] = media_url
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, exc: HTTPException):
+    """Render a branded page for browsers while keeping API errors machine-readable."""
+    accept = request.headers.get("accept", "")
+    if request.url.path.startswith("/api/") or ("application/json" in accept and "text/html" not in accept):
+        return JSONResponse({"detail": getattr(exc, "detail", "Not Found")}, status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "404.html",
+        {"request": request},
+        status_code=404,
+    )
 
 PORTAL_TEMPLATES = {
     "owner": "portals/owner.html",
@@ -725,6 +763,10 @@ PORTAL_SECTION_LOADERS = {
         "inquiries_page": (page := inquiries_page(request, assigned_team_leader_account_id=session_account_id(request))),
         "inquiries": page["items"],
     },
+    ("team-leader", "live-chat"): lambda request: {
+        "live_chat_workspace": live_chat.workspace(session_account_id(request)),
+        "live_chat_enabled": LIVE_CHAT_ENABLED,
+    },
     ("team-leader", "orders"): lambda request: {
         "orders_page": (page := orders_page(request, "reseller", team_leader_account_id=session_account_id(request))),
         "orders": page["items"],
@@ -988,6 +1030,9 @@ async def create_public_inquiry(
 
 @app.post("/api/chatbot")
 async def chatbot_api(request: Request):
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        return JSONResponse({"reply": "Please send chat requests as JSON.", "error": "unsupported_media_type"}, status_code=415)
     try:
         payload = await request.json()
     except (TypeError, ValueError):
@@ -995,6 +1040,27 @@ async def chatbot_api(request: Request):
     if not isinstance(payload, dict):
         return JSONResponse({"reply": "Please send a valid chat message."}, status_code=400)
     if payload.get("action") == "reset":
+        try:
+            enforce_chatbot_reset(request)
+        except RateLimitExceeded as exc:
+            return JSONResponse(
+                {"reply": str(exc), "error": "rate_limited", "retry_after": exc.retry_after},
+                status_code=429,
+                headers={"Retry-After": str(exc.retry_after)},
+            )
+        active_conversation = request.session.get("live_chat_conversation_id")
+        if active_conversation:
+            conversation = live_chat.get_conversation(str(active_conversation))
+            if conversation and conversation.get("status") in {"queued", "active"}:
+                return JSONResponse(
+                    {
+                        "reply": "End the current live conversation before starting a new chat.",
+                        "error": "live_chat_active",
+                        "conversation": conversation,
+                    },
+                    status_code=409,
+                )
+            request.session.pop("live_chat_conversation_id", None)
         request.session["chatbot_state"] = {}
         return JSONResponse(
             {
@@ -1006,8 +1072,12 @@ async def chatbot_api(request: Request):
         )
     try:
         enforce_chatbot(request)
-    except ValueError as exc:
-        return JSONResponse({"reply": str(exc)}, status_code=429)
+    except RateLimitExceeded as exc:
+        return JSONResponse(
+            {"reply": str(exc), "error": "rate_limited", "retry_after": exc.retry_after},
+            status_code=429,
+            headers={"Retry-After": str(exc.retry_after)},
+        )
     message = str(payload.get("message", "")).strip()
     if len(message) < 2:
         return JSONResponse({"reply": "Please contact Batangas Premium directly for complete details."})
@@ -1020,13 +1090,40 @@ async def chatbot_api(request: Request):
     )
     lead_created = False
     assigned_team_leader = None
+    conversation = None
+    handoff = result.get("handoff") or {"offered": False, "reason": None}
+    if handoff.get("start"):
+        try:
+            enforce_handoff(request)
+            conversation = live_chat.create_conversation(
+                str(handoff.get("display_name") or ""),
+                str(handoff.get("reason") or "requested"),
+            )
+        except RateLimitExceeded as exc:
+            return JSONResponse(
+                {"reply": str(exc), "error": "rate_limited", "retry_after": exc.retry_after},
+                status_code=429,
+                headers={"Retry-After": str(exc.retry_after)},
+            )
+        except ValueError as exc:
+            return JSONResponse({"reply": str(exc), "error": "invalid_handoff"}, status_code=400)
+        request.session["live_chat_conversation_id"] = conversation["conversation_id"]
+        request.session["chatbot_state"] = {}
+        handoff = {
+            "offered": True,
+            "started": True,
+            "reason": handoff.get("reason"),
+            "conversation_id": conversation["conversation_id"],
+            "status": conversation["status"],
+        }
+        await asyncio.to_thread(live_chat.notify_available_leaders, conversation)
     if result.get("action") == "create_lead":
         lead = result.get("lead") or {}
         lead_email = require_email(str(lead.get("email", "")).strip())
         try:
             enforce_lead(request, lead_email)
-        except ValueError as exc:
-            return JSONResponse({"reply": str(exc)}, status_code=429)
+        except RateLimitExceeded as exc:
+            return _json_rate_limit(exc)
         inquiry = data.add_inquiry(
             str(lead.get("name", "")).strip(),
             str(lead.get("business_name", "")).strip(),
@@ -1039,6 +1136,7 @@ async def chatbot_api(request: Request):
                     "Source: chatbot lead capture",
                 ]
             ),
+            chat_conversation_id=request.session.get("live_chat_conversation_id"),
         )
         lead_created = True
         request.session["chatbot_state"] = {}
@@ -1049,18 +1147,307 @@ async def chatbot_api(request: Request):
         reply = result["reply"]
         if assigned_team_leader:
             reply += f" Your assigned sales team leader is {assigned_team_leader}."
-    else:
+    elif not conversation:
         request.session["chatbot_state"] = result.get("state") or {}
         reply = result["reply"]
-    data.add_log("Website visitor", "used_chatbot", "Public support widget")
+    else:
+        reply = result["reply"]
+    try:
+        data.add_log("Website visitor", "used_chatbot", "Public support widget")
+    except Exception:
+        logging.getLogger(__name__).warning("Unable to record non-critical chatbot activity log.")
     return JSONResponse(
         {
             "reply": reply,
+            "answer_status": result.get("answer_status") or "answered",
+            "handoff": handoff,
+            "conversation": conversation,
             "lead_created": lead_created,
             "assigned_team_leader": assigned_team_leader,
             "suggestions": result.get("suggestions") or [],
         }
     )
+
+
+def _json_rate_limit(exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        {"error": "rate_limited", "message": str(exc), "retry_after": exc.retry_after},
+        status_code=429,
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+
+
+async def _json_payload(request: Request) -> dict:
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(status_code=415, detail="Use application/json.")
+    try:
+        payload = await request.json()
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Send a valid JSON object.") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Send a valid JSON object.")
+    return payload
+
+
+def _sales_live_account(request: Request) -> int:
+    account_id = session_account_id(request)
+    if request.session.get("role_key") != "team-leader" or account_id is None:
+        raise HTTPException(status_code=401, detail="Sign in as a sales team leader.")
+    if session_team_leader_role(request) != "sales":
+        raise HTTPException(status_code=403, detail="Live chat is available only to sales team leaders.")
+    return account_id
+
+
+def _visitor_live_conversation(request: Request, conversation_id: str) -> dict:
+    if not live_chat.visitor_can_access(request.session, conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    conversation = live_chat.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return conversation
+
+
+async def _publish_chat_message(message: dict, conversation_id: str) -> str:
+    try:
+        await asyncio.to_thread(live_chat.publish_message, message, conversation_id)
+        return "published"
+    except live_chat.AblyUnavailable as exc:
+        live_chat.mark_publish_failed(int(message["chat_message_id"]), str(exc))
+        return "pending"
+
+
+@app.post("/api/live-chat/start")
+async def live_chat_start(request: Request):
+    payload = await _json_payload(request)
+    try:
+        enforce_handoff(request)
+        if not bool(payload.get("consent")):
+            raise live_chat.LiveChatError("Consent is required before starting live chat.")
+        conversation = live_chat.create_conversation(
+            str(payload.get("display_name", "")),
+            str(payload.get("reason", "requested")),
+        )
+    except RateLimitExceeded as exc:
+        return _json_rate_limit(exc)
+    except ValueError as exc:
+        return JSONResponse({"error": "invalid_handoff", "message": str(exc)}, status_code=400)
+    request.session["live_chat_conversation_id"] = conversation["conversation_id"]
+    await asyncio.to_thread(live_chat.notify_available_leaders, conversation)
+    return JSONResponse({"conversation": conversation}, status_code=201)
+
+
+@app.get("/api/live-chat/{conversation_id}")
+async def live_chat_status(request: Request, conversation_id: str):
+    conversation = _visitor_live_conversation(request, conversation_id)
+    return {"conversation": conversation}
+
+
+@app.get("/api/live-chat/{conversation_id}/messages")
+async def live_chat_messages(request: Request, conversation_id: str, after_id: int = 0):
+    if request.session.get("role_key") == "team-leader":
+        account_id = _sales_live_account(request)
+        if not live_chat.leader_can_access(account_id, conversation_id):
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+    else:
+        _visitor_live_conversation(request, conversation_id)
+    return {"messages": live_chat.list_messages(conversation_id, after_id=after_id)}
+
+
+@app.post("/api/live-chat/{conversation_id}/messages")
+async def live_chat_send_message(request: Request, conversation_id: str):
+    payload = await _json_payload(request)
+    account_id = None
+    sender_type = "visitor"
+    if request.session.get("role_key") == "team-leader":
+        account_id = _sales_live_account(request)
+        if not live_chat.leader_can_access(account_id, conversation_id):
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        sender_type = "team_leader"
+    else:
+        _visitor_live_conversation(request, conversation_id)
+    try:
+        enforce_live_message(request, account_id=account_id)
+        message, created = live_chat.add_message(
+            conversation_id,
+            client_message_id=str(payload.get("client_message_id", "")),
+            sender_type=sender_type,
+            sender_account_id=account_id,
+            content=str(payload.get("message", "")),
+        )
+    except RateLimitExceeded as exc:
+        return _json_rate_limit(exc)
+    except ValueError as exc:
+        return JSONResponse({"error": "invalid_message", "message": str(exc)}, status_code=400)
+    delivery = await _publish_chat_message(message, conversation_id) if created else message["publication_status"]
+    return {"message": message, "delivery": delivery, "duplicate": not created}
+
+
+@app.post("/api/live-chat/{conversation_id}/fallback")
+async def live_chat_fallback(request: Request, conversation_id: str):
+    _visitor_live_conversation(request, conversation_id)
+    payload = await _json_payload(request)
+    try:
+        conversation = live_chat.save_fallback_contact(conversation_id, str(payload.get("contact", "")))
+    except ValueError as exc:
+        return JSONResponse({"error": "invalid_contact", "message": str(exc)}, status_code=400)
+    assigned_id = conversation.get("assigned_team_leader_account_id")
+    if assigned_id:
+        try:
+            await asyncio.to_thread(
+                live_chat.publish_event,
+                live_chat.leader_channel(int(assigned_id)),
+                "follow_up.created",
+                {"conversation_id": conversation_id, "display_name": conversation["display_name"]},
+            )
+        except live_chat.AblyUnavailable:
+            pass
+    return {"conversation": conversation}
+
+
+@app.post("/api/live-chat/{conversation_id}/cancel")
+async def live_chat_cancel(request: Request, conversation_id: str):
+    conversation = _visitor_live_conversation(request, conversation_id)
+    if conversation["status"] not in {"queued", "active", "awaiting_contact"}:
+        return {"conversation": conversation}
+    closed = live_chat.close_conversation(conversation_id, cancelled=True)
+    request.session.pop("live_chat_conversation_id", None)
+    try:
+        await asyncio.to_thread(
+            live_chat.publish_event,
+            live_chat.conversation_channel(conversation_id),
+            "conversation.cancelled",
+            {"conversation_id": conversation_id, "status": "cancelled"},
+        )
+    except live_chat.AblyUnavailable:
+        pass
+    return {"conversation": closed}
+
+
+@app.post("/api/ably/token")
+async def ably_token(request: Request):
+    payload = await _json_payload(request)
+    account_id = session_account_id(request)
+    try:
+        enforce_ably_token(request, account_id=account_id)
+    except RateLimitExceeded as exc:
+        return _json_rate_limit(exc)
+    scope = str(payload.get("scope", "conversation"))
+    if scope == "notifications":
+        account_id = _sales_live_account(request)
+        capabilities = {live_chat.leader_channel(account_id): ["subscribe"]}
+        client_id = f"leader:{account_id}"
+    else:
+        conversation_id = str(payload.get("conversation_id", ""))
+        if request.session.get("role_key") == "team-leader":
+            account_id = _sales_live_account(request)
+            if not live_chat.leader_can_access(account_id, conversation_id):
+                raise HTTPException(status_code=404, detail="Conversation not found.")
+            client_id = f"leader:{account_id}"
+            capabilities = {
+                live_chat.leader_channel(account_id): ["subscribe"],
+                live_chat.conversation_channel(conversation_id): ["subscribe"],
+            }
+        else:
+            _visitor_live_conversation(request, conversation_id)
+            client_id = f"visitor:{request.session.get('rate_limit_id', 'anonymous')}"
+            capabilities = {live_chat.conversation_channel(conversation_id): ["subscribe"]}
+    try:
+        token = live_chat.issue_ably_jwt(client_id=client_id, capabilities=capabilities)
+    except live_chat.AblyUnavailable as exc:
+        return JSONResponse({"error": "live_chat_unavailable", "message": str(exc)}, status_code=503)
+    return Response(token, media_type="text/plain", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/portal/live-chat/workspace")
+async def portal_live_chat_workspace(request: Request):
+    account_id = _sales_live_account(request)
+    return live_chat.workspace(account_id)
+
+
+@app.post("/api/portal/live-chat/presence")
+async def portal_live_chat_presence(request: Request):
+    account_id = _sales_live_account(request)
+    payload = await _json_payload(request)
+    try:
+        presence = live_chat.set_presence(account_id, str(payload.get("availability", "")))
+    except ValueError as exc:
+        return JSONResponse({"error": "invalid_presence", "message": str(exc)}, status_code=400)
+    return {"presence": presence}
+
+
+@app.post("/api/portal/live-chat/heartbeat")
+async def portal_live_chat_heartbeat(request: Request):
+    account_id = _sales_live_account(request)
+    return {"presence": live_chat.heartbeat(account_id)}
+
+
+@app.post("/api/portal/live-chat/{conversation_id}/claim")
+async def portal_live_chat_claim(request: Request, conversation_id: str):
+    account_id = _sales_live_account(request)
+    try:
+        conversation = live_chat.claim_conversation(account_id, conversation_id)
+    except ValueError as exc:
+        return JSONResponse({"error": "claim_failed", "message": str(exc)}, status_code=409)
+    system_message = conversation.pop("system_message", None)
+    try:
+        await asyncio.to_thread(
+            live_chat.publish_event,
+            live_chat.conversation_channel(conversation_id),
+            "conversation.claimed",
+            {
+                "conversation_id": conversation_id,
+                "status": "active",
+                "team_leader_name": conversation.get("assigned_team_leader_name"),
+            },
+        )
+        if system_message:
+            await _publish_chat_message(system_message, conversation_id)
+    except live_chat.AblyUnavailable:
+        pass
+    return {"conversation": conversation}
+
+
+@app.post("/api/portal/live-chat/{conversation_id}/close")
+async def portal_live_chat_close(request: Request, conversation_id: str):
+    account_id = _sales_live_account(request)
+    try:
+        conversation = live_chat.close_conversation(conversation_id, account_id=account_id)
+    except ValueError as exc:
+        return JSONResponse({"error": "close_failed", "message": str(exc)}, status_code=409)
+    try:
+        await asyncio.to_thread(
+            live_chat.publish_event,
+            live_chat.conversation_channel(conversation_id),
+            "conversation.closed",
+            {"conversation_id": conversation_id, "status": "closed"},
+        )
+    except live_chat.AblyUnavailable:
+        pass
+    return {"conversation": conversation}
+
+
+@app.post("/api/portal/live-chat/{conversation_id}/transfer")
+async def portal_live_chat_transfer(request: Request, conversation_id: str):
+    account_id = _sales_live_account(request)
+    try:
+        conversation = live_chat.transfer_conversation(account_id, conversation_id)
+    except ValueError as exc:
+        return JSONResponse({"error": "transfer_failed", "message": str(exc)}, status_code=409)
+    system_message = conversation.pop("system_message", None)
+    try:
+        await asyncio.to_thread(
+            live_chat.publish_event,
+            live_chat.conversation_channel(conversation_id),
+            "conversation.transferred",
+            {"conversation_id": conversation_id, "status": "queued"},
+        )
+        if system_message:
+            await _publish_chat_message(system_message, conversation_id)
+    except live_chat.AblyUnavailable:
+        pass
+    await asyncio.to_thread(live_chat.notify_available_leaders, conversation)
+    return {"conversation": conversation}
 
 
 @app.get("/login")

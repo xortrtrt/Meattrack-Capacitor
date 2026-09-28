@@ -3478,6 +3478,22 @@ section {
   box-shadow: 0 5px 16px rgba(13, 12, 11, 0.13);
 }
 
+.bot-message.agent-message {
+  border-color: rgba(210, 176, 25, 0.55);
+  background: #fff9da;
+}
+
+.bot-message.system-message {
+  align-self: center;
+  max-width: 92%;
+  border: 0;
+  background: transparent;
+  color: #746d61;
+  font-size: 0.78rem;
+  text-align: center;
+  box-shadow: none;
+}
+
 .chatbot-suggestions {
   flex-wrap: wrap;
   gap: 7px;

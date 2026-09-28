@@ -1240,11 +1240,18 @@
     const sendLabel = sendButton.querySelector("[data-chatbot-send-label]");
     const messages = widget.querySelector("[data-chatbot-messages]");
     const chatbotStorageKey = "meattrack_chatbot_messages_v1";
+    const liveChatStorageKey = "meattrack_live_chat_v1";
     const chatbotStorageTtlMs = 24 * 60 * 60 * 1000;
     const defaultSuggestions = ["View products", "Delivery details", "Become a reseller"];
     const newChatWelcome = "Welcome to Batangas Premium. How can I help you today?";
     let activeSuggestions = [...defaultSuggestions];
     let requestPending = false;
+    let liveConversation = null;
+    let liveLastMessageId = 0;
+    let liveRealtime = null;
+    let liveChannel = null;
+    let livePollTimer = null;
+    let lastLiveStatus = null;
 
     messages.setAttribute("role", "log");
     messages.setAttribute("aria-live", "polite");
@@ -1340,6 +1347,10 @@
         return Array.from(messages.querySelectorAll(".message")).map((bubble) => ({
             text: bubble.textContent || "",
             type: bubble.classList.contains("user-message") ? "user" : "bot",
+            liveMessageId: bubble.dataset.liveMessageId || null,
+            liveSender: bubble.classList.contains("agent-message")
+                ? "team_leader"
+                : bubble.classList.contains("system-message") ? "system" : null,
         })).filter((item) => item.text.trim());
     }
 
@@ -1364,7 +1375,16 @@
                 return;
             }
             messages.innerHTML = "";
-            stored.messages.forEach((item) => addMessage(item.text, item.type, false));
+            stored.messages.forEach((item) => {
+                const bubble = addMessage(item.text, item.type, false);
+                const liveMessageId = Number(item.liveMessageId || 0);
+                if (liveMessageId > 0) {
+                    bubble.dataset.liveMessageId = String(liveMessageId);
+                    liveLastMessageId = Math.max(liveLastMessageId, liveMessageId);
+                }
+                if (item.liveSender === "team_leader") bubble.classList.add("agent-message");
+                if (item.liveSender === "system") bubble.classList.add("system-message");
+            });
             if (Array.isArray(stored.suggestions) && stored.suggestions.length) {
                 activeSuggestions = stored.suggestions
                     .map((label) => String(label).trim())
@@ -1398,8 +1418,176 @@
         return bubble;
     }
 
+    function liveMessageExists(messageId) {
+        return Boolean(messages.querySelector(`[data-live-message-id="${messageId}"]`));
+    }
+
+    function addLiveMessage(item) {
+        const messageId = Number(item.chat_message_id || item.message_id || 0);
+        if (!messageId || liveMessageExists(messageId)) return;
+        const sender = item.sender_type;
+        const prefix = sender === "team_leader" && item.sender_name ? `${item.sender_name}: ` : "";
+        const bubble = addMessage(`${prefix}${item.content || item.text || ""}`, sender === "visitor" ? "user" : "bot", false);
+        bubble.dataset.liveMessageId = String(messageId);
+        if (sender === "team_leader") bubble.classList.add("agent-message");
+        if (sender === "system") bubble.classList.add("system-message");
+        liveLastMessageId = Math.max(liveLastMessageId, messageId);
+        saveChatMessages();
+    }
+
+    async function liveApi(url, options = {}) {
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                ...(options.body ? { "Content-Type": "application/json" } : {}),
+                ...(options.headers || {}),
+            },
+        });
+        const contentType = response.headers.get("content-type") || "";
+        const result = contentType.includes("application/json") ? await response.json() : await response.text();
+        if (!response.ok) {
+            throw new Error(result.message || result.detail || result.reply || "Live chat request failed.");
+        }
+        return result;
+    }
+
+    function saveLiveConversation() {
+        try {
+            if (liveConversation) {
+                window.localStorage.setItem(liveChatStorageKey, JSON.stringify({
+                    conversation_id: liveConversation.conversation_id,
+                    savedAt: Date.now(),
+                }));
+            } else {
+                window.localStorage.removeItem(liveChatStorageKey);
+            }
+        } catch (error) {
+            // The secure server session remains authoritative.
+        }
+    }
+
+    async function loadLiveMessages(reset = false) {
+        if (!liveConversation) return;
+        if (reset) {
+            liveLastMessageId = Math.max(
+                0,
+                ...Array.from(messages.querySelectorAll("[data-live-message-id]"))
+                    .map((bubble) => Number(bubble.dataset.liveMessageId || 0)),
+            );
+        }
+        const result = await liveApi(
+            `/api/live-chat/${encodeURIComponent(liveConversation.conversation_id)}/messages?after_id=${liveLastMessageId}`,
+        );
+        (result.messages || []).forEach(addLiveMessage);
+    }
+
+    async function attachVisitorLiveChannel() {
+        if (!window.Ably || !liveConversation) return;
+        if (liveRealtime) {
+            try { liveRealtime.close(); } catch (error) { /* reconnect below */ }
+        }
+        liveRealtime = new window.Ably.Realtime({
+            authCallback: async (_params, callback) => {
+                try {
+                    const token = await liveApi("/api/ably/token", {
+                        method: "POST",
+                        body: JSON.stringify({
+                            scope: "conversation",
+                            conversation_id: liveConversation.conversation_id,
+                        }),
+                    });
+                    callback(null, token);
+                } catch (error) {
+                    callback(error, null);
+                }
+            },
+        });
+        liveChannel = liveRealtime.channels.get(`support:${liveConversation.conversation_id}`);
+        liveChannel.subscribe(() => {
+            refreshLiveConversation().catch(() => {});
+        });
+    }
+
+    async function activateLiveConversation(conversation, announce = true) {
+        liveConversation = conversation;
+        lastLiveStatus = conversation.status;
+        saveLiveConversation();
+        if (announce) {
+            if (conversation.status === "queued") {
+                addMessage("You’re in the live-chat queue. I’ll keep this window updated while we look for an available sales team leader.", "bot");
+            } else if (conversation.status === "active") {
+                addMessage(`You’re connected with ${conversation.assigned_team_leader_name || "a sales team leader"}.`, "bot");
+            }
+        }
+        if (conversation.status === "active") {
+            suggestions.replaceChildren();
+        } else {
+            renderSuggestions(["Cancel"]);
+        }
+        await loadLiveMessages(true);
+        await attachVisitorLiveChannel();
+        if (!livePollTimer) {
+            livePollTimer = window.setInterval(() => refreshLiveConversation().catch(() => {}), 3000);
+        }
+    }
+
+    async function refreshLiveConversation() {
+        if (!liveConversation) return;
+        const result = await liveApi(`/api/live-chat/${encodeURIComponent(liveConversation.conversation_id)}`);
+        const next = result.conversation;
+        const previousStatus = lastLiveStatus;
+        liveConversation = next;
+        lastLiveStatus = next.status;
+        saveLiveConversation();
+        await loadLiveMessages();
+        if (next.status !== previousStatus) {
+            if (next.status === "active") {
+                addMessage(`You’re now connected with ${next.assigned_team_leader_name || "a sales team leader"}.`, "bot");
+                suggestions.replaceChildren();
+            } else if (next.status === "awaiting_contact") {
+                addMessage("No team leader accepted within two minutes. Enter an email address or phone number and the team will follow up.", "bot");
+                input.placeholder = "Email address or contact number";
+                renderSuggestions(["Cancel"]);
+            } else if (["closed", "cancelled"].includes(next.status)) {
+                addMessage(next.status === "closed" ? "The team leader closed the live conversation. How else can I help?" : "The live conversation was cancelled.", "bot");
+                clearLiveConversation();
+            }
+        }
+    }
+
+    function clearLiveConversation() {
+        liveConversation = null;
+        lastLiveStatus = null;
+        liveLastMessageId = 0;
+        input.placeholder = "Type your message...";
+        if (livePollTimer) window.clearInterval(livePollTimer);
+        livePollTimer = null;
+        if (liveRealtime) liveRealtime.close();
+        liveRealtime = null;
+        liveChannel = null;
+        saveLiveConversation();
+        activeSuggestions = [...defaultSuggestions];
+        renderSuggestions(defaultSuggestions);
+    }
+
+    async function restoreLiveConversation() {
+        try {
+            const stored = JSON.parse(window.localStorage.getItem(liveChatStorageKey) || "null");
+            if (!stored?.conversation_id || Date.now() - Number(stored.savedAt || 0) > chatbotStorageTtlMs) return;
+            const result = await liveApi(`/api/live-chat/${encodeURIComponent(stored.conversation_id)}`);
+            if (["queued", "active", "awaiting_contact", "follow_up"].includes(result.conversation.status)) {
+                await activateLiveConversation(result.conversation, false);
+            } else {
+                clearLiveConversation();
+            }
+        } catch (error) {
+            clearLiveConversation();
+        }
+    }
+
     restoreChatMessages();
     renderSuggestions(activeSuggestions);
+    restoreLiveConversation();
     toggle.addEventListener("click", () => setOpen(panel.hidden));
     closeButton.addEventListener("click", () => {
         setOpen(false);
@@ -1417,16 +1605,18 @@
         }
         setBusy(true);
         input.value = "";
-        messages.innerHTML = "";
-        activeSuggestions = [...defaultSuggestions];
-        renderSuggestions(defaultSuggestions);
-        try {
-            window.localStorage.removeItem(chatbotStorageKey);
-        } catch (error) {
-            // The in-memory transcript is still reset when storage is unavailable.
-        }
 
         try {
+            if (liveConversation && ["queued", "active", "awaiting_contact"].includes(liveConversation.status)) {
+                if (!window.confirm("End the current live conversation and start a new chat?")) {
+                    return;
+                }
+                await liveApi(`/api/live-chat/${encodeURIComponent(liveConversation.conversation_id)}/cancel`, {
+                    method: "POST",
+                    body: JSON.stringify({}),
+                });
+                clearLiveConversation();
+            }
             const response = await fetch("/api/chatbot", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1435,12 +1625,25 @@
             if (!response.ok) {
                 throw new Error("Unable to reset the server-side conversation.");
             }
-        } catch (error) {
-            // Keep the local new-chat experience usable if the network is temporarily unavailable.
-        } finally {
+            messages.innerHTML = "";
+            activeSuggestions = [...defaultSuggestions];
+            renderSuggestions(defaultSuggestions);
+            try {
+                window.localStorage.removeItem(chatbotStorageKey);
+            } catch (error) {
+                // The confirmed server reset still starts a fresh in-memory transcript.
+            }
             const resetMessage = addMessage("", "bot", false);
             await typeBotReply(resetMessage, newChatWelcome);
             saveChatMessages();
+        } catch (error) {
+            const errorMessage = addMessage("", "bot", false);
+            await typeBotReply(
+                errorMessage,
+                "I couldn't start a new chat right now. Your current conversation is still active; please try again.",
+            );
+            saveChatMessages();
+        } finally {
             setBusy(false);
             input.focus();
         }
@@ -1461,6 +1664,67 @@
         if (!question) {
             return;
         }
+        if (liveConversation && question.toLowerCase() === "cancel") {
+            input.value = "";
+            setBusy(true);
+            try {
+                await liveApi(`/api/live-chat/${encodeURIComponent(liveConversation.conversation_id)}/cancel`, {
+                    method: "POST",
+                    body: JSON.stringify({}),
+                });
+                addMessage("The live-chat request was cancelled. How else can I help?", "bot");
+                clearLiveConversation();
+            } catch (error) {
+                addMessage(error.message, "bot");
+            } finally {
+                setBusy(false);
+            }
+            return;
+        }
+        if (liveConversation?.status === "active") {
+            input.value = "";
+            setBusy(true);
+            try {
+                const result = await liveApi(`/api/live-chat/${encodeURIComponent(liveConversation.conversation_id)}/messages`, {
+                    method: "POST",
+                    body: JSON.stringify({ message: question, client_message_id: crypto.randomUUID() }),
+                });
+                addLiveMessage(result.message);
+            } catch (error) {
+                input.value = question;
+                addMessage(error.message, "bot");
+            } finally {
+                setBusy(false);
+                input.focus();
+            }
+            return;
+        }
+        if (liveConversation?.status === "awaiting_contact") {
+            input.value = "";
+            setBusy(true);
+            try {
+                const result = await liveApi(`/api/live-chat/${encodeURIComponent(liveConversation.conversation_id)}/fallback`, {
+                    method: "POST",
+                    body: JSON.stringify({ contact: question }),
+                });
+                addMessage("Your contact details were saved for follow-up. No reseller account or formal inquiry was created.", "bot");
+                liveConversation = result.conversation;
+                saveLiveConversation();
+                clearLiveConversation();
+            } catch (error) {
+                input.value = question;
+                addMessage(error.message, "bot");
+            } finally {
+                setBusy(false);
+                input.focus();
+            }
+            return;
+        }
+        if (liveConversation?.status === "queued") {
+            addMessage("We’re still looking for an available sales team leader. You can cancel or keep this window open.", "bot");
+            input.value = "";
+            return;
+        }
         input.value = "";
         addMessage(question, "user");
         const loading = addMessage("Checking approved Batangas Premium information...", "bot");
@@ -1479,6 +1743,9 @@
                 loading,
                 result.reply || "Please contact Batangas Premium directly for complete details.",
             );
+            if (result.conversation && result.handoff?.started) {
+                await activateLiveConversation(result.conversation, false);
+            }
             renderSuggestions(result.suggestions || []);
             saveChatMessages();
         } catch (error) {

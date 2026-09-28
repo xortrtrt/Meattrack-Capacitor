@@ -31,6 +31,21 @@ def test_external_font_and_icon_cdn_references_are_removed():
     assert "unpkg.com" not in combined
 
 
+def test_missing_pages_use_the_branded_404_and_api_errors_stay_json():
+    client = TestClient(main.app)
+
+    page_response = client.get("/this-page-does-not-exist")
+    assert page_response.status_code == 404
+    assert page_response.headers["content-type"].startswith("text/html")
+    assert "This cut isn't" in page_response.text
+    assert "Back to home" in page_response.text
+
+    api_response = client.get("/api/this-endpoint-does-not-exist")
+    assert api_response.status_code == 404
+    assert api_response.headers["content-type"].startswith("application/json")
+    assert api_response.json() == {"detail": "Not Found"}
+
+
 def test_vendored_assets_exist_and_receive_immutable_cache_headers():
     client = TestClient(main.app)
     asset_paths = (

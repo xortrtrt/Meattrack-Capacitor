@@ -292,9 +292,11 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert "suggestions: activeSuggestions" in app_js
     assert "Array.isArray(stored.suggestions)" in app_js
     assert "await typeBotReply(resetMessage, newChatWelcome)" in app_js
+    assert "Your current conversation is still active; please try again." in app_js
+    assert app_js.index('if (!response.ok)') < app_js.index('messages.innerHTML = "";', app_js.index('resetButton.addEventListener'))
     assert 'bubble.classList.add("is-typing")' in app_js
     assert "@keyframes chatbot-caret" in css
-    assert "20260927-chatbot-ui-7" in response.text
+    assert "20260928-live-chat-1" in response.text
     assert "BP ChatBot" in response.text
     assert "chatbot-avatar" not in response.text
     assert 'role="dialog" aria-label="Batangas Premium support"' in response.text
