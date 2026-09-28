@@ -120,6 +120,7 @@ services:
         condition: service_completed_successfully
     networks:
       - backend
+      - frontend
 
 volumes:
   postgres_data:

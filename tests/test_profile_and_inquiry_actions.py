@@ -491,6 +491,37 @@ def test_reviewed_inquiry_hides_approval_actions(monkeypatch):
     assert "Reviewed" in response.text
 
 
+def test_pending_inquiry_rejection_requires_reason_dialog(monkeypatch):
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(main, "session_account_id", lambda request: 4)
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(main.data, "count_inquiries", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        main.data,
+        "list_inquiries",
+        lambda *args, **kwargs: [{
+            "inquiry_id": 8,
+            "business_name": "Pending Store",
+            "name": "Pending Applicant",
+            "email": "pending@example.test",
+            "contact_number": "09170000000",
+            "message": "Review me",
+            "rejection_reason": None,
+            "status": "assigned",
+        }],
+    )
+
+    response = TestClient(main.app).get("/portal/team-leader/inquiries")
+
+    assert response.status_code == 200
+    assert "data-inquiry-reject-open" in response.text
+    assert 'name="rejection_reason"' in response.text
+    assert 'minlength="5"' in response.text
+    assert "Reject and email" in response.text
+
+
 def test_order_approval_requires_payment_proof(monkeypatch):
     monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
 

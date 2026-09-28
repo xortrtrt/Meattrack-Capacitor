@@ -4,6 +4,7 @@ import asyncio
 from decimal import Decimal
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -45,6 +46,24 @@ def test_production_configuration_refuses_disabled_security_controls():
     )
     assert result.returncode != 0
     assert "required security controls are disabled" in result.stderr
+
+
+def test_production_worker_has_outbound_network_for_email_delivery():
+    project_root = Path(__file__).resolve().parent.parent
+    compose_text = (project_root / "compose.prod.yml").read_text()
+    worker_match = re.search(r"(?ms)^  worker:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:|\Z)", compose_text)
+    assert worker_match is not None
+
+    networks_match = re.search(r"(?ms)^    networks:\n(?P<body>(?:      - .+\n)+)", worker_match.group("body"))
+    assert networks_match is not None
+    worker_networks = {
+        line.strip().removeprefix("-").strip()
+        for line in networks_match.group("body").splitlines()
+        if line.strip().startswith("-")
+    }
+
+    assert "backend" in worker_networks
+    assert "frontend" in worker_networks
 
 
 def test_csrf_rejects_missing_token_when_enabled(monkeypatch):

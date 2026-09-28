@@ -1879,6 +1879,28 @@ def process_chatbot_message(
                 "state": {},
                 "suggestions": ["View products", "Delivery details", "Become a reseller"],
             }
+        if state.get("step") == "offer":
+            if is_yes(text) or normalized_quick_reply in {
+                "connect me",
+                "talk to a team leader",
+                "talk to an agent",
+                "continue",
+            }:
+                state["step"] = "name"
+                return {
+                    "reply": "What display name should we use for the live conversation?",
+                    "answer_status": "answered",
+                    "handoff": {"offered": True, "reason": state.get("reason")},
+                    "state": state,
+                    "suggestions": ["Cancel"],
+                }
+            return {
+                "reply": "Choose Connect me to start, or Not now to continue with the chatbot.",
+                "answer_status": "answered",
+                "handoff": {"offered": True, "reason": state.get("reason")},
+                "state": state,
+                "suggestions": ["Connect me", "Not now"],
+            }
         if state.get("step") == "name":
             cleaned_name = re.sub(r"\s+", " ", text).strip()
             if not 2 <= len(cleaned_name) <= 80 or not any(character.isalpha() for character in cleaned_name):
@@ -1925,13 +1947,13 @@ def process_chatbot_message(
             }
 
     if is_human_handoff_intent(text):
-        handoff_state = {"mode": "handoff", "step": "name", "reason": "requested"}
+        handoff_state = {"mode": "handoff", "step": "offer", "reason": "requested"}
         return {
-            "reply": "I can connect you with an available sales team leader. What display name should we use?",
+            "reply": "I can connect you with an available sales team leader. Would you like to start a live conversation?",
             "answer_status": "answered",
             "handoff": {"offered": True, "reason": "requested"},
             "state": handoff_state,
-            "suggestions": ["Cancel"],
+            "suggestions": ["Connect me", "Not now"],
         }
 
     if normalized_quick_reply in {"view products", "delivery details"}:

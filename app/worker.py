@@ -5,7 +5,7 @@ import time
 
 from app.config import APP_BASE_URL
 from app.database import get_transaction_cursor
-from app.emailer import send_account_activation, send_inquiry_status_update
+from app.emailer import send_account_activation, send_inquiry_rejection, send_inquiry_status_update
 from app.web_sessions import cleanup_expired_sessions
 from app import live_chat
 from app import repositories
@@ -154,6 +154,13 @@ def _deliver(row: dict) -> tuple[bool, str]:
     if row["event_type"] == "inquiry_followup":
         return send_inquiry_status_update(
             to_email=payload["to_email"], name=payload["name"], business_name=payload["business_name"],
+        )
+    if row["event_type"] == "inquiry_rejected":
+        return send_inquiry_rejection(
+            to_email=payload["to_email"],
+            name=payload["name"],
+            business_name=payload["business_name"],
+            rejection_reason=payload["rejection_reason"],
         )
     return False, f"Unknown outbox event type: {row['event_type']}"
 

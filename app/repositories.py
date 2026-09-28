@@ -752,7 +752,8 @@ def list_inquiries(
     sort: str = "",
 ) -> list[dict]:
     query = """
-        SELECT i.inquiry_id, i.name, i.contact_number, i.email, i.business_name, i.message, i.status,
+        SELECT i.inquiry_id, i.name, i.contact_number, i.email, i.business_name, i.message,
+               i.rejection_reason, i.status,
                a.name AS assigned_to, i.created_at
         FROM inquiries i
         LEFT JOIN accounts a ON a.account_id = i.assigned_team_leader_account_id
@@ -2637,9 +2638,13 @@ def add_inquiry(
     contact_number: str,
     message: str,
     chat_conversation_id: str | None = None,
+    assigned_team_leader_account_id: int | None = None,
 ) -> dict:
-    leader = next_sales_team_leader()
-    leader_id = leader["account_id"] if leader else None
+    if assigned_team_leader_account_id is None:
+        leader = next_sales_team_leader()
+        leader_id = leader["account_id"] if leader else None
+    else:
+        leader_id = int(assigned_team_leader_account_id)
     with get_transaction_cursor() as cur:
         cur.execute("""
             INSERT INTO inquiries (
@@ -2647,9 +2652,12 @@ def add_inquiry(
                 assigned_team_leader_account_id, chat_conversation_id
             )
             VALUES (%s, %s, %s, %s, %s, 'assigned', %s, %s)
+            ON CONFLICT DO NOTHING
             RETURNING inquiry_id, name, contact_number, email, business_name, message, status, assigned_team_leader_account_id, created_at;
         """, (name, contact_number, email, business_name, message, leader_id, chat_conversation_id))
         inq = cur.fetchone()
+        if not inq:
+            raise ValueError("This conversation already has a reseller inquiry.")
         _add_log_cursor(cur, actor_account_id=None, action="created_inquiry", entity_type="inquiries", entity_id=inq["inquiry_id"])
         _create_notification_cursor(
             cur, recipient_account_id=leader_id, recipient_role=None if leader_id else "owner",
@@ -2808,7 +2816,16 @@ def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id:
     res["team_leader_email"] = leader["email"] if leader else ""
     return res
 
-def reject_inquiry(inquiry_id: int, reviewing_team_leader_account_id: int | None = None) -> bool:
+def reject_inquiry(
+    inquiry_id: int,
+    rejection_reason: str,
+    reviewing_team_leader_account_id: int | None = None,
+) -> bool:
+    cleaned_reason = "\n".join(line.strip() for line in str(rejection_reason).strip().splitlines() if line.strip())
+    if not 5 <= len(cleaned_reason) <= 1000:
+        raise ValueError("Enter a rejection reason using 5 to 1000 characters.")
+    if any(ord(character) < 32 and character not in {"\n", "\t"} for character in cleaned_reason):
+        raise ValueError("The rejection reason contains unsupported characters.")
     with get_transaction_cursor() as cur:
         cur.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE;", (inquiry_id,))
         inq = cur.fetchone()
@@ -2821,12 +2838,25 @@ def reject_inquiry(inquiry_id: int, reviewing_team_leader_account_id: int | None
         reviewer_id = reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"]
         cur.execute(
             """
-            UPDATE inquiries SET status = 'rejected', assigned_team_leader_account_id = %s,
+            UPDATE inquiries SET status = 'rejected', rejection_reason = %s,
+                assigned_team_leader_account_id = %s,
                 reviewed_by_account_id = %s, reviewed_at = %s WHERE inquiry_id = %s;
             """,
-            (reviewer_id, reviewer_id, business_now(), inquiry_id),
+            (cleaned_reason, reviewer_id, reviewer_id, business_now(), inquiry_id),
         )
         _add_log_cursor(cur, actor_account_id=reviewer_id, action="rejected_reseller_inquiry", entity_type="inquiries", entity_id=inquiry_id)
+        _enqueue_outbox_cursor(
+            cur,
+            "inquiry_rejected",
+            {
+                "inquiry_id": inquiry_id,
+                "to_email": inq["email"],
+                "name": inq["name"],
+                "business_name": inq["business_name"],
+                "rejection_reason": cleaned_reason,
+            },
+            f"inquiry-rejected-{inquiry_id}",
+        )
     return True
 
 def _plan_fefo_allocations(cur, quantities: dict[int, Decimal]) -> list[dict]:

@@ -72,22 +72,35 @@
 
       <div class="live-chat-thread" data-live-thread hidden>
         <header class="live-chat-thread-head">
-          <div>
-            <span class="eyebrow" data-live-thread-status>Active conversation</span>
-            <h3 data-live-thread-name>Visitor</h3>
+          <div class="live-chat-thread-identity">
+            <span class="live-thread-avatar" data-live-thread-avatar>V</span>
+            <div>
+              <span class="eyebrow" data-live-thread-status>Active conversation</span>
+              <h3 data-live-thread-name>Visitor</h3>
+              <small class="live-thread-presence" data-live-thread-presence><span></span> Connected now</small>
+            </div>
           </div>
           <div class="live-chat-thread-actions">
+            <button class="button primary" type="button" data-live-send-inquiry-form>
+              <i data-lucide="clipboard-list"></i>
+              <span data-live-inquiry-form-label>Send inquiry form</span>
+            </button>
             <button class="button subtle" type="button" data-live-transfer-conversation>
               <i data-lucide="undo-2"></i>
               Return to queue
             </button>
             <button class="button subtle" type="button" data-live-close-conversation>
-              <i data-lucide="circle-check"></i>
-              Close chat
+              <i data-lucide="circle-x"></i>
+              End chat
             </button>
           </div>
         </header>
         <div class="live-chat-messages" role="log" aria-live="polite" data-live-messages></div>
+        <div class="live-typing-indicator" data-live-visitor-typing hidden aria-live="polite">
+          <span class="live-typing-avatar" data-live-typing-avatar>V</span>
+          <span class="live-typing-copy"><strong data-live-typing-name>Visitor</strong> is typing</span>
+          <span class="live-typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
         <form class="live-chat-composer" data-live-message-form>
           <label class="sr-only" for="live-chat-message">Message</label>
           <textarea id="live-chat-message" name="message" maxlength="500" rows="2" placeholder="Write a clear reply…" required></textarea>
@@ -106,7 +119,10 @@
         <div><dt>Reason</dt><dd data-live-detail-reason>—</dd></div>
         <div><dt>Contact</dt><dd data-live-detail-contact>Not provided</dd></div>
       </dl>
-      <p>Visitors are anonymous prospects. A chat does not create a reseller account or formal inquiry.</p>
+      <div class="live-chat-context-note">
+        <i data-lucide="shield-check"></i>
+        <p>Only send the inquiry form after the visitor confirms they want to apply. The visitor must submit their own details and consent.</p>
+      </div>
     </aside>
   </div>
 </section>

@@ -31,7 +31,12 @@
                     <tr>
                         <td><strong>{{ inquiry.business_name }}</strong></td>
                         <td>{{ inquiry.name }}<br><span class="muted">{{ inquiry.email }} - {{ inquiry.contact_number }}</span></td>
-                        <td>{{ inquiry.message }}</td>
+                        <td>
+                          {{ inquiry.message }}
+                          {% if inquiry.rejection_reason %}
+                          <small class="inquiry-rejection-summary"><strong>Rejection reason:</strong> {{ inquiry.rejection_reason }}</small>
+                          {% endif %}
+                        </td>
                         <td><span class="status-badge {{ inquiry.status }}">{{ inquiry.status }}</span></td>
                         <td>
                           {% if inquiry.status in ["pending", "assigned", "contacted"] %}
@@ -39,9 +44,15 @@
                             <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/approve" method="post">
                                 <button class="icon-button" type="submit" title="Approve"><i data-lucide="check"></i></button>
                             </form>
-                            <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/reject" method="post">
-                                <button class="icon-button danger" type="submit" title="Reject"><i data-lucide="x"></i></button>
-                            </form>
+                            <button
+                              class="icon-button danger"
+                              type="button"
+                              title="Reject"
+                              aria-label="Reject {{ inquiry.business_name }} inquiry"
+                              data-inquiry-reject-open
+                              data-inquiry-reject-action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/reject"
+                              data-inquiry-reject-business="{{ inquiry.business_name }}"
+                            ><i data-lucide="x"></i></button>
                           </div>
                           {% else %}
                           <span class="hint">Reviewed</span>
@@ -60,3 +71,28 @@
                     {% if inquiries_page.pagination.has_next %}<a href="?q={{ inquiries_page.filters.q|urlencode }}&status={{ inquiries_page.filters.status|urlencode }}&sort={{ inquiries_page.filters.sort|urlencode }}&page={{ inquiries_page.pagination.page + 1 }}">Next</a>{% endif %}
                 </div>
             </section>
+
+            <div class="proof-modal inquiry-rejection-modal" data-inquiry-reject-modal hidden>
+              <button class="proof-modal-backdrop" type="button" aria-label="Cancel rejection" data-inquiry-reject-close></button>
+              <section class="proof-modal-card inquiry-rejection-card" role="dialog" aria-modal="true" aria-labelledby="inquiry-rejection-title">
+                <header class="proof-modal-head">
+                  <div>
+                    <span class="eyebrow">Application decision</span>
+                    <h2 id="inquiry-rejection-title">Reject reseller inquiry</h2>
+                  </div>
+                  <button class="icon-button" type="button" aria-label="Close rejection form" data-inquiry-reject-close><i data-lucide="x"></i></button>
+                </header>
+                <form method="post" data-inquiry-reject-form>
+                  <div class="inquiry-rejection-body">
+                    <p>Explain why <strong data-inquiry-reject-business></strong> cannot be approved. This reason will be stored and emailed to the applicant.</p>
+                    <label for="inquiry-rejection-reason">Reason for rejection</label>
+                    <textarea id="inquiry-rejection-reason" name="rejection_reason" minlength="5" maxlength="1000" rows="6" required data-inquiry-reject-reason></textarea>
+                    <small>Use a clear, respectful reason. The applicant will receive this text exactly as entered.</small>
+                  </div>
+                  <footer class="inquiry-rejection-actions">
+                    <button class="button subtle" type="button" data-inquiry-reject-close>Cancel</button>
+                    <button class="button danger" type="submit"><i data-lucide="x"></i> Reject and email</button>
+                  </footer>
+                </form>
+              </section>
+            </div>

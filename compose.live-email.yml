@@ -1,0 +1,18 @@
+name: meattrack-local
+
+# Opt-in local override for testing real transactional delivery through Brevo.
+# Use together with compose.yml; the base local stack remains mail-capture only.
+services:
+  app:
+    environment:
+      BREVO_API_KEY: ${BREVO_API_KEY:?Set BREVO_API_KEY in .env}
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
+      BREVO_FROM_EMAIL: ${BREVO_FROM_EMAIL:?Set BREVO_FROM_EMAIL in .env}
+      BREVO_FROM_NAME: ${BREVO_FROM_NAME:-Batangas Premium}
+
+  worker:
+    environment:
+      BREVO_API_KEY: ${BREVO_API_KEY:?Set BREVO_API_KEY in .env}
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
+      BREVO_FROM_EMAIL: ${BREVO_FROM_EMAIL:?Set BREVO_FROM_EMAIL in .env}
+      BREVO_FROM_NAME: ${BREVO_FROM_NAME:-Batangas Premium}

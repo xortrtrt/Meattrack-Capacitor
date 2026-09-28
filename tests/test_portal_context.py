@@ -298,7 +298,7 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert app_js.index('if (!response.ok)') < app_js.index('messages.innerHTML = "";', app_js.index('resetButton.addEventListener'))
     assert 'bubble.classList.add("is-typing")' in app_js
     assert "@keyframes chatbot-caret" in css
-    assert "20260928-live-chat-1" in response.text
+    assert "20260929-live-chat-ui-8" in response.text
     assert "BP ChatBot" in response.text
     assert "chatbot-avatar" not in response.text
     assert 'role="dialog" aria-label="Batangas Premium support"' in response.text
@@ -681,7 +681,7 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
                     "forecast_date": main.date.today(),
                     "predicted_quantity": 42,
                     "forecast_total": 42,
-                    "production_gap": 12,
+                    "production_gap": None,
                     "confidence": "85% - 95% range",
             }
         ],
@@ -715,6 +715,11 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
     assert "Quarterly" in response.text
     assert "Yearly" in response.text
     assert "Open alerts" not in response.text
+
+
+def test_template_numeric_filters_render_missing_values_safely():
+    assert main.currency(None) == "—"
+    assert main.number(None) == "—"
 
 
 def test_owner_sales_chart_endpoint_returns_period_json(monkeypatch):

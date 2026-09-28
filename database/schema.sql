@@ -41,6 +41,7 @@ CREATE TABLE inquiries (
     email text NOT NULL,
     business_name text NOT NULL,
     message text,
+    rejection_reason text CHECK (rejection_reason IS NULL OR char_length(btrim(rejection_reason)) BETWEEN 5 AND 1000),
     status text NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'assigned', 'contacted', 'approved', 'rejected', 'closed', 'onboarded')),
     assigned_team_leader_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
@@ -738,6 +739,9 @@ CREATE TABLE chat_conversations (
     claimed_at timestamptz,
     last_visitor_at timestamptz,
     last_leader_at timestamptz,
+    visitor_typing_until timestamptz,
+    leader_typing_until timestamptz,
+    inquiry_form_requested_at timestamptz,
     closed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -757,6 +761,15 @@ CREATE TABLE chat_messages (
     published_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (conversation_id, client_message_id)
+);
+
+CREATE TABLE chat_service_ratings (
+    conversation_id uuid PRIMARY KEY
+        REFERENCES chat_conversations(conversation_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    team_leader_account_id bigint NOT NULL
+        REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    rating smallint NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE team_leader_presence (
@@ -784,6 +797,7 @@ CREATE INDEX ix_chat_conversations_queue ON chat_conversations (status, queued_a
 CREATE INDEX ix_chat_conversations_leader_status ON chat_conversations (assigned_team_leader_account_id, status, updated_at DESC);
 CREATE INDEX ix_chat_messages_conversation_id ON chat_messages (conversation_id, chat_message_id);
 CREATE INDEX ix_chat_messages_pending ON chat_messages (publication_status, created_at) WHERE publication_status <> 'published';
+CREATE INDEX ix_chat_service_ratings_leader_created ON chat_service_ratings (team_leader_account_id, created_at DESC);
 CREATE INDEX ix_team_leader_presence_available ON team_leader_presence (availability, heartbeat_at DESC);
 CREATE INDEX ix_rate_limit_buckets_expiry ON rate_limit_buckets (expires_at);
 

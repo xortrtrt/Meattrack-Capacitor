@@ -4,6 +4,7 @@ import asyncio
 import re
 import hashlib
 import logging
+import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -40,6 +41,7 @@ from app.security_controls import (
     enforce_handoff,
     enforce_lead,
     enforce_live_message,
+    enforce_live_typing,
     enforce_otp_attempt,
     enforce_password_login,
     record_event,
@@ -131,11 +133,15 @@ PRODUCT_IMAGE_KEYWORDS = [
 ]
 
 
-def currency(value: float | int) -> str:
+def currency(value: float | int | None) -> str:
+    if value is None:
+        return "—"
     return f"PHP {value:,.2f}"
 
 
-def number(value: float | int) -> str:
+def number(value: float | int | None) -> str:
+    if value is None:
+        return "—"
     if isinstance(value, float) and not value.is_integer():
         return f"{value:,.2f}"
     return f"{value:,.0f}"
@@ -1224,6 +1230,26 @@ def _visitor_live_conversation(request: Request, conversation_id: str) -> dict:
     return conversation
 
 
+def _live_chat_actor(request: Request, conversation_id: str) -> tuple[str, int | None, dict]:
+    """Resolve a shared live-chat endpoint without confusing same-browser visitor and leader tabs."""
+    actor_hint = request.headers.get("x-live-chat-actor", "").strip().lower()
+    if actor_hint not in {"", "visitor", "team_leader"}:
+        raise HTTPException(status_code=400, detail="Invalid live-chat actor.")
+    visitor_owned = live_chat.visitor_can_access(request.session, conversation_id)
+    if actor_hint == "visitor" or (
+        not actor_hint and (visitor_owned or request.session.get("role_key") != "team-leader")
+    ):
+        return "visitor", None, _visitor_live_conversation(request, conversation_id)
+
+    account_id = _sales_live_account(request)
+    if not live_chat.leader_can_access(account_id, conversation_id):
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    conversation = live_chat.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return "team_leader", account_id, conversation
+
+
 async def _publish_chat_message(message: dict, conversation_id: str) -> str:
     try:
         await asyncio.to_thread(live_chat.publish_message, message, conversation_id)
@@ -1261,27 +1287,14 @@ async def live_chat_status(request: Request, conversation_id: str):
 
 @app.get("/api/live-chat/{conversation_id}/messages")
 async def live_chat_messages(request: Request, conversation_id: str, after_id: int = 0):
-    if request.session.get("role_key") == "team-leader":
-        account_id = _sales_live_account(request)
-        if not live_chat.leader_can_access(account_id, conversation_id):
-            raise HTTPException(status_code=404, detail="Conversation not found.")
-    else:
-        _visitor_live_conversation(request, conversation_id)
+    _live_chat_actor(request, conversation_id)
     return {"messages": live_chat.list_messages(conversation_id, after_id=after_id)}
 
 
 @app.post("/api/live-chat/{conversation_id}/messages")
 async def live_chat_send_message(request: Request, conversation_id: str):
     payload = await _json_payload(request)
-    account_id = None
-    sender_type = "visitor"
-    if request.session.get("role_key") == "team-leader":
-        account_id = _sales_live_account(request)
-        if not live_chat.leader_can_access(account_id, conversation_id):
-            raise HTTPException(status_code=404, detail="Conversation not found.")
-        sender_type = "team_leader"
-    else:
-        _visitor_live_conversation(request, conversation_id)
+    sender_type, account_id, _conversation = _live_chat_actor(request, conversation_id)
     try:
         enforce_live_message(request, account_id=account_id)
         message, created = live_chat.add_message(
@@ -1297,6 +1310,52 @@ async def live_chat_send_message(request: Request, conversation_id: str):
         return JSONResponse({"error": "invalid_message", "message": str(exc)}, status_code=400)
     delivery = await _publish_chat_message(message, conversation_id) if created else message["publication_status"]
     return {"message": message, "delivery": delivery, "duplicate": not created}
+
+
+@app.post("/api/live-chat/{conversation_id}/typing")
+async def live_chat_typing(request: Request, conversation_id: str):
+    payload = await _json_payload(request)
+    sender_type, account_id, conversation = _live_chat_actor(request, conversation_id)
+    sender_name = (
+        conversation.get("assigned_team_leader_name")
+        if sender_type == "team_leader"
+        else conversation.get("display_name")
+    )
+    if not conversation or conversation.get("status") != "active":
+        return JSONResponse(
+            {"error": "conversation_not_active", "message": "This live conversation is not active."},
+            status_code=409,
+        )
+    is_typing = payload.get("is_typing")
+    if not isinstance(is_typing, bool):
+        return JSONResponse(
+            {"error": "invalid_typing_state", "message": "Typing state must be true or false."},
+            status_code=400,
+        )
+    try:
+        enforce_live_typing(request, account_id=account_id)
+    except RateLimitExceeded as exc:
+        return _json_rate_limit(exc)
+    try:
+        live_chat.set_typing_state(conversation_id, sender_type, is_typing)
+    except ValueError as exc:
+        return JSONResponse({"error": "conversation_not_active", "message": str(exc)}, status_code=409)
+    event = {
+        "conversation_id": conversation_id,
+        "sender_type": sender_type,
+        "sender_name": sender_name,
+        "is_typing": is_typing,
+    }
+    try:
+        await asyncio.to_thread(
+            live_chat.publish_event,
+            live_chat.conversation_channel(conversation_id),
+            "typing.updated",
+            event,
+        )
+    except live_chat.AblyUnavailable:
+        return JSONResponse({"typing": event, "delivery": "unavailable"}, status_code=202)
+    return {"typing": event, "delivery": "published"}
 
 
 @app.post("/api/live-chat/{conversation_id}/fallback")
@@ -1327,7 +1386,6 @@ async def live_chat_cancel(request: Request, conversation_id: str):
     if conversation["status"] not in {"queued", "active", "awaiting_contact"}:
         return {"conversation": conversation}
     closed = live_chat.close_conversation(conversation_id, cancelled=True)
-    request.session.pop("live_chat_conversation_id", None)
     try:
         await asyncio.to_thread(
             live_chat.publish_event,
@@ -1338,6 +1396,94 @@ async def live_chat_cancel(request: Request, conversation_id: str):
     except live_chat.AblyUnavailable:
         pass
     return {"conversation": closed}
+
+
+@app.post("/api/live-chat/{conversation_id}/rating")
+async def live_chat_rating(request: Request, conversation_id: str):
+    _visitor_live_conversation(request, conversation_id)
+    payload = await _json_payload(request)
+    try:
+        raw_rating = payload.get("rating")
+        if isinstance(raw_rating, bool) or not isinstance(raw_rating, int):
+            raise live_chat.LiveChatError("Choose a customer-service rating from 1 to 5.")
+        rating = live_chat.rate_conversation(conversation_id, raw_rating)
+    except (TypeError, ValueError) as exc:
+        return JSONResponse({"error": "invalid_rating", "message": str(exc)}, status_code=400)
+    return {"rating": rating}
+
+
+@app.post("/api/live-chat/{conversation_id}/inquiry")
+async def live_chat_create_inquiry(request: Request, conversation_id: str):
+    conversation = _visitor_live_conversation(request, conversation_id)
+    payload = await _json_payload(request)
+    if conversation.get("status") != "active" or not conversation.get("inquiry_form_requested_at"):
+        return JSONResponse(
+            {"error": "inquiry_form_unavailable", "message": "The sales team leader has not shared an inquiry form."},
+            status_code=409,
+        )
+    if payload.get("consent_confirmed") is not True:
+        return JSONResponse(
+            {"error": "consent_required", "message": "Confirm the visitor’s consent before submitting the inquiry."},
+            status_code=400,
+        )
+    try:
+        name = live_chat.normalize_display_name(str(payload.get("name", "")))
+        business_name = " ".join(str(payload.get("business_name", "")).strip().split())
+        if not 2 <= len(business_name) <= 160 or live_chat.CONTROL_CHARACTERS_RE.search(business_name):
+            raise ValueError("Enter a business name using 2 to 160 characters.")
+        email = require_email(str(payload.get("email", "")))
+        if len(email) > 254:
+            raise ValueError("Enter an email address under 255 characters.")
+        contact_kind, contact_number = live_chat.normalize_contact(str(payload.get("contact_number", "")))
+        if contact_kind != "phone":
+            raise ValueError("Enter a valid contact number with 7 to 15 digits.")
+        location = " ".join(str(payload.get("location", "")).strip().split())
+        notes = str(payload.get("notes", "")).strip()
+        if not 2 <= len(location) <= 180 or live_chat.CONTROL_CHARACTERS_RE.search(location):
+            raise ValueError("Enter a location using 2 to 180 characters.")
+        if len(notes) > 500 or live_chat.CONTROL_CHARACTERS_RE.search(notes):
+            raise ValueError("Keep inquiry notes under 500 characters.")
+        enforce_lead(request, email)
+        inquiry = data.add_inquiry(
+            name,
+            business_name,
+            email,
+            contact_number,
+            "\n".join(filter(None, [f"Location: {location}", notes, "Source: live sales conversation"])),
+            chat_conversation_id=conversation_id,
+            assigned_team_leader_account_id=int(conversation["assigned_team_leader_account_id"]),
+        )
+    except RateLimitExceeded as exc:
+        return _json_rate_limit(exc)
+    except ValueError as exc:
+        status_code = 409 if "already has" in str(exc) else 400
+        return JSONResponse({"error": "invalid_inquiry", "message": str(exc)}, status_code=status_code)
+
+    confirmation, _created = live_chat.add_message(
+        conversation_id,
+        client_message_id=str(uuid.uuid4()),
+        sender_type="system",
+        content=(
+            f"Your reseller inquiry #{inquiry['inquiry_id']} was submitted for review. "
+            "No reseller account has been created yet."
+        ),
+    )
+    updated_conversation = live_chat.get_conversation(conversation_id) or conversation
+    await _publish_chat_message(confirmation, conversation_id)
+    try:
+        await asyncio.to_thread(
+            live_chat.publish_event,
+            live_chat.conversation_channel(conversation_id),
+            "inquiry.submitted",
+            {
+                "conversation_id": conversation_id,
+                "status": "active",
+                "inquiry_id": inquiry["inquiry_id"],
+            },
+        )
+    except live_chat.AblyUnavailable:
+        pass
+    return {"inquiry": inquiry, "conversation": updated_conversation, "message": confirmation}
 
 
 @app.post("/api/ably/token")
@@ -1355,17 +1501,15 @@ async def ably_token(request: Request):
         client_id = f"leader:{account_id}"
     else:
         conversation_id = str(payload.get("conversation_id", ""))
-        if request.session.get("role_key") == "team-leader":
-            account_id = _sales_live_account(request)
-            if not live_chat.leader_can_access(account_id, conversation_id):
-                raise HTTPException(status_code=404, detail="Conversation not found.")
+        actor, actor_account_id, _conversation = _live_chat_actor(request, conversation_id)
+        if actor == "team_leader":
+            account_id = actor_account_id
             client_id = f"leader:{account_id}"
             capabilities = {
                 live_chat.leader_channel(account_id): ["subscribe"],
                 live_chat.conversation_channel(conversation_id): ["subscribe"],
             }
         else:
-            _visitor_live_conversation(request, conversation_id)
             client_id = f"visitor:{request.session.get('rate_limit_id', 'anonymous')}"
             capabilities = {live_chat.conversation_channel(conversation_id): ["subscribe"]}
     try:
@@ -1414,6 +1558,7 @@ async def portal_live_chat_claim(request: Request, conversation_id: str):
             {
                 "conversation_id": conversation_id,
                 "status": "active",
+                "team_leader_account_id": account_id,
                 "team_leader_name": conversation.get("assigned_team_leader_name"),
             },
         )
@@ -1456,13 +1601,39 @@ async def portal_live_chat_transfer(request: Request, conversation_id: str):
             live_chat.publish_event,
             live_chat.conversation_channel(conversation_id),
             "conversation.transferred",
-            {"conversation_id": conversation_id, "status": "queued"},
+            {
+                "conversation_id": conversation_id,
+                "status": "queued",
+                "previous_team_leader_account_id": account_id,
+            },
         )
         if system_message:
             await _publish_chat_message(system_message, conversation_id)
     except live_chat.AblyUnavailable:
         pass
     await asyncio.to_thread(live_chat.notify_available_leaders, conversation)
+    return {"conversation": conversation}
+
+
+@app.post("/api/portal/live-chat/{conversation_id}/inquiry-form")
+async def portal_live_chat_inquiry_form(request: Request, conversation_id: str):
+    account_id = _sales_live_account(request)
+    try:
+        conversation = live_chat.request_inquiry_form(account_id, conversation_id)
+    except ValueError as exc:
+        return JSONResponse({"error": "inquiry_form_failed", "message": str(exc)}, status_code=409)
+    system_message = conversation.pop("system_message", None)
+    try:
+        await asyncio.to_thread(
+            live_chat.publish_event,
+            live_chat.conversation_channel(conversation_id),
+            "inquiry.form_requested",
+            {"conversation_id": conversation_id, "requested": True},
+        )
+        if system_message:
+            await _publish_chat_message(system_message, conversation_id)
+    except live_chat.AblyUnavailable:
+        pass
     return {"conversation": conversation}
 
 
@@ -2116,7 +2287,12 @@ async def team_product_pack_content(
 
 
 @app.post("/portal/team-leader/inquiries/{inquiry_id}/{decision}")
-async def team_inquiry_decision(request: Request, inquiry_id: int, decision: str):
+async def team_inquiry_decision(
+    request: Request,
+    inquiry_id: int,
+    decision: str,
+    rejection_reason: str = Form(""),
+):
     guard = require_portal_session(request, "team-leader")
     if guard:
         return guard
@@ -2133,11 +2309,15 @@ async def team_inquiry_decision(request: Request, inquiry_id: int, decision: str
         return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry approved. A single-use activation email was queued."))
     if decision == "reject":
         try:
-            if not data.reject_inquiry(inquiry_id, reviewing_team_leader_account_id=session_account_id(request)):
+            if not data.reject_inquiry(
+                inquiry_id,
+                rejection_reason,
+                reviewing_team_leader_account_id=session_account_id(request),
+            ):
                 return redirect_to(safe_portal_path("team-leader", "inquiries", error="Inquiry not found."))
         except ValueError as exc:
             return redirect_to(safe_portal_path("team-leader", "inquiries", error=str(exc)))
-        return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry rejected."))
+        return redirect_to(safe_portal_path("team-leader", "inquiries", message="Inquiry rejected. The applicant email was queued."))
     raise HTTPException(status_code=404)
 
 

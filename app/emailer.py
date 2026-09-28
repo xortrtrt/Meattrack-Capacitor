@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 import json
 from urllib import error, request
 
@@ -19,18 +20,19 @@ def email_ready() -> bool:
     return brevo_ready()
 
 
-def _send_via_brevo(*, to_email: str, subject: str, body: str) -> None:
-    payload = json.dumps(
-        {
-            "sender": {
-                "name": BREVO_FROM_NAME or "Batangas Premium",
-                "email": BREVO_FROM_EMAIL,
-            },
-            "to": [{"email": to_email}],
-            "subject": subject,
-            "textContent": body,
-        }
-    ).encode("utf-8")
+def _send_via_brevo(*, to_email: str, subject: str, body: str, html_body: str | None = None) -> None:
+    message = {
+        "sender": {
+            "name": BREVO_FROM_NAME or "Batangas Premium",
+            "email": BREVO_FROM_EMAIL,
+        },
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": body,
+    }
+    if html_body:
+        message["htmlContent"] = html_body
+    payload = json.dumps(message).encode("utf-8")
     http_request = request.Request(
         BREVO_API_URL,
         data=payload,
@@ -64,10 +66,12 @@ def _log_email_failure(provider: str, exc: Exception) -> None:
     print(f"Email delivery failed via {provider}: {detail}", flush=True)
 
 
-def _send_email(*, to_email: str, subject: str, body: str, failure_message: str, success_message: str) -> tuple[bool, str]:
+def _send_email(
+    *, to_email: str, subject: str, body: str, failure_message: str, success_message: str, html_body: str | None = None
+) -> tuple[bool, str]:
     if brevo_ready():
         try:
-            _send_via_brevo(to_email=to_email, subject=subject, body=body)
+            _send_via_brevo(to_email=to_email, subject=subject, body=body, html_body=html_body)
         except Exception as exc:
             _log_email_failure("brevo", exc)
             return False, failure_message
@@ -141,7 +145,49 @@ def send_inquiry_status_update(*, to_email: str, name: str, business_name: str) 
     )
 
 
+def send_inquiry_rejection(
+    *,
+    to_email: str,
+    name: str,
+    business_name: str,
+    rejection_reason: str,
+) -> tuple[bool, str]:
+    safe_name = escape(name)
+    safe_business_name = escape(business_name)
+    safe_reason = escape(rejection_reason).replace("\n", "<br>")
+    return _send_email(
+        to_email=to_email,
+        subject="Batangas Premium reseller application decision",
+        body="\n".join(
+            [
+                f"Hello {name},",
+                "",
+                f"We reviewed your reseller inquiry for {business_name} and cannot approve it at this time.",
+                "",
+                "Reason:",
+                rejection_reason,
+                "",
+                "You may contact Batangas Premium if you need clarification or want to submit a new inquiry later.",
+                "",
+                "Batangas Premium",
+            ]
+        ),
+        html_body=(
+            f"<p>Hello {safe_name},</p>"
+            f"<p>We reviewed your reseller inquiry for {safe_business_name} and cannot approve it at this time.</p>"
+            f"<p><strong>Reason:</strong><br>{safe_reason}</p>"
+            "<p>You may contact Batangas Premium if you need clarification or want to submit a new inquiry later.</p>"
+            "<p>Batangas Premium</p>"
+        ),
+        failure_message="Inquiry rejection email could not be sent.",
+        success_message="Inquiry rejection email sent.",
+    )
+
+
 def send_account_activation(*, to_email: str, name: str, account_label: str, activation_url: str) -> tuple[bool, str]:
+    safe_name = escape(name)
+    safe_label = escape(account_label)
+    safe_url = escape(activation_url, quote=True)
     return _send_email(
         to_email=to_email,
         subject="Activate your Batangas Premium portal account",
@@ -161,4 +207,11 @@ def send_account_activation(*, to_email: str, name: str, account_label: str, act
         ),
         failure_message="Activation email could not be sent.",
         success_message="Activation email sent.",
+        html_body=(
+            f"<p>Hello {safe_name},</p>"
+            f"<p>Your Batangas Premium {safe_label} account is ready.</p>"
+            "<p>Use this single-use link within 24 hours to create your password:</p>"
+            f'<p><a href="{safe_url}">Activate your account</a></p>'
+            "<p>If you did not expect this account, ignore this email and contact Batangas Premium.</p>"
+        ),
     )

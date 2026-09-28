@@ -203,6 +203,12 @@ def enforce_live_message(request: Request, *, account_id: int | None = None) -> 
     consume_rate_limit("live_message_ip", f"ip:{client_ip(request)}", 120, 600, "Live-chat message limit reached for this network.")
 
 
+def enforce_live_typing(request: Request, *, account_id: int | None = None) -> None:
+    identity = f"account:{account_id}" if account_id is not None else f"session:{_session_rate_id(request)}"
+    consume_rate_limit("live_typing", identity, 60, 60, "Live-chat typing updates are temporarily limited.")
+    consume_rate_limit("live_typing_ip", f"ip:{client_ip(request)}", 240, 600, "Live-chat typing updates are temporarily limited for this network.")
+
+
 def enforce_handoff(request: Request) -> None:
     consume_rate_limit("live_handoff", f"session:{_session_rate_id(request)}", 3, 3600, "Live-chat request limit reached. Please try again later.")
     consume_rate_limit("live_handoff_ip", f"ip:{client_ip(request)}", 10, 3600, "Live-chat request limit reached for this network.")

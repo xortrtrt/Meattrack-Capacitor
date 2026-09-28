@@ -7,6 +7,7 @@ import urllib.error
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app import chatbot, live_chat, main
 
@@ -90,10 +91,13 @@ def test_live_message_rejects_control_characters_and_oversize_text():
 
 
 def test_explicit_human_request_starts_name_and_consent_flow():
-    started = chatbot.process_chatbot_message("I want to talk to a human")
+    offered = chatbot.process_chatbot_message("I want to talk to a human")
+    started = chatbot.process_chatbot_message("Connect me", offered["state"])
     named = chatbot.process_chatbot_message("Ana Santos", started["state"])
     consented = chatbot.process_chatbot_message("I agree", named["state"])
 
+    assert offered["state"] == {"mode": "handoff", "step": "offer", "reason": "requested"}
+    assert offered["suggestions"] == ["Connect me", "Not now"]
     assert started["state"] == {"mode": "handoff", "step": "name", "reason": "requested"}
     assert named["state"]["step"] == "consent"
     assert consented["handoff"]["start"] is True
@@ -101,13 +105,25 @@ def test_explicit_human_request_starts_name_and_consent_flow():
 
 
 def test_natural_someone_request_starts_handoff_flow():
-    result = chatbot.process_chatbot_message(
+    offered = chatbot.process_chatbot_message(
         "Hi, I own a sari-sari store in Lipa. Can I talk to someone about becoming a reseller?"
     )
+    result = chatbot.process_chatbot_message("Connect me", offered["state"])
 
     assert result["state"] == {"mode": "handoff", "step": "name", "reason": "requested"}
     assert result["handoff"] == {"offered": True, "reason": "requested"}
     assert "display name" in result["reply"].lower()
+
+
+def test_how_to_reach_agent_requires_opt_in_before_collecting_name():
+    offered = chatbot.process_chatbot_message("How can I talk to an agent?")
+    declined = chatbot.process_chatbot_message("Not now", offered["state"])
+
+    assert offered["state"]["step"] == "offer"
+    assert offered["suggestions"] == ["Connect me", "Not now"]
+    assert "display name" not in offered["reply"].lower()
+    assert declined["state"] == {}
+    assert declined["handoff"]["offered"] is False
 
 
 def test_two_unanswered_questions_offer_team_leader(monkeypatch):
@@ -160,6 +176,279 @@ def test_live_chat_clears_recovered_errors_and_exposes_availability_state():
     assert 'toast.dataset.liveChatError = "true"' in source
     assert "clearError();" in source
     assert 'button.setAttribute("aria-pressed", String(isActive))' in source
+
+
+def test_both_live_chat_participants_have_an_end_chat_action():
+    visitor_source = open("app/static/js/app.js", encoding="utf-8").read()
+    leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
+    leader_template = open("app/templates/portals/team-leader/live_chat.html", encoding="utf-8").read()
+
+    assert 'renderSuggestions(["End chat"])' in visitor_source
+    assert '["cancel", "end chat"].includes(liveAction)' in visitor_source
+    assert 'window.confirm("End this live conversation?")' in visitor_source
+    assert 'window.confirm("End this live conversation?")' in leader_source
+    assert "End chat" in leader_template
+
+
+def test_visitor_is_prompted_for_a_persisted_leader_rating_after_chat_ends():
+    source = open("app/static/js/app.js", encoding="utf-8").read()
+
+    assert 'const liveChatRatingStorageKey = "meattrack_live_chat_rating_v1"' in source
+    assert "function offerLiveChatRating(conversation)" in source
+    assert 'renderSuggestions(["1 star", "2 stars", "3 stars", "4 stars", "5 stars"])' in source
+    assert "/rating`" in source
+    assert "Your customer-service rating was saved for the sales team leader." in source
+
+
+def test_typing_update_is_server_published_with_authoritative_visitor_identity(monkeypatch):
+    captured = {}
+    conversation_id = "00000000-0000-0000-0000-000000000007"
+    monkeypatch.setattr(
+        main,
+        "_visitor_live_conversation",
+        lambda _request, requested: {
+            "conversation_id": requested,
+            "display_name": "Ana Prospect",
+            "status": "active",
+        },
+    )
+    monkeypatch.setattr(main, "enforce_live_typing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(live_chat, "set_typing_state", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        live_chat,
+        "publish_event",
+        lambda channel, name, data: captured.update(channel=channel, name=name, data=data),
+    )
+
+    response = TestClient(main.app).post(
+        f"/api/live-chat/{conversation_id}/typing",
+        json={"is_typing": True, "sender_type": "team_leader", "sender_name": "Fake Name"},
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "channel": f"support:{conversation_id}",
+        "name": "typing.updated",
+        "data": {
+            "conversation_id": conversation_id,
+            "sender_type": "visitor",
+            "sender_name": "Ana Prospect",
+            "is_typing": True,
+        },
+    }
+
+
+def test_typing_update_requires_boolean_and_active_conversation(monkeypatch):
+    conversation_id = "00000000-0000-0000-0000-000000000008"
+    monkeypatch.setattr(
+        main,
+        "_visitor_live_conversation",
+        lambda _request, requested: {"conversation_id": requested, "display_name": "Ana", "status": "active"},
+    )
+    invalid = TestClient(main.app).post(
+        f"/api/live-chat/{conversation_id}/typing",
+        json={"is_typing": "yes"},
+    )
+    assert invalid.status_code == 400
+
+    monkeypatch.setattr(
+        main,
+        "_visitor_live_conversation",
+        lambda _request, requested: {"conversation_id": requested, "display_name": "Ana", "status": "closed"},
+    )
+    inactive = TestClient(main.app).post(
+        f"/api/live-chat/{conversation_id}/typing",
+        json={"is_typing": True},
+    )
+    assert inactive.status_code == 409
+
+
+def test_live_chat_clients_render_ephemeral_typing_indicators():
+    visitor_source = open("app/static/js/app.js", encoding="utf-8").read()
+    leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
+    leader_template = open("app/templates/portals/team-leader/live_chat.html", encoding="utf-8").read()
+    leader_css = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
+
+    assert 'event.name === "typing.updated"' in visitor_source
+    assert 'event.name === "typing.updated"' in leader_source
+    assert "/typing`" in visitor_source
+    assert "/typing`" in leader_source
+    assert "data-live-visitor-typing" in leader_template
+    assert "live-typing-bounce" in leader_css
+
+
+def test_visitor_message_keeps_leader_identity_outside_the_bubble():
+    source = open("app/static/js/app.js", encoding="utf-8").read()
+    public_css = open("app/static/css/public.css", encoding="utf-8").read()
+
+    assert "function addLiveSenderLabel(bubble, senderName)" in source
+    assert "messages.insertBefore(label, bubble)" in source
+    assert "const prefix = sender" not in source
+    assert ".live-message-sender-label" in public_css
+
+
+def test_visitor_detects_fast_reassignment_even_when_status_stays_active():
+    source = open("app/static/js/app.js", encoding="utf-8").read()
+
+    assert "const assignmentChanged" in source
+    assert 'next.status === "active" && (next.status !== previousStatus || assignmentChanged)' in source
+    assert "Your chat was transferred. You’re now connected with" in source
+    assert "liveRefreshQueued = true" in source
+
+
+def test_live_chat_actor_keeps_same_browser_visitor_and_leader_tabs_distinct(monkeypatch):
+    conversation_id = "00000000-0000-0000-0000-000000000009"
+    conversation = {"conversation_id": conversation_id, "status": "active"}
+    session = {
+        "role_key": "team-leader",
+        "account_id": 17,
+        "live_chat_conversation_id": conversation_id,
+    }
+    monkeypatch.setattr(live_chat, "visitor_can_access", lambda current, requested: requested == conversation_id)
+    monkeypatch.setattr(live_chat, "get_conversation", lambda requested: conversation if requested == conversation_id else None)
+
+    visitor_request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-live-chat-actor", b"visitor")],
+        "session": session,
+    })
+    monkeypatch.setattr(main, "_sales_live_account", lambda _request: (_ for _ in ()).throw(AssertionError()))
+    assert main._live_chat_actor(visitor_request, conversation_id) == ("visitor", None, conversation)
+
+    leader_request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": [(b"x-live-chat-actor", b"team_leader")],
+        "session": session,
+    })
+    monkeypatch.setattr(main, "_sales_live_account", lambda _request: 17)
+    monkeypatch.setattr(live_chat, "leader_can_access", lambda account_id, requested: account_id == 17 and requested == conversation_id)
+    assert main._live_chat_actor(leader_request, conversation_id) == ("team_leader", 17, conversation)
+
+
+def test_live_chat_clients_send_validated_actor_headers():
+    visitor_source = open("app/static/js/app.js", encoding="utf-8").read()
+    leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
+
+    assert '"X-Live-Chat-Actor": "visitor"' in visitor_source
+    assert '"X-Live-Chat-Actor": "team_leader"' in leader_source
+
+
+def test_leader_channel_cleanup_does_not_treat_ably_unsubscribe_as_a_promise():
+    source = open("app/static/js/live_chat.js", encoding="utf-8").read()
+
+    assert "activeChannel.unsubscribe();" in source
+    assert "activeChannel.unsubscribe().catch" not in source
+
+
+def test_live_chat_clients_expose_visitor_owned_reseller_inquiry_form():
+    visitor_source = open("app/static/js/app.js", encoding="utf-8").read()
+    leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
+    leader_template = open("app/templates/portals/team-leader/live_chat.html", encoding="utf-8").read()
+
+    assert "data-live-send-inquiry-form" in leader_template
+    assert "/inquiry-form`" in leader_source
+    assert 'payload.get("consent_confirmed") is not True' in open("app/main.py", encoding="utf-8").read()
+    assert "data-chatbot-inquiry-form" in visitor_source
+    assert "consent_confirmed" in visitor_source
+    assert "/inquiry`" in visitor_source
+    assert "No reseller account has been created yet." in open("app/main.py", encoding="utf-8").read()
+    assert "addLiveMessage(result.message)" in visitor_source
+    assert "The live chat has ended, and no reseller account" not in visitor_source
+
+
+def test_leader_live_chat_uses_bounded_scrollable_workspace_and_valid_actions():
+    source = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
+
+    assert "height: clamp(520px, calc(100dvh - 220px), 680px)" in source
+    assert "overscroll-behavior: contain" in source
+    assert ".live-chat-thread-actions [hidden]" in source
+    assert "display: none !important" in source
+
+
+def test_visitor_inquiry_submission_requires_explicit_consent(monkeypatch):
+    conversation_id = "00000000-0000-0000-0000-000000000010"
+    monkeypatch.setattr(
+        main,
+        "_visitor_live_conversation",
+        lambda _request, requested: {
+            "conversation_id": requested,
+            "status": "active",
+            "inquiry_form_requested_at": "now",
+            "assigned_team_leader_account_id": 17,
+        },
+    )
+
+    response = TestClient(main.app).post(
+        f"/api/live-chat/{conversation_id}/inquiry",
+        json={"name": "Ana Santos", "consent_confirmed": False},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "consent_required"
+
+
+def test_visitor_inquiry_submission_assigns_handling_leader_and_keeps_chat_active(monkeypatch):
+    conversation_id = "00000000-0000-0000-0000-000000000011"
+    captured = {}
+    monkeypatch.setattr(
+        main,
+        "_visitor_live_conversation",
+        lambda _request, requested: {
+            "conversation_id": requested,
+            "status": "active",
+            "inquiry_form_requested_at": "now",
+            "assigned_team_leader_account_id": 17,
+        },
+    )
+    monkeypatch.setattr(main, "enforce_lead", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        main.data,
+        "add_inquiry",
+        lambda *args, **kwargs: captured.update(args=args, kwargs=kwargs) or {
+            "inquiry_id": 91,
+            "status": "assigned",
+            "assigned_team_leader_account_id": 17,
+        },
+    )
+    monkeypatch.setattr(live_chat, "add_message", lambda *_args, **_kwargs: ({
+        "chat_message_id": 8,
+        "sender_type": "system",
+        "content": "Your reseller inquiry #91 was submitted for review. No reseller account has been created yet.",
+    }, True))
+    monkeypatch.setattr(live_chat, "get_conversation", lambda requested: {
+        "conversation_id": requested,
+        "status": "active",
+        "assigned_team_leader_account_id": 17,
+        "has_reseller_inquiry": True,
+    })
+    monkeypatch.setattr(main, "_publish_chat_message", lambda *_args, **_kwargs: asyncio.sleep(0, result="published"))
+    monkeypatch.setattr(live_chat, "publish_event", lambda *_args, **_kwargs: None)
+
+    response = TestClient(main.app).post(
+        f"/api/live-chat/{conversation_id}/inquiry",
+        json={
+            "name": "Ana Santos",
+            "business_name": "Ana's Store",
+            "email": "ana@example.test",
+            "contact_number": "+63 917 123 4567",
+            "location": "Lipa City, Batangas",
+            "notes": "Interested in frozen products.",
+            "consent_confirmed": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["inquiry"]["inquiry_id"] == 91
+    assert response.json()["conversation"]["status"] == "active"
+    assert response.json()["message"]["sender_type"] == "system"
+    assert captured["kwargs"] == {
+        "chat_conversation_id": conversation_id,
+        "assigned_team_leader_account_id": 17,
+    }
 
 
 def test_ably_publication_uses_server_auth_and_exact_channel(monkeypatch):
@@ -255,6 +544,7 @@ def test_visitor_token_has_only_owned_conversation_subscription(monkeypatch):
 def test_transfer_endpoint_requeues_and_notifies_available_leaders(monkeypatch):
     conversation_id = "00000000-0000-0000-0000-000000000004"
     notifications = []
+    publications = []
     monkeypatch.setattr(main, "_sales_live_account", lambda _request: 17)
     monkeypatch.setattr(
         live_chat,
@@ -268,7 +558,7 @@ def test_transfer_endpoint_requeues_and_notifies_available_leaders(monkeypatch):
             "transferred_by": account_id,
         },
     )
-    monkeypatch.setattr(live_chat, "publish_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(live_chat, "publish_event", lambda *args, **kwargs: publications.append((args, kwargs)))
     monkeypatch.setattr(live_chat, "notify_available_leaders", lambda conversation: notifications.append(conversation))
 
     response = TestClient(main.app).post(f"/api/portal/live-chat/{conversation_id}/transfer", json={})
@@ -277,4 +567,6 @@ def test_transfer_endpoint_requeues_and_notifies_available_leaders(monkeypatch):
     assert response.json()["conversation"]["status"] == "queued"
     assert response.json()["conversation"]["transferred_by"] == 17
     assert notifications[0]["conversation_id"] == conversation_id
+    assert publications[0][0][1] == "conversation.transferred"
+    assert publications[0][0][2]["previous_team_leader_account_id"] == 17
 

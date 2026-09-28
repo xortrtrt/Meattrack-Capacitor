@@ -171,13 +171,21 @@ def get_conversation(conversation_id: str) -> dict | None:
         cur.execute(
             """
             SELECT c.*, a.name AS assigned_team_leader_name,
+                   r.rating AS customer_service_rating,
+                   EXISTS (
+                       SELECT 1 FROM inquiries i WHERE i.chat_conversation_id = c.conversation_id
+                   ) AS has_reseller_inquiry,
+                   COALESCE(c.visitor_typing_until > now(), false) AS visitor_is_typing,
+                   COALESCE(c.leader_typing_until > now(), false) AS leader_is_typing,
                    CASE
                        WHEN c.status = 'queued'
+                        AND c.claimed_at IS NULL
                         AND c.queued_at <= now() - make_interval(secs => %s)
                        THEN true ELSE false
                    END AS queue_expired
             FROM chat_conversations c
             LEFT JOIN accounts a ON a.account_id = c.assigned_team_leader_account_id
+            LEFT JOIN chat_service_ratings r ON r.conversation_id = c.conversation_id
             WHERE c.conversation_id = %s;
             """,
             (LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS, conversation_id),
@@ -215,6 +223,27 @@ def leader_can_access(account_id: int, conversation_id: str) -> bool:
             (conversation_id, account_id),
         )
         return cur.fetchone() is not None
+
+
+def set_typing_state(conversation_id: str, sender_type: str, is_typing: bool) -> None:
+    column = {
+        "visitor": "visitor_typing_until",
+        "team_leader": "leader_typing_until",
+    }.get(sender_type)
+    if column is None or not isinstance(is_typing, bool):
+        raise LiveChatError("Invalid typing state.")
+    value_sql = "now() + interval '3 seconds'" if is_typing else "NULL"
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE chat_conversations
+            SET {column} = {value_sql}
+            WHERE conversation_id = %s AND status = 'active';
+            """,
+            (conversation_id,),
+        )
+        if cur.rowcount != 1:
+            raise LiveChatError("This live conversation is not active.")
 
 
 def list_messages(conversation_id: str, after_id: int = 0, limit: int = 100) -> list[dict]:
@@ -477,7 +506,7 @@ def transfer_conversation(account_id: int, conversation_id: str) -> dict:
             """
             UPDATE chat_conversations
             SET status = 'queued', assigned_team_leader_account_id = NULL,
-                queued_at = now(), claimed_at = NULL, updated_at = now()
+                queued_at = now(), updated_at = now()
             WHERE conversation_id = %s
             RETURNING *;
             """,
@@ -507,6 +536,42 @@ def transfer_conversation(account_id: int, conversation_id: str) -> dict:
         )
         system_message = _serialize(cur.fetchone())
     result = _serialize(transferred) or {}
+    result["system_message"] = system_message
+    return result
+
+
+def request_inquiry_form(account_id: int, conversation_id: str) -> dict:
+    """Record and announce that the assigned leader offered the formal inquiry form."""
+    with get_transaction_cursor() as cur:
+        cur.execute("SELECT * FROM chat_conversations WHERE conversation_id = %s FOR UPDATE;", (conversation_id,))
+        conversation = cur.fetchone()
+        if not conversation:
+            raise LiveChatError("Conversation not found.")
+        if conversation["status"] != "active" or int(conversation["assigned_team_leader_account_id"] or 0) != int(account_id):
+            raise LiveChatError("Only your active conversation can receive an inquiry form.")
+        first_request = conversation.get("inquiry_form_requested_at") is None
+        cur.execute(
+            """
+            UPDATE chat_conversations
+            SET inquiry_form_requested_at = COALESCE(inquiry_form_requested_at, now()), updated_at = now()
+            WHERE conversation_id = %s
+            RETURNING *;
+            """,
+            (conversation_id,),
+        )
+        updated = cur.fetchone()
+        system_message = None
+        if first_request:
+            cur.execute(
+                """
+                INSERT INTO chat_messages (conversation_id, client_message_id, sender_type, content)
+                VALUES (%s, %s, 'system', 'The sales team leader shared a reseller inquiry form.')
+                RETURNING *;
+                """,
+                (conversation_id, str(uuid.uuid4())),
+            )
+            system_message = _serialize(cur.fetchone())
+    result = _serialize(updated) or {}
     result["system_message"] = system_message
     return result
 
@@ -545,6 +610,47 @@ def close_conversation(conversation_id: str, *, account_id: int | None = None, c
                 (LIVE_CHAT_PRESENCE_STALE_SECONDS, conversation["assigned_team_leader_account_id"]),
             )
     return _serialize(closed) or {}
+
+
+def rate_conversation(conversation_id: str, rating: int) -> dict:
+    if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
+        raise LiveChatError("Choose a customer-service rating from 1 to 5.")
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT conversation_id, status, claimed_at, assigned_team_leader_account_id
+            FROM chat_conversations
+            WHERE conversation_id = %s
+            FOR UPDATE;
+            """,
+            (conversation_id,),
+        )
+        conversation = cur.fetchone()
+        if not conversation:
+            raise LiveChatError("Conversation not found.")
+        if conversation["status"] not in {"closed", "cancelled"}:
+            raise LiveChatError("End the live conversation before rating customer service.")
+        leader_id = conversation["assigned_team_leader_account_id"]
+        if not conversation["claimed_at"] or not leader_id:
+            raise LiveChatError("This conversation was not handled by a sales team leader.")
+        cur.execute(
+            "SELECT conversation_id, team_leader_account_id, rating, created_at FROM chat_service_ratings WHERE conversation_id = %s;",
+            (conversation_id,),
+        )
+        existing = cur.fetchone()
+        if existing:
+            if int(existing["rating"]) != rating:
+                raise LiveChatError("Customer service has already been rated for this conversation.")
+            return _serialize(existing) or {}
+        cur.execute(
+            """
+            INSERT INTO chat_service_ratings (conversation_id, team_leader_account_id, rating)
+            VALUES (%s, %s, %s)
+            RETURNING conversation_id, team_leader_account_id, rating, created_at;
+            """,
+            (conversation_id, leader_id, rating),
+        )
+        return _serialize(cur.fetchone()) or {}
 
 
 def save_fallback_contact(conversation_id: str, contact: str) -> dict:
@@ -612,7 +718,12 @@ def workspace(account_id: int) -> dict:
         cur.execute(
             """
             SELECT conversation_id, display_name, status, escalation_reason, fallback_contact_type,
-                   fallback_contact, queued_at, claimed_at, updated_at
+                   fallback_contact, queued_at, claimed_at, inquiry_form_requested_at, updated_at,
+                   EXISTS (
+                       SELECT 1 FROM inquiries i WHERE i.chat_conversation_id = chat_conversations.conversation_id
+                   ) AS has_reseller_inquiry,
+                   COALESCE(visitor_typing_until > now(), false) AS visitor_is_typing,
+                   COALESCE(leader_typing_until > now(), false) AS leader_is_typing
             FROM chat_conversations
             WHERE assigned_team_leader_account_id = %s
               AND status IN ('active', 'follow_up', 'closed')
@@ -648,6 +759,7 @@ def maintenance() -> dict[str, int]:
             UPDATE chat_conversations
             SET status = 'awaiting_contact', updated_at = now()
             WHERE status = 'queued'
+              AND claimed_at IS NULL
               AND queued_at <= now() - make_interval(secs => %s);
             """,
             (LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS,),
@@ -665,7 +777,7 @@ def maintenance() -> dict[str, int]:
             )
             UPDATE chat_conversations c
             SET status = 'queued', assigned_team_leader_account_id = NULL,
-                claimed_at = NULL, queued_at = now(), updated_at = now()
+                queued_at = now(), updated_at = now()
             FROM stale s
             WHERE c.conversation_id = s.conversation_id;
             """,
