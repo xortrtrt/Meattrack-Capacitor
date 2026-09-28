@@ -5,8 +5,8 @@
     first_forecast %}
     <h2>{{ first_forecast.product }}</h2>
     <p>
-      {{ first_forecast.predicted_quantity|number }} packs expected on {{
-      first_forecast.forecast_date|nice_date }}.
+      {% if first_forecast.forecast_total is not none %}{{ first_forecast.forecast_total|number }} packs expected through {{
+      first_forecast.forecast_date|nice_date }}; production gap {{ first_forecast.production_gap|number }} packs.{% else %}Forecast requires manual review.{% endif %}
     </p>
     <small>{{ first_forecast.confidence }}</small>
     {% else %}
@@ -144,7 +144,7 @@
           <strong>{{ forecast.product }}</strong>
           <small>{{ forecast.forecast_date|nice_date }}</small>
         </div>
-        <span>{{ forecast.predicted_quantity|number }} packs</span>
+        <span>{% if forecast.forecast_total is not none %}{{ forecast.forecast_total|number }} packs · gap {{ forecast.production_gap|number }}{% else %}Manual review{% endif %}</span>
         <em>{{ forecast.confidence }}</em>
       </div>
       {% else %}

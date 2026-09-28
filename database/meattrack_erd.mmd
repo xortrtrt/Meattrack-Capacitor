@@ -168,9 +168,21 @@ erDiagram
         date input_period_end
         int forecast_horizon_days
         text status
+        timestamptz queued_at
         timestamptz started_at
         timestamptz completed_at
         text notes
+    }
+
+    FORECAST_PRODUCT_SUMMARIES {
+        bigint forecast_product_summary_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+        text method
+        text diagnostic_status
+        numeric forecast_total
+        numeric usable_stock
+        numeric production_gap
     }
 
     FORECAST_RESULTS {
@@ -214,5 +226,7 @@ erDiagram
     DEPARTMENTS |o--o{ SALES_REPORTS : reports
 
     ACCOUNTS |o--o{ FORECAST_RUNS : starts
+    FORECAST_RUNS ||--o{ FORECAST_PRODUCT_SUMMARIES : summarizes
+    INVENTORY_ITEMS ||--o{ FORECAST_PRODUCT_SUMMARIES : prioritized
     FORECAST_RUNS ||--o{ FORECAST_RESULTS : produces
     INVENTORY_ITEMS ||--o{ FORECAST_RESULTS : forecasted

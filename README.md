@@ -50,7 +50,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 - Executive dashboard and period-based sales charts
 - Product pricing management
 - Sales reports
-- Prophet demand forecasts with Philippine holidays and business events
+- Asynchronous daily demand forecasts with per-product backtesting, Prophet, TSB, and production-gap ranking
 - Account management and reseller-to-team-leader assignment
 
 ## Technology
@@ -61,7 +61,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 | UI | Server-rendered Jinja2, HTML, CSS, vanilla JavaScript |
 | Database | PostgreSQL 16 through `psycopg2` connection pooling |
 | Authentication | Password login, PostgreSQL-backed opaque sessions, optional email OTP |
-| Forecasting | Prophet and pandas |
+| Forecasting | Prophet, pandas, TSB, seasonal-naive, and moving-average model selection |
 | Email | Brevo HTTPS API; local capture service during development |
 | Chatbot | Local approved FAQ fallback; optional OpenRouter model; Ably live messaging |
 | Deployment | Docker Compose, Nginx, Certbot, Ubuntu VPS |
@@ -98,8 +98,10 @@ Open <http://127.0.0.1:8000>. The PostgreSQL service is exposed only on
 `127.0.0.1:55433`, and the application is exposed only on
 `127.0.0.1:8000`.
 
-A fresh Docker volume is initialized from `database/schema.sql`. For an
-existing volume, apply any pending migrations:
+A fresh Docker volume is initialized from `database/schema.sql`. On every
+startup, the Compose stack runs the checksum-protected migration job before
+starting the app or worker. To run the same migration check manually against an
+existing running stack:
 
 ```powershell
 docker compose exec app python tools/migrate_database.py

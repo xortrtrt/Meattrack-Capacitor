@@ -48,6 +48,7 @@
         if (!region) return;
         const toast = document.createElement("article");
         toast.className = "toast error";
+        toast.dataset.liveChatError = "true";
         const copy = document.createElement("div");
         copy.className = "toast-copy";
         const title = document.createElement("strong");
@@ -57,6 +58,10 @@
         copy.append(title, message);
         toast.append(copy);
         region.replaceChildren(toast);
+    }
+
+    function clearError() {
+        document.querySelector("[data-toast-region] [data-live-chat-error]")?.remove();
     }
 
     function conversationRow(conversation, action) {
@@ -104,7 +109,9 @@
         }
         const availability = workspace.presence?.availability || "offline";
         root.querySelectorAll("[data-live-availability]").forEach((button) => {
-            button.classList.toggle("is-active", button.dataset.liveAvailability === availability);
+            const isActive = button.dataset.liveAvailability === availability;
+            button.classList.toggle("is-active", isActive);
+            button.setAttribute("aria-pressed", String(isActive));
         });
         statusDot.classList.toggle("is-online", availability === "available" || availability === "busy");
         attachNotificationChannel(workspace.account_id);
@@ -132,6 +139,7 @@
         try {
             const workspace = await api("/api/portal/live-chat/workspace");
             renderWorkspace(workspace);
+            clearError();
             if (activeConversation) {
                 const updated = (workspace.assigned || []).find((item) => item.conversation_id === activeConversation.conversation_id);
                 if (updated) updateConversationDetails({ ...activeConversation, ...updated });

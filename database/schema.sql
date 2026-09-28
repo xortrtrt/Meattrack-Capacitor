@@ -269,13 +269,43 @@ CREATE TABLE forecast_runs (
     model_name text NOT NULL,
     input_period_start date NOT NULL,
     input_period_end date NOT NULL,
-    forecast_horizon_days integer NOT NULL CHECK (forecast_horizon_days > 0),
-    status text NOT NULL DEFAULT 'completed'
-        CHECK (status IN ('queued', 'running', 'completed', 'failed')),
-    started_at timestamptz NOT NULL DEFAULT now(),
+    forecast_horizon_days integer NOT NULL CHECK (forecast_horizon_days BETWEEN 1 AND 365),
+    status text NOT NULL DEFAULT 'queued'
+        CHECK (status IN ('queued', 'running', 'completed', 'completed_with_warnings', 'failed')),
+    queued_at timestamptz NOT NULL DEFAULT now(),
+    started_at timestamptz,
     completed_at timestamptz,
+    attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    next_attempt_at timestamptz NOT NULL DEFAULT now(),
+    locked_at timestamptz,
+    last_error text,
+    total_products integer NOT NULL DEFAULT 0 CHECK (total_products >= 0),
+    processed_products integer NOT NULL DEFAULT 0 CHECK (processed_products >= 0 AND processed_products <= total_products),
+    configuration jsonb NOT NULL DEFAULT '{}'::jsonb,
     notes text,
     CHECK (input_period_end >= input_period_start)
+);
+
+CREATE TABLE forecast_product_summaries (
+    forecast_product_summary_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    forecast_run_id bigint NOT NULL REFERENCES forecast_runs(forecast_run_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    method text NOT NULL CHECK (method IN ('prophet', 'tsb', 'seasonal_naive_7d', 'moving_average_28d', 'none', 'legacy')),
+    diagnostic_status text NOT NULL CHECK (diagnostic_status IN ('ok', 'fallback', 'insufficient_history', 'failed', 'legacy')),
+    diagnostic_message text,
+    history_days integer NOT NULL DEFAULT 0 CHECK (history_days >= 0),
+    nonzero_days integer NOT NULL DEFAULT 0 CHECK (nonzero_days >= 0),
+    score_metric text,
+    backtest_score numeric(16,6),
+    candidate_scores jsonb NOT NULL DEFAULT '{}'::jsonb,
+    forecast_total numeric(14,3) CHECK (forecast_total IS NULL OR forecast_total >= 0),
+    confidence_lower_total numeric(14,3) CHECK (confidence_lower_total IS NULL OR confidence_lower_total >= 0),
+    confidence_upper_total numeric(14,3) CHECK (confidence_upper_total IS NULL OR confidence_upper_total >= 0),
+    usable_stock numeric(14,3) CHECK (usable_stock IS NULL OR usable_stock >= 0),
+    production_gap numeric(14,3),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (forecast_run_id, product_id),
+    CHECK (confidence_lower_total IS NULL OR confidence_upper_total IS NULL OR confidence_upper_total >= confidence_lower_total)
 );
 
 CREATE TABLE forecast_results (
@@ -675,6 +705,11 @@ CREATE UNIQUE INDEX ux_account_activation_pending ON account_activation_tokens (
 CREATE INDEX ix_notification_outbox_due ON notification_outbox (next_attempt_at, outbox_id)
     WHERE sent_at IS NULL AND attempt_count < 8;
 CREATE INDEX ix_orders_team_leader_date ON orders (team_leader_account_id, order_date DESC);
+CREATE INDEX ix_forecast_runs_due ON forecast_runs (next_attempt_at, forecast_run_id)
+    WHERE status = 'queued' AND attempt_count < 3;
+CREATE UNIQUE INDEX ux_forecast_runs_one_active ON forecast_runs ((1))
+    WHERE status IN ('queued', 'running');
+CREATE INDEX ix_forecast_product_priority ON forecast_product_summaries (forecast_run_id, production_gap DESC NULLS LAST);
 CREATE UNIQUE INDEX ux_alert_batch_open_type ON alerts (product_batch_id, alert_type)
     WHERE product_batch_id IS NOT NULL AND status IN ('open', 'acknowledged');
 CREATE UNIQUE INDEX ux_inventory_movements_sale_batch

@@ -66,7 +66,7 @@ source dump with `pg_restore --list meattrack.dump`.
 - Catalog and inventory: `inventory_items`, `inventory_batches`,
   `product_recipes`, immutable `inventory_movements`, and `alerts`.
 - Sales: `orders`, `order_items`, payment proofs, carts, and sales reports.
-- Forecasting: `forecast_runs`, `forecast_results`.
+- Forecasting: durable `forecast_runs`, per-product `forecast_product_summaries`, and daily `forecast_results`.
 - Portal notifications: `notifications`, per-account `notification_recipients`,
   and the durable `notification_outbox` processed by `app.worker`.
 

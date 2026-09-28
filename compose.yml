@@ -31,9 +31,27 @@ services:
       timeout: 5s
       retries: 3
 
+  migrate:
+    build: .
+    command: ["python", "tools/migrate_database.py"]
+    restart: "no"
+    environment:
+      APP_ENV: migration
+      DATABASE_URL: ""
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: "${POSTGRES_DB:-MeatTrack Database}"
+      POSTGRES_USER: ${POSTGRES_USER:-meattrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meattrack}
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+
   app:
     build: .
-    command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uvicorn", "app.main:app", "--reload", "--reload-dir", "/app/app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       APP_ENV: development
       AUTH_RATE_LIMIT_ENABLED: "true"
@@ -72,8 +90,8 @@ services:
     volumes:
       - .:/app
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       mail-capture:
         condition: service_started
 
@@ -114,8 +132,8 @@ services:
     volumes:
       - .:/app
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       mail-capture:
         condition: service_started
 

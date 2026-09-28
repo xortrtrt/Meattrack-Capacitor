@@ -41,7 +41,7 @@ IMPORT_ORDER = (
     "inventory_batches", "product_recipes", "orders", "order_items",
     "order_payment_proofs", "reseller_cart_items", "sales_reports",
     "sales_report_items", "sales_report_attachments", "alerts", "forecast_runs",
-    "forecast_results", "user_consents", "notifications", "notification_recipients",
+    "forecast_product_summaries", "forecast_results", "user_consents", "notifications", "notification_recipients",
     "activity_logs", "inventory_movements",
 )
 

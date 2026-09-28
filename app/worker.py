@@ -8,6 +8,7 @@ from app.database import get_transaction_cursor
 from app.emailer import send_account_activation, send_inquiry_status_update
 from app.web_sessions import cleanup_expired_sessions
 from app import live_chat
+from app import repositories
 
 
 LOGGER = logging.getLogger("meattrack.worker")
@@ -209,25 +210,52 @@ def retry_live_chat_publications() -> None:
             live_chat.mark_publish_failed(int(message["chat_message_id"]), str(exc))
 
 
-def run_once() -> None:
+def process_one_forecast() -> bool:
+    run = repositories.claim_forecast_run()
+    if not run:
+        return False
+    try:
+        repositories.process_forecast_run(run)
+    except Exception as exc:
+        LOGGER.exception("Forecast run %s failed", run["forecast_run_id"])
+        repositories.fail_forecast_run(run, exc)
+    return True
+
+
+def run_fast_once() -> None:
+    while process_one_outbox():
+        pass
+    process_one_forecast()
+    retry_live_chat_publications()
+
+
+def run_maintenance_once() -> None:
     enqueue_due_inquiry_followups()
     scan_batch_expiry()
     cleanup_expired_sessions()
     cleanup_ephemeral_security_data()
     live_chat.maintenance()
-    retry_live_chat_publications()
-    while process_one_outbox():
-        pass
+    repositories.recover_stale_forecast_runs()
+
+
+def run_once() -> None:
+    run_maintenance_once()
+    run_fast_once()
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
+    last_maintenance = 0.0
     while True:
         try:
-            run_once()
+            now = time.monotonic()
+            if now - last_maintenance >= 60:
+                run_maintenance_once()
+                last_maintenance = now
+            run_fast_once()
         except Exception:
             LOGGER.exception("Worker cycle failed")
-        time.sleep(60)
+        time.sleep(5)
 
 
 if __name__ == "__main__":

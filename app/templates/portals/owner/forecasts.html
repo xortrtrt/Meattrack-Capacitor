@@ -3,11 +3,11 @@
     <div class="panel-heading">
       <div>
         <h2>Demand forecast run</h2>
-        <span class="hint">Prophet uses fulfilled reseller order history; fallback covers products with limited history.</span>
+        <span class="hint">Models are backtested against continuous daily sales-leader demand history.</span>
       </div>
     </div>
     <form class="form-panel bare owner-forecast-form" action="/portal/owner/forecasts" method="post" data-forecast-horizon-form>
-      <label>Model name <input required name="model_name" value="Prophet demand forecast"></label>
+      <label>Run name <input required minlength="3" maxlength="80" name="model_name" value="Demand forecast"></label>
       <div class="owner-horizon-picker" role="radiogroup" aria-label="Forecast horizon">
         <label>
           <input type="radio" name="forecast_horizon_choice" value="7" checked data-forecast-horizon-choice>
@@ -47,10 +47,17 @@
       </div>
     </div>
     {% if latest_forecast_run %}
-    <div class="owner-forecast-status">
+    <div class="owner-forecast-status"
+         {% if latest_forecast_run.status in ('queued', 'running') %}
+         data-forecast-run-status data-forecast-run-id="{{ latest_forecast_run.forecast_run_id }}"
+         {% endif %}>
       <span class="status-badge active">{{ latest_forecast_run.status }}</span>
       <strong>{{ latest_forecast_run.model_name }}</strong>
+      <small>Requested by {{ latest_forecast_run.requested_by or "Former owner account" }}</small>
       <small>{{ latest_forecast_run.input_period_start|nice_date }} - {{ latest_forecast_run.input_period_end|nice_date }} · {{ latest_forecast_run.forecast_horizon_days }} days</small>
+      {% if latest_forecast_run.status in ('queued', 'running') %}
+      <p data-forecast-progress>{{ latest_forecast_run.processed_products }} of {{ latest_forecast_run.total_products }} products processed.</p>
+      {% endif %}
       <p>{{ latest_forecast_run.notes or "No run notes recorded." }}</p>
     </div>
     {% else %}
@@ -63,14 +70,29 @@
   <div class="panel-heading">
     <div>
       <h2>Forecast results</h2>
-      <span class="hint">Predicted demand and real saved confidence bounds.</span>
+      <span class="hint">Horizon demand totals ranked by demand minus usable stock.</span>
     </div>
   </div>
+  {% if forecast_runs %}
   <form class="filter-bar owner-filter-bar" method="get">
+    <label>Forecast run
+      <select name="run_id" onchange="this.form.submit()">
+        {% for run in forecast_runs %}
+        <option value="{{ run.forecast_run_id }}" {{ 'selected' if latest_forecast_run and latest_forecast_run.forecast_run_id == run.forecast_run_id else '' }}>
+          #{{ run.forecast_run_id }} · {{ run.model_name }} · {{ run.status }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="button subtle" type="submit">View run</button></noscript>
+  </form>
+  {% endif %}
+  <form class="filter-bar owner-filter-bar" method="get">
+    {% if forecasts_page.filters.run_id %}<input type="hidden" name="run_id" value="{{ forecasts_page.filters.run_id }}">{% endif %}
     <label>Search <input name="q" value="{{ forecasts_page.filters.q }}" placeholder="Product"></label>
     <label>Sort
       <select name="sort">
-        <option value="">Newest</option>
+        <option value="">Production priority</option>
         <option value="product_asc" {{ 'selected' if forecasts_page.filters.sort == 'product_asc' else '' }}>Product A-Z</option>
         <option value="date_desc" {{ 'selected' if forecasts_page.filters.sort == 'date_desc' else '' }}>Forecast date</option>
         <option value="qty_desc" {{ 'selected' if forecasts_page.filters.sort == 'qty_desc' else '' }}>Demand high-low</option>
@@ -82,14 +104,36 @@
   <div class="owner-forecast-card-grid">
     {% for forecast in forecasts %}
     <article class="owner-forecast-result-card">
-      <span class="owner-chip">{{ forecast.model_name }}</span>
+      <span class="owner-chip">{{ forecast.method_label }}</span>
       <h3>{{ forecast.product }}</h3>
       <div class="owner-report-metrics">
-        <span><strong>{{ forecast.predicted_quantity|number }}</strong><small>packs predicted</small></span>
-        <span><strong>{{ forecast.forecast_date|nice_date }}</strong><small>forecast date</small></span>
+        <span><strong>{% if forecast.forecast_total is not none %}{{ forecast.forecast_total|number }}{% else %}Unavailable{% endif %}</strong><small>packs through {{ forecast.forecast_date|nice_date }}</small></span>
+        <span><strong>{{ forecast.usable_stock|number }}</strong><small>usable packs</small></span>
+        <span><strong>{% if forecast.production_gap is not none %}{{ forecast.production_gap|number }}{% else %}Unavailable{% endif %}</strong><small>demand minus stock</small></span>
+        <span><strong>{{ forecast.suggested_production|number }}</strong><small>suggested production</small></span>
       </div>
       <p>{{ forecast.confidence }}</p>
-      <small>{{ forecast.notes }}</small>
+      <small class="status-badge {{ forecast.diagnostic_status }}">{{ forecast.diagnostic_status }}</small>
+      <small>{{ forecast.diagnostic_message }}</small>
+      {% if forecast.daily %}
+      <details>
+        <summary>Daily forecast</summary>
+        <div class="table-wrap">
+          <table class="compact-table">
+            <thead><tr><th>Date</th><th>Predicted</th><th>Range</th></tr></thead>
+            <tbody>
+            {% for daily in forecast.daily %}
+              <tr>
+                <td>{{ daily.forecast_date|nice_date }}</td>
+                <td>{{ daily.predicted_quantity|number }} packs</td>
+                <td>{% if daily.confidence_lower is not none and daily.confidence_upper is not none %}{{ daily.confidence_lower|number }}–{{ daily.confidence_upper|number }}{% else %}Unavailable{% endif %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endif %}
     </article>
     {% else %}
     <p class="hint">No forecast results found.</p>
@@ -98,26 +142,27 @@
 
   <div class="table-wrap owner-forecast-table">
     <table>
-      <thead><tr><th>Product</th><th>Date</th><th>Predicted qty</th><th>Range</th><th>Model</th></tr></thead>
+      <thead><tr><th>Product</th><th>Forecast period</th><th>Total demand</th><th>Usable stock</th><th>Production gap</th><th>Method</th></tr></thead>
       <tbody>
       {% for forecast in forecasts %}
       <tr>
         <td>{{ forecast.product }}</td>
-        <td>{{ forecast.forecast_date|nice_date }}</td>
-        <td>{{ forecast.predicted_quantity|number }} packs</td>
-        <td>{{ forecast.confidence }}</td>
-        <td>{{ forecast.model_name }}</td>
+        <td>{{ forecast.forecast_start|nice_date }} – {{ forecast.forecast_date|nice_date }}</td>
+        <td>{% if forecast.forecast_total is not none %}{{ forecast.forecast_total|number }} packs{% else %}Unavailable{% endif %}</td>
+        <td>{{ forecast.usable_stock|number }} packs</td>
+        <td>{% if forecast.production_gap is not none %}{{ forecast.production_gap|number }} packs{% else %}Unavailable{% endif %}</td>
+        <td>{{ forecast.method_label }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="5">No forecast results found.</td></tr>
+      <tr><td colspan="6">No completed forecast results found.</td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
 
   <div class="pagination">
-    {% if forecasts_page.pagination.has_prev %}<a href="?q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page - 1 }}">Previous</a>{% endif %}
+    {% if forecasts_page.pagination.has_prev %}<a href="?run_id={{ forecasts_page.filters.run_id }}&q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page - 1 }}">Previous</a>{% endif %}
     <span>Page {{ forecasts_page.pagination.page }} of {{ forecasts_page.pagination.total_pages }}</span>
-    {% if forecasts_page.pagination.has_next %}<a href="?q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page + 1 }}">Next</a>{% endif %}
+    {% if forecasts_page.pagination.has_next %}<a href="?run_id={{ forecasts_page.filters.run_id }}&q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page + 1 }}">Next</a>{% endif %}
   </div>
 </section>

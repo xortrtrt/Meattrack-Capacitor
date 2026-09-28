@@ -418,7 +418,7 @@ def is_human_handoff_intent(message: str) -> bool:
     normalized = re.sub(r"\s+", " ", message.lower()).strip()
     return bool(
         re.search(
-            r"\b(?:talk|speak|chat|connect|transfer)\b.{0,35}\b(?:agent|human|person|representative|team leader|staff)\b",
+            r"\b(?:talk|speak|chat|connect|transfer)\b.{0,35}\b(?:agent|human|person|someone|representative|team leader|staff)\b",
             normalized,
         )
         or normalized in {"agent", "human", "live chat", "talk to a team leader", "talk to an agent"}

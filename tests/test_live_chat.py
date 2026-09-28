@@ -100,6 +100,16 @@ def test_explicit_human_request_starts_name_and_consent_flow():
     assert consented["handoff"]["display_name"] == "Ana Santos"
 
 
+def test_natural_someone_request_starts_handoff_flow():
+    result = chatbot.process_chatbot_message(
+        "Hi, I own a sari-sari store in Lipa. Can I talk to someone about becoming a reseller?"
+    )
+
+    assert result["state"] == {"mode": "handoff", "step": "name", "reason": "requested"}
+    assert result["handoff"] == {"offered": True, "reason": "requested"}
+    assert "display name" in result["reply"].lower()
+
+
 def test_two_unanswered_questions_offer_team_leader(monkeypatch):
     monkeypatch.setattr(chatbot, "OPENROUTER_API_KEY", "")
     first = chatbot.process_chatbot_message("What is your refund policy?")
@@ -143,6 +153,13 @@ def test_live_chat_template_uses_text_content_not_inner_html():
     source = open("app/static/js/live_chat.js", encoding="utf-8").read()
     assert ".textContent =" in source
     assert ".innerHTML" not in source
+
+
+def test_live_chat_clears_recovered_errors_and_exposes_availability_state():
+    source = open("app/static/js/live_chat.js", encoding="utf-8").read()
+    assert 'toast.dataset.liveChatError = "true"' in source
+    assert "clearError();" in source
+    assert 'button.setAttribute("aria-pressed", String(isActive))' in source
 
 
 def test_ably_publication_uses_server_auth_and_exact_channel(monkeypatch):

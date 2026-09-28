@@ -312,9 +312,24 @@ def inquiries_page(request: Request, page_size: int = 10, assigned_team_leader_a
 
 def forecasts_page(request: Request, page_size: int = 10) -> dict:
     filters = portal_filters(request)
-    items = data.list_forecasts(q=filters["q"], page=filters["page"], page_size=page_size, sort=filters["sort"])
-    total = data.count_forecasts(q=filters["q"])
-    return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
+    raw_run_id = request.query_params.get("run_id", "").strip()
+    run_id = int(raw_run_id) if raw_run_id.isdigit() and int(raw_run_id) > 0 else None
+    items = data.list_forecasts(
+        q=filters["q"], page=filters["page"], page_size=page_size,
+        sort=filters["sort"], run_id=run_id,
+    )
+    total = data.count_forecasts(q=filters["q"], run_id=run_id)
+    return paged(
+        items, total, filters["page"], page_size,
+        q=filters["q"], sort=filters["sort"], run_id=run_id or "",
+    )
+
+
+def selected_forecast_run(request: Request) -> dict | None:
+    raw_run_id = request.query_params.get("run_id", "").strip()
+    if raw_run_id.isdigit() and int(raw_run_id) > 0:
+        return data.get_forecast_run(int(raw_run_id))
+    return data.latest_forecast_run()
 
 
 def accounts_page(request: Request, page_size: int = 10) -> dict:
@@ -732,7 +747,8 @@ PORTAL_SECTION_LOADERS = {
     ("owner", "forecasts"): lambda request: {
         "forecasts_page": (page := forecasts_page(request)),
         "forecasts": page["items"],
-        "latest_forecast_run": data.latest_forecast_run(),
+        "latest_forecast_run": selected_forecast_run(request),
+        "forecast_runs": data.list_forecast_runs(),
     },
     ("owner", "accounts"): lambda request: {
         "accounts_page": (page := accounts_page(request)),
@@ -2234,12 +2250,28 @@ async def owner_forecast(request: Request, model_name: str = Form(...), forecast
     guard = require_portal_session(request, "owner")
     if guard:
         return guard
-    if len(model_name.strip()) < 3:
-        return redirect_to(safe_portal_path("owner", "forecasts", error="Model name is required."))
-    if forecast_horizon_days <= 0:
-        return redirect_to(safe_portal_path("owner", "forecasts", error="Forecast horizon must be greater than zero."))
     try:
-        data.add_forecast(model_name, forecast_horizon_days)
+        account_id = session_account_id(request)
+        if account_id is None:
+            raise ValueError("Your session expired. Please sign in again.")
+        run = data.queue_forecast(model_name, forecast_horizon_days, account_id)
     except ValueError as exc:
         return redirect_to(safe_portal_path("owner", "forecasts", error=str(exc)))
-    return redirect_to(safe_portal_path("owner", "forecasts", message="Forecast run completed."))
+    message = "An existing forecast is already in progress." if run.get("existing") else "Forecast queued for processing."
+    return redirect_to(path_with_query(
+        "/portal/owner/forecasts",
+        message=message,
+        run_id=run["forecast_run_id"],
+    ))
+
+
+@app.get("/portal/owner/forecasts/runs/{forecast_run_id}/status")
+async def owner_forecast_status(request: Request, forecast_run_id: int):
+    guard = require_portal_session(request, "owner")
+    if guard:
+        return guard
+    account_id = session_account_id(request)
+    status_payload = data.forecast_run_status(forecast_run_id, account_id or 0)
+    if not status_payload:
+        raise HTTPException(status_code=404)
+    return status_payload

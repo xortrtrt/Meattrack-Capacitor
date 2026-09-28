@@ -54,6 +54,8 @@ READ_FUNCTIONS = (
     "list_team_leader_accounts",
     "list_reseller_assignments",
     "latest_forecast_run",
+    "get_forecast_run",
+    "list_forecast_runs",
     "list_notifications",
     "unread_notification_count",
 )
@@ -70,7 +72,7 @@ EXPECTED_CALLS = {
     },
     ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
     ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
-    ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_notifications", "unread_notification_count"},
+    ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_forecast_runs", "list_notifications", "unread_notification_count"},
     ("owner", "accounts"): {
         "list_accounts",
         "count_accounts",
@@ -550,6 +552,7 @@ def test_owner_forecasts_render_prophet_ui(monkeypatch):
     monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(main.data, "count_forecasts", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(main.data, "list_forecast_runs", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         main.data,
         "latest_forecast_run",
@@ -569,9 +572,18 @@ def test_owner_forecasts_render_prophet_ui(monkeypatch):
             {
                 "product": "Tocino Ala Eh",
                 "forecast_date": main.date.today(),
+                "forecast_start": main.date.today(),
                 "predicted_quantity": 12,
+                "forecast_total": 12,
+                "usable_stock": 5,
+                "production_gap": 7,
+                "suggested_production": 7,
                 "confidence": "10 - 14 packs",
                 "model_name": "Prophet demand forecast",
+                "method_label": "Prophet",
+                "diagnostic_status": "ok",
+                "diagnostic_message": "Selected by backtest.",
+                "daily": [],
                 "notes": "Completed with: Prophet.",
             }
         ],
@@ -580,12 +592,60 @@ def test_owner_forecasts_render_prophet_ui(monkeypatch):
     response = client.get("/portal/owner/forecasts")
 
     assert response.status_code == 200
-    assert "Prophet uses fulfilled reseller order history" in response.text
+    assert "Models are backtested against continuous daily sales-leader demand history" in response.text
     assert "owner-forecast-result-card" in response.text
     assert "owner-horizon-picker" in response.text
     assert 'value="30"' in response.text
     assert 'data-forecast-horizon-value' in response.text
     assert "10 - 14 packs" in response.text
+
+
+def test_owner_forecast_post_queues_run_for_signed_in_owner(monkeypatch):
+    client = TestClient(main.app)
+    captured = {}
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        main.data,
+        "queue_forecast",
+        lambda name, horizon, account_id: captured.update(
+            name=name, horizon=horizon, account_id=account_id
+        ) or {"forecast_run_id": 9, "status": "queued", "existing": False},
+    )
+
+    response = client.post(
+        "/portal/owner/forecasts",
+        data={"model_name": "Demand forecast", "forecast_horizon_days": "30"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert captured == {"name": "Demand forecast", "horizon": 30, "account_id": 42}
+    assert "run_id=9" in response.headers["location"]
+
+
+def test_owner_forecast_status_is_account_scoped(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        main.data,
+        "forecast_run_status",
+        lambda run_id, account_id: {
+            "forecast_run_id": run_id,
+            "status": "running",
+            "processed_products": 2,
+            "total_products": 5,
+            "completed_at": None,
+            "message": "Forecast is running.",
+        } if account_id == 42 else None,
+    )
+
+    response = client.get("/portal/owner/forecasts/runs/9/status")
+
+    assert response.status_code == 200
+    assert response.json()["processed_products"] == 2
+    assert response.json()["status"] == "running"
 
 
 def test_owner_dashboard_renders_executive_sections(monkeypatch):
@@ -618,9 +678,11 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
             {
                 "forecast_result_id": 1,
                 "product": "Tocino Ala Eh",
-                "forecast_date": main.date.today(),
-                "predicted_quantity": 42,
-                "confidence": "85% - 95% range",
+                    "forecast_date": main.date.today(),
+                    "predicted_quantity": 42,
+                    "forecast_total": 42,
+                    "production_gap": 12,
+                    "confidence": "85% - 95% range",
             }
         ],
     )

@@ -379,6 +379,44 @@
 
     bindForecastHorizonPicker();
 
+    function bindForecastRunStatus() {
+        const panel = document.querySelector("[data-forecast-run-status]");
+        if (!panel) {
+            return;
+        }
+        const runId = panel.dataset.forecastRunId;
+        const progress = panel.querySelector("[data-forecast-progress]");
+        if (!runId) {
+            return;
+        }
+        const terminal = new Set(["completed", "completed_with_warnings", "failed"]);
+        const poll = async () => {
+            try {
+                const response = await fetch(`/portal/owner/forecasts/runs/${encodeURIComponent(runId)}/status`, {
+                    headers: { Accept: "application/json" },
+                    credentials: "same-origin",
+                });
+                if (!response.ok) {
+                    return;
+                }
+                const state = await response.json();
+                if (progress) {
+                    progress.textContent = `${state.message} ${state.processed_products} of ${state.total_products} products processed.`;
+                }
+                if (terminal.has(state.status)) {
+                    window.location.reload();
+                    return;
+                }
+            } catch (_error) {
+                // A transient polling failure should not disrupt the page.
+            }
+            window.setTimeout(poll, 5000);
+        };
+        window.setTimeout(poll, 1000);
+    }
+
+    bindForecastRunStatus();
+
     const tabs = Array.from(document.querySelectorAll("[data-scroll-tab]"));
     if (tabs.length && "IntersectionObserver" in window) {
         const sections = tabs
