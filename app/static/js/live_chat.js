@@ -6,6 +6,7 @@
     const queue = root.querySelector("[data-live-queue]");
     const assigned = root.querySelector("[data-live-assigned]");
     const queueCount = root.querySelector("[data-live-queue-count]");
+    const refreshButton = root.querySelector("[data-live-refresh]");
     const stageEmpty = root.querySelector("[data-live-stage-empty]");
     const thread = root.querySelector("[data-live-thread]");
     const messages = root.querySelector("[data-live-messages]");
@@ -16,6 +17,7 @@
     const inquiryFormButton = root.querySelector("[data-live-send-inquiry-form]");
     const inquiryFormLabel = root.querySelector("[data-live-inquiry-form-label]");
     const statusDot = root.querySelector("[data-live-status-dot]");
+    const presenceLabel = root.querySelector("[data-live-presence-label]");
     const threadName = root.querySelector("[data-live-thread-name]");
     const threadStatus = root.querySelector("[data-live-thread-status]");
     const detailStatus = root.querySelector("[data-live-detail-status]");
@@ -26,6 +28,12 @@
     const typingAvatar = root.querySelector("[data-live-typing-avatar]");
     const typingName = root.querySelector("[data-live-typing-name]");
     const threadPresence = root.querySelector("[data-live-thread-presence]");
+    const actionModal = root.querySelector("[data-live-action-modal]");
+    const actionModalTitle = root.querySelector("[data-live-action-title]");
+    const actionModalCopy = root.querySelector("[data-live-action-copy]");
+    const actionModalConfirm = root.querySelector("[data-live-action-confirm]");
+    const actionModalCancelButtons = root.querySelectorAll("[data-live-action-cancel]");
+    const loadingOverlay = root.querySelector("[data-live-loading]");
     let activeConversation = null;
     let lastMessageId = 0;
     let realtime = null;
@@ -36,6 +44,8 @@
     let leaderTypingTimer = null;
     let leaderTypingSent = false;
     let leaderTypingLastSentAt = 0;
+    let actionModalResolver = null;
+    let actionModalTrigger = null;
 
     async function api(url, options = {}) {
         const response = await fetch(url, {
@@ -76,6 +86,52 @@
         document.querySelector("[data-toast-region] [data-live-chat-error]")?.remove();
     }
 
+    function closeActionModal(confirmed) {
+        if (!actionModal || actionModal.hidden) return;
+        actionModal.classList.remove("is-open");
+        const resolve = actionModalResolver;
+        actionModalResolver = null;
+        window.setTimeout(() => {
+            actionModal.hidden = true;
+            actionModalTrigger?.focus?.();
+            actionModalTrigger = null;
+        }, 160);
+        resolve?.(confirmed);
+    }
+
+    function confirmLiveAction({ title, copy, confirmLabel, danger = false }) {
+        if (!actionModal || !actionModalTitle || !actionModalCopy || !actionModalConfirm) {
+            return Promise.resolve(false);
+        }
+        if (actionModalResolver) closeActionModal(false);
+        actionModalTitle.textContent = title;
+        actionModalCopy.textContent = copy;
+        actionModalConfirm.textContent = confirmLabel;
+        actionModal.classList.toggle("is-danger", danger);
+        actionModalTrigger = document.activeElement;
+        actionModal.hidden = false;
+        window.requestAnimationFrame(() => actionModal.classList.add("is-open"));
+        window.setTimeout(() => actionModalConfirm.focus(), 40);
+        return new Promise((resolve) => {
+            actionModalResolver = resolve;
+        });
+    }
+
+    function setManualLoading(visible) {
+        if (!loadingOverlay) return;
+        if (visible) {
+            loadingOverlay.hidden = false;
+            root.setAttribute("aria-busy", "true");
+            window.requestAnimationFrame(() => loadingOverlay.classList.add("is-open"));
+            return;
+        }
+        loadingOverlay.classList.remove("is-open");
+        root.removeAttribute("aria-busy");
+        window.setTimeout(() => {
+            loadingOverlay.hidden = true;
+        }, 160);
+    }
+
     function conversationRow(conversation, action) {
         const button = document.createElement("button");
         button.type = "button";
@@ -91,7 +147,7 @@
         status.textContent = String(conversation.status || conversation.escalation_reason || "waiting").replaceAll("_", " ");
         copy.append(name, status);
         const label = document.createElement("em");
-        label.textContent = action === "claim" ? "Accept" : "Open";
+        label.textContent = action === "claim" ? "Accept" : conversation.status === "active" ? "Open" : "View";
         button.append(avatar, copy, label);
         button.addEventListener("click", () => action === "claim" ? claimConversation(conversation.conversation_id) : openConversation(conversation));
         return button;
@@ -105,7 +161,7 @@
         if (!queueItems.length) {
             const empty = document.createElement("p");
             empty.className = "live-empty";
-            empty.textContent = "No visitors are waiting.";
+            empty.textContent = "Queue is clear.";
             queue.append(empty);
         } else {
             queueItems.forEach((item) => queue.append(conversationRow(item, "claim")));
@@ -120,11 +176,18 @@
             assignedItems.forEach((item) => assigned.append(conversationRow(item, "open")));
         }
         const availability = workspace.presence?.availability || "offline";
+        const hasActiveConversation = Boolean(workspace.presence?.active_conversation_id);
         root.querySelectorAll("[data-live-availability]").forEach((button) => {
             const isActive = button.dataset.liveAvailability === availability;
             button.classList.toggle("is-active", isActive);
             button.setAttribute("aria-pressed", String(isActive));
+            const lockedAvailable = hasActiveConversation && button.dataset.liveAvailability === "available";
+            button.disabled = lockedAvailable;
+            button.title = lockedAvailable
+                ? "End or return the active conversation before becoming available."
+                : `Set status to ${button.dataset.liveAvailability}`;
         });
+        if (presenceLabel) presenceLabel.textContent = hasActiveConversation ? "Busy during active chat" : "Your status";
         statusDot.classList.toggle("is-online", availability === "available" || availability === "busy");
         attachNotificationChannel(workspace.account_id);
     }
@@ -162,6 +225,25 @@
             }
         } catch (error) {
             showError(error);
+        }
+    }
+
+    async function refreshWorkspaceManually() {
+        if (!refreshButton || refreshButton.classList.contains("is-loading")) return;
+        const startedAt = performance.now();
+        refreshButton.classList.add("is-loading");
+        refreshButton.disabled = true;
+        refreshButton.setAttribute("aria-busy", "true");
+        setManualLoading(true);
+        try {
+            await refreshWorkspace();
+            const remaining = Math.max(0, 420 - (performance.now() - startedAt));
+            if (remaining) await new Promise((resolve) => window.setTimeout(resolve, remaining));
+        } finally {
+            refreshButton.classList.remove("is-loading");
+            refreshButton.disabled = false;
+            refreshButton.removeAttribute("aria-busy");
+            setManualLoading(false);
         }
     }
 
@@ -388,7 +470,14 @@
     messageInput.addEventListener("blur", stopLeaderTyping);
 
     closeButton.addEventListener("click", async () => {
-        if (!activeConversation || !window.confirm("End this live conversation?")) return;
+        if (!activeConversation) return;
+        const confirmed = await confirmLiveAction({
+            title: "End this conversation?",
+            copy: "The visitor will be notified that the live chat has ended and can leave a service rating.",
+            confirmLabel: "End chat",
+            danger: true,
+        });
+        if (!confirmed) return;
         try {
             await api(`/api/portal/live-chat/${encodeURIComponent(activeConversation.conversation_id)}/close`, {
                 method: "POST",
@@ -402,7 +491,13 @@
     });
 
     transferButton.addEventListener("click", async () => {
-        if (!activeConversation || !window.confirm("Return this visitor to the shared queue?")) return;
+        if (!activeConversation) return;
+        const confirmed = await confirmLiveAction({
+            title: "Return to the queue?",
+            copy: "This releases the conversation so another available sales team leader can accept it.",
+            confirmLabel: "Return to queue",
+        });
+        if (!confirmed) return;
         try {
             await api(`/api/portal/live-chat/${encodeURIComponent(activeConversation.conversation_id)}/transfer`, {
                 method: "POST",
@@ -416,7 +511,13 @@
     });
 
     inquiryFormButton.addEventListener("click", async () => {
-        if (!activeConversation || !window.confirm("The visitor confirmed they want to apply as a reseller. Send the inquiry form now?")) return;
+        if (!activeConversation) return;
+        const confirmed = await confirmLiveAction({
+            title: "Send the inquiry form?",
+            copy: "Only continue after the visitor confirms they want to apply as a reseller.",
+            confirmLabel: "Send form",
+        });
+        if (!confirmed) return;
         inquiryFormButton.disabled = true;
         try {
             const result = await api(`/api/portal/live-chat/${encodeURIComponent(activeConversation.conversation_id)}/inquiry-form`, {
@@ -446,7 +547,12 @@
         });
     });
 
-    root.querySelector("[data-live-refresh]")?.addEventListener("click", refreshWorkspace);
+    actionModalCancelButtons.forEach((button) => button.addEventListener("click", () => closeActionModal(false)));
+    actionModalConfirm?.addEventListener("click", () => closeActionModal(true));
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && actionModal && !actionModal.hidden) closeActionModal(false);
+    });
+    refreshButton?.addEventListener("click", refreshWorkspaceManually);
     root.querySelectorAll("[data-live-claim]").forEach((button) => button.addEventListener("click", () => claimConversation(button.dataset.liveClaim)));
     root.querySelectorAll("[data-live-open]").forEach((button) => {
         button.addEventListener("click", () => openConversation({

@@ -828,24 +828,43 @@ def test_inventory_dashboard_renders_product_movement_chart(monkeypatch):
     assert "Recent inventory logs" not in response.text
 
 
+def test_team_leader_dashboard_uses_priority_led_workspace():
+    template = open("app/templates/portals/team-leader/dashboard.html", encoding="utf-8").read()
+    base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    css = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
+
+    assert "dashboard-command" in template
+    assert "dashboard-brief" in template
+    assert "dashboard-signal-strip" in template
+    assert "dashboard-workspace" in template
+    assert "dashboard-ledger" in template
+    assert "metric-card" not in template
+    assert 'section-{{ section }}' in base_template
+    assert 'section != "dashboard"' in base_template
+    assert "Dashboard: one operational surface" in css
+    assert ".role-team-leader.section-dashboard .portal-topbar" in css
+    assert "@media (max-width: 760px)" in css
+
+
 def test_payment_proof_route_is_registered_before_generic_portal_route():
     route_paths = [getattr(route, "path", "") for route in main.app.routes]
 
     assert route_paths.index("/portal/order-payment-proofs/{proof_id}") < route_paths.index("/portal/{role_key}/{section}")
 
 
-def test_portal_notifications_use_readable_color_scheme():
+def test_portal_notifications_use_modern_shared_visual_hierarchy():
     css = open("app/static/css/portal_base.css", encoding="utf-8").read()
+    template = open("app/templates/portals/base.html", encoding="utf-8").read()
 
-    assert "background: #fffdf6;" in css
-    assert "border-left: 5px solid var(--info);" in css
+    assert "grid-template-columns: 38px minmax(0, 1fr) 8px" in css
+    assert "notification-panel-enter" in css
     assert ".notification-item.warning" in css
-    assert "background: #fff8e8;" in css
     assert ".notification-item.critical" in css
-    assert "background: #fff1ef;" in css
-    assert ".notification-item strong" in css
-    assert "color: var(--primary);" in css
-    assert ".notification-item.is-read span" in css
+    assert ".notification-unread-dot" in css
+    assert ".notification-item.is-read .notification-item-copy" in css
+    assert "notification-item-icon" in template
+    assert "notification-item-meta" in template
+    assert "Mark all read" in template
 
 
 def test_raw_materials_page_renders_only_raw_inventory(monkeypatch):

@@ -10,14 +10,14 @@
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260722-password-rules-1"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260929-notifications-1"
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260929-inquiry-rejection-1"
+      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260929-team-dashboard-4"
     />
   </head>
-  <body class="portal-body role-{{ role_key }}">
+  <body class="portal-body role-{{ role_key }} section-{{ section }}">
     <button
       class="portal-drawer-backdrop"
       type="button"
@@ -80,10 +80,10 @@
           >
             <i data-lucide="menu"></i>
           </button>
-          <div class="portal-title-copy">
+          {% if section != "dashboard" %}<div class="portal-title-copy">
             <span class="eyebrow">{{ role.label }} workspace</span>
             <h1>{{ section_title }}</h1>
-          </div>
+          </div>{% endif %}
         </div>
         <div class="topbar-actions">
           {% if role_key == "reseller" %}
@@ -111,26 +111,51 @@
             </summary>
             <div class="notification-panel">
               <div class="notification-head">
-                <strong>Notifications</strong>
+                <div class="notification-head-copy">
+                  <span class="eyebrow">Activity</span>
+                  <div>
+                    <strong>Notifications</strong>
+                    {% if unread_notifications %}<span>{{ unread_notifications }} unread</span>{% endif %}
+                  </div>
+                </div>
+                {% if unread_notifications %}
                 <form
                   action="/portal/{{ role_key }}/notifications/read?section={{ section }}"
                   method="post"
                 >
-                  <button type="submit">Mark read</button>
+                  <button type="submit" title="Mark all notifications as read">
+                    <i data-lucide="check-check"></i>
+                    Mark all read
+                  </button>
                 </form>
+                {% else %}
+                <span class="notification-caught-up"><i data-lucide="circle-check"></i> All caught up</span>
+                {% endif %}
               </div>
               <div class="notification-list">
                 {% for item in notifications %}
+                {% set item_icon = 'package-check' if item.category|lower == 'order' else 'user-round-plus' if item.category|lower == 'inquiry' else 'boxes' if item.category|lower == 'inventory' else 'circle-user-round' if item.category|lower == 'account' else 'bell' %}
                 <a
                   class="notification-item {{ item.severity }} {{ 'is-read' if item.read_at else '' }}"
                   href="{{ item.target_url or '/portal/' ~ role_key }}"
                 >
-                  <span>{{ item.category }}</span>
-                  <strong>{{ item.title }}</strong>
-                  <small>{{ item.message }}</small>
+                  <span class="notification-item-icon"><i data-lucide="{{ item_icon }}"></i></span>
+                  <span class="notification-item-copy">
+                    <span class="notification-item-meta">
+                      <b>{{ item.category }}</b>
+                      <time datetime="{{ item.created_at }}">{{ item.created_at|nice_date }}</time>
+                    </span>
+                    <strong>{{ item.title }}</strong>
+                    <small>{{ item.message }}</small>
+                  </span>
+                  {% if not item.read_at %}<span class="notification-unread-dot" title="Unread"></span>{% endif %}
                 </a>
                 {% else %}
-                <p class="notification-empty">No notifications yet.</p>
+                <div class="notification-empty">
+                  <span><i data-lucide="bell-ring"></i></span>
+                  <strong>You’re all caught up</strong>
+                  <small>New activity will appear here.</small>
+                </div>
                 {% endfor %}
               </div>
             </div>
@@ -246,7 +271,7 @@
     <script src="{{ url_for('static', path='js/app.js') }}?v=20260929-inquiry-rejection-1"></script>
     {% if role_key == "team-leader" and section == "live-chat" %}
     <script src="{{ url_for('static', path='vendor/ably-2.17.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='js/live_chat.js') }}?v=20260929-live-chat-ui-8"></script>
+    <script src="{{ url_for('static', path='js/live_chat.js') }}?v=20260929-live-chat-ui-15"></script>
     {% endif %}
   </body>
 </html>

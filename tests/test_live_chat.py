@@ -186,7 +186,9 @@ def test_both_live_chat_participants_have_an_end_chat_action():
     assert 'renderSuggestions(["End chat"])' in visitor_source
     assert '["cancel", "end chat"].includes(liveAction)' in visitor_source
     assert 'window.confirm("End this live conversation?")' in visitor_source
-    assert 'window.confirm("End this live conversation?")' in leader_source
+    assert 'title: "End this conversation?"' in leader_source
+    assert "confirmLiveAction" in leader_source
+    assert "data-live-action-modal" in leader_template
     assert "End chat" in leader_template
 
 
@@ -362,11 +364,28 @@ def test_live_chat_clients_expose_visitor_owned_reseller_inquiry_form():
 
 def test_leader_live_chat_uses_bounded_scrollable_workspace_and_valid_actions():
     source = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
+    template = open("app/templates/portals/team-leader/live_chat.html", encoding="utf-8").read()
 
     assert "height: clamp(520px, calc(100dvh - 220px), 680px)" in source
     assert "overscroll-behavior: contain" in source
     assert ".live-chat-thread-actions [hidden]" in source
     assert "display: none !important" in source
+    assert "grid-template-columns: minmax(250px, 290px) minmax(0, 1fr)" in source
+    assert ".live-chat-layout:has(.live-chat-thread:not([hidden])) .live-chat-rail" in source
+    assert ".live-chat-composer > .sr-only" in source
+    assert "grid-template-columns: minmax(0, 1fr) auto" in source
+    assert "@container (max-width: 720px)" in source
+    assert "container-type: inline-size" in source
+    assert "live-refresh-spin" in source
+    assert "live-loading-spin" in source
+    assert "refreshWorkspaceManually" in open("app/static/js/live_chat.js", encoding="utf-8").read()
+    assert "window.confirm" not in open("app/static/js/live_chat.js", encoding="utf-8").read()
+    assert "data-live-action-modal" in template
+    assert "data-live-loading" in template
+    assert "data-live-presence-label" in template
+    assert "Busy during active chat" in open("app/static/js/live_chat.js", encoding="utf-8").read()
+    assert 'class="live-chat-thread-meta" data-live-context' in template
+    assert "No conversation selected" in template
 
 
 def test_visitor_inquiry_submission_requires_explicit_consent(monkeypatch):

@@ -1,14 +1,16 @@
 <section class="live-chat-workspace" data-live-chat-workspace data-live-chat-enabled="{{ 'true' if live_chat_enabled else 'false' }}">
   <header class="live-chat-command-bar">
-    <div>
-      <span class="eyebrow">Prospect support</span>
-      <h2>Live conversations</h2>
-      <p>Accept anonymous visitor chats, answer questions, and qualify interested prospects.</p>
+    <div class="live-chat-title">
+      <span class="eyebrow">Support inbox</span>
+      <h2>Conversations</h2>
     </div>
-    <div class="live-presence-control" role="group" aria-label="Live chat availability">
-      <span class="live-status-dot" data-live-status-dot></span>
-      <button type="button" data-live-availability="available">Available</button>
-      <button type="button" data-live-availability="busy">Busy</button>
+    <div class="live-presence-wrap">
+      <span class="live-presence-label" data-live-presence-label>Your status</span>
+      <div class="live-presence-control" role="group" aria-label="Live chat availability">
+        <span class="live-status-dot" data-live-status-dot></span>
+        <button type="button" data-live-availability="available">Available</button>
+        <button type="button" data-live-availability="busy">Busy</button>
+      </div>
     </div>
   </header>
 
@@ -18,56 +20,63 @@
 
   <div class="live-chat-layout">
     <aside class="live-chat-rail" aria-label="Live chat queue">
-      <div class="live-chat-rail-head">
+      <header class="live-chat-rail-head">
         <div>
-          <span class="eyebrow">Waiting now</span>
-          <strong data-live-queue-count>{{ live_chat_workspace.queue|length }}</strong>
+          <span class="eyebrow">Inbox</span>
+          <h3>Conversations</h3>
         </div>
-        <button class="icon-button" type="button" aria-label="Refresh conversations" data-live-refresh>
+        <button class="icon-button" type="button" aria-label="Refresh conversations" title="Refresh conversations" data-live-refresh>
           <i data-lucide="refresh-cw"></i>
         </button>
-      </div>
-      <div class="live-conversation-list" data-live-queue>
-        {% for conversation in live_chat_workspace.queue %}
-        <button class="live-conversation-row" type="button" data-live-claim="{{ conversation.conversation_id }}">
-          <span class="live-avatar">{{ conversation.display_name[:1]|upper }}</span>
-          <span>
-            <strong>{{ conversation.display_name }}</strong>
-            <small>{{ conversation.escalation_reason|replace('_', ' ') }}</small>
-          </span>
-          <em>Accept</em>
-        </button>
-        {% else %}
-        <p class="live-empty" data-live-queue-empty>No visitors are waiting.</p>
-        {% endfor %}
-      </div>
+      </header>
 
-      <div class="live-chat-rail-head assigned">
-        <div>
-          <span class="eyebrow">Your conversations</span>
+      <section class="live-chat-rail-section">
+        <div class="live-chat-section-label">
+          <span>Waiting</span>
+          <strong data-live-queue-count>{{ live_chat_workspace.queue|length }}</strong>
         </div>
-      </div>
-      <div class="live-conversation-list" data-live-assigned>
-        {% for conversation in live_chat_workspace.assigned %}
-        <button class="live-conversation-row" type="button" data-live-open="{{ conversation.conversation_id }}" data-live-state="{{ conversation.status }}">
-          <span class="live-avatar">{{ conversation.display_name[:1]|upper }}</span>
-          <span>
-            <strong>{{ conversation.display_name }}</strong>
-            <small>{{ conversation.status|replace('_', ' ') }}</small>
-          </span>
-          <em>{{ 'Open' if conversation.status == 'active' else 'View' }}</em>
-        </button>
-        {% else %}
-        <p class="live-empty" data-live-assigned-empty>No assigned conversations.</p>
-        {% endfor %}
-      </div>
+        <div class="live-conversation-list" data-live-queue>
+          {% for conversation in live_chat_workspace.queue %}
+          <button class="live-conversation-row" type="button" data-live-claim="{{ conversation.conversation_id }}">
+            <span class="live-avatar">{{ conversation.display_name[:1]|upper }}</span>
+            <span>
+              <strong>{{ conversation.display_name }}</strong>
+              <small>{{ conversation.escalation_reason|replace('_', ' ') }}</small>
+            </span>
+            <em>Accept</em>
+          </button>
+          {% else %}
+          <p class="live-empty" data-live-queue-empty>Queue is clear.</p>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="live-chat-rail-section assigned">
+        <div class="live-chat-section-label">
+          <span>Assigned to you</span>
+        </div>
+        <div class="live-conversation-list" data-live-assigned>
+          {% for conversation in live_chat_workspace.assigned %}
+          <button class="live-conversation-row" type="button" data-live-open="{{ conversation.conversation_id }}" data-live-state="{{ conversation.status }}">
+            <span class="live-avatar">{{ conversation.display_name[:1]|upper }}</span>
+            <span>
+              <strong>{{ conversation.display_name }}</strong>
+              <small>{{ conversation.status|replace('_', ' ') }}</small>
+            </span>
+            <em>{{ 'Open' if conversation.status == 'active' else 'View' }}</em>
+          </button>
+          {% else %}
+          <p class="live-empty" data-live-assigned-empty>No assigned conversations.</p>
+          {% endfor %}
+        </div>
+      </section>
     </aside>
 
     <section class="live-chat-stage" data-live-stage>
       <div class="live-chat-stage-empty" data-live-stage-empty>
-        <span class="live-chat-mark"><i data-lucide="messages-square"></i></span>
-        <h3>Select a conversation</h3>
-        <p>New visitor requests appear in the queue while your status is Available.</p>
+        <span class="live-chat-mark"><i data-lucide="message-circle"></i></span>
+        <h3>No conversation selected</h3>
+        <p>Choose a visitor from the inbox to view the conversation.</p>
       </div>
 
       <div class="live-chat-thread" data-live-thread hidden>
@@ -75,7 +84,6 @@
           <div class="live-chat-thread-identity">
             <span class="live-thread-avatar" data-live-thread-avatar>V</span>
             <div>
-              <span class="eyebrow" data-live-thread-status>Active conversation</span>
               <h3 data-live-thread-name>Visitor</h3>
               <small class="live-thread-presence" data-live-thread-presence><span></span> Connected now</small>
             </div>
@@ -85,16 +93,23 @@
               <i data-lucide="clipboard-list"></i>
               <span data-live-inquiry-form-label>Send inquiry form</span>
             </button>
-            <button class="button subtle" type="button" data-live-transfer-conversation>
+            <button class="button subtle" type="button" title="Return to queue" data-live-transfer-conversation>
               <i data-lucide="undo-2"></i>
-              Return to queue
+              <span>Return to queue</span>
             </button>
-            <button class="button subtle" type="button" data-live-close-conversation>
+            <button class="button subtle danger" type="button" title="End chat" data-live-close-conversation>
               <i data-lucide="circle-x"></i>
-              End chat
+              <span>End chat</span>
             </button>
           </div>
         </header>
+
+        <div class="live-chat-thread-meta" data-live-context>
+          <span><b>Status</b><em data-live-thread-status>Active conversation</em><em data-live-detail-status hidden>—</em></span>
+          <span><b>Reason</b><em data-live-detail-reason>—</em></span>
+          <span><b>Contact</b><em data-live-detail-contact>Not provided</em></span>
+        </div>
+
         <div class="live-chat-messages" role="log" aria-live="polite" data-live-messages></div>
         <div class="live-typing-indicator" data-live-visitor-typing hidden aria-live="polite">
           <span class="live-typing-avatar" data-live-typing-avatar>V</span>
@@ -103,26 +118,36 @@
         </div>
         <form class="live-chat-composer" data-live-message-form>
           <label class="sr-only" for="live-chat-message">Message</label>
-          <textarea id="live-chat-message" name="message" maxlength="500" rows="2" placeholder="Write a clear reply…" required></textarea>
+          <textarea id="live-chat-message" name="message" maxlength="500" rows="1" placeholder="Write a reply…" required></textarea>
           <button class="button primary" type="submit">
-            Send
+            <span>Send</span>
             <i data-lucide="send"></i>
           </button>
         </form>
       </div>
     </section>
+  </div>
 
-    <aside class="live-chat-context" data-live-context>
-      <span class="eyebrow">Conversation details</span>
-      <dl>
-        <div><dt>Status</dt><dd data-live-detail-status>—</dd></div>
-        <div><dt>Reason</dt><dd data-live-detail-reason>—</dd></div>
-        <div><dt>Contact</dt><dd data-live-detail-contact>Not provided</dd></div>
-      </dl>
-      <div class="live-chat-context-note">
-        <i data-lucide="shield-check"></i>
-        <p>Only send the inquiry form after the visitor confirms they want to apply. The visitor must submit their own details and consent.</p>
+  <div class="live-chat-confirmation" data-live-action-modal hidden>
+    <button class="live-chat-confirmation-backdrop" type="button" aria-label="Cancel action" data-live-action-cancel></button>
+    <div class="live-chat-confirmation-panel" role="dialog" aria-modal="true" aria-labelledby="live-chat-action-title" aria-describedby="live-chat-action-copy">
+      <span class="live-chat-confirmation-icon"><i data-lucide="circle-alert"></i></span>
+      <span class="eyebrow">Confirm action</span>
+      <h3 id="live-chat-action-title" data-live-action-title>Continue?</h3>
+      <p id="live-chat-action-copy" data-live-action-copy></p>
+      <div class="live-chat-confirmation-actions">
+        <button class="button subtle" type="button" data-live-action-cancel>Cancel</button>
+        <button class="button primary" type="button" data-live-action-confirm>Continue</button>
       </div>
-    </aside>
+    </div>
+  </div>
+
+  <div class="live-chat-loading" data-live-loading hidden role="status" aria-live="polite" aria-label="Refreshing conversations">
+    <span class="live-chat-loading-backdrop" aria-hidden="true"></span>
+    <div class="live-chat-loading-status">
+      <span class="live-chat-loading-spinner" aria-hidden="true"></span>
+      <strong>Refreshing conversations</strong>
+      <small>Checking for updates…</small>
+    </div>
   </div>
 </section>
