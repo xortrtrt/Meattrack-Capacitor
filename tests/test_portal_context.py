@@ -278,7 +278,8 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
     assert "@media (prefers-reduced-motion: reduce)" in css
     assert ".chatbot-widget.is-open .chatbot-toggle" in css
-    app_js = open("app/static/js/app.js", encoding="utf-8").read()
+    app_js = open("app/static/js/public-site.js", encoding="utf-8").read()
+    forms_js = open("app/static/js/forms.js", encoding="utf-8").read()
     assert "function bindLandingExperience()" in app_js
     assert "function bindLandingProductModal()" in app_js
     assert 'button.dataset.chatbotPrompt || "I want to be a reseller"' in app_js
@@ -299,7 +300,7 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert app_js.index('if (!response.ok)') < app_js.index('messages.innerHTML = "";', app_js.index('resetButton.addEventListener'))
     assert 'bubble.classList.add("is-typing")' in app_js
     assert "@keyframes chatbot-caret" in css
-    assert "20260929-live-chat-ui-8" in response.text
+    assert "20261001-frontend-modules-1" in response.text
     assert "BP ChatBot" in response.text
     assert "chatbot-avatar" not in response.text
     assert 'role="dialog" aria-label="Batangas Premium support"' in response.text
@@ -307,8 +308,8 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert 'data-chatbot-send-label' in response.text
     assert "Premium support concierge" in css
     assert "padding: 0 !important" in css
-    assert "function bindOtpModal()" in app_js
-    assert "data-otp-modal-input" in app_js
+    assert "function bindOtpModal()" in forms_js
+    assert "data-otp-modal-input" in forms_js
 
 
 def test_products_page_renders_complete_active_catalog(monkeypatch):
@@ -1097,6 +1098,36 @@ def test_dropdown_controls_use_shared_stable_styles():
 
     assert ".role-owner .owner-forecast-result-card summary" in owner_css
     assert "details[open] summary::after" in owner_css
+
+
+def test_templates_load_only_their_focused_frontend_modules():
+    public_template = open("app/templates/landing.html", encoding="utf-8").read()
+    login_template = open("app/templates/login.html", encoding="utf-8").read()
+    portal_template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    inventory_template = open(
+        "app/templates/portals/team-leader/inventory.html", encoding="utf-8"
+    ).read()
+    reports_template = open(
+        "app/templates/portals/team-leader/reports.html", encoding="utf-8"
+    ).read()
+    portal_js = open("app/static/js/portal.js", encoding="utf-8").read()
+    charts_js = open("app/static/js/charts.js", encoding="utf-8").read()
+
+    assert "js/core.js" in public_template
+    assert "js/forms.js" in public_template
+    assert "js/public-site.js" in public_template
+    assert "js/portal.js" not in public_template
+    assert "js/core.js" in login_template
+    assert "js/forms.js" in login_template
+    assert "js/public-site.js" not in login_template
+    for module in ("core", "forms", "portal", "profile", "charts"):
+        assert f"js/{module}.js" in portal_template
+    assert "js/public-site.js" not in portal_template
+    assert "js/app.js" not in public_template + login_template + portal_template
+    assert "<script>" not in inventory_template
+    assert "<script>" not in reports_template
+    assert "function bindRecipeRows()" in portal_js
+    assert "function bindTeamReportSales()" in charts_js
 
 
 def test_payment_proof_route_is_registered_before_generic_portal_route():

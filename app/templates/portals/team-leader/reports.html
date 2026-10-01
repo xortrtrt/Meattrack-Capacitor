@@ -2,7 +2,7 @@
             <section class="content-grid two sales-report-builder">
                 <article class="panel sales-report-compose">
                     <h2>Submit team sales report</h2>
-                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post">
+                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post" data-team-report-form>
                         <div class="form-grid"><label>Start <input required type="date" name="period_start"></label><label>End <input required type="date" name="period_end"></label></div>
                         <div class="form-grid" data-team-report-totals>
                             <label>Total sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
@@ -23,100 +23,7 @@
                         </div>
                     </div>
                     <script type="application/json" id="team-report-sales-data">{{ team_report_sales|tojson }}</script>
-                    <script>
-                        (() => {
-                            const form = document.querySelector('form[action="/portal/{{ role_key }}/reports"]');
-                            const data = document.getElementById("team-report-sales-data");
-                            if (!form || !data) {
-                                return;
-                            }
 
-                            const records = JSON.parse(data.textContent || "[]");
-                            const startInput = form.querySelector('input[name="period_start"]');
-                            const endInput = form.querySelector('input[name="period_end"]');
-                            const salesInput = form.querySelector("[data-report-total-sales]");
-                            const ordersInput = form.querySelector("[data-report-total-orders]");
-                            const itemsBody = document.querySelector("[data-report-order-items]");
-
-                            const today = new Date();
-                            const todayText = [
-                                today.getFullYear(),
-                                String(today.getMonth() + 1).padStart(2, "0"),
-                                String(today.getDate()).padStart(2, "0"),
-                            ].join("-");
-
-                            if (!startInput.value) {
-                                startInput.value = todayText;
-                            }
-                            if (!endInput.value) {
-                                endInput.value = todayText;
-                            }
-
-                            const money = (value) => `PHP ${value.toLocaleString("en-PH", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                            })}`;
-                            const quantity = (value) => Number(value || 0).toLocaleString("en-PH", {
-                                minimumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2,
-                                maximumFractionDigits: 2,
-                            });
-                            const textCell = (value) => {
-                                const cell = document.createElement("td");
-                                cell.textContent = value;
-                                return cell;
-                            };
-
-                            const updateTotals = () => {
-                                const start = startInput.value;
-                                const end = endInput.value;
-                                if (!start || !end || end < start) {
-                                    salesInput.value = "PHP 0.00";
-                                    ordersInput.value = "0 orders / 0 packs";
-                                    if (itemsBody) {
-                                        itemsBody.innerHTML = '<tr><td colspan="5">No fulfilled order items in this period.</td></tr>';
-                                    }
-                                    return;
-                                }
-
-                                const orderIds = new Set();
-                                const included = records.filter((record) => record.sale_date >= start && record.sale_date <= end);
-                                const sales = included.reduce((sum, record) => {
-                                    orderIds.add(record.order_id);
-                                    return sum + Number(record.total_sales || 0);
-                                }, 0);
-                                const packs = included.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
-
-                                salesInput.value = money(sales);
-                                ordersInput.value = `${orderIds.size} orders / ${quantity(packs)} packs`;
-
-                                if (!itemsBody) {
-                                    return;
-                                }
-                                itemsBody.replaceChildren();
-                                if (included.length === 0) {
-                                    const row = document.createElement("tr");
-                                    row.appendChild(textCell("No fulfilled order items in this period."));
-                                    row.firstChild.colSpan = 5;
-                                    itemsBody.appendChild(row);
-                                    return;
-                                }
-
-                                included.forEach((record) => {
-                                    const row = document.createElement("tr");
-                                    row.appendChild(textCell(`#${record.order_id}`));
-                                    row.appendChild(textCell(record.customer || "Retail counter"));
-                                    row.appendChild(textCell(record.product || "Product"));
-                                    row.appendChild(textCell(`${quantity(record.quantity)} ${record.unit || "pack"}`));
-                                    row.appendChild(textCell(money(Number(record.total_sales || 0))));
-                                    itemsBody.appendChild(row);
-                                });
-                            };
-
-                            startInput.addEventListener("change", updateTotals);
-                            endInput.addEventListener("change", updateTotals);
-                            updateTotals();
-                        })();
-                    </script>
                 </article>
                 <article class="panel sales-report-history">
                     <h2>Team reports</h2>

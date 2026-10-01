@@ -279,7 +279,11 @@
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260930-profile-picture-studio-5"></script>
+    <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261001-frontend-modules-1"></script>
     {% if role_key in ["team-leader", "sales-supervisor"] and section == "live-chat" %}
     <script src="{{ url_for('static', path='vendor/ably-2.17.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='js/live_chat.js') }}?v=20260929-live-chat-ui-15"></script>

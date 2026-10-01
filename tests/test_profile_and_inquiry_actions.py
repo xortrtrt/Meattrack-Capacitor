@@ -72,7 +72,7 @@ def test_change_account_password_rejects_wrong_current_password(monkeypatch):
 def test_profile_password_fields_render_live_rule_tracking():
     reseller_profile = open("app/templates/portals/reseller/profile.html", encoding="utf-8").read()
     team_profile = open("app/templates/portals/team-leader/profile.html", encoding="utf-8").read()
-    app_js = open("app/static/js/app.js", encoding="utf-8").read()
+    app_js = open("app/static/js/forms.js", encoding="utf-8").read()
     portal_css = open("app/static/css/portal_base.css", encoding="utf-8").read()
 
     for template in (reseller_profile, team_profile):
