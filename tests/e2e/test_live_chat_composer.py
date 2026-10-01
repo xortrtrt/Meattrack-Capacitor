@@ -142,6 +142,25 @@ def test_complete_later_keeps_visitor_inquiry_form_dismissed(page: Page) -> None
 
     inquiry_panel = page.locator(".chatbot-inquiry-form")
     expect(inquiry_panel).to_be_visible()
+    assert inquiry_panel.evaluate(
+        "element => element.nextElementSibling?.matches('[data-chatbot-messages]')"
+    )
+    assert inquiry_panel.evaluate("element => getComputedStyle(element).position") == "sticky"
+    identity_name = page.locator(".chatbot-identity strong")
+    identity_status = page.locator(".chatbot-identity > span")
+    expect(identity_name).to_have_text("E2E Leader")
+    expect(identity_status).to_have_text("Live sales support")
+
+    conversation["assigned_team_leader_account_id"] = 43
+    conversation["assigned_team_leader_name"] = "Transferred Leader"
+    expect(identity_name).to_have_text("Transferred Leader", timeout=5000)
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(inquiry_panel).to_be_visible()
+    assert page.locator(".chatbot-panel").evaluate(
+        "element => element.scrollWidth <= element.clientWidth"
+    )
+
     inquiry_panel.get_by_role("button", name="Complete later").click()
     expect(inquiry_panel).to_be_hidden()
 

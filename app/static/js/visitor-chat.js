@@ -12,6 +12,8 @@ export function bindVisitorChat() {
     const sendButton = form.querySelector("button[type='submit']");
     const sendLabel = sendButton.querySelector("[data-chatbot-send-label]");
     const messages = widget.querySelector("[data-chatbot-messages]");
+    const identityName = widget.querySelector(".chatbot-identity strong");
+    const identityStatus = widget.querySelector(".chatbot-identity > span");
     const chatbotStorageKey = "meattrack_chatbot_messages_v1";
     const liveChatStorageKey = "meattrack_live_chat_v1";
     const liveChatRatingStorageKey = "meattrack_live_chat_rating_v1";
@@ -72,7 +74,7 @@ export function bindVisitorChat() {
             </div>
             <p class="chatbot-inquiry-status" data-chatbot-inquiry-status role="status"></p>
         </form>`;
-    messages.after(inquiryFormPanel);
+    messages.before(inquiryFormPanel);
     const inquiryForm = inquiryFormPanel.querySelector("[data-chatbot-inquiry-form]");
     const inquiryStatus = inquiryFormPanel.querySelector("[data-chatbot-inquiry-status]");
 
@@ -305,6 +307,19 @@ export function bindVisitorChat() {
         }
     }
 
+    function updateChatIdentity(conversation = null) {
+        const hasLiveLeader = conversation?.status === "active"
+            && Boolean(conversation?.assigned_team_leader_account_id);
+        const name = hasLiveLeader
+            ? (conversation.assigned_team_leader_name || "Sales team leader")
+            : "BP ChatBot";
+        identityName.textContent = name;
+        identityStatus.textContent = hasLiveLeader
+            ? "Live sales support"
+            : "Products · Orders · Resellers";
+        panel.setAttribute("aria-label", hasLiveLeader ? `${name} live support` : "Batangas Premium support");
+    }
+
     async function loadLiveMessages(reset = false) {
         if (!liveConversation) return;
         if (reset) {
@@ -403,6 +418,7 @@ export function bindVisitorChat() {
         clearPendingLiveChatRating();
         liveConversation = conversation;
         lastLiveStatus = conversation.status;
+        updateChatIdentity(conversation);
         saveLiveConversation();
         if (announce) {
             if (conversation.status === "queued") {
@@ -437,6 +453,7 @@ export function bindVisitorChat() {
         if (assignmentChanged) setLeaderTyping(false);
         liveConversation = next;
         lastLiveStatus = next.status;
+        updateChatIdentity(next);
         saveLiveConversation();
         setLeaderTyping(Boolean(next.leader_is_typing), next.assigned_team_leader_name);
         await loadLiveMessages();
@@ -485,6 +502,7 @@ export function bindVisitorChat() {
         stopVisitorTyping();
         setLeaderTyping(false);
         liveConversation = null;
+        updateChatIdentity();
         lastLiveStatus = null;
         liveRefreshQueued = false;
         liveLastMessageId = 0;
