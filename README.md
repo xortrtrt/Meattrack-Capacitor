@@ -120,7 +120,7 @@ Other useful commands:
 docker compose logs -f app
 docker compose restart app
 docker compose down
-docker compose down --volumes  # deletes the local PostgreSQL volume
+docker compose down --volumes  # deletes every local named volume, including PostgreSQL data
 ```
 
 CSRF protection and atomic request throttling are enabled in the local Compose
@@ -308,17 +308,31 @@ network, while FastAPI binds only to the VPS loopback interface.
 
 ## Production backups
 
-Create regular custom-format PostgreSQL backups, copy them off the VPS, and
-test restoration periodically:
+Create regular custom-format PostgreSQL backups and archives of the profile
+upload volume, copy both off the VPS, and test restoration periodically:
 
 ```bash
 mkdir -p backups
 docker compose --env-file .env.production -f compose.prod.yml exec -T db \
   pg_dump -U meattrack -d "MeatTrack Database" -Fc > backups/meattrack-$(date +%F-%H%M).dump
+
+docker run --rm \
+  -v meattrack_profile_uploads:/source:ro \
+  -v "$PWD/backups:/backup" \
+  alpine:3.22 \
+  tar -czf /backup/meattrack-profiles-$(date +%F-%H%M).tar.gz -C /source .
 ```
 
-A VPS snapshot is useful, but it is not a substitute for a verified database
-backup stored on another system.
+To restore profile uploads, stop the application, extract a verified profile
+archive into the `meattrack_profile_uploads` volume, restore ownership to the
+`meattrack` container user, and then start the application. Restore the database
+and profile archive from the same backup window so stored profile paths and
+files remain consistent.
+
+The `profile_uploads` volume survives application rebuilds and container
+replacement. `docker compose down --volumes` deletes it permanently along with
+the PostgreSQL volume. A VPS snapshot is useful, but it is not a substitute for
+verified database and profile backups stored on another system.
 
 ## Account credentials
 

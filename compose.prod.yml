@@ -74,6 +74,8 @@ services:
       CHAT_TRANSCRIPT_RETENTION_DAYS: ${CHAT_TRANSCRIPT_RETENTION_DAYS:-30}
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - profile_uploads:/app/app/static/uploads/profiles
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -124,6 +126,8 @@ services:
 
 volumes:
   postgres_data:
+  profile_uploads:
+    name: meattrack_profile_uploads
 
 networks:
   backend:

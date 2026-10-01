@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -12,6 +13,8 @@ COPY requirements.txt ./
 RUN python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
 COPY --chown=meattrack:meattrack . .
+RUN mkdir -p /app/app/static/uploads/profiles && \
+    chown -R meattrack:meattrack /app/app/static/uploads
 
 USER meattrack
 EXPOSE 8000

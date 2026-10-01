@@ -8,5 +8,7 @@ __pycache__
 node_modules
 tmp
 backups
+*.backup
+meattrack-local-images.tar
 *.pyc
 *.log

@@ -9,6 +9,9 @@ htmlcov/
 node_modules/
 tmp/
 backups/
+*.backup
+meattrack-local-images.tar
+app/static/uploads/profiles/
 *.log
 .DS_Store
 .idea/
