@@ -8,7 +8,7 @@
 
     document.querySelectorAll("form").forEach((form) => {
         form.addEventListener("submit", () => {
-            if (form.hasAttribute("data-chatbot-form")) {
+            if (form.hasAttribute("data-chatbot-form") || form.hasAttribute("data-async-form")) {
                 return;
             }
             const button = form.querySelector('button[type="submit"]');
