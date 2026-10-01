@@ -193,10 +193,16 @@ def test_inquiry_prompt_opens_modal_and_complete_later_closes_it(page: Page) -> 
     inquiry_dialog.get_by_role("button", name="Complete later").click()
     expect(inquiry_modal).to_be_hidden()
     expect(inquiry_prompt).to_be_visible()
+    deferred_notice = page.locator(
+        "[data-chatbot-messages] .system-message",
+        has_text="You can complete the reseller inquiry form anytime while this live chat remains open.",
+    )
+    expect(deferred_notice).to_have_count(1)
 
     page.wait_for_timeout(3500)
     expect(inquiry_modal).to_be_hidden()
     expect(inquiry_prompt).to_be_visible()
+    expect(deferred_notice).to_have_count(1)
     assert inquiry_submissions == []
 
     inquiry_open.click()

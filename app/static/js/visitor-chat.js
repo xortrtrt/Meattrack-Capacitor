@@ -20,6 +20,7 @@ export function bindVisitorChat() {
     const chatbotStorageTtlMs = 24 * 60 * 60 * 1000;
     const defaultSuggestions = ["View products", "Delivery details", "Become a reseller"];
     const newChatWelcome = "Welcome to Batangas Premium. How can I help you today?";
+    const inquiryDeferredNotice = "You can complete the reseller inquiry form anytime while this live chat remains open.";
     let activeSuggestions = [...defaultSuggestions];
     let requestPending = false;
     let liveConversation = null;
@@ -261,6 +262,15 @@ export function bindVisitorChat() {
             saveChatMessages();
         }
         return bubble;
+    }
+
+    function addSystemNotice(text) {
+        const alreadyShown = Array.from(messages.querySelectorAll(".system-message"))
+            .some((message) => message.textContent?.trim() === text);
+        if (alreadyShown) return;
+        const notice = addMessage(text, "bot", false);
+        notice.classList.add("system-message");
+        saveChatMessages();
     }
 
     function liveMessageExists(messageId) {
@@ -579,6 +589,7 @@ export function bindVisitorChat() {
         button.addEventListener("click", (event) => {
             event.preventDefault();
             closeInquiryModal();
+            addSystemNotice(inquiryDeferredNotice);
         });
     });
     inquiryDialog.addEventListener("keydown", (event) => {
