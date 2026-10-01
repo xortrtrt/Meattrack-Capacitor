@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app import inventory_measurements as measurements
 from app import main, repositories
+from app.portals import shared as shared_portal
 from tools.import_supabase_catalog import validate_and_normalize_catalog
 
 
@@ -129,9 +130,9 @@ def test_fefo_planning_uses_earliest_batches_and_requires_full_stock():
 
 def test_raw_inventory_route_preserves_original_decimal_text_and_actor(monkeypatch):
     calls = []
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "require_team_leader_role", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "require_team_leader_role", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
     monkeypatch.setattr(main.data, "add_raw_inventory_item", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     response = TestClient(main.app).post(
@@ -146,9 +147,9 @@ def test_raw_inventory_route_preserves_original_decimal_text_and_actor(monkeypat
 
 def test_pack_content_route_passes_exact_values_and_actor(monkeypatch):
     calls = []
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "require_team_leader_role", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "require_team_leader_role", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
     monkeypatch.setattr(main.data, "update_product_pack_content", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     response = TestClient(main.app).post(

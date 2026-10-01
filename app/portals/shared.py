@@ -1,27 +1,20 @@
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
-from urllib.parse import urlencode
-from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
 from app import repositories as data
 from app import portal_config
+from app import portal_dependencies
+from app import uploads as uploads_module
+from app import web
 from app.business_time import business_now
+from app.emailer import send_password_change_otp as deliver_password_change_otp
 
 
 router = APIRouter()
-
-PROFILE_IMAGE_TYPES = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
-}
-PROFILE_IMAGE_MAX_BYTES = 2 * 1024 * 1024
-PROFILE_IMAGE_DIR = Path(__file__).resolve().parents[1] / "static" / "uploads" / "profiles"
 
 PORTAL_TEMPLATES = {
     "owner": "portals/owner.html",
@@ -33,100 +26,76 @@ PORTAL_TEMPLATES = {
 PORTAL_SECTION_LOADERS = {}
 
 
-def main_app():
-    from app import main
-
-    return main
-
-
 def templates():
-    return main_app().templates
+    return web.templates
 
 
 def redirect_to(path: str) -> RedirectResponse:
-    return main_app().redirect_to(path)
+    return web.redirect_to(path)
 
 
 def session_account_id(request: Request) -> int | None:
-    return main_app().session_account_id(request)
+    return portal_dependencies.session_account_id(request)
 
 
 def session_team_leader_role(request: Request) -> str | None:
-    return main_app().session_team_leader_role(request)
+    return portal_dependencies.session_team_leader_role(request)
 
 
 def require_portal_session(request: Request, role_key: str) -> RedirectResponse | None:
-    return main_app().require_portal_session(request, role_key)
+    return portal_dependencies.require_portal_session(request, role_key)
 
 
 def require_team_leader_role(request: Request, required_role: str) -> RedirectResponse | None:
-    return main_app().require_team_leader_role(request, required_role)
+    current_role = session_team_leader_role(request)
+    if current_role == required_role or (
+        required_role == "sales" and current_role == "sales-supervisor"
+    ):
+        return None
+    role_key = (
+        request.session.get("role_key")
+        if request.session.get("role_key") in {"team-leader", "sales-supervisor"}
+        else "team-leader"
+    )
+    return redirect_to(
+        safe_portal_path(
+            role_key,
+            "dashboard",
+            error="Your team leader account cannot access that action.",
+        )
+    )
 
 
 def require_email(email: str) -> str:
-    return main_app().require_email(email)
+    return web.require_email(email)
 
 
 def require_date_range(period_start: date, period_end: date) -> None:
-    main_app().require_date_range(period_start, period_end)
+    web.require_date_range(period_start, period_end)
 
 
 def send_password_change_otp(**kwargs):
-    return main_app().send_password_change_otp(**kwargs)
+    return deliver_password_change_otp(**kwargs)
 
 
 async def parse_payment_proof_attachments(uploads) -> list[dict]:
-    return await main_app().parse_payment_proof_attachments(uploads)
-
-
-def _profile_image_extension(content_type: str, content: bytes) -> str:
-    extension = PROFILE_IMAGE_TYPES.get(content_type)
-    if extension == ".jpg" and content.startswith(b"\xff\xd8\xff"):
-        return extension
-    if extension == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n"):
-        return extension
-    if extension == ".webp" and content.startswith(b"RIFF") and content[8:12] == b"WEBP":
-        return extension
-    raise ValueError("Profile picture must be a valid JPG, PNG, or WebP image.")
+    return await uploads_module.parse_payment_proof_attachments(uploads)
 
 
 async def save_profile_image_upload(account_id: int, upload: UploadFile) -> str:
-    if not upload or not upload.filename:
-        raise ValueError("Choose a profile picture to upload.")
-    content = await upload.read(PROFILE_IMAGE_MAX_BYTES + 1)
-    if not content:
-        raise ValueError("Choose a profile picture to upload.")
-    if len(content) > PROFILE_IMAGE_MAX_BYTES:
-        raise ValueError("Profile picture must be 2 MB or smaller.")
-    content_type = upload.content_type or "application/octet-stream"
-    extension = _profile_image_extension(content_type, content)
-    PROFILE_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    filename = f"account-{account_id}-{uuid4().hex}{extension}"
-    target = PROFILE_IMAGE_DIR / filename
-    target.write_bytes(content)
-    return f"uploads/profiles/{filename}"
+    return await uploads_module.save_profile_image_upload(account_id, upload)
 
 
-def remove_profile_image_file(profile_image_path: str | None) -> None:
-    if not profile_image_path or not profile_image_path.startswith("uploads/profiles/"):
-        return
-    target = (Path(__file__).resolve().parents[1] / "static" / profile_image_path).resolve()
-    try:
-        target.relative_to(PROFILE_IMAGE_DIR.resolve())
-    except ValueError:
-        return
-    try:
-        target.unlink(missing_ok=True)
-    except OSError:
-        pass
+def remove_profile_image_file(relative_path: str | None) -> None:
+    uploads_module.remove_profile_image_file(relative_path)
 
 
 def safe_portal_path(role_key: str, section: str, message: str = "", error: str = "", **extra_params: str) -> str:
-    return main_app().safe_portal_path(role_key, section, message=message, error=error, **extra_params)
+    return portal_dependencies.safe_portal_path(role_key, section, message=message, error=error, **extra_params)
 
 
 def path_with_query(path: str, **params: str) -> str:
-    return main_app().path_with_query(path, **params)
+    return web.path_with_query(path, **params)
 
 
 def positive_int(value: str | None, default: int = 1, maximum: int = 50) -> int:
@@ -346,7 +315,7 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "section_title": nav_sections[section][1],
         "message": message,
         "error": error,
-        "cart_count": main_app().reseller_cart_count(request) if role_key == "reseller" else 0,
+        "cart_count": data.reseller_cart_count(session_account_id(request)) if role_key == "reseller" else 0,
         "notifications": data.list_notifications(role_key, request.session.get("account_id")),
         "unread_notifications": data.unread_notification_count(role_key, request.session.get("account_id")),
     }

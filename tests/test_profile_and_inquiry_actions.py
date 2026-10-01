@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main, repositories
+from app.portals import shared as shared_portal
 from app.repositories import accounts as account_repository
 from app.repositories import inquiries as inquiry_repository
 from app.repositories import orders as order_repository
@@ -126,8 +127,8 @@ def test_profile_picture_upload_route_updates_account(monkeypatch, role_key):
         calls.append(("save", account_id, upload.filename, upload.content_type))
         return "uploads/profiles/account-7-demo.png"
 
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 7)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
     monkeypatch.setattr(main.shared_portal, "save_profile_image_upload", fake_save)
     monkeypatch.setattr(main.shared_portal, "remove_profile_image_file", lambda path: calls.append(("remove", path)))
     monkeypatch.setattr(
@@ -164,8 +165,8 @@ def test_profile_picture_upload_route_updates_account(monkeypatch, role_key):
 
 
 def test_reseller_password_route_rejects_mismatched_confirmation(monkeypatch):
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 7)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
     monkeypatch.setattr(main.data, "request_reseller_password_change", lambda *args, **kwargs: pytest.fail("otp request must not run"))
 
     response = TestClient(main.app).post(
@@ -185,8 +186,8 @@ def test_reseller_password_route_rejects_mismatched_confirmation(monkeypatch):
 
 def test_reseller_password_route_sends_otp(monkeypatch):
     calls = []
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 7)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
     monkeypatch.setattr(
         main.data,
         "request_reseller_password_change",
@@ -198,7 +199,7 @@ def test_reseller_password_route_sends_otp(monkeypatch):
             "otp_code": "123456",
         },
     )
-    monkeypatch.setattr(main, "send_password_change_otp", lambda **kwargs: (True, "sent"))
+    monkeypatch.setattr(shared_portal, "send_password_change_otp", lambda **kwargs: (True, "sent"))
 
     response = TestClient(main.app).post(
         "/portal/reseller/profile/password",
@@ -219,8 +220,8 @@ def test_reseller_password_route_sends_otp(monkeypatch):
 
 def test_reseller_password_route_cancels_pending_otp_when_email_fails(monkeypatch):
     cancelled = []
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 7)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
     monkeypatch.setattr(
         main.data,
         "request_reseller_password_change",
@@ -232,7 +233,7 @@ def test_reseller_password_route_cancels_pending_otp_when_email_fails(monkeypatc
             "otp_code": "123456",
         },
     )
-    monkeypatch.setattr(main, "send_password_change_otp", lambda **kwargs: (False, "Email failed."))
+    monkeypatch.setattr(shared_portal, "send_password_change_otp", lambda **kwargs: (False, "Email failed."))
     monkeypatch.setattr(main.data, "cancel_reseller_password_change", lambda *args: cancelled.append(args))
 
     response = TestClient(main.app).post(
@@ -252,8 +253,8 @@ def test_reseller_password_route_cancels_pending_otp_when_email_fails(monkeypatc
 
 def test_reseller_password_confirm_route_success(monkeypatch):
     calls = []
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 7)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
     monkeypatch.setattr(main.data, "confirm_reseller_password_change", lambda *args: calls.append(args))
 
     response = TestClient(main.app).post(
@@ -269,8 +270,8 @@ def test_reseller_password_confirm_route_success(monkeypatch):
 
 def test_reseller_profile_update_route_success(monkeypatch):
     calls = []
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 7)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
     monkeypatch.setattr(main.data, "update_reseller_profile", lambda *args: calls.append(args))
 
     with TestClient(main.app) as client:
@@ -387,8 +388,8 @@ def test_inquiry_followups_are_not_dispatched_by_web_requests():
 
 def test_team_leader_password_route_sends_otp(monkeypatch):
     calls = []
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 9)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 9)
     monkeypatch.setattr(
         main.data,
         "request_account_password_change",
@@ -401,7 +402,7 @@ def test_team_leader_password_route_sends_otp(monkeypatch):
             "otp_code": "456789",
         },
     )
-    monkeypatch.setattr(main, "send_password_change_otp", lambda **kwargs: (True, "sent"))
+    monkeypatch.setattr(shared_portal, "send_password_change_otp", lambda **kwargs: (True, "sent"))
 
     response = TestClient(main.app).post(
         "/portal/team-leader/profile/password",
@@ -532,9 +533,9 @@ def test_successful_approval_creates_reseller_account_and_marks_approved(monkeyp
 
 
 def test_reviewed_inquiry_hides_approval_actions(monkeypatch):
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_team_leader_role", lambda request: "sales")
-    monkeypatch.setattr(main, "session_account_id", lambda request: 4)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 4)
     monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(main.data, "count_inquiries", lambda *args, **kwargs: 1)
@@ -562,9 +563,9 @@ def test_reviewed_inquiry_hides_approval_actions(monkeypatch):
 
 
 def test_pending_inquiry_rejection_requires_reason_dialog(monkeypatch):
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "session_team_leader_role", lambda request: "sales")
-    monkeypatch.setattr(main, "session_account_id", lambda request: 4)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 4)
     monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(main.data, "count_inquiries", lambda *args, **kwargs: 1)
@@ -627,9 +628,9 @@ def test_order_approval_requires_payment_proof(monkeypatch):
 
 
 def test_team_order_route_returns_error_when_proof_missing(monkeypatch):
-    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main, "require_team_leader_role", lambda request, role: None)
-    monkeypatch.setattr(main, "session_account_id", lambda request: 4)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "require_team_leader_role", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 4)
 
     def fake_decide_order(*args, **kwargs):
         raise ValueError("Proof of payment is required before approving this order.")

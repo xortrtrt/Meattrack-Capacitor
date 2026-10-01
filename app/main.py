@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from app import repositories as data
 from app import live_chat
 from app import portal_config
+from app import web
 from app.business_time import business_now, business_today
 from app.chatbot import process_chatbot_message
 from app.emailer import (
@@ -72,7 +73,7 @@ PORTAL_SESSION_SECONDS = 2 * 60 * 60
 app.add_middleware(DatabaseSessionMiddleware)
 app.mount("/static", CachedStaticFiles(directory=BASE_DIR / "static"), name="static")
 
-templates = Jinja2Templates(directory=BASE_DIR / "templates")
+templates = web.templates
 templates.env.globals["csrf_token"] = csrf_token
 
 
@@ -1813,4 +1814,4 @@ for portal_router in (
     reseller_portal.router,
     shared_portal.router,
 ):
-    app.router.routes.extend(portal_router.routes)
+    app.include_router(portal_router)
