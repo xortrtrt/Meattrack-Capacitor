@@ -5,11 +5,29 @@ from decimal import Decimal
 import pytest
 
 from app import repositories
+from app.repositories import forecasts as forecast_repository
+from app.repositories import inquiries as inquiry_repository
+from app.repositories import inventory as inventory_repository
+from app.repositories import orders as order_repository
+from app.repositories import reporting as reporting_repository
+
+
+READ_REPOSITORIES = (
+    forecast_repository,
+    inquiry_repository,
+    inventory_repository,
+    order_repository,
+    reporting_repository,
+)
+
+
+def patch_repository_read(monkeypatch, name, value):
+    for repository in READ_REPOSITORIES:
+        monkeypatch.setattr(repository, name, value)
 
 
 def test_current_metrics_uses_one_database_round_trip(monkeypatch):
     calls = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
 
     def fake_fetch_one(query, params=None):
         calls.append((query, params))
@@ -21,7 +39,7 @@ def test_current_metrics_uses_one_database_round_trip(monkeypatch):
             "total_available": Decimal("80.25"),
         }
 
-    monkeypatch.setattr(repositories, "fetch_one", fake_fetch_one)
+    patch_repository_read(monkeypatch, "fetch_one", fake_fetch_one)
 
     assert repositories.current_metrics() == {
         "fulfilled_sales": 1250.5,
@@ -37,7 +55,6 @@ def test_current_metrics_uses_one_database_round_trip(monkeypatch):
 
 def test_order_type_filters_headers_and_items(monkeypatch):
     calls = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
 
     def fake_fetch_all(query, params=None):
         calls.append((query, params))
@@ -77,7 +94,7 @@ def test_order_type_filters_headers_and_items(monkeypatch):
             }
         ]
 
-    monkeypatch.setattr(repositories, "fetch_all", fake_fetch_all)
+    patch_repository_read(monkeypatch, "fetch_all", fake_fetch_all)
     orders = repositories.list_orders(order_type="reseller")
 
     assert len(calls) == 3
@@ -94,9 +111,8 @@ def test_order_type_filters_headers_and_items(monkeypatch):
 
 def test_report_source_and_limit_are_parameterized(monkeypatch):
     calls = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: calls.append((query, params)) or [],
     )
@@ -110,14 +126,13 @@ def test_report_source_and_limit_are_parameterized(monkeypatch):
 
 def test_team_leader_order_scope_is_parameterized(monkeypatch):
     calls = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: calls.append((query, params)) or [],
     )
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_one",
         lambda query, params=None: {"total": 0},
     )
@@ -131,9 +146,8 @@ def test_team_leader_order_scope_is_parameterized(monkeypatch):
 
 def test_reseller_report_scope_is_parameterized(monkeypatch):
     calls = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: calls.append((query, params)) or [],
     )
@@ -146,9 +160,8 @@ def test_reseller_report_scope_is_parameterized(monkeypatch):
 
 def test_team_reseller_purchase_summary_uses_real_order_scope(monkeypatch):
     calls = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: calls.append((query, params)) or [],
     )
@@ -163,13 +176,13 @@ def test_team_reseller_purchase_summary_uses_real_order_scope(monkeypatch):
 def test_inventory_activity_logs_are_scoped_to_inventory_actions(monkeypatch):
     fetch_all_calls = []
     fetch_one_calls = []
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: fetch_all_calls.append((query, params)) or [],
     )
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_one",
         lambda query, params=None: fetch_one_calls.append((query, params)) or {"total": 0},
     )
@@ -189,13 +202,13 @@ def test_inventory_activity_logs_are_scoped_to_inventory_actions(monkeypatch):
 def test_inventory_item_and_batch_filters_are_parameterized(monkeypatch):
     fetch_all_calls = []
     fetch_one_calls = []
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: fetch_all_calls.append((query, params)) or [],
     )
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_one",
         lambda query, params=None: fetch_one_calls.append((query, params)) or {"total": 0},
     )
@@ -219,8 +232,7 @@ def test_inventory_item_and_batch_filters_are_parameterized(monkeypatch):
 
 def test_sort_parameters_are_whitelisted(monkeypatch):
     queries = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(repositories, "fetch_all", lambda query, params=None: queries.append(query) or [])
+    patch_repository_read(monkeypatch, "fetch_all", lambda query, params=None: queries.append(query) or [])
 
     repositories.list_products(sort="price_desc; DROP TABLE accounts")
     repositories.list_orders(order_type="reseller", sort="total_desc")
@@ -234,8 +246,8 @@ def test_sort_parameters_are_whitelisted(monkeypatch):
 
 def test_product_recipes_can_be_scoped_to_paginated_products(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: calls.append((query, params)) or [],
     )
@@ -250,8 +262,8 @@ def test_product_recipes_can_be_scoped_to_paginated_products(monkeypatch):
 
 def test_inventory_product_movement_analytics_uses_stock_in_and_fulfilled_out(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: calls.append((query, params)) or [],
     )
@@ -283,8 +295,8 @@ def test_schema_tracks_reseller_team_leader_assignment():
 
 def test_inquiry_and_forecast_limits_are_parameterized(monkeypatch):
     calls = []
-    monkeypatch.setattr(
-        repositories,
+    patch_repository_read(
+        monkeypatch,
         "fetch_all",
         lambda query, params=None: calls.append((query, params)) or [],
     )

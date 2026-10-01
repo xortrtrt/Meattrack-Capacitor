@@ -8,7 +8,7 @@ from app.database import get_transaction_cursor
 from app.emailer import send_account_activation, send_inquiry_rejection, send_inquiry_status_update
 from app.web_sessions import cleanup_expired_sessions
 from app import live_chat
-from app import repositories
+from app.repositories import forecasts as repositories
 
 
 LOGGER = logging.getLogger("meattrack.worker")
@@ -36,7 +36,7 @@ def enqueue_due_inquiry_followups() -> int:
 
 
 def scan_batch_expiry() -> int:
-    from app.repositories import _create_notification_cursor
+    from app.repositories.notifications import _create_notification_cursor
 
     changed = 0
     with get_transaction_cursor() as cur:

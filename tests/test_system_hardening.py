@@ -11,6 +11,8 @@ import sys
 import pytest
 
 from app import repositories, security_controls, web_sessions
+from app.repositories import notifications as notification_repository
+from app.repositories import orders as order_repository
 from app.business_time import business_now, business_today
 
 
@@ -87,8 +89,7 @@ def test_session_identifier_is_hashed_before_storage():
 
 def test_notification_queries_are_account_scoped(monkeypatch):
     calls = []
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(repositories, "fetch_all", lambda query, params=None: calls.append((query, params)) or [])
+    monkeypatch.setattr(notification_repository, "fetch_all", lambda query, params=None: calls.append((query, params)) or [])
     repositories.list_notifications("team-leader", 42)
     assert "notification_recipients" in calls[0][0]
     assert "nr.account_id = %s" in calls[0][0]
@@ -98,7 +99,7 @@ def test_notification_queries_are_account_scoped(monkeypatch):
 def test_checkout_entrypoint_uses_atomic_cart_mode(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        repositories,
+        order_repository,
         "create_order_from_items",
         lambda *args, **kwargs: calls.append((args, kwargs)) or {"order_id": 1},
     )

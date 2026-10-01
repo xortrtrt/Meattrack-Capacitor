@@ -44,16 +44,13 @@ def strict_inventory_database():
     scoped.close()
 
     previous_pool = database.pool
-    previous_ready = repositories.SYSTEM_TABLES_READY
     database.pool = ThreadedConnectionPool(1, 8, scoped_dsn)
-    repositories.SYSTEM_TABLES_READY = False
     try:
         yield scoped_dsn
     finally:
         if database.pool is not None:
             database.pool.closeall()
         database.pool = previous_pool
-        repositories.SYSTEM_TABLES_READY = previous_ready
         with admin.cursor() as cursor:
             cursor.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
         admin.close()

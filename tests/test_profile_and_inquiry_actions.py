@@ -8,6 +8,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main, repositories
+from app.repositories import accounts as account_repository
+from app.repositories import inquiries as inquiry_repository
+from app.repositories import orders as order_repository
 from app.security import PASSWORD_POLICY_MESSAGE, hash_password, verify_password
 
 
@@ -23,18 +26,17 @@ def test_change_account_password_updates_hash_and_invalidates_old_password(monke
     stored_hash = hash_password("old-password")
     captured = {}
 
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
     monkeypatch.setattr(
-        repositories,
+        account_repository,
         "fetch_one",
         lambda query, params=None: {"account_id": 7, "name": "Demo Reseller", "password_hash": stored_hash},
     )
-    monkeypatch.setattr(repositories, "add_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(account_repository, "add_log", lambda *args, **kwargs: None)
 
     def fake_execute_write(query, params=None, returning=False):
         captured["password_hash"] = params[0]
 
-    monkeypatch.setattr(repositories, "execute_write", fake_execute_write)
+    monkeypatch.setattr(account_repository, "execute_write", fake_execute_write)
 
     repositories.change_account_password(7, "old-password", STRONG_NEW_PASSWORD)
 
@@ -44,22 +46,20 @@ def test_change_account_password_updates_hash_and_invalidates_old_password(monke
 
 def test_change_account_password_rejects_weak_new_password(monkeypatch):
     stored_hash = hash_password("old-password")
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
     monkeypatch.setattr(
-        repositories,
+        account_repository,
         "fetch_one",
         lambda query, params=None: {"account_id": 7, "name": "Demo Reseller", "password_hash": stored_hash},
     )
-    monkeypatch.setattr(repositories, "execute_write", lambda *args, **kwargs: pytest.fail("weak password must not be saved"))
+    monkeypatch.setattr(account_repository, "execute_write", lambda *args, **kwargs: pytest.fail("weak password must not be saved"))
 
     with pytest.raises(ValueError, match=PASSWORD_POLICY_MESSAGE):
         repositories.change_account_password(7, "old-password", "new-password")
 
 
 def test_change_account_password_rejects_wrong_current_password(monkeypatch):
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
     monkeypatch.setattr(
-        repositories,
+        account_repository,
         "fetch_one",
         lambda query, params=None: {"account_id": 7, "name": "Demo Reseller", "password_hash": hash_password("right-password")},
     )
@@ -451,8 +451,7 @@ def test_duplicate_email_approval_keeps_inquiry_unapproved(monkeypatch):
     def fake_transaction():
         yield cursor
 
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(repositories, "get_transaction_cursor", fake_transaction)
+    monkeypatch.setattr(inquiry_repository, "get_transaction_cursor", fake_transaction)
 
     with pytest.raises(ValueError, match="already used"):
         repositories.add_reseller_from_inquiry(2, approving_team_leader_account_id=4)
@@ -518,14 +517,11 @@ def test_successful_approval_creates_reseller_account_and_marks_approved(monkeyp
     def fake_transaction():
         yield cursor
 
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
-    monkeypatch.setattr(repositories, "get_transaction_cursor", fake_transaction)
-    monkeypatch.setattr(repositories, "add_log", lambda *args, **kwargs: None)
-    monkeypatch.setattr(repositories, "create_notification", lambda *args, **kwargs: None)
-    monkeypatch.setattr(repositories, "_create_activation_token_cursor", lambda *args: "activation-token")
-    monkeypatch.setattr(repositories, "_add_log_cursor", lambda *args, **kwargs: None)
-    monkeypatch.setattr(repositories, "_create_notification_cursor", lambda *args, **kwargs: None)
-    monkeypatch.setattr(repositories, "_enqueue_outbox_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(inquiry_repository, "get_transaction_cursor", fake_transaction)
+    monkeypatch.setattr(inquiry_repository, "_create_activation_token_cursor", lambda *args: "activation-token")
+    monkeypatch.setattr(inquiry_repository, "_add_log_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(inquiry_repository, "_create_notification_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(inquiry_repository, "_enqueue_outbox_cursor", lambda *args, **kwargs: None)
 
     result = repositories.add_reseller_from_inquiry(3, approving_team_leader_account_id=4)
 
@@ -597,7 +593,6 @@ def test_pending_inquiry_rejection_requires_reason_dialog(monkeypatch):
 
 
 def test_order_approval_requires_payment_proof(monkeypatch):
-    monkeypatch.setattr(repositories, "ensure_system_tables", lambda: None)
 
     class Cursor:
         def __init__(self):
@@ -625,7 +620,7 @@ def test_order_approval_requires_payment_proof(monkeypatch):
     def fake_transaction():
         yield Cursor()
 
-    monkeypatch.setattr(repositories, "get_transaction_cursor", fake_transaction)
+    monkeypatch.setattr(order_repository, "get_transaction_cursor", fake_transaction)
 
     with pytest.raises(ValueError, match="Proof of payment is required"):
         repositories.decide_order(7, "approve", team_leader_account_id=None)

@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 
 from app import repositories as data
+from app import portal_config
 from app.business_time import business_now
 
 
@@ -248,11 +249,11 @@ def inquiries_page(request: Request, page_size: int = 10, assigned_team_leader_a
 
 
 def portal_nav_for_request(role_key: str, request: Request) -> list[tuple[str, str, str]]:
-    return data.portal_nav_for(role_key, session_team_leader_role(request))
+    return portal_config.portal_nav_for(role_key, session_team_leader_role(request))
 
 
 def portal_role_for_request(role_key: str, request: Request) -> dict:
-    role = dict(data.roles[role_key])
+    role = dict(portal_config.roles[role_key])
     account_name = request.session.get("account_name")
     account_email = request.session.get("account_email")
     if account_name:
@@ -265,7 +266,7 @@ def portal_role_for_request(role_key: str, request: Request) -> dict:
     role["profile_image_scale"] = request.session.get("profile_image_scale", 1)
     if role_key in {"team-leader", "sales-supervisor"}:
         leader_role = session_team_leader_role(request) or "sales"
-        role["label"] = data.team_leader_role_labels.get(leader_role, role["label"])
+        role["label"] = portal_config.team_leader_role_labels.get(leader_role, role["label"])
         role["team_leader_role"] = leader_role
     return role
 
@@ -310,17 +311,17 @@ async def portal_order_payment_proof(request: Request, proof_id: int):
 
 @router.get("/portal/{role_key}")
 async def portal_default(request: Request, role_key: str):
-    if role_key not in data.roles:
+    if role_key not in portal_config.roles:
         raise HTTPException(status_code=404)
     guard = require_portal_session(request, role_key)
     if guard:
         return guard
-    return redirect_to(f"/portal/{role_key}/{data.default_section_for(role_key, session_team_leader_role(request))}")
+    return redirect_to(f"/portal/{role_key}/{portal_config.default_section_for(role_key, session_team_leader_role(request))}")
 
 
 @router.get("/portal/{role_key}/{section}")
 async def portal(request: Request, role_key: str, section: str, message: str = "", error: str = ""):
-    if role_key not in data.roles:
+    if role_key not in portal_config.roles:
         raise HTTPException(status_code=404)
     guard = require_portal_session(request, role_key)
     if guard:
@@ -359,13 +360,13 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
 
 @router.post("/portal/{role_key}/notifications/read")
 async def portal_notifications_read(request: Request, role_key: str):
-    if role_key not in data.roles:
+    if role_key not in portal_config.roles:
         raise HTTPException(status_code=404)
     guard = require_portal_session(request, role_key)
     if guard:
         return guard
     data.mark_notifications_read(role_key, request.session.get("account_id"))
-    section = request.query_params.get("section") or data.roles[role_key]["default_section"]
+    section = request.query_params.get("section") or portal_config.roles[role_key]["default_section"]
     return redirect_to(safe_portal_path(role_key, section))
 
 
@@ -378,7 +379,7 @@ async def portal_profile_picture(
     profile_image_position_y: str = Form("50"),
     profile_image_scale: str = Form("1"),
 ):
-    if role_key not in data.roles:
+    if role_key not in portal_config.roles:
         raise HTTPException(status_code=404)
     guard = require_portal_session(request, role_key)
     if guard:
@@ -410,7 +411,7 @@ async def portal_profile_picture(
 
 @router.post("/portal/{role_key}/profile/picture/remove")
 async def portal_profile_picture_remove(request: Request, role_key: str):
-    if role_key not in data.roles:
+    if role_key not in portal_config.roles:
         raise HTTPException(status_code=404)
     guard = require_portal_session(request, role_key)
     if guard:

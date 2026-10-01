@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 
 from app import repositories as data
 from app import live_chat
+from app import portal_config
 from app.business_time import business_now, business_today
 from app.chatbot import process_chatbot_message
 from app.emailer import (
@@ -448,11 +449,11 @@ def session_team_leader_role(request: Request) -> str | None:
 
 
 def portal_nav_for_request(role_key: str, request: Request) -> list[tuple[str, str, str]]:
-    return data.portal_nav_for(role_key, session_team_leader_role(request))
+    return portal_config.portal_nav_for(role_key, session_team_leader_role(request))
 
 
 def portal_role_for_request(role_key: str, request: Request) -> dict:
-    role = dict(data.roles[role_key])
+    role = dict(portal_config.roles[role_key])
     account_name = request.session.get("account_name")
     account_email = request.session.get("account_email")
     if account_name:
@@ -465,7 +466,7 @@ def portal_role_for_request(role_key: str, request: Request) -> dict:
     role["profile_image_scale"] = request.session.get("profile_image_scale", 1)
     if role_key in {"team-leader", "sales-supervisor"}:
         leader_role = session_team_leader_role(request) or "sales"
-        role["label"] = data.team_leader_role_labels.get(leader_role, role["label"])
+        role["label"] = portal_config.team_leader_role_labels.get(leader_role, role["label"])
         role["team_leader_role"] = leader_role
     return role
 
@@ -921,12 +922,12 @@ async def parse_payment_proof_attachments(uploads: list[UploadFile]) -> list[dic
 
 
 def safe_portal_path(role_key: str, section: str, message: str = "", error: str = "", **extra_params: str) -> str:
-    if role_key not in data.roles:
+    if role_key not in portal_config.roles:
         raise HTTPException(status_code=404)
     if role_key in {"team-leader", "sales-supervisor"}:
-        allowed_sections = {item[0] for nav in data.team_leader_nav_by_role.values() for item in nav}
+        allowed_sections = {item[0] for nav in portal_config.team_leader_nav_by_role.values() for item in nav}
     else:
-        allowed_sections = {item[0] for item in data.portal_nav[role_key]}
+        allowed_sections = {item[0] for item in portal_config.portal_nav[role_key]}
     if section not in allowed_sections:
         raise HTTPException(status_code=404)
     params = {key: value for key, value in extra_params.items() if value}
@@ -960,8 +961,8 @@ def establish_portal_session(request: Request, account: dict) -> RedirectRespons
     if role in {"team-leader", "sales-supervisor"}:
         request.session["team_leader_role"] = account.get("team_leader_role") or "sales"
     rotate_session(request)
-    data.add_log(account["name"], "login", data.roles[role]["label"])
-    return redirect_to(safe_portal_path(role, data.default_section_for(role, account.get("team_leader_role"))))
+    data.add_log(account["name"], "login", portal_config.roles[role]["label"])
+    return redirect_to(safe_portal_path(role, portal_config.default_section_for(role, account.get("team_leader_role"))))
 
 
 def begin_login_otp(request: Request, account: dict, consent_source: str = "password_otp") -> RedirectResponse:
@@ -1671,7 +1672,7 @@ async def login(request: Request, message: str = "", error: str = ""):
         "login.html",
         {
             "request": request,
-            "roles": data.roles,
+            "roles": portal_config.roles,
             "message": message,
             "error": error,
             "consent_version": CONSENT_VERSION,

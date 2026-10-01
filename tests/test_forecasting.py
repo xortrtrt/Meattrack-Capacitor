@@ -8,6 +8,7 @@ import pandas as pd
 from app import forecasting
 from app import repositories
 from app import worker
+from app.repositories import forecasts as forecast_repository
 
 
 def test_build_daily_series_fills_missing_days_with_zero():
@@ -156,7 +157,7 @@ def test_queue_forecast_uses_requesting_owner_and_async_status(monkeypatch):
     def transaction():
         yield Cursor()
 
-    monkeypatch.setattr(repositories, "get_transaction_cursor", transaction)
+    monkeypatch.setattr(forecast_repository, "get_transaction_cursor", transaction)
     run = repositories.queue_forecast("Demand forecast", 30, 42)
 
     insert = next(call for call in calls if "INSERT INTO forecast_runs" in call[0])
@@ -178,7 +179,7 @@ def test_queue_forecast_rejects_horizon_above_server_limit():
 def test_sales_history_uses_sales_leader_attributed_fulfilled_orders(monkeypatch):
     captured = {}
     monkeypatch.setattr(
-        repositories,
+        forecast_repository,
         "fetch_all",
         lambda query, params=None: captured.update(query=query, params=params) or [],
     )
