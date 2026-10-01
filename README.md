@@ -243,6 +243,13 @@ Install the development dependencies and run the regression suite:
 .venv\Scripts\python.exe -m pytest -q
 ```
 
+Run the static quality gates with the same commands used by CI:
+
+```powershell
+.venv\Scripts\python.exe -m ruff check app tests tools
+.venv\Scripts\python.exe -m mypy app
+```
+
 The tests mock or isolate database calls, so the normal suite does not require
 a live PostgreSQL server. When the local Compose database is available, tests
 marked `postgres` also create and remove an isolated schema to verify locking,
@@ -252,6 +259,12 @@ with:
 ```powershell
 .venv\Scripts\python.exe -m pytest -q -m postgres
 ```
+
+CI also runs `tests/e2e` in Chromium against a fresh PostgreSQL service. It
+seeds a deterministic sales-supervisor account, verifies the public pages and
+static assets, signs in, opens Accounts, and uploads a profile picture. The
+smoke test confirms that the image and crop settings survive a page reload and
+fails on browser console errors.
 
 ## Health check
 

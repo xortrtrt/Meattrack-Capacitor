@@ -11,8 +11,6 @@ import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime
-from typing import Iterable
-
 from app.config import (
     ABLY_API_KEY,
     ABLY_REST_BASE_URL,

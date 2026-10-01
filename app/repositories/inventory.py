@@ -674,7 +674,6 @@ def create_product_with_recipe(
                 VALUES (%s, %s, %s, %s);
             """, (product["product_id"], material_id, converted_required, material["unit"]))
 
-        actor_name = _inventory_actor_name(cur, actor_account_id)
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="created_product_recipe", entity_type="inventory_items", entity_id=product["product_id"])
     return clean_row(product)
 
@@ -700,7 +699,6 @@ def update_product_pack_content(
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
-        actor_name = _inventory_actor_name(cur, actor_account_id)
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_product_pack_content", entity_type="inventory_items", entity_id=product_id)
     return clean_row(product)
 

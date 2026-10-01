@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from app import repositories
 from app.repositories import forecasts as forecast_repository
 from app.repositories import inquiries as inquiry_repository

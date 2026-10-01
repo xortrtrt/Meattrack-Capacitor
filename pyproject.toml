@@ -1,0 +1,46 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/main.py" = ["E402", "F811"]
+"app/repositories/*.py" = ["F403", "F405"]
+"tools/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["app"]
+check_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "app.chatbot",
+    "app.forecasting",
+    "app.live_chat",
+    "app.main",
+    "app.portals.*",
+    "app.repositories.*",
+]
+disable_error_code = [
+    "arg-type",
+    "assignment",
+    "attr-defined",
+    "call-overload",
+    "index",
+    "list-item",
+    "misc",
+    "name-defined",
+    "operator",
+    "return-value",
+    "union-attr",
+    "var-annotated",
+]

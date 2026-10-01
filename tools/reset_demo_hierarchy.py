@@ -11,7 +11,6 @@ if str(ROOT) not in sys.path:
 
 from app.config import APP_BASE_URL
 from app.database import get_transaction_cursor
-from app.repositories import ensure_system_tables
 from app.security import hash_password
 
 
@@ -85,7 +84,6 @@ def upsert_team_leader(cur, *, name: str, email: str, team_leader_role: str) -> 
 
 
 def reset_demo_hierarchy() -> dict:
-    ensure_system_tables()
     activation_links: list[tuple[str, str]] = []
     with get_transaction_cursor() as cur:
         cur.execute("DELETE FROM notifications;")

@@ -10,10 +10,9 @@ from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
 from app import repositories as data
 from app import live_chat
@@ -21,10 +20,7 @@ from app import portal_config
 from app import web
 from app.business_time import business_now, business_today
 from app.chatbot import process_chatbot_message
-from app.emailer import (
-    send_login_otp,
-    send_password_change_otp,
-)
+from app.emailer import send_login_otp
 from app.config import (
     APP_ENV,
     AUTH_RATE_LIMIT_ENABLED,
@@ -85,7 +81,7 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data:; font-src 'self' data:; "
+        "default-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; "
         "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
         "connect-src 'self' https://*.ably.io wss://*.ably.io; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",

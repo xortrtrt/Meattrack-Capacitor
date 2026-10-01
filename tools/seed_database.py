@@ -70,10 +70,8 @@ def main():
             ('Production', 'Meat processing and packaging department.'),
             ('Retail Floor', 'Front of house and retail checkout area.'),
             ('Cold Storage', 'Main cold chain storage and freezer area.'),
-            ('Administration', 'Management and administrative support.')
-            RETURNING department_id, department_name;
+            ('Administration', 'Management and administrative support.');
         """)
-        departments = {name: dep_id for dep_id, name in cur.fetchall()}
         
         # 2. Resellers
         print("Seeding resellers...")

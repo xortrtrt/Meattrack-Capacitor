@@ -55,11 +55,11 @@ def require_team_leader_role(request: Request, required_role: str) -> RedirectRe
         required_role == "sales" and current_role == "sales-supervisor"
     ):
         return None
-    role_key = (
-        request.session.get("role_key")
-        if request.session.get("role_key") in {"team-leader", "sales-supervisor"}
-        else "team-leader"
-    )
+    session_role = request.session.get("role_key")
+    role_key = session_role if isinstance(session_role, str) and session_role in {
+        "team-leader",
+        "sales-supervisor",
+    } else "team-leader"
     return redirect_to(
         safe_portal_path(
             role_key,
@@ -72,7 +72,7 @@ def require_team_leader_role(request: Request, required_role: str) -> RedirectRe
 def require_portal_session(request: Request, role_key: str) -> RedirectResponse | None:
     expires_at = request.session.get("portal_expires_at")
     try:
-        expired = int(expires_at) <= int(business_now().timestamp())
+        expired = int(str(expires_at)) <= int(business_now().timestamp())
     except (TypeError, ValueError):
         expired = True
     account_id = session_account_id(request)

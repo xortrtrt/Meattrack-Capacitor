@@ -1,4 +1,5 @@
-import psycopg2
+from decimal import Decimal
+
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
@@ -72,7 +73,6 @@ def execute_write(query, params=None, returning=False):
         if returning:
             return cur.fetchone()
 
-from decimal import Decimal
 def clean_row(row):
     if row is None:
         return None

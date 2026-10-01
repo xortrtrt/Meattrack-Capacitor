@@ -1131,8 +1131,8 @@ def test_templates_load_only_their_focused_frontend_modules():
 
 
 def test_payment_proof_route_is_registered_before_generic_portal_route():
-    route_paths = [
-        context.path
+    route_contexts = [
+        context
         for route in main.app.routes
         for context in (
             route.effective_route_contexts()
@@ -1141,8 +1141,17 @@ def test_payment_proof_route_is_registered_before_generic_portal_route():
         )
         if getattr(context, "path", "")
     ]
+    route_paths = [context.path for context in route_contexts]
+    route_method_pairs = [
+        (context.path, method)
+        for context in route_contexts
+        for method in (getattr(context, "methods", set()) or set())
+    ]
 
     assert route_paths.index("/portal/order-payment-proofs/{proof_id}") < route_paths.index("/portal/{role_key}/{section}")
+    assert route_paths.index("/portal/owner/dashboard/sales-chart") < route_paths.index("/portal/{role_key}/{section}")
+    assert route_paths.index("/portal/team-leader/finished-products/products") < route_paths.index("/portal/{role_key}/{section}")
+    assert len(route_method_pairs) == len(set(route_method_pairs))
 
 
 def test_portal_notifications_use_modern_shared_visual_hierarchy():

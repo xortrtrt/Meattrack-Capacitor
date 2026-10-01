@@ -466,8 +466,6 @@ def add_sales_report(
     else:
         acc = fetch_one("SELECT account_id, name FROM accounts WHERE name = %s LIMIT 1;", (submitted_by,))
     acc_id = acc["account_id"] if acc else None
-    actor_name = acc["name"] if acc else submitted_by
-
     reseller_id = None
     department_id = None
     if source == "reseller":

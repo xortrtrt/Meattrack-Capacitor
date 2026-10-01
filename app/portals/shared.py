@@ -10,7 +10,6 @@ from app import portal_config
 from app import portal_dependencies
 from app import uploads as uploads_module
 from app import web
-from app.business_time import business_now
 from app.emailer import send_password_change_otp as deliver_password_change_otp
 
 

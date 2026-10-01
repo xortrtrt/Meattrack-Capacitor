@@ -18,7 +18,7 @@ PROFILE_IMAGE_DIR = Path(__file__).resolve().parent / "static" / "uploads" / "pr
 
 
 async def parse_payment_proof_attachments(uploads: list[UploadFile]) -> list[dict]:
-    attachments = []
+    attachments: list[dict[str, object]] = []
     for upload in uploads:
         if not upload.filename:
             continue
