@@ -106,7 +106,7 @@ def test_send_button_recovers_after_each_message(page: Page, active_live_chat: s
         assert int(cursor.fetchone()["total"]) == 2
 
 
-def test_complete_later_keeps_visitor_inquiry_form_dismissed(page: Page) -> None:
+def test_inquiry_prompt_opens_modal_and_complete_later_closes_it(page: Page) -> None:
     conversation_id = "e2e-visitor-inquiry"
     conversation = {
         "conversation_id": conversation_id,
@@ -124,6 +124,22 @@ def test_complete_later_keeps_visitor_inquiry_form_dismissed(page: Page) -> None
     def handle_live_chat(route) -> None:
         if route.request.url.endswith("/inquiry"):
             inquiry_submissions.append(route.request.method)
+            conversation["has_reseller_inquiry"] = True
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(
+                    {
+                        "conversation": conversation,
+                        "message": {
+                            "chat_message_id": 901,
+                            "sender_type": "system",
+                            "content": "Your reseller inquiry was submitted.",
+                        },
+                    }
+                ),
+            )
+            return
         payload = {"messages": []} if "/messages" in route.request.url else {"conversation": conversation}
         route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
 
@@ -140,12 +156,16 @@ def test_complete_later_keeps_visitor_inquiry_form_dismissed(page: Page) -> None
     page.locator(".chatbot-toggle").evaluate("element => element.click()")
     expect(page.locator(".chatbot-toggle")).to_have_attribute("aria-expanded", "true")
 
-    inquiry_panel = page.locator(".chatbot-inquiry-form")
-    expect(inquiry_panel).to_be_visible()
-    assert inquiry_panel.evaluate(
+    inquiry_prompt = page.locator(".chatbot-inquiry-prompt")
+    inquiry_modal = page.locator(".chatbot-inquiry-modal")
+    inquiry_dialog = page.locator(".chatbot-inquiry-dialog")
+    inquiry_open = inquiry_prompt.get_by_role("button", name="Open form")
+    expect(inquiry_prompt).to_be_visible()
+    expect(inquiry_modal).to_be_hidden()
+    assert inquiry_prompt.evaluate(
         "element => element.nextElementSibling?.matches('[data-chatbot-messages]')"
     )
-    assert inquiry_panel.evaluate("element => getComputedStyle(element).position") == "sticky"
+    assert inquiry_prompt.evaluate("element => getComputedStyle(element).position") == "sticky"
     identity_name = page.locator(".chatbot-identity strong")
     identity_status = page.locator(".chatbot-identity > span")
     expect(identity_name).to_have_text("E2E Leader")
@@ -155,15 +175,37 @@ def test_complete_later_keeps_visitor_inquiry_form_dismissed(page: Page) -> None
     conversation["assigned_team_leader_name"] = "Transferred Leader"
     expect(identity_name).to_have_text("Transferred Leader", timeout=5000)
 
+    inquiry_open.click()
+    expect(inquiry_modal).to_be_visible()
+    expect(inquiry_dialog.get_by_label("Full name")).to_be_focused()
+    page.keyboard.press("Escape")
+    expect(inquiry_modal).to_be_hidden()
+    expect(inquiry_open).to_be_focused()
+
+    inquiry_open.click()
     page.set_viewport_size({"width": 390, "height": 844})
-    expect(inquiry_panel).to_be_visible()
+    expect(inquiry_prompt).to_be_visible()
+    expect(inquiry_modal).to_be_visible()
     assert page.locator(".chatbot-panel").evaluate(
         "element => element.scrollWidth <= element.clientWidth"
     )
 
-    inquiry_panel.get_by_role("button", name="Complete later").click()
-    expect(inquiry_panel).to_be_hidden()
+    inquiry_dialog.get_by_role("button", name="Complete later").click()
+    expect(inquiry_modal).to_be_hidden()
+    expect(inquiry_prompt).to_be_visible()
 
     page.wait_for_timeout(3500)
-    expect(inquiry_panel).to_be_hidden()
+    expect(inquiry_modal).to_be_hidden()
+    expect(inquiry_prompt).to_be_visible()
     assert inquiry_submissions == []
+
+    inquiry_open.click()
+    inquiry_dialog.get_by_label("Business name").fill("E2E Store")
+    inquiry_dialog.get_by_label("Email").fill("visitor@example.test")
+    inquiry_dialog.get_by_label("Contact number").fill("09171234567")
+    inquiry_dialog.get_by_label("Business location").fill("Batangas City")
+    inquiry_dialog.get_by_role("checkbox").check()
+    inquiry_dialog.get_by_role("button", name="Submit inquiry").click()
+    expect(inquiry_modal).to_be_hidden()
+    expect(inquiry_prompt).to_be_hidden()
+    assert inquiry_submissions == ["POST"]

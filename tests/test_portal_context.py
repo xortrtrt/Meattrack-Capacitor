@@ -318,7 +318,7 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert app_js.index('if (!response.ok)') < app_js.index('messages.innerHTML = "";', app_js.index('resetButton.addEventListener'))
     assert 'bubble.classList.add("is-typing")' in app_js
     assert "@keyframes chatbot-caret" in css
-    assert "20261002-live-chat-card-1" in response.text
+    assert "20261002-inquiry-modal-1" in response.text
     assert "BP ChatBot" in response.text
     assert "chatbot-avatar" not in response.text
     assert 'role="dialog" aria-label="Batangas Premium support"' in response.text

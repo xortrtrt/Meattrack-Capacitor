@@ -36,7 +36,6 @@ export function bindVisitorChat() {
     let visitorTypingTimer = null;
     let visitorTypingSent = false;
     let visitorTypingLastSentAt = 0;
-    let dismissedInquiryRequestKey = "";
 
     messages.setAttribute("role", "log");
     messages.setAttribute("aria-live", "polite");
@@ -48,35 +47,52 @@ export function bindVisitorChat() {
     suggestions.setAttribute("aria-label", "Suggested replies");
     form.before(suggestions);
 
-    const inquiryFormPanel = document.createElement("section");
-    inquiryFormPanel.className = "chatbot-inquiry-form";
-    inquiryFormPanel.hidden = true;
-    inquiryFormPanel.setAttribute("aria-label", "Reseller inquiry form");
-    inquiryFormPanel.innerHTML = `
-        <div class="chatbot-inquiry-heading">
-            <span>Reseller application</span>
-            <strong>Tell us about your business</strong>
-            <p>Your assigned sales leader will review these details. Submitting does not create a reseller account.</p>
+    const inquiryPrompt = document.createElement("aside");
+    inquiryPrompt.className = "chatbot-inquiry-prompt";
+    inquiryPrompt.hidden = true;
+    inquiryPrompt.setAttribute("aria-label", "Reseller inquiry form available");
+    inquiryPrompt.innerHTML = `
+        <div>
+            <span>Reseller inquiry</span>
+            <strong>Your application form is ready</strong>
+            <p>Share your business details with your sales leader when you’re ready.</p>
         </div>
-        <form data-chatbot-inquiry-form>
-            <label>Full name<input name="name" maxlength="80" autocomplete="name" required></label>
-            <label>Business name<input name="business_name" maxlength="160" autocomplete="organization" required></label>
-            <div class="chatbot-inquiry-pair">
-                <label>Email<input name="email" type="email" maxlength="254" autocomplete="email" required></label>
-                <label>Contact number<input name="contact_number" type="tel" maxlength="30" autocomplete="tel" required></label>
+        <button type="button" data-chatbot-inquiry-open>Open form</button>`;
+    messages.before(inquiryPrompt);
+
+    const inquiryModal = document.createElement("div");
+    inquiryModal.className = "chatbot-inquiry-modal";
+    inquiryModal.hidden = true;
+    inquiryModal.innerHTML = `
+        <button type="button" class="chatbot-inquiry-backdrop" data-chatbot-inquiry-later aria-label="Complete inquiry later"></button>
+        <section class="chatbot-inquiry-dialog" role="dialog" aria-modal="true" aria-labelledby="chatbot-inquiry-title">
+            <div class="chatbot-inquiry-heading">
+                <span>Reseller application</span>
+                <strong id="chatbot-inquiry-title">Tell us about your business</strong>
+                <p>Your assigned sales leader will review these details. Submitting does not create a reseller account.</p>
             </div>
-            <label>Business location<input name="location" maxlength="180" autocomplete="street-address" required></label>
-            <label>Notes <span>(optional)</span><textarea name="notes" maxlength="500" rows="3" placeholder="Products, volume, or questions"></textarea></label>
-            <label class="chatbot-inquiry-consent"><input name="consent_confirmed" type="checkbox" required><span>I confirm these details may be stored and reviewed for my reseller application.</span></label>
-            <div class="chatbot-inquiry-actions">
-                <button type="button" class="chatbot-inquiry-later" data-chatbot-inquiry-later>Complete later</button>
-                <button type="submit" class="chatbot-inquiry-submit">Submit inquiry</button>
-            </div>
-            <p class="chatbot-inquiry-status" data-chatbot-inquiry-status role="status"></p>
-        </form>`;
-    messages.before(inquiryFormPanel);
-    const inquiryForm = inquiryFormPanel.querySelector("[data-chatbot-inquiry-form]");
-    const inquiryStatus = inquiryFormPanel.querySelector("[data-chatbot-inquiry-status]");
+            <form data-chatbot-inquiry-form>
+                <label>Full name<input name="name" maxlength="80" autocomplete="name" required></label>
+                <label>Business name<input name="business_name" maxlength="160" autocomplete="organization" required></label>
+                <div class="chatbot-inquiry-pair">
+                    <label>Email<input name="email" type="email" maxlength="254" autocomplete="email" required></label>
+                    <label>Contact number<input name="contact_number" type="tel" maxlength="30" autocomplete="tel" required></label>
+                </div>
+                <label>Business location<input name="location" maxlength="180" autocomplete="street-address" required></label>
+                <label>Notes <span>(optional)</span><textarea name="notes" maxlength="500" rows="3" placeholder="Products, volume, or questions"></textarea></label>
+                <label class="chatbot-inquiry-consent"><input name="consent_confirmed" type="checkbox" required><span>I confirm these details may be stored and reviewed for my reseller application.</span></label>
+                <div class="chatbot-inquiry-actions">
+                    <button type="button" class="chatbot-inquiry-later" data-chatbot-inquiry-later>Complete later</button>
+                    <button type="submit" class="chatbot-inquiry-submit">Submit inquiry</button>
+                </div>
+                <p class="chatbot-inquiry-status" data-chatbot-inquiry-status role="status"></p>
+            </form>
+        </section>`;
+    panel.append(inquiryModal);
+    const inquiryOpenButton = inquiryPrompt.querySelector("[data-chatbot-inquiry-open]");
+    const inquiryDialog = inquiryModal.querySelector(".chatbot-inquiry-dialog");
+    const inquiryForm = inquiryModal.querySelector("[data-chatbot-inquiry-form]");
+    const inquiryStatus = inquiryModal.querySelector("[data-chatbot-inquiry-status]");
 
     const resetButton = document.createElement("button");
     resetButton.type = "button";
@@ -225,6 +241,7 @@ export function bindVisitorChat() {
     }
 
     function setOpen(open) {
+        if (!open) closeInquiryModal(false);
         panel.hidden = !open;
         widget.classList.toggle("is-open", open);
         toggle.setAttribute("aria-expanded", String(open));
@@ -515,9 +532,9 @@ export function bindVisitorChat() {
         saveLiveConversation();
         activeSuggestions = [...defaultSuggestions];
         renderSuggestions(defaultSuggestions);
-        inquiryFormPanel.hidden = true;
+        inquiryPrompt.hidden = true;
+        closeInquiryModal(false);
         inquiryStatus.textContent = "";
-        dismissedInquiryRequestKey = "";
     }
 
     function inquiryRequestKey(conversation) {
@@ -527,22 +544,57 @@ export function bindVisitorChat() {
 
     function renderInquiryForm(conversation) {
         const requestKey = inquiryRequestKey(conversation);
-        const shouldShow = Boolean(requestKey)
+        const shouldOffer = Boolean(requestKey)
             && !conversation?.has_reseller_inquiry
-            && conversation.status === "active"
-            && requestKey !== dismissedInquiryRequestKey;
-        inquiryFormPanel.hidden = !shouldShow;
-        if (!shouldShow) return;
+            && conversation.status === "active";
+        inquiryPrompt.hidden = !shouldOffer;
+        if (!shouldOffer) {
+            closeInquiryModal(false);
+            return;
+        }
         const nameInput = inquiryForm.elements.namedItem("name");
         if (nameInput && !nameInput.value) nameInput.value = conversation.display_name || "";
-        messages.scrollTop = messages.scrollHeight;
     }
 
-    inquiryFormPanel.querySelector("[data-chatbot-inquiry-later]").addEventListener("click", (event) => {
-        event.preventDefault();
-        dismissedInquiryRequestKey = inquiryRequestKey(liveConversation);
-        inquiryFormPanel.hidden = true;
-        addMessage("You can complete the reseller inquiry form anytime while this live chat remains open.", "bot");
+    function openInquiryModal() {
+        if (inquiryPrompt.hidden) return;
+        inquiryModal.hidden = false;
+        panel.classList.add("has-inquiry-modal");
+        window.requestAnimationFrame(() => {
+            inquiryModal.classList.add("is-open");
+            inquiryForm.elements.namedItem("name")?.focus();
+        });
+    }
+
+    function closeInquiryModal(restoreFocus = true) {
+        if (inquiryModal.hidden) return;
+        inquiryModal.classList.remove("is-open");
+        panel.classList.remove("has-inquiry-modal");
+        inquiryModal.hidden = true;
+        if (restoreFocus && !inquiryPrompt.hidden) inquiryOpenButton.focus();
+    }
+
+    inquiryOpenButton.addEventListener("click", openInquiryModal);
+    inquiryModal.querySelectorAll("[data-chatbot-inquiry-later]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            closeInquiryModal();
+        });
+    });
+    inquiryDialog.addEventListener("keydown", (event) => {
+        if (event.key !== "Tab") return;
+        const focusable = Array.from(inquiryDialog.querySelectorAll("button, input, textarea"))
+            .filter((element) => !element.disabled && element.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
     });
 
     inquiryForm.addEventListener("submit", async (event) => {
@@ -566,7 +618,7 @@ export function bindVisitorChat() {
                 }),
             });
             inquiryForm.reset();
-            inquiryFormPanel.hidden = true;
+            closeInquiryModal(false);
             liveConversation = { ...liveConversation, ...(result.conversation || {}) };
             lastLiveStatus = liveConversation.status;
             saveLiveConversation();
@@ -650,6 +702,10 @@ export function bindVisitorChat() {
         toggle.focus();
     });
     document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !inquiryModal.hidden) {
+            closeInquiryModal();
+            return;
+        }
         if (event.key === "Escape" && !panel.hidden) {
             setOpen(false);
             toggle.focus();
