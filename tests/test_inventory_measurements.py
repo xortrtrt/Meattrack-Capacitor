@@ -133,7 +133,7 @@ def test_raw_inventory_route_preserves_original_decimal_text_and_actor(monkeypat
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "require_team_leader_role", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
-    monkeypatch.setattr(main.data, "add_raw_inventory_item", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(repositories, "add_raw_inventory_item", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     response = TestClient(main.app).post(
         "/portal/team-leader/inventory-items",
@@ -150,7 +150,7 @@ def test_pack_content_route_passes_exact_values_and_actor(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "require_team_leader_role", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
-    monkeypatch.setattr(main.data, "update_product_pack_content", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(repositories, "update_product_pack_content", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     response = TestClient(main.app).post(
         "/portal/team-leader/products/7/pack-content",
@@ -160,3 +160,4 @@ def test_pack_content_route_passes_exact_values_and_actor(monkeypatch):
 
     assert response.status_code == 303
     assert calls == [((7, "500.000", "g"), {"actor_account_id": 42})]
+

@@ -7,7 +7,6 @@ extend-exclude = [".venv"]
 select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
-"app/main.py" = ["E402", "F811"]
 "app/repositories/*.py" = ["F403", "F405"]
 "tools/*.py" = ["E402"]
 

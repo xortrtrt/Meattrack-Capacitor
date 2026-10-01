@@ -4,7 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.chatbot import MAX_HISTORY_MESSAGES, process_chatbot_message
-from app import chatbot, main
+from app import chatbot, main, repositories
+from app.routers import chatbot as chatbot_routes
 
 
 class ModelAnswerCompletions:
@@ -1462,7 +1463,7 @@ def test_become_reseller_quick_reply_restarts_lead_flow():
 
 
 def test_chatbot_api_can_reset_server_side_conversation(monkeypatch):
-    monkeypatch.setattr(main, "public_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(chatbot_routes, "public_products", lambda *args, **kwargs: [])
     client = TestClient(main.app)
 
     started = client.post("/api/chatbot", json={"message": "I want to be a reseller"})
@@ -1476,7 +1477,7 @@ def test_chatbot_api_can_reset_server_side_conversation(monkeypatch):
 
 
 def test_public_inquiry_form_is_disabled(monkeypatch):
-    monkeypatch.setattr(main.data, "add_inquiry", lambda *args, **kwargs: pytest.fail("public form must not create inquiries"))
+    monkeypatch.setattr(repositories, "add_inquiry", lambda *args, **kwargs: pytest.fail("public form must not create inquiries"))
 
     response = TestClient(main.app).post(
         "/inquiries",
@@ -1492,3 +1493,5 @@ def test_public_inquiry_form_is_disabled(monkeypatch):
 
     assert response.status_code == 303
     assert "Public+sign-up+is+disabled" in response.headers["location"]
+
+

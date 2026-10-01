@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from app import chatbot, live_chat, main
+from app.routers import live_chat as live_chat_routes
 
 
 def _jwt_payload(token: str) -> dict:
@@ -206,7 +207,7 @@ def test_typing_update_is_server_published_with_authoritative_visitor_identity(m
     captured = {}
     conversation_id = "00000000-0000-0000-0000-000000000007"
     monkeypatch.setattr(
-        main,
+        live_chat_routes,
         "_visitor_live_conversation",
         lambda _request, requested: {
             "conversation_id": requested,
@@ -214,7 +215,7 @@ def test_typing_update_is_server_published_with_authoritative_visitor_identity(m
             "status": "active",
         },
     )
-    monkeypatch.setattr(main, "enforce_live_typing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(live_chat_routes, "enforce_live_typing", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(live_chat, "set_typing_state", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         live_chat,
@@ -243,7 +244,7 @@ def test_typing_update_is_server_published_with_authoritative_visitor_identity(m
 def test_typing_update_requires_boolean_and_active_conversation(monkeypatch):
     conversation_id = "00000000-0000-0000-0000-000000000008"
     monkeypatch.setattr(
-        main,
+        live_chat_routes,
         "_visitor_live_conversation",
         lambda _request, requested: {"conversation_id": requested, "display_name": "Ana", "status": "active"},
     )
@@ -254,7 +255,7 @@ def test_typing_update_requires_boolean_and_active_conversation(monkeypatch):
     assert invalid.status_code == 400
 
     monkeypatch.setattr(
-        main,
+        live_chat_routes,
         "_visitor_live_conversation",
         lambda _request, requested: {"conversation_id": requested, "display_name": "Ana", "status": "closed"},
     )
@@ -316,8 +317,8 @@ def test_live_chat_actor_keeps_same_browser_visitor_and_leader_tabs_distinct(mon
         "headers": [(b"x-live-chat-actor", b"visitor")],
         "session": session,
     })
-    monkeypatch.setattr(main, "_sales_live_account", lambda _request: (_ for _ in ()).throw(AssertionError()))
-    assert main._live_chat_actor(visitor_request, conversation_id) == ("visitor", None, conversation)
+    monkeypatch.setattr(live_chat_routes, "_sales_live_account", lambda _request: (_ for _ in ()).throw(AssertionError()))
+    assert live_chat_routes._live_chat_actor(visitor_request, conversation_id) == ("visitor", None, conversation)
 
     leader_request = Request({
         "type": "http",
@@ -326,9 +327,9 @@ def test_live_chat_actor_keeps_same_browser_visitor_and_leader_tabs_distinct(mon
         "headers": [(b"x-live-chat-actor", b"team_leader")],
         "session": session,
     })
-    monkeypatch.setattr(main, "_sales_live_account", lambda _request: 17)
+    monkeypatch.setattr(live_chat_routes, "_sales_live_account", lambda _request: 17)
     monkeypatch.setattr(live_chat, "leader_can_access", lambda account_id, requested: account_id == 17 and requested == conversation_id)
-    assert main._live_chat_actor(leader_request, conversation_id) == ("team_leader", 17, conversation)
+    assert live_chat_routes._live_chat_actor(leader_request, conversation_id) == ("team_leader", 17, conversation)
 
 
 def test_live_chat_clients_send_validated_actor_headers():
@@ -353,11 +354,11 @@ def test_live_chat_clients_expose_visitor_owned_reseller_inquiry_form():
 
     assert "data-live-send-inquiry-form" in leader_template
     assert "/inquiry-form`" in leader_source
-    assert 'payload.get("consent_confirmed") is not True' in open("app/main.py", encoding="utf-8").read()
+    assert 'payload.get("consent_confirmed") is not True' in open("app/routers/live_chat.py", encoding="utf-8").read()
     assert "data-chatbot-inquiry-form" in visitor_source
     assert "consent_confirmed" in visitor_source
     assert "/inquiry`" in visitor_source
-    assert "No reseller account has been created yet." in open("app/main.py", encoding="utf-8").read()
+    assert "No reseller account has been created yet." in open("app/routers/live_chat.py", encoding="utf-8").read()
     assert "addLiveMessage(result.message)" in visitor_source
     assert "The live chat has ended, and no reseller account" not in visitor_source
 
@@ -391,7 +392,7 @@ def test_leader_live_chat_uses_bounded_scrollable_workspace_and_valid_actions():
 def test_visitor_inquiry_submission_requires_explicit_consent(monkeypatch):
     conversation_id = "00000000-0000-0000-0000-000000000010"
     monkeypatch.setattr(
-        main,
+        live_chat_routes,
         "_visitor_live_conversation",
         lambda _request, requested: {
             "conversation_id": requested,
@@ -414,7 +415,7 @@ def test_visitor_inquiry_submission_assigns_handling_leader_and_keeps_chat_activ
     conversation_id = "00000000-0000-0000-0000-000000000011"
     captured = {}
     monkeypatch.setattr(
-        main,
+        live_chat_routes,
         "_visitor_live_conversation",
         lambda _request, requested: {
             "conversation_id": requested,
@@ -423,9 +424,9 @@ def test_visitor_inquiry_submission_assigns_handling_leader_and_keeps_chat_activ
             "assigned_team_leader_account_id": 17,
         },
     )
-    monkeypatch.setattr(main, "enforce_lead", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(live_chat_routes, "enforce_lead", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        main.data,
+        live_chat_routes.data,
         "add_inquiry",
         lambda *args, **kwargs: captured.update(args=args, kwargs=kwargs) or {
             "inquiry_id": 91,
@@ -444,7 +445,7 @@ def test_visitor_inquiry_submission_assigns_handling_leader_and_keeps_chat_activ
         "assigned_team_leader_account_id": 17,
         "has_reseller_inquiry": True,
     })
-    monkeypatch.setattr(main, "_publish_chat_message", lambda *_args, **_kwargs: asyncio.sleep(0, result="published"))
+    monkeypatch.setattr(live_chat_routes, "_publish_chat_message", lambda *_args, **_kwargs: asyncio.sleep(0, result="published"))
     monkeypatch.setattr(live_chat, "publish_event", lambda *_args, **_kwargs: None)
 
     response = TestClient(main.app).post(
@@ -519,14 +520,14 @@ def test_publish_failure_marks_persisted_message_for_retry(monkeypatch):
     monkeypatch.setattr(live_chat, "publish_message", lambda *_args: (_ for _ in ()).throw(live_chat.AblyUnavailable("offline")))
     monkeypatch.setattr(live_chat, "mark_publish_failed", lambda message_id, error: marked.update(id=message_id, error=error))
 
-    delivery = asyncio.run(main._publish_chat_message({"chat_message_id": 41}, "00000000-0000-0000-0000-000000000001"))
+    delivery = asyncio.run(live_chat_routes._publish_chat_message({"chat_message_id": 41}, "00000000-0000-0000-0000-000000000001"))
 
     assert delivery == "pending"
     assert marked == {"id": 41, "error": "offline"}
 
 
 def test_visitor_token_refuses_another_conversation(monkeypatch):
-    monkeypatch.setattr(main, "enforce_ably_token", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(live_chat_routes, "enforce_ably_token", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(live_chat, "visitor_can_access", lambda _session, _conversation_id: False)
 
     response = TestClient(main.app).post(
@@ -540,7 +541,7 @@ def test_visitor_token_refuses_another_conversation(monkeypatch):
 def test_visitor_token_has_only_owned_conversation_subscription(monkeypatch):
     captured = {}
     conversation_id = "00000000-0000-0000-0000-000000000003"
-    monkeypatch.setattr(main, "enforce_ably_token", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(live_chat_routes, "enforce_ably_token", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(live_chat, "visitor_can_access", lambda _session, requested: requested == conversation_id)
     monkeypatch.setattr(live_chat, "get_conversation", lambda requested: {"conversation_id": requested})
     monkeypatch.setattr(
@@ -564,7 +565,7 @@ def test_transfer_endpoint_requeues_and_notifies_available_leaders(monkeypatch):
     conversation_id = "00000000-0000-0000-0000-000000000004"
     notifications = []
     publications = []
-    monkeypatch.setattr(main, "_sales_live_account", lambda _request: 17)
+    monkeypatch.setattr(live_chat_routes, "_sales_live_account", lambda _request: 17)
     monkeypatch.setattr(
         live_chat,
         "transfer_conversation",
@@ -588,3 +589,5 @@ def test_transfer_endpoint_requeues_and_notifies_available_leaders(monkeypatch):
     assert notifications[0]["conversation_id"] == conversation_id
     assert publications[0][0][1] == "conversation.transferred"
     assert publications[0][0][2]["previous_team_leader_account_id"] == 17
+
+

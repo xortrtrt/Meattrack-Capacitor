@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main
+from app import main, repositories, web
+from app.portals import owner as owner_portal
 from app.portals import shared as shared_portal
 
 
@@ -135,7 +137,7 @@ def install_read_spies(monkeypatch):
             calls[_name].append((args, kwargs))
             return _result
 
-        monkeypatch.setattr(main.data, name, fake)
+        monkeypatch.setattr(repositories, name, fake)
     return calls
 
 
@@ -221,9 +223,9 @@ def test_section_filters_are_applied(monkeypatch):
 
 
 def test_landing_page_does_not_load_metrics(monkeypatch):
-    monkeypatch.setattr(main.data, "list_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "list_products", lambda *args, **kwargs: [])
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "current_metrics",
         lambda: pytest.fail("landing page must not load dashboard metrics"),
     )
@@ -249,7 +251,7 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
         calls.append((args, kwargs))
         return products[: kwargs.get("page_size", len(products))]
 
-    monkeypatch.setattr(main.data, "list_products", list_products)
+    monkeypatch.setattr(repositories, "list_products", list_products)
     response = TestClient(main.app).get("/")
     css = open("app/static/css/public.css", encoding="utf-8").read()
 
@@ -333,7 +335,7 @@ def test_products_page_renders_complete_active_catalog(monkeypatch):
         calls.append((args, kwargs))
         return products
 
-    monkeypatch.setattr(main.data, "list_products", list_products)
+    monkeypatch.setattr(repositories, "list_products", list_products)
     response = TestClient(main.app).get("/products")
 
     assert response.status_code == 200
@@ -345,7 +347,7 @@ def test_products_page_renders_complete_active_catalog(monkeypatch):
 
 
 def test_landing_empty_catalog_shows_chat_fallback(monkeypatch):
-    monkeypatch.setattr(main.data, "list_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "list_products", lambda *args, **kwargs: [])
 
     response = TestClient(main.app).get("/")
 
@@ -368,22 +370,22 @@ def test_login_page_removes_social_buttons_and_uses_glass_styles():
 
 
 def test_reseller_nav_includes_profile():
-    slugs = [slug for slug, *_ in main.data.portal_nav_for("reseller")]
+    slugs = [slug for slug, *_ in repositories.portal_nav_for("reseller")]
 
     assert "profile" in slugs
     assert "reports" not in slugs
 
 
 def test_team_leader_nav_includes_profile_for_sales_and_inventory():
-    assert "profile" in [slug for slug, *_ in main.data.portal_nav_for("team-leader", "sales")]
-    assert "profile" in [slug for slug, *_ in main.data.portal_nav_for("team-leader", "inventory")]
+    assert "profile" in [slug for slug, *_ in repositories.portal_nav_for("team-leader", "sales")]
+    assert "profile" in [slug for slug, *_ in repositories.portal_nav_for("team-leader", "inventory")]
 
 
 def test_password_otp_confirmation_renders_as_modal(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 9)
-    monkeypatch.setattr(main.data, "account_portal_profile", lambda account_id: {
+    monkeypatch.setattr(repositories, "account_portal_profile", lambda account_id: {
         "account_id": 9,
         "name": "Sales Leader",
         "email": "sales@example.test",
@@ -391,8 +393,8 @@ def test_password_otp_confirmation_renders_as_modal(monkeypatch):
         "role_key": "team-leader",
         "team_leader_role": "sales",
     })
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
 
     response = client.get("/portal/team-leader/profile?otp=1")
 
@@ -416,7 +418,7 @@ def test_owner_logs_section_is_removed(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
 
-    slugs = [slug for slug, *_ in main.data.portal_nav_for("owner")]
+    slugs = [slug for slug, *_ in repositories.portal_nav_for("owner")]
     response = client.get("/portal/owner/logs")
 
     assert "logs" not in slugs
@@ -426,11 +428,11 @@ def test_owner_logs_section_is_removed(monkeypatch):
 def test_owner_products_render_product_cards_and_price_form(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(main.data, "count_products", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_products", lambda *args, **kwargs: 1)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_products",
         lambda *args, **kwargs: [
             {
@@ -466,8 +468,8 @@ def test_owner_product_price_update_route_still_posts(monkeypatch):
     calls = []
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main.data, "product_by_id", lambda product_id: {"product_id": product_id})
-    monkeypatch.setattr(main.data, "update_product_price", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(repositories, "product_by_id", lambda product_id: {"product_id": product_id})
+    monkeypatch.setattr(repositories, "update_product_price", lambda *args, **kwargs: calls.append((args, kwargs)))
 
     response = client.post(
         "/portal/owner/products",
@@ -484,14 +486,14 @@ def test_owner_accounts_render_responsive_cards(monkeypatch):
     list_calls = []
     count_calls = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
 
     def fake_count_accounts(*args, **kwargs):
         count_calls.append(kwargs)
         return 2
 
-    monkeypatch.setattr(main.data, "count_accounts", fake_count_accounts)
+    monkeypatch.setattr(repositories, "count_accounts", fake_count_accounts)
 
     def fake_list_accounts(*args, **kwargs):
         list_calls.append(kwargs)
@@ -508,13 +510,13 @@ def test_owner_accounts_render_responsive_cards(monkeypatch):
         ]
 
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_accounts",
         fake_list_accounts,
     )
-    monkeypatch.setattr(main.data, "list_team_leader_accounts", lambda *args, **kwargs: [{"account_id": 4, "name": "Sales Leader B"}])
+    monkeypatch.setattr(repositories, "list_team_leader_accounts", lambda *args, **kwargs: [{"account_id": 4, "name": "Sales Leader B"}])
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_reseller_assignments",
         lambda *args, **kwargs: [
             {
@@ -547,7 +549,7 @@ def test_owner_can_update_only_team_leader_account_roles(monkeypatch):
     updates = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "update_team_leader_account_role",
         lambda *args, **kwargs: updates.append((args, kwargs)) or {"account_id": args[0]},
     )
@@ -567,7 +569,7 @@ def test_owner_activation_route_excludes_reseller_accounts(monkeypatch):
     calls = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "resend_activation",
         lambda *args, **kwargs: calls.append((args, kwargs)),
     )
@@ -581,19 +583,19 @@ def test_owner_activation_route_excludes_reseller_accounts(monkeypatch):
 def test_owner_reports_render_mobile_cards(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(main.data, "count_sales_reports", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_sales_reports", lambda *args, **kwargs: 1)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_sales_reports",
         lambda *args, **kwargs: [
             {
                 "sales_report_id": 1,
                 "report_source": "team_leader",
                 "submitted_by": "Sales Leader B",
-                "period_start": main.date.today(),
-                "period_end": main.date.today(),
+                "period_start": date.today(),
+                "period_end": date.today(),
                 "total_sales": 700,
                 "total_orders": 1,
                 "notes": "Monthly report",
@@ -612,30 +614,30 @@ def test_owner_reports_render_mobile_cards(monkeypatch):
 def test_owner_forecasts_render_prophet_ui(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(main.data, "count_forecasts", lambda *args, **kwargs: 1)
-    monkeypatch.setattr(main.data, "list_forecast_runs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_forecasts", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_forecast_runs", lambda *args, **kwargs: [])
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "latest_forecast_run",
         lambda *args, **kwargs: {
             "model_name": "Prophet demand forecast",
-            "input_period_start": main.date.today(),
-            "input_period_end": main.date.today(),
+            "input_period_start": date.today(),
+            "input_period_end": date.today(),
             "forecast_horizon_days": 7,
             "status": "completed",
             "notes": "Completed with: Prophet, Baseline fallback.",
         },
     )
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_forecasts",
         lambda *args, **kwargs: [
             {
                 "product": "Tocino Ala Eh",
-                "forecast_date": main.date.today(),
-                "forecast_start": main.date.today(),
+                "forecast_date": date.today(),
+                "forecast_start": date.today(),
                 "predicted_quantity": 12,
                 "forecast_total": 12,
                 "usable_stock": 5,
@@ -669,7 +671,7 @@ def test_owner_forecast_post_queues_run_for_signed_in_owner(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "queue_forecast",
         lambda name, horizon, account_id: captured.update(
             name=name, horizon=horizon, account_id=account_id
@@ -692,7 +694,7 @@ def test_owner_forecast_status_is_account_scoped(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "forecast_run_status",
         lambda run_id, account_id: {
             "forecast_run_id": run_id,
@@ -714,10 +716,10 @@ def test_owner_forecast_status_is_account_scoped(monkeypatch):
 def test_owner_dashboard_renders_executive_sections(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "current_metrics",
         lambda *args, **kwargs: {
             "fulfilled_sales": 1500,
@@ -728,20 +730,20 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_products",
         lambda *args, **kwargs: [
             {"product_id": 1, "name": "Tocino Ala Eh", "available": 90, "unit": "pack"}
         ],
     )
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_forecasts",
         lambda *args, **kwargs: [
             {
                 "forecast_result_id": 1,
                 "product": "Tocino Ala Eh",
-                    "forecast_date": main.date.today(),
+                    "forecast_date": date.today(),
                     "predicted_quantity": 42,
                     "forecast_total": 42,
                     "production_gap": None,
@@ -750,14 +752,14 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
         ],
     )
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "reseller_sales_series",
         lambda *args, **kwargs: [
-            {"sale_date": main.date.today(), "total_sales": 700, "order_count": 1}
+            {"sale_date": date.today(), "total_sales": 700, "order_count": 1}
         ],
     )
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "reseller_most_bought_products",
         lambda *args, **kwargs: [
             {"name": "Tocino Ala Eh", "total_quantity": 10, "unit": "pack", "total_amount": 700}
@@ -781,16 +783,16 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
 
 
 def test_template_numeric_filters_render_missing_values_safely():
-    assert main.currency(None) == "—"
-    assert main.number(None) == "—"
+    assert web.currency(None) == "—"
+    assert web.number(None) == "—"
 
 
 def test_owner_sales_chart_endpoint_returns_period_json(monkeypatch):
     client = TestClient(main.app)
-    today = main.date.today()
+    today = date.today()
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "reseller_sales_series",
         lambda *args, **kwargs: [
             {"sale_date": today, "total_sales": 700, "order_count": 1}
@@ -808,19 +810,19 @@ def test_owner_sales_chart_endpoint_returns_period_json(monkeypatch):
 
 
 def test_owner_sales_period_points_support_dashboard_granularities():
-    today = main.date(2026, 7, 21)
+    today = date(2026, 7, 21)
 
-    assert len(main.owner_sales_period_points("daily", today)[1]) == 31
-    assert len(main.owner_sales_period_points("weekly", today)[1]) == 12
-    assert len(main.owner_sales_period_points("monthly", today)[1]) == 12
-    assert len(main.owner_sales_period_points("quarterly", today)[1]) == 8
-    assert len(main.owner_sales_period_points("yearly", today)[1]) == 5
+    assert len(owner_portal.owner_sales_period_points("daily", today)[1]) == 31
+    assert len(owner_portal.owner_sales_period_points("weekly", today)[1]) == 12
+    assert len(owner_portal.owner_sales_period_points("monthly", today)[1]) == 12
+    assert len(owner_portal.owner_sales_period_points("quarterly", today)[1]) == 8
+    assert len(owner_portal.owner_sales_period_points("yearly", today)[1]) == 5
 
 
 def test_owner_dashboard_sales_chart_uses_continuous_line_series(monkeypatch):
-    today = main.date.today()
+    today = date.today()
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "current_metrics",
         lambda *args, **kwargs: {
             "fulfilled_sales": 700,
@@ -830,18 +832,18 @@ def test_owner_dashboard_sales_chart_uses_continuous_line_series(monkeypatch):
             "total_available": 100,
         },
     )
-    monkeypatch.setattr(main.data, "list_products", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "list_forecasts", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "reseller_most_bought_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "list_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "list_forecasts", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "reseller_most_bought_products", lambda *args, **kwargs: [])
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "reseller_sales_series",
         lambda *args, **kwargs: [
             {"sale_date": today, "total_sales": 700, "order_count": 1}
         ],
     )
 
-    context = main._owner_dashboard_context(None)
+    context = owner_portal.dashboard_context(None)
 
     assert len(context["owner_sales_chart"]) == 31
     assert context["owner_sales_chart"][-1]["sales"] == 700
@@ -852,10 +854,10 @@ def test_inventory_dashboard_renders_product_movement_chart(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "current_metrics",
         lambda *args, **kwargs: {
             "fulfilled_sales": 0,
@@ -865,9 +867,9 @@ def test_inventory_dashboard_renders_product_movement_chart(monkeypatch):
             "total_available": 100,
         },
     )
-    monkeypatch.setattr(main.data, "list_products", lambda *args, **kwargs: [{"product_id": 1, "name": "Tocino"}])
+    monkeypatch.setattr(repositories, "list_products", lambda *args, **kwargs: [{"product_id": 1, "name": "Tocino"}])
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "inventory_product_movement_analytics",
         lambda *args, **kwargs: [
             {
@@ -941,17 +943,17 @@ def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
     count_calls = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales-supervisor")
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
 
     def fake_count_accounts(*args, **kwargs):
         count_calls.append(kwargs)
         return 2
 
-    monkeypatch.setattr(main.data, "count_accounts", fake_count_accounts)
-    monkeypatch.setattr(main.data, "list_team_leader_accounts", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "count_accounts", fake_count_accounts)
+    monkeypatch.setattr(repositories, "list_team_leader_accounts", lambda *args, **kwargs: [])
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_reseller_assignments",
         lambda *args, **kwargs: [
             {
@@ -987,10 +989,10 @@ def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
             },
         ]
 
-    monkeypatch.setattr(main.data, "list_accounts", fake_list_accounts)
+    monkeypatch.setattr(repositories, "list_accounts", fake_list_accounts)
 
-    sales_nav = [slug for slug, *_ in main.data.portal_nav_for("team-leader", "sales")]
-    supervisor_nav = [slug for slug, *_ in main.data.portal_nav_for("sales-supervisor", "sales-supervisor")]
+    sales_nav = [slug for slug, *_ in repositories.portal_nav_for("team-leader", "sales")]
+    supervisor_nav = [slug for slug, *_ in repositories.portal_nav_for("sales-supervisor", "sales-supervisor")]
     response = client.get("/portal/sales-supervisor/accounts")
 
     assert "accounts" not in sales_nav
@@ -1013,7 +1015,7 @@ def test_sales_supervisor_account_post_cannot_create_owner(monkeypatch):
     client = TestClient(main.app)
     created = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(main.data, "add_account", lambda *args, **kwargs: created.append((args, kwargs)))
+    monkeypatch.setattr(repositories, "add_account", lambda *args, **kwargs: created.append((args, kwargs)))
 
     blocked = client.post(
         "/portal/sales-supervisor/accounts",
@@ -1043,7 +1045,7 @@ def test_sales_supervisor_activation_route_includes_reseller_accounts(monkeypatc
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales-supervisor")
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "resend_activation",
         lambda *args, **kwargs: calls.append((args, kwargs)),
     )
@@ -1173,11 +1175,11 @@ def test_raw_materials_page_renders_only_raw_inventory(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(main.data, "count_inventory_items", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_inventory_items", lambda *args, **kwargs: 1)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_inventory_items",
         lambda *args, **kwargs: [
             {
@@ -1207,11 +1209,11 @@ def test_finished_products_page_renders_product_cards(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
-    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
-    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(main.data, "count_inventory_items", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_inventory_items", lambda *args, **kwargs: 1)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_inventory_items",
         lambda *args, **kwargs: [
             {
@@ -1242,9 +1244,9 @@ def test_inventory_finished_products_partial_returns_only_product_region(monkeyp
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
-    monkeypatch.setattr(main.data, "count_inventory_items", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "count_inventory_items", lambda *args, **kwargs: 1)
     monkeypatch.setattr(
-        main.data,
+        repositories,
         "list_inventory_items",
         lambda *args, **kwargs: [
             {
@@ -1279,3 +1281,4 @@ def test_legacy_inventory_items_redirects_to_raw_materials(monkeypatch):
 
     assert response.status_code == 303
     assert response.headers["location"] == "/portal/team-leader/raw-materials?q=beef&type=meat&page=2"
+
