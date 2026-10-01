@@ -5,7 +5,7 @@ from decimal import Decimal
 from app import repositories
 from app.repositories import forecasts as forecast_repository
 from app.repositories import inquiries as inquiry_repository
-from app.repositories import inventory as inventory_repository
+from app.repositories.inventory import queries as inventory_repository
 from app.repositories import orders as order_repository
 from app.repositories import reporting as reporting_repository
 
