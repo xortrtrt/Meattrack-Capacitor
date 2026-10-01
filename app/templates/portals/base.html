@@ -10,14 +10,14 @@
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260929-notifications-1"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260930-profile-picture-studio-4"
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ role_key ~ '.css') }}?v=20260929-team-dashboard-4"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20260929-profile-picture-drag-2"
     />
   </head>
-  <body class="portal-body role-{{ role_key }} section-{{ section }}">
+  <body class="portal-body {{ portal_body_roles|default('role-' ~ role_key) }} section-{{ section }}{% if role_key in ['team-leader', 'sales-supervisor'] %} leader-role-{{ role.team_leader_role }}{% endif %}">
     <button
       class="portal-drawer-backdrop"
       type="button"
@@ -62,6 +62,17 @@
         {% endfor %}
       </nav>
       <div class="portal-user">
+        <span class="portal-user-avatar" aria-hidden="true">
+          {% if role.profile_image_path %}
+          <img
+            src="{{ url_for('static', path=role.profile_image_path) }}"
+            alt=""
+            style="--profile-x: {{ role.profile_image_position_x|default(50) }}%; --profile-y: {{ role.profile_image_position_y|default(50) }}%; --profile-scale: {{ role.profile_image_scale|default(1) }};"
+          />
+          {% else %}
+          {{ role.name[:1]|upper }}
+          {% endif %}
+        </span>
         <span>{{ role.name }}</span>
         <small>{{ role.email }}</small>
         <form action="/logout" method="post" class="logout-form"><button type="submit">Sign out</button></form>
@@ -80,7 +91,7 @@
           >
             <i data-lucide="menu"></i>
           </button>
-          {% if section != "dashboard" %}<div class="portal-title-copy">
+          {% if role_key == "owner" or (section != "dashboard" and role_key != "owner" and not (role_key in ["team-leader", "sales-supervisor"] and role.team_leader_role in ["sales", "sales-supervisor"])) %}<div class="portal-title-copy">
             <span class="eyebrow">{{ role.label }} workspace</span>
             <h1>{{ section_title }}</h1>
           </div>{% endif %}
@@ -268,8 +279,8 @@
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
-    <script src="{{ url_for('static', path='js/app.js') }}?v=20260929-inquiry-rejection-1"></script>
-    {% if role_key == "team-leader" and section == "live-chat" %}
+    <script src="{{ url_for('static', path='js/app.js') }}?v=20260930-profile-picture-studio-5"></script>
+    {% if role_key in ["team-leader", "sales-supervisor"] and section == "live-chat" %}
     <script src="{{ url_for('static', path='vendor/ably-2.17.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='js/live_chat.js') }}?v=20260929-live-chat-ui-15"></script>
     {% endif %}

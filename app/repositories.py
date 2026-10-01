@@ -146,6 +146,14 @@ SYSTEM_TABLES_SQL = """
 ALTER TABLE accounts
     ADD COLUMN IF NOT EXISTS team_leader_role text;
 
+ALTER TABLE accounts
+    ADD COLUMN IF NOT EXISTS profile_image_path text;
+
+ALTER TABLE accounts
+    ADD COLUMN IF NOT EXISTS profile_image_position_x numeric(5,2) NOT NULL DEFAULT 50,
+    ADD COLUMN IF NOT EXISTS profile_image_position_y numeric(5,2) NOT NULL DEFAULT 50,
+    ADD COLUMN IF NOT EXISTS profile_image_scale numeric(4,2) NOT NULL DEFAULT 1;
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -155,7 +163,22 @@ BEGIN
     ) THEN
         ALTER TABLE accounts
             ADD CONSTRAINT accounts_team_leader_role_check
-            CHECK (team_leader_role IS NULL OR team_leader_role IN ('inventory', 'sales'));
+            CHECK (team_leader_role IS NULL OR team_leader_role IN ('inventory', 'sales', 'sales-supervisor'));
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'accounts_team_leader_role_check'
+          AND pg_get_constraintdef(oid) NOT LIKE '%sales-supervisor%'
+    ) THEN
+        ALTER TABLE accounts DROP CONSTRAINT accounts_team_leader_role_check;
+        ALTER TABLE accounts
+            ADD CONSTRAINT accounts_team_leader_role_check
+            CHECK (team_leader_role IS NULL OR team_leader_role IN ('inventory', 'sales', 'sales-supervisor'));
     END IF;
 END $$;
 
@@ -407,6 +430,13 @@ roles = {
         "email": "team.leader@batangaspremium.test",
         "default_section": "dashboard",
     },
+    "sales-supervisor": {
+        "label": "Sales Supervisor",
+        "account_type": "team_leader",
+        "name": "Sales Supervisor",
+        "email": "sales.supervisor@batangaspremium.test",
+        "default_section": "dashboard",
+    },
     "reseller": {
         "label": "Reseller",
         "account_type": "reseller",
@@ -419,6 +449,7 @@ roles = {
 team_leader_role_labels = {
     "inventory": "Inventory Team Leader",
     "sales": "Sales Team Leader",
+    "sales-supervisor": "Sales Supervisor",
 }
 
 portal_nav = {
@@ -465,10 +496,21 @@ team_leader_nav_by_role = {
         ("reports", "Reports", "file-text"),
         ("profile", "Profile", "user-cog"),
     ],
+    "sales-supervisor": [
+        ("dashboard", "Dashboard", "layout-dashboard"),
+        ("live-chat", "Live Chat", "messages-square"),
+        ("inquiries", "Inquiries", "user-check"),
+        ("orders", "Reseller Orders", "clipboard-check"),
+        ("reports", "Reports", "file-text"),
+        ("accounts", "Accounts", "shield-check"),
+        ("profile", "Profile", "user-cog"),
+    ],
 }
 
 
 def portal_nav_for(role_key: str, team_leader_role: str | None = None) -> list[tuple[str, str, str]]:
+    if role_key == "sales-supervisor":
+        return team_leader_nav_by_role["sales-supervisor"]
     if role_key == "team-leader":
         return team_leader_nav_by_role.get(team_leader_role or "sales", team_leader_nav_by_role["sales"])
     return portal_nav[role_key]
@@ -1007,7 +1049,7 @@ def get_order_payment_proof(proof_id: int, account_id: int | None, role_key: str
         return clean_row(proof)
     if role_key == "reseller" and account_id == proof["created_by_account_id"]:
         return clean_row(proof)
-    if role_key == "team-leader" and account_id == proof["team_leader_account_id"]:
+    if role_key in {"team-leader", "sales-supervisor"} and account_id == proof["team_leader_account_id"]:
         return clean_row(proof)
     return None
 
@@ -1439,7 +1481,14 @@ def count_forecasts(q: str = "", run_id: int | None = None) -> int:
     return int(row["total"])
 
 
-def list_accounts(q: str = "", account_type: str = "", page: int | None = None, page_size: int = 10, sort: str = "") -> list[dict]:
+def list_accounts(
+    q: str = "",
+    account_type: str = "",
+    page: int | None = None,
+    page_size: int = 10,
+    sort: str = "",
+    account_types: tuple[str, ...] | None = None,
+) -> list[dict]:
     ensure_system_tables()
     where = []
     params: list[object] = []
@@ -1451,6 +1500,10 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
     if account_type:
         where.append("a.account_type = %s")
         params.append(account_type)
+    elif account_types:
+        placeholders = ", ".join(["%s"] * len(account_types))
+        where.append(f"a.account_type IN ({placeholders})")
+        params.extend(account_types)
     where_sql = " WHERE " + " AND ".join(where) if where else ""
     paging_sql = ""
     if page is not None:
@@ -1473,7 +1526,7 @@ def list_accounts(q: str = "", account_type: str = "", page: int | None = None, 
     """.format(where_sql=where_sql, order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
 
 
-def count_accounts(q: str = "", account_type: str = "") -> int:
+def count_accounts(q: str = "", account_type: str = "", account_types: tuple[str, ...] | None = None) -> int:
     ensure_system_tables()
     query = "SELECT COUNT(*) AS total FROM accounts a"
     where = []
@@ -1486,6 +1539,10 @@ def count_accounts(q: str = "", account_type: str = "") -> int:
     if account_type:
         where.append("a.account_type = %s")
         params.append(account_type)
+    elif account_types:
+        placeholders = ", ".join(["%s"] * len(account_types))
+        where.append(f"a.account_type IN ({placeholders})")
+        params.extend(account_types)
     if where:
         query += " WHERE " + " AND ".join(where)
     row = fetch_one(query + ";", tuple(params) or None)
@@ -1568,6 +1625,30 @@ def set_reseller_team_leader(reseller_id: int, team_leader_account_id: int, acto
             raise ValueError("Reseller was not found.")
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="assigned_reseller_team_leader", entity_type="resellers", entity_id=reseller_id)
     return clean_row(reseller)
+
+
+def update_team_leader_account_role(account_id: int, team_leader_role: str, actor_account_id: int | None = None) -> dict:
+    ensure_system_tables()
+    if team_leader_role not in {"sales", "sales-supervisor", "inventory"}:
+        raise ValueError("Select a valid team leader role.")
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE accounts
+            SET team_leader_role = %s
+            WHERE account_id = %s
+              AND account_type = 'team_leader'
+            RETURNING account_id, account_type, team_leader_role, name, email, activation_status;
+            """,
+            (team_leader_role, account_id),
+        )
+        account = cur.fetchone()
+        if not account:
+            raise ValueError("Only team leader accounts can change team leader roles.")
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_team_leader_role", entity_type="accounts", entity_id=account_id)
+    clean = clean_row(account)
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
+    return clean
 
 
 INVENTORY_LOG_ACTIONS = (
@@ -1970,8 +2051,10 @@ def clear_reseller_cart(account_id: int) -> None:
     execute_write("DELETE FROM reseller_cart_items WHERE account_id = %s;", (account_id,))
 
 
-def role_key_for_account_type(account_type: str) -> str | None:
+def role_key_for_account_type(account_type: str, team_leader_role: str | None = None) -> str | None:
     if account_type == "team_leader":
+        if team_leader_role == "sales-supervisor":
+            return "sales-supervisor"
         return "team-leader"
     if account_type in {"owner", "reseller"}:
         return account_type
@@ -1982,7 +2065,9 @@ def authenticate_account(email: str, password: str) -> dict | None:
     ensure_system_tables()
     account = fetch_one(
         """
-        SELECT account_id, account_type, team_leader_role, name, email, password_hash, is_active, activation_status
+        SELECT account_id, account_type, team_leader_role, name, email, password_hash,
+               profile_image_path, profile_image_position_x, profile_image_position_y, profile_image_scale,
+               is_active, activation_status
         FROM accounts
         WHERE lower(email) = lower(%s)
         LIMIT 1;
@@ -2002,7 +2087,7 @@ def authenticate_account(email: str, password: str) -> dict | None:
         )
 
     clean = clean_row(account)
-    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
     if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
         clean["team_leader_role"] = "sales"
     if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
@@ -2179,7 +2264,9 @@ def request_login_otp(account_id: int) -> dict:
     enforce_otp_resend(account_id)
     account = fetch_one(
         """
-        SELECT account_id, account_type, team_leader_role, name, email, is_active, activation_status
+        SELECT account_id, account_type, team_leader_role, name, email,
+               profile_image_path, profile_image_position_x, profile_image_position_y, profile_image_scale,
+               is_active, activation_status
         FROM accounts
         WHERE account_id = %s
         LIMIT 1;
@@ -2217,7 +2304,7 @@ def request_login_otp(account_id: int) -> dict:
     record_event("otp_verify", f"account:{account_id}", succeeded=True)
 
     clean = clean_row(account)
-    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
     return {
         "otp_id": otp["account_login_otp_id"],
         "otp_code": otp_code,
@@ -2245,7 +2332,9 @@ def confirm_login_otp(account_id: int, otp_code: str) -> dict:
         cur.execute(
             """
             SELECT p.account_login_otp_id, p.otp_hash,
-                   a.account_id, a.account_type, a.team_leader_role, a.name, a.email, a.is_active, a.activation_status
+                   a.account_id, a.account_type, a.team_leader_role, a.name, a.email,
+                   a.profile_image_path, a.profile_image_position_x, a.profile_image_position_y, a.profile_image_scale,
+                   a.is_active, a.activation_status
             FROM account_login_otps p
             JOIN accounts a ON a.account_id = p.account_id
             WHERE p.account_id = %s
@@ -2270,7 +2359,7 @@ def confirm_login_otp(account_id: int, otp_code: str) -> dict:
         )
 
     clean = clean_row(pending)
-    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
     if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
         clean["team_leader_role"] = "sales"
     return clean
@@ -2336,7 +2425,9 @@ def update_reseller_profile(
 def account_portal_profile(account_id: int) -> dict | None:
     ensure_system_tables()
     account = fetch_one("""
-        SELECT account_id, account_type, team_leader_role, name, email, is_active, activation_status
+        SELECT account_id, account_type, team_leader_role, name, email,
+               profile_image_path, profile_image_position_x, profile_image_position_y, profile_image_scale,
+               is_active, activation_status
         FROM accounts
         WHERE account_id = %s
         LIMIT 1;
@@ -2344,9 +2435,50 @@ def account_portal_profile(account_id: int) -> dict | None:
     if not account or not account["is_active"] or account["activation_status"] != "active":
         return None
     clean = clean_row(account)
-    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
     if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
         clean["team_leader_role"] = "sales"
+    return clean
+
+
+def update_account_profile_image(
+    account_id: int,
+    profile_image_path: str | None,
+    position_x: object = 50,
+    position_y: object = 50,
+    scale: object = 1,
+) -> dict:
+    ensure_system_tables()
+    cleaned_path = profile_image_path.strip() if profile_image_path else None
+    if cleaned_path and not cleaned_path.startswith("uploads/profiles/"):
+        raise ValueError("Profile image path is invalid.")
+    clean_x = max(0, min(100, float(position_x or 50)))
+    clean_y = max(0, min(100, float(position_y or 50)))
+    clean_scale = max(1, min(2, float(scale or 1)))
+    account = execute_write(
+        """
+        UPDATE accounts
+        SET profile_image_path = %s,
+            profile_image_position_x = %s,
+            profile_image_position_y = %s,
+            profile_image_scale = %s
+        WHERE account_id = %s
+          AND is_active = true
+          AND activation_status = 'active'
+        RETURNING account_id, account_type, team_leader_role, name, email,
+                  profile_image_path, profile_image_position_x, profile_image_position_y, profile_image_scale,
+                  is_active, activation_status;
+        """,
+        (cleaned_path, clean_x, clean_y, clean_scale, account_id),
+        returning=True,
+    )
+    if not account:
+        raise ValueError("Account was not found.")
+    clean = clean_row(account)
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
+    if clean["account_type"] == "team_leader" and not clean.get("team_leader_role"):
+        clean["team_leader_role"] = "sales"
+    add_log(clean["name"], "updated_profile_picture", "Account profile")
     return clean
 
 
@@ -4057,7 +4189,7 @@ def add_account(account_type: str, name: str, email: str, team_leader_role: str 
     if account_type == "reseller":
         raise ValueError("Reseller accounts are created only by approving chatbot inquiries.")
     if account_type == "team_leader":
-        team_leader_role = team_leader_role if team_leader_role in {"inventory", "sales"} else "sales"
+        team_leader_role = team_leader_role if team_leader_role in {"inventory", "sales", "sales-supervisor"} else "sales"
     else:
         team_leader_role = None
     if fetch_one("SELECT account_id FROM accounts WHERE lower(email) = lower(%s) LIMIT 1;", (cleaned_email,)):
@@ -4078,12 +4210,12 @@ def add_account(account_type: str, name: str, email: str, team_leader_role: str 
         _enqueue_outbox_cursor(
             cur, "account_activation",
             {"to_email": account["email"], "name": account["name"],
-             "account_label": "team leader" if account_type == "team_leader" else "owner",
+             "account_label": team_leader_role_labels.get(team_leader_role or "", "team leader") if account_type == "team_leader" else "owner",
              "activation_path": f"/activate?token={activation_token}"},
             f"account-activation-{account['account_id']}-{hashlib.sha256(activation_token.encode()).hexdigest()[:12]}",
         )
     clean = clean_row(account)
-    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
     return clean
 
 
@@ -4126,11 +4258,11 @@ def activate_account(raw_token: str, new_password: str) -> dict:
         cur.execute("UPDATE account_activation_tokens SET consumed_at = now() WHERE activation_token_id = %s;", (account["activation_token_id"],))
         _add_log_cursor(cur, actor_account_id=account["account_id"], action="activated_account", entity_type="accounts", entity_id=account["account_id"])
     clean = clean_row(account)
-    clean["role_key"] = role_key_for_account_type(clean["account_type"])
+    clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
     return clean
 
 
-def resend_activation(account_id: int, actor_account_id: int) -> None:
+def resend_activation(account_id: int, actor_account_id: int, account_types: tuple[str, ...] | None = None) -> None:
     with get_transaction_cursor() as cur:
         cur.execute(
             "SELECT account_id, name, email, account_type FROM accounts WHERE account_id = %s AND activation_status = 'pending' FOR UPDATE;",
@@ -4139,6 +4271,8 @@ def resend_activation(account_id: int, actor_account_id: int) -> None:
         account = cur.fetchone()
         if not account:
             raise ValueError("Pending account was not found.")
+        if account_types and account["account_type"] not in account_types:
+            raise ValueError("You do not have access to manage this account activation.")
         token = _create_activation_token_cursor(cur, account_id)
         _enqueue_outbox_cursor(
             cur, "account_activation",

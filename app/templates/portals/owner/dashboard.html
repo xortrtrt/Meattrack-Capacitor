@@ -1,3 +1,4 @@
+<div class="owner-page owner-dashboard-page">
 <section class="owner-dashboard-hero">
   <article class="owner-hero-card forecast-focus">
     <span class="eyebrow">Forecast priority</span>
@@ -43,26 +44,26 @@
   </article>
 </section>
 
-<section class="metric-grid owner-metric-grid">
-  <article class="metric-card">
+<section class="owner-signal-strip" aria-label="Business overview">
+  <div>
     <span>Fulfilled sales</span
     ><strong>{{ metrics.fulfilled_sales|currency }}</strong
     ><small>All completed transactions</small>
-  </article>
-  <article class="metric-card">
+  </div>
+  <div>
     <span>Pending orders</span
     ><strong>{{ metrics.pending_reseller_orders }}</strong
     ><small>Need team leader action</small>
-  </article>
-  <article class="metric-card">
+  </div>
+  <div>
     <span>Active resellers</span><strong>{{ metrics.active_resellers }}</strong
     ><small>Approved external accounts</small>
-  </article>
-  <article class="metric-card">
+  </div>
+  <div>
     <span>Stock monitored</span
     ><strong>{{ metrics.total_available|number }}</strong
     ><small>Approved finished packs</small>
-  </article>
+  </div>
 </section>
 
 <section class="owner-dashboard-grid">
@@ -174,3 +175,4 @@
     </div>
   </article>
 </section>
+</div>

@@ -1,15 +1,24 @@
+<div class="owner-page owner-accounts-page">
 <section class="owner-account-layout">
   <article class="panel owner-account-create">
     <div class="panel-heading">
       <div>
         <h2>Account lifecycle</h2>
-        <span class="hint">Create owner and team leader accounts only.</span>
+        <span class="hint">
+          {% if can_create_owner_account %}
+          Create owner and team leader accounts only.
+          {% else %}
+          Create and manage team leader accounts.
+          {% endif %}
+        </span>
       </div>
     </div>
-    <form class="form-panel bare owner-account-form" action="/portal/owner/accounts" method="post">
+    <form class="form-panel bare owner-account-form" action="{{ accounts_form_action|default('/portal/owner/accounts') }}" method="post">
       <label>Account type
         <select name="account_type">
+          {% if can_create_owner_account %}
           <option value="owner">Owner</option>
+          {% endif %}
           <option value="team_leader">Team leader</option>
         </select>
       </label>
@@ -18,6 +27,7 @@
       <label>Team leader role
         <select name="team_leader_role">
           <option value="sales">Sales team leader</option>
+          <option value="sales-supervisor">Sales supervisor</option>
           <option value="inventory">Inventory team leader</option>
         </select>
       </label>
@@ -38,9 +48,9 @@
       <label>Type
         <select name="type">
           <option value="">All</option>
-          <option value="owner" {{ 'selected' if accounts_page.filters.type == 'owner' else '' }}>Owner</option>
-          <option value="team_leader" {{ 'selected' if accounts_page.filters.type == 'team_leader' else '' }}>Team leader</option>
-          <option value="reseller" {{ 'selected' if accounts_page.filters.type == 'reseller' else '' }}>Reseller</option>
+          {% for option in accounts_page.type_options %}
+          <option value="{{ option.value }}" {{ 'selected' if accounts_page.filters.type == option.value else '' }}>{{ option.label }}</option>
+          {% endfor %}
         </select>
       </label>
       <label>Sort
@@ -57,17 +67,40 @@
     <div class="owner-account-card-list">
       {% for account in accounts %}
       <article class="owner-account-card">
-        <div>
-          <strong>{{ account.name }}</strong>
-          <small>{{ account.email }}</small>
+        <div class="owner-account-main">
+          <div class="owner-account-identity">
+            <strong>{{ account.name }}</strong>
+            <small>{{ account.email }}</small>
+          </div>
+          <div class="owner-account-badges">
+            <span class="owner-chip">
+              {% if account.account_type == "team_leader" and account.team_leader_role %}
+              {{ {"sales": "Sales leader", "sales-supervisor": "Sales supervisor", "inventory": "Inventory leader"}.get(account.team_leader_role, "Team leader") }}
+              {% else %}
+              {{ account.account_type.replace("_", " ") }}
+              {% endif %}
+            </span>
+            <span class="status-badge active">{{ account.status }}</span>
+          </div>
         </div>
-        <span class="owner-chip">{{ account.account_type.replace("_", " ") }}</span>
-        <span class="status-badge active">{{ account.status }}</span>
+        <div class="owner-account-actions">
+        {% if can_manage_team_leader_roles and account.account_type == "team_leader" %}
+        <form class="owner-account-role-form" action="/portal/owner/accounts/{{ account.account_id }}/role" method="post">
+          <label class="sr-only" for="account-role-{{ account.account_id }}">Team leader role</label>
+          <select id="account-role-{{ account.account_id }}" name="team_leader_role" required>
+            <option value="sales" {{ 'selected' if account.team_leader_role == 'sales' else '' }}>Sales leader</option>
+            <option value="sales-supervisor" {{ 'selected' if account.team_leader_role == 'sales-supervisor' else '' }}>Sales supervisor</option>
+            <option value="inventory" {{ 'selected' if account.team_leader_role == 'inventory' else '' }}>Inventory leader</option>
+          </select>
+          <button class="button subtle" type="submit">Update role</button>
+        </form>
+        {% endif %}
         {% if account.activation_status == "pending" %}
-        <form action="/portal/owner/accounts/{{ account.account_id }}/activation" method="post">
+        <form class="owner-account-activation-form" action="/portal/{{ role_key }}/accounts/{{ account.account_id }}/activation" method="post">
           <button class="button subtle" type="submit">Resend activation</button>
         </form>
         {% endif %}
+        </div>
       </article>
       {% else %}
       <p class="hint">No accounts found for this filter.</p>
@@ -81,6 +114,7 @@
   </article>
 </section>
 
+{% if show_reseller_team_assignments %}
 <section class="panel owner-assignments-panel">
   <div class="panel-heading">
     <div>
@@ -100,7 +134,7 @@
         <span class="hint">Assigned team leader</span>
         <strong>{{ reseller.team_leader_name or "Unassigned" }}</strong>
       </div>
-      <form class="inline-assignment-form" action="/portal/owner/resellers/{{ reseller.reseller_id }}/team-leader" method="post">
+      <form class="inline-assignment-form" action="/portal/{{ role_key }}/resellers/{{ reseller.reseller_id }}/team-leader" method="post">
         <select name="team_leader_account_id" required>
           {% for leader in team_leaders %}
           <option value="{{ leader.account_id }}" {{ 'selected' if reseller.team_leader_account_id == leader.account_id else '' }}>{{ leader.name }}</option>
@@ -114,3 +148,5 @@
     {% endfor %}
   </div>
 </section>
+{% endif %}
+</div>

@@ -1,8 +1,20 @@
-<section class="content-grid single-column">
-  <article class="card">
-    <span class="eyebrow">Account security</span>
+<section class="owner-page owner-profile-page">
+  <aside class="owner-profile-identity">
+    <span class="eyebrow">Owner account</span>
+    {% include "portals/_profile_picture.html" %}
     <h2>{{ account_profile.name }}</h2>
     <p>{{ account_profile.email }}</p>
+    <dl>
+      <div><dt>Access</dt><dd>Owner</dd></div>
+      <div><dt>Workspace</dt><dd>Full operations</dd></div>
+    </dl>
+  </aside>
+  <article class="owner-profile-security">
+    <div class="owner-section-heading">
+      <span class="eyebrow">Account security</span>
+      <h2>Change password</h2>
+      <p>Set a new password, then confirm the change with the code sent to your email.</p>
+    </div>
     <form class="form-panel bare" action="/portal/owner/profile/password" method="post">
       <label>Current password<input required type="password" name="current_password" autocomplete="current-password" /></label>
       <label>New password<input required type="password" name="new_password" autocomplete="new-password" minlength="8" /></label>

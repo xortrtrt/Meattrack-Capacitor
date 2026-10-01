@@ -1,0 +1,95 @@
+{% set profile_name = account_profile.name if account_profile else role.name %}
+{% set profile_image_x = account_profile.profile_image_position_x if account_profile and account_profile.profile_image_position_x is defined else 50 %}
+{% set profile_image_y = account_profile.profile_image_position_y if account_profile and account_profile.profile_image_position_y is defined else 50 %}
+{% set profile_image_scale = account_profile.profile_image_scale if account_profile and account_profile.profile_image_scale is defined else 1 %}
+<div class="profile-picture-panel" data-profile-picture-widget>
+  <div class="profile-picture-avatar">
+    <div
+      class="profile-picture-preview"
+      style="--profile-x: {{ profile_image_x }}%; --profile-y: {{ profile_image_y }}%; --profile-scale: {{ profile_image_scale }};"
+    >
+      {% if account_profile and account_profile.profile_image_path %}
+      <img src="{{ url_for('static', path=account_profile.profile_image_path) }}" alt="{{ profile_name }} profile picture" />
+      {% else %}
+      <span>{{ profile_name[:1]|upper }}</span>
+      {% endif %}
+    </div>
+    <button class="profile-picture-camera" type="button" aria-label="Change profile picture" data-profile-picture-open>
+      <i data-lucide="camera"></i>
+    </button>
+  </div>
+  <div class="profile-picture-copy">
+    <strong>Profile picture</strong>
+    <small>Use the camera button to upload and align a JPG, PNG, or WebP image.</small>
+    {% if account_profile and account_profile.profile_image_path %}
+    <form action="/portal/{{ role_key }}/profile/picture/remove" method="post">
+      <button class="button subtle" type="submit"><i data-lucide="trash-2"></i> Remove picture</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="profile-picture-modal" data-profile-picture-modal hidden>
+    <button class="profile-picture-modal-backdrop" type="button" aria-label="Close profile picture editor" data-profile-picture-close></button>
+    <section class="profile-picture-modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-picture-modal-title">
+      <div class="profile-picture-modal-head">
+        <div>
+          <span class="eyebrow">Profile picture</span>
+          <h2 id="profile-picture-modal-title">Frame your photo</h2>
+        </div>
+        <button class="icon-button" type="button" aria-label="Close profile picture editor" data-profile-picture-close>
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <form class="profile-picture-editor-form" action="/portal/{{ role_key }}/profile/picture" method="post" enctype="multipart/form-data">
+        <div class="profile-picture-editor-layout">
+          <div class="profile-picture-crop-stage">
+            <div class="profile-picture-stage-label"><i data-lucide="move"></i> Position</div>
+            <div
+              class="profile-picture-editor-preview"
+              style="--profile-x: 50%; --profile-y: 50%; --profile-scale: 1;"
+              data-profile-picture-editor-preview
+              role="application"
+              aria-label="Drag profile image to align it"
+            >
+              <span>{{ profile_name[:1]|upper }}</span>
+              <img alt="" data-profile-picture-editor-image hidden draggable="false" />
+              <small class="profile-picture-drag-hint" data-profile-picture-drag-hint>Drag to position</small>
+            </div>
+            <p class="profile-picture-stage-copy">Move the photo within the frame.</p>
+          </div>
+          <div class="profile-picture-editor-controls">
+            <div class="profile-picture-control-heading">
+              <span>Source image</span>
+              <small>JPG, PNG, or WebP. Maximum 2 MB.</small>
+            </div>
+            <label class="profile-picture-file-button">
+              <span><i data-lucide="image-plus"></i> Choose image</span>
+              <input class="sr-only" required type="file" name="profile_picture" accept="image/png,image/jpeg,image/webp" data-profile-picture-file />
+            </label>
+            <div class="profile-picture-zoom-section">
+              <div class="profile-picture-control-heading">
+                <span>Zoom</span>
+                <small>Adjust the crop scale</small>
+              </div>
+              <div class="profile-picture-zoom-tools" aria-label="Zoom image">
+                <button class="icon-button" type="button" data-profile-picture-zoom="-0.1" aria-label="Zoom out">
+                  <i data-lucide="minus"></i>
+                </button>
+                <span data-profile-picture-zoom-label>100%</span>
+                <button class="icon-button" type="button" data-profile-picture-zoom="0.1" aria-label="Zoom in">
+                  <i data-lucide="plus"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" value="50" name="profile_image_position_x" data-profile-picture-x />
+        <input type="hidden" value="50" name="profile_image_position_y" data-profile-picture-y />
+        <input type="hidden" value="1" name="profile_image_scale" data-profile-picture-scale />
+        <div class="profile-picture-modal-actions">
+          <button class="button subtle" type="button" data-profile-picture-close>Cancel</button>
+          <button class="button primary" type="submit"><i data-lucide="check"></i> Save photo</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>

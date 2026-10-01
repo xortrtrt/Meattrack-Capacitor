@@ -1,3 +1,4 @@
+<div class="owner-page owner-forecasts-page">
 <section class="owner-forecast-layout">
   <article class="panel owner-forecast-run-panel">
     <div class="panel-heading">
@@ -166,3 +167,4 @@
     {% if forecasts_page.pagination.has_next %}<a href="?run_id={{ forecasts_page.filters.run_id }}&q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page + 1 }}">Next</a>{% endif %}
   </div>
 </section>
+</div>

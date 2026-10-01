@@ -426,6 +426,7 @@
 .role-owner .owner-forecast-form input,
 .role-owner .owner-filter-bar input,
 .role-owner .owner-filter-bar select,
+.role-owner .owner-account-role-form select,
 .role-owner .inline-assignment-form select {
   width: 100%;
   min-height: 44px;
@@ -466,6 +467,9 @@
 .role-owner .owner-horizon-picker input {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -511,9 +515,69 @@
 
 .role-owner .owner-account-card {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.85fr);
   gap: 12px;
   align-items: center;
+}
+
+.role-owner .owner-account-main,
+.role-owner .owner-account-actions {
+  min-width: 0;
+}
+
+.role-owner .owner-account-main {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  justify-content: start;
+}
+
+.role-owner .owner-account-identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.role-owner .owner-account-badges,
+.role-owner .owner-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.role-owner .owner-account-badges {
+  justify-content: flex-start;
+}
+
+.role-owner .owner-account-actions {
+  justify-content: flex-end;
+}
+
+.role-owner .owner-account-actions:empty {
+  display: none;
+}
+
+.role-owner .owner-account-role-form {
+  display: grid;
+  grid-template-columns: minmax(172px, 1fr) auto;
+  flex: 1 1 300px;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.role-owner .owner-account-role-form select {
+  min-width: 0;
+}
+
+.role-owner .owner-account-activation-form {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.role-owner .owner-account-actions .button {
+  white-space: nowrap;
 }
 
 .role-owner .owner-account-card strong,
@@ -556,11 +620,48 @@
   color: var(--text-light);
 }
 
-.role-owner .owner-report-card summary {
-  min-height: 36px;
+.role-owner .owner-report-card details,
+.role-owner .owner-forecast-result-card details {
+  display: grid;
+  gap: 10px;
+}
+
+.role-owner .owner-report-card summary,
+.role-owner .owner-forecast-result-card summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(215, 201, 154, 0.72);
+  border-radius: 8px;
+  background: var(--surface);
   color: var(--gold-deep);
   font-weight: 900;
   cursor: pointer;
+}
+
+.role-owner .owner-report-card summary::-webkit-details-marker,
+.role-owner .owner-forecast-result-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.role-owner .owner-report-card summary::after,
+.role-owner .owner-forecast-result-card summary::after {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 160ms ease;
+}
+
+.role-owner .owner-report-card details[open] summary::after,
+.role-owner .owner-forecast-result-card details[open] summary::after {
+  transform: translateY(2px) rotate(225deg);
 }
 
 @media (max-width: 680px) {
@@ -666,6 +767,23 @@
     grid-template-columns: 1fr;
   }
 
+  .role-owner .owner-account-badges,
+  .role-owner .owner-account-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .role-owner .owner-account-role-form,
+  .role-owner .owner-account-activation-form,
+  .role-owner .owner-account-actions .button {
+    width: 100%;
+  }
+
+  .role-owner .owner-account-role-form {
+    grid-template-columns: 1fr;
+    flex-basis: 100%;
+  }
+
   .role-owner .owner-price-form .button,
   .role-owner .owner-filter-bar .button,
   .role-owner .inline-assignment-form .button {
@@ -732,5 +850,813 @@
   .role-owner .owner-product-image {
     min-height: 0;
     aspect-ratio: 16 / 9;
+  }
+}
+
+/* Owner workspace: restrained operational layouts with one hierarchy per page. */
+.role-owner .portal-main {
+  gap: 16px;
+  background:
+    radial-gradient(circle at 92% 2%, rgba(215, 182, 33, 0.09), transparent 24rem),
+    var(--background);
+}
+
+.role-owner .portal-topbar {
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+}
+
+.role-owner .portal-title-block {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.role-owner .portal-title-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.role-owner .portal-title-copy .eyebrow {
+  color: #9a7600;
+}
+
+.role-owner .portal-topbar h1 {
+  font-size: clamp(1.55rem, 2.6vw, 2.2rem);
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.role-owner .notification-trigger {
+  border-color: rgba(72, 57, 24, 0.18);
+  background: #fffdfa;
+  color: #171511;
+  box-shadow: 0 10px 24px rgba(37, 28, 12, 0.08);
+}
+
+.role-owner .owner-page {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  animation: owner-page-enter 280ms ease both;
+}
+
+.role-owner .owner-page .panel {
+  border-color: rgba(72, 57, 24, 0.13);
+  border-radius: 14px;
+  background: #fffdfa;
+  box-shadow: 0 18px 44px rgba(37, 28, 12, 0.09);
+}
+
+@keyframes owner-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Dashboard: one executive brief followed by compact working surfaces. */
+.role-owner .owner-dashboard-hero {
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  gap: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid rgba(215, 182, 33, 0.24);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 94% 0%, rgba(215, 182, 33, 0.16), transparent 26rem),
+    #151310;
+  box-shadow: 0 24px 54px rgba(23, 18, 10, 0.16);
+}
+
+.role-owner .owner-hero-card {
+  min-height: 260px;
+  padding: clamp(24px, 3.2vw, 42px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.role-owner .owner-hero-card h2 {
+  max-width: 720px;
+  color: #fff;
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  letter-spacing: -0.05em;
+}
+
+.role-owner .owner-hero-card p {
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.role-owner .owner-hero-card small,
+.role-owner .owner-hero-card .eyebrow {
+  color: var(--gold);
+}
+
+.role-owner .owner-hero-card .button {
+  width: fit-content;
+  margin-top: auto;
+}
+
+.role-owner .forecast-focus,
+.role-owner .sales-focus {
+  background: transparent;
+}
+
+.role-owner .sales-focus {
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.role-owner .sales-focus h2 {
+  font-size: clamp(1.8rem, 3.4vw, 3rem);
+}
+
+.role-owner .owner-mini-stats {
+  gap: 0;
+  margin-top: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.role-owner .owner-mini-stats span {
+  padding: 16px 16px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.role-owner .owner-signal-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid rgba(72, 57, 24, 0.13);
+  border-radius: 14px;
+  background: #fffdfa;
+  box-shadow: 0 14px 34px rgba(37, 28, 12, 0.07);
+}
+
+.role-owner .owner-signal-strip > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 20px 22px;
+  border-left: 1px solid rgba(72, 57, 24, 0.12);
+}
+
+.role-owner .owner-signal-strip > div:first-child {
+  border-left: 0;
+}
+
+.role-owner .owner-signal-strip span,
+.role-owner .owner-signal-strip small {
+  color: #777064;
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.role-owner .owner-signal-strip span {
+  color: #9a7600;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.role-owner .owner-signal-strip strong {
+  color: #171511;
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-dashboard-grid {
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+  gap: 18px;
+  margin: 0;
+}
+
+.role-owner .owner-dashboard-grid .panel-heading {
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(72, 57, 24, 0.11);
+}
+
+.role-owner .owner-sales-chart {
+  min-height: 300px;
+  padding: 12px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.role-owner .owner-product-rank,
+.role-owner .owner-forecast-item {
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.role-owner .owner-product-rank:hover,
+.role-owner .owner-forecast-item:hover {
+  background: rgba(215, 182, 33, 0.06);
+  transform: translateX(3px);
+}
+
+.role-owner .owner-product-rank > span {
+  border-radius: 8px;
+  background: #171511;
+  color: var(--gold);
+}
+
+/* Shared directory and ledger surfaces. */
+.role-owner .owner-workspace-surface {
+  overflow: hidden;
+  padding: 0;
+}
+
+.role-owner .owner-workspace-surface > .panel-heading,
+.role-owner .owner-forecast-results-panel > .panel-heading,
+.role-owner .owner-assignments-panel > .panel-heading {
+  margin: 0;
+  padding: 26px 28px 20px;
+  border-bottom: 1px solid rgba(72, 57, 24, 0.12);
+}
+
+.role-owner .owner-workspace-surface > .panel-heading h2,
+.role-owner .owner-forecast-results-panel > .panel-heading h2,
+.role-owner .owner-assignments-panel > .panel-heading h2 {
+  margin: 0;
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  letter-spacing: -0.035em;
+}
+
+.role-owner .owner-workspace-surface > .owner-filter-bar,
+.role-owner .owner-forecast-results-panel > .owner-filter-bar {
+  gap: 10px;
+  margin: 0;
+  padding: 15px 28px;
+  border-bottom: 1px solid rgba(72, 57, 24, 0.12);
+  background: #f5f0e5;
+}
+
+.role-owner .owner-filter-bar label {
+  flex: 1 1 180px;
+  min-width: min(100%, 160px);
+}
+
+.role-owner .owner-filter-bar label:first-child {
+  flex: 2 1 260px;
+}
+
+.role-owner .owner-filter-bar .button {
+  flex: 0 0 auto;
+}
+
+.role-owner .owner-filter-bar label {
+  color: #6d6559;
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.role-owner .owner-filter-bar input,
+.role-owner .owner-filter-bar select {
+  border-color: rgba(72, 57, 24, 0.16);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.84rem;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.role-owner .owner-filter-bar .button {
+  border-color: #171511;
+  background: #171511;
+  color: #fff;
+}
+
+.role-owner .owner-workspace-surface > .pagination,
+.role-owner .owner-forecast-results-panel > .pagination {
+  margin: 0;
+  padding: 16px 28px;
+  border-top: 1px solid rgba(72, 57, 24, 0.12);
+  background: #faf7ef;
+}
+
+/* Products: quiet catalog tiles with consistent image stages. */
+.role-owner .owner-product-card-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  padding: 1px 0 0;
+  background: rgba(72, 57, 24, 0.12);
+}
+
+.role-owner .owner-product-card {
+  border: 0;
+  border-radius: 0;
+  background: #fffdfa;
+  transition: background-color 160ms ease;
+}
+
+.role-owner .owner-product-card:hover {
+  background: #fffaf0;
+}
+
+.role-owner .owner-product-image {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  padding: 18px;
+  background:
+    linear-gradient(145deg, rgba(215, 182, 33, 0.08), transparent 54%),
+    #f1ece2;
+}
+
+.role-owner .owner-product-image::after {
+  position: absolute;
+  inset: auto 18% 10px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(23, 21, 17, 0.13);
+  filter: blur(9px);
+  content: "";
+}
+
+.role-owner .owner-product-image img {
+  position: relative;
+  z-index: 1;
+  object-fit: contain;
+  transition: transform 220ms ease;
+}
+
+.role-owner .owner-product-card:hover .owner-product-image img {
+  transform: translateY(-3px) scale(1.015);
+}
+
+.role-owner .owner-product-copy {
+  min-height: 92px;
+  padding: 16px 18px 10px;
+}
+
+.role-owner .owner-chip {
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #9a7600;
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.role-owner .owner-price-form {
+  padding: 14px 18px 18px;
+  border-top: 0;
+  background: transparent;
+}
+
+/* Reports: a readable operational ledger rather than duplicated cards. */
+.role-owner .owner-report-table {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.role-owner .owner-report-table table {
+  min-width: 840px;
+}
+
+.role-owner .owner-report-table th,
+.role-owner .owner-forecast-table th {
+  background: #faf6ec;
+  color: #6d6559;
+  font-size: 0.67rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.role-owner .owner-report-table tbody tr,
+.role-owner .owner-forecast-table tbody tr,
+.role-owner .owner-account-card,
+.role-owner .owner-assignment-card {
+  transition: background-color 150ms ease;
+}
+
+.role-owner .owner-report-table tbody tr:hover,
+.role-owner .owner-forecast-table tbody tr:hover,
+.role-owner .owner-account-card:hover,
+.role-owner .owner-assignment-card:hover {
+  background: rgba(215, 182, 33, 0.06);
+}
+
+/* Forecasts: a dark run console beside a concise status inspector. */
+.role-owner .owner-forecast-layout {
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  gap: 18px;
+}
+
+.role-owner .owner-page .owner-forecast-run-panel {
+  border-color: rgba(215, 182, 33, 0.26);
+  background: #171511;
+  color: #fff;
+}
+
+.role-owner .owner-forecast-run-panel h2,
+.role-owner .owner-forecast-run-panel label {
+  color: #fff;
+}
+
+.role-owner .owner-forecast-run-panel .hint,
+.role-owner .owner-forecast-run-panel small {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.role-owner .owner-forecast-run-panel .owner-forecast-form > label:first-child input {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.role-owner .owner-horizon-picker {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.role-owner .owner-horizon-picker span {
+  min-height: 86px;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: #211f1b;
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-horizon-picker strong {
+  color: #fff;
+}
+
+.role-owner .owner-horizon-picker input:checked + span {
+  background: var(--gold);
+  box-shadow: none;
+}
+
+.role-owner .owner-horizon-picker input:checked + span strong,
+.role-owner .owner-horizon-picker input:checked + span small {
+  color: #171511;
+}
+
+.role-owner .owner-forecast-status-panel {
+  background: #f6efdb;
+}
+
+.role-owner .owner-forecast-status {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.role-owner .owner-forecast-results-panel {
+  overflow: hidden;
+  padding: 0;
+}
+
+.role-owner .owner-forecast-table {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Accounts: creation console, access directory, then assignment roster. */
+.role-owner .owner-account-layout {
+  grid-template-columns: minmax(300px, 0.68fr) minmax(0, 1.32fr);
+  gap: 18px;
+}
+
+.role-owner .owner-page .owner-account-create {
+  border-color: rgba(215, 182, 33, 0.25);
+  background: #171511;
+  color: #fff;
+}
+
+.role-owner .owner-account-create h2,
+.role-owner .owner-account-create label {
+  color: #fff;
+}
+
+.role-owner .owner-account-create .hint {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.role-owner .owner-account-list {
+  overflow: hidden;
+  padding: 0;
+}
+
+.role-owner .owner-account-list > .panel-heading {
+  padding: 24px 26px 18px;
+  border-bottom: 1px solid rgba(72, 57, 24, 0.12);
+}
+
+.role-owner .owner-account-list > .owner-filter-bar {
+  margin: 0;
+  padding: 14px 26px;
+  background: #f5f0e5;
+}
+
+.role-owner .owner-account-card-list,
+.role-owner .owner-assignment-list {
+  gap: 0;
+}
+
+.role-owner .owner-account-card,
+.role-owner .owner-assignment-card {
+  padding: 16px 26px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.role-owner .owner-account-list > .pagination {
+  margin: 0;
+  padding: 15px 26px;
+  background: #faf7ef;
+}
+
+.role-owner .owner-assignments-panel {
+  overflow: hidden;
+  padding: 0;
+}
+
+/* Profile: identity context on the left, security task on the right. */
+.role-owner .owner-profile-page {
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  gap: 18px;
+  min-height: 560px;
+}
+
+.role-owner .owner-profile-identity,
+.role-owner .owner-profile-security {
+  min-width: 0;
+  padding: clamp(24px, 3vw, 36px);
+  border-radius: 16px;
+}
+
+.role-owner .owner-profile-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid rgba(215, 182, 33, 0.24);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(215, 182, 33, 0.15), transparent 18rem),
+    #171511;
+  color: #fff;
+  box-shadow: 0 20px 48px rgba(23, 18, 10, 0.16);
+}
+
+.role-owner .owner-profile-monogram {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  margin: 34px 0 18px;
+  border: 1px solid rgba(215, 182, 33, 0.48);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--gold);
+  font-size: 1.7rem;
+  font-weight: 900;
+}
+
+.role-owner .owner-profile-identity .profile-picture-panel {
+  width: 100%;
+  margin: 32px 0 18px;
+}
+
+.role-owner .owner-profile-identity .profile-picture-preview {
+  border-color: rgba(215, 182, 33, 0.48);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--gold);
+}
+
+.role-owner .owner-profile-identity .profile-picture-copy strong {
+  color: #fff;
+}
+
+.role-owner .owner-profile-identity .profile-picture-copy small {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.role-owner .owner-profile-identity > .profile-picture-panel .profile-picture-input {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.role-owner .owner-profile-identity h2,
+.role-owner .owner-profile-security h2 {
+  margin: 0;
+  font-size: clamp(1.7rem, 3vw, 2.5rem);
+  letter-spacing: -0.045em;
+}
+
+.role-owner .owner-profile-identity p {
+  margin: 8px 0 28px;
+  color: rgba(255, 255, 255, 0.58);
+  overflow-wrap: anywhere;
+}
+
+.role-owner .owner-profile-identity dl {
+  display: grid;
+  width: 100%;
+  gap: 0;
+  margin: auto 0 0;
+}
+
+.role-owner .owner-profile-identity dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.role-owner .owner-profile-identity dt {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.role-owner .owner-profile-identity dd {
+  margin: 0;
+  color: #fff;
+  font-weight: 850;
+}
+
+.role-owner .owner-profile-security {
+  border: 1px solid rgba(72, 57, 24, 0.13);
+  background: #fffdfa;
+  box-shadow: 0 18px 44px rgba(37, 28, 12, 0.09);
+}
+
+.role-owner .owner-section-heading {
+  padding-bottom: 24px;
+  border-bottom: 1px solid rgba(72, 57, 24, 0.12);
+}
+
+.role-owner .owner-section-heading p {
+  max-width: 620px;
+  margin: 10px 0 0;
+  color: #746d62;
+}
+
+.role-owner .owner-profile-security .form-panel {
+  max-width: 660px;
+  margin-top: 26px;
+}
+
+@media (max-width: 1440px) {
+  .role-owner .owner-account-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1180px) {
+  .role-owner .owner-product-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .role-owner .owner-signal-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .role-owner .owner-signal-strip > div:nth-child(3) {
+    border-left: 0;
+    border-top: 1px solid rgba(72, 57, 24, 0.12);
+  }
+
+  .role-owner .owner-signal-strip > div:nth-child(4) {
+    border-top: 1px solid rgba(72, 57, 24, 0.12);
+  }
+
+  .role-owner .owner-horizon-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1040px) {
+  .role-owner .owner-dashboard-hero,
+  .role-owner .owner-dashboard-grid,
+  .role-owner .owner-account-layout,
+  .role-owner .owner-forecast-layout,
+  .role-owner .owner-profile-page {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .sales-focus {
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: 0;
+  }
+
+  .role-owner .owner-hero-card {
+    min-height: 0;
+  }
+
+}
+
+@media (max-width: 860px) {
+  .role-owner .portal-topbar {
+    min-height: auto;
+    margin: 0 -14px;
+    padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+    border-bottom: 1px solid rgba(215, 182, 33, 0.46);
+    background: var(--sidebar);
+  }
+
+  .role-owner .portal-title-block {
+    display: grid;
+  }
+
+  .role-owner .portal-topbar h1 {
+    color: #f7f4ef;
+    font-size: 1.18rem;
+    letter-spacing: 0;
+  }
+
+  .role-owner .portal-title-copy .eyebrow {
+    color: var(--gold);
+  }
+
+  .role-owner .notification-trigger {
+    border-color: rgba(215, 182, 33, 0.64);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--gold);
+    box-shadow: none;
+  }
+
+  .role-owner .owner-workspace-surface > .panel-heading,
+  .role-owner .owner-forecast-results-panel > .panel-heading,
+  .role-owner .owner-assignments-panel > .panel-heading {
+    padding: 20px 16px 16px;
+  }
+
+  .role-owner .owner-workspace-surface > .owner-filter-bar,
+  .role-owner .owner-forecast-results-panel > .owner-filter-bar {
+    padding-inline: 16px;
+  }
+
+  .role-owner .owner-filter-bar label,
+  .role-owner .owner-filter-bar label:first-child,
+  .role-owner .owner-filter-bar .button {
+    flex-basis: auto;
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 680px) {
+  .role-owner .owner-dashboard-hero {
+    gap: 0;
+    margin: 0;
+  }
+
+  .role-owner .owner-signal-strip,
+  .role-owner .owner-product-card-grid,
+  .role-owner .owner-horizon-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-signal-strip > div {
+    border-top: 1px solid rgba(72, 57, 24, 0.12);
+    border-left: 0;
+  }
+
+  .role-owner .owner-signal-strip > div:first-child {
+    border-top: 0;
+  }
+
+  .role-owner .owner-product-card-grid {
+    gap: 1px;
+  }
+
+  .role-owner .owner-account-card,
+  .role-owner .owner-assignment-card {
+    padding: 15px 16px;
+  }
+
+  .role-owner .owner-profile-identity,
+  .role-owner .owner-profile-security {
+    padding: 22px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-owner .owner-page,
+  .role-owner .owner-product-image img,
+  .role-owner .owner-product-rank,
+  .role-owner .owner-forecast-item {
+    transition: none;
+    animation: none;
   }
 }

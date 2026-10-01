@@ -1,4 +1,5 @@
-<section class="panel owner-products-panel">
+<div class="owner-page owner-products-page">
+<section class="panel owner-products-panel owner-workspace-surface">
   <div class="panel-heading">
     <div>
       <h2>Product and price management</h2>
@@ -56,3 +57,4 @@
     {% if products_page.pagination.has_next %}<a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ products_page.pagination.page + 1 }}">Next</a>{% endif %}
   </div>
 </section>
+</div>

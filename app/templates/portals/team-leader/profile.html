@@ -1,9 +1,10 @@
-<section class="content-grid two profile-layout">
-  <article class="panel profile-card">
+<section class="content-grid two profile-layout sales-page sales-profile-page">
+  <article class="panel profile-card sales-profile-identity">
     <div class="panel-heading">
       <h2>Profile</h2>
       <span class="hint">Your team leader portal account details.</span>
     </div>
+    {% include "portals/_profile_picture.html" %}
     <dl class="profile-details">
       <div>
         <dt>Name</dt>
@@ -20,12 +21,12 @@
     </dl>
   </article>
 
-  <article class="panel">
+  <article class="panel sales-profile-security">
     <div class="panel-heading">
       <h2>Change password</h2>
       <span class="hint">Use 8+ characters with uppercase, lowercase, number, and special character. A 6-digit OTP will be sent after submitting.</span>
     </div>
-    <form class="form-panel bare" action="/portal/team-leader/profile/password" method="post">
+    <form class="form-panel bare" action="/portal/{{ role_key }}/profile/password" method="post">
       <label>
         Current password
         <input required type="password" name="current_password" autocomplete="current-password" />

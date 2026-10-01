@@ -1,7 +1,8 @@
-            <section class="content-grid two">
-                <article class="panel">
+            <div class="sales-page sales-reports-page">
+            <section class="content-grid two sales-report-builder">
+                <article class="panel sales-report-compose">
                     <h2>Submit team sales report</h2>
-                    <form class="form-panel bare" action="/portal/team-leader/reports" method="post">
+                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post">
                         <div class="form-grid"><label>Start <input required type="date" name="period_start"></label><label>End <input required type="date" name="period_end"></label></div>
                         <div class="form-grid" data-team-report-totals>
                             <label>Total sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
@@ -24,7 +25,7 @@
                     <script type="application/json" id="team-report-sales-data">{{ team_report_sales|tojson }}</script>
                     <script>
                         (() => {
-                            const form = document.querySelector('form[action="/portal/team-leader/reports"]');
+                            const form = document.querySelector('form[action="/portal/{{ role_key }}/reports"]');
                             const data = document.getElementById("team-report-sales-data");
                             if (!form || !data) {
                                 return;
@@ -117,7 +118,7 @@
                         })();
                     </script>
                 </article>
-                <article class="panel">
+                <article class="panel sales-report-history">
                     <h2>Team reports</h2>
                     <form class="filter-bar" method="get">
                         <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
@@ -130,7 +131,7 @@
                     </div>
                 </article>
             </section>
-            <section class="panel">
+            <section class="panel sales-report-ledger">
                 <div class="panel-heading">
                     <h2>Assigned reseller purchase summary</h2>
                     <span class="hint">Based only on approved or fulfilled reseller orders inside MEATTRACK.</span>
@@ -164,7 +165,7 @@
                     </table>
                 </div>
             </section>
-            <section class="panel">
+            <section class="panel sales-report-ledger sales-report-rejections">
                 <div class="panel-heading"><h2>Rejected reseller orders</h2><span class="hint">Rejected orders are logged separately from fulfilled sales.</span></div>
                 <div class="table-wrap">
                     <table>
@@ -186,3 +187,4 @@
                     </table>
                 </div>
             </section>
+            </div>

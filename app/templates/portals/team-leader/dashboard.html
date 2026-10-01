@@ -9,7 +9,7 @@
     </div>
     <div class="dashboard-brief-actions">
       <span class="dashboard-command-status"><i></i> 30-day view</span>
-      <a class="dashboard-primary-link" href="/portal/team-leader/batches">Review batches <i data-lucide="arrow-up-right"></i></a>
+      <a class="dashboard-primary-link" href="/portal/{{ role_key }}/batches">Review batches <i data-lucide="arrow-up-right"></i></a>
     </div>
   </section>
 
@@ -66,9 +66,9 @@
     <div class="dashboard-brief-actions">
       <span class="dashboard-command-status {{ 'has-attention' if metrics.pending_reseller_orders else '' }}"><i></i>{{ metrics.pending_reseller_orders if metrics.pending_reseller_orders else 'No' }} pending order{{ '' if metrics.pending_reseller_orders == 1 else 's' }}</span>
       {% if metrics.pending_reseller_orders %}
-      <a class="dashboard-primary-link" href="/portal/team-leader/orders">Review orders <i data-lucide="arrow-up-right"></i></a>
+      <a class="dashboard-primary-link" href="/portal/{{ role_key }}/orders">Review orders <i data-lucide="arrow-up-right"></i></a>
       {% else %}
-      <a class="dashboard-primary-link" href="/portal/team-leader/live-chat">Open live chat <i data-lucide="arrow-up-right"></i></a>
+      <a class="dashboard-primary-link" href="/portal/{{ role_key }}/live-chat">Open live chat <i data-lucide="arrow-up-right"></i></a>
       {% endif %}
     </div>
   </section>
@@ -84,7 +84,7 @@
     <section class="dashboard-ledger" aria-labelledby="orders-title">
       <header class="dashboard-section-head">
         <div><span class="dashboard-kicker">Order desk</span><h2 id="orders-title">Latest reseller orders</h2><p>Your five most recent assigned orders.</p></div>
-        <a class="dashboard-text-link" href="/portal/team-leader/orders">View all <i data-lucide="arrow-right"></i></a>
+        <a class="dashboard-text-link" href="/portal/{{ role_key }}/orders">View all <i data-lucide="arrow-right"></i></a>
       </header>
       <div class="dashboard-table-wrap">
         <table class="dashboard-table">
@@ -109,11 +109,11 @@
     <aside class="dashboard-queue" aria-labelledby="inquiries-title">
       <header class="dashboard-section-head">
         <div><span class="dashboard-kicker">Prospects</span><h2 id="inquiries-title">Assigned inquiries</h2><p>Newest inquiries assigned to you.</p></div>
-        <a class="dashboard-text-link" href="/portal/team-leader/inquiries" aria-label="View all assigned inquiries">View all <i data-lucide="arrow-right"></i></a>
+        <a class="dashboard-text-link" href="/portal/{{ role_key }}/inquiries" aria-label="View all assigned inquiries">View all <i data-lucide="arrow-right"></i></a>
       </header>
       <div class="dashboard-inquiry-list">
         {% for inquiry in inquiries[:4] %}
-        <a class="dashboard-inquiry-row" href="/portal/team-leader/inquiries">
+        <a class="dashboard-inquiry-row" href="/portal/{{ role_key }}/inquiries">
           <span class="dashboard-inquiry-initial" aria-hidden="true">{{ (inquiry.business_name or inquiry.name or "?")[0]|upper }}</span>
           <span class="dashboard-inquiry-copy"><strong>{{ inquiry.business_name }}</strong><small>{{ inquiry.name }} · {{ inquiry.contact_number }}</small></span>
           <span class="dashboard-inquiry-status is-{{ inquiry.status }}">{{ inquiry.status }}</span>

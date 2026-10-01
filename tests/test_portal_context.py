@@ -479,16 +479,36 @@ def test_owner_product_price_update_route_still_posts(monkeypatch):
 
 def test_owner_accounts_render_responsive_cards(monkeypatch):
     client = TestClient(main.app)
+    list_calls = []
+    count_calls = []
     monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(main.data, "count_accounts", lambda *args, **kwargs: 1)
+
+    def fake_count_accounts(*args, **kwargs):
+        count_calls.append(kwargs)
+        return 2
+
+    monkeypatch.setattr(main.data, "count_accounts", fake_count_accounts)
+
+    def fake_list_accounts(*args, **kwargs):
+        list_calls.append(kwargs)
+        return [
+            {"account_id": 1, "name": "Owner", "email": "owner@example.test", "account_type": "owner", "status": "active"},
+            {
+                "account_id": 4,
+                "name": "Sales Leader",
+                "email": "sales@example.test",
+                "account_type": "team_leader",
+                "team_leader_role": "sales",
+                "status": "active",
+            },
+        ]
+
     monkeypatch.setattr(
         main.data,
         "list_accounts",
-        lambda *args, **kwargs: [
-            {"name": "Owner", "email": "owner@example.test", "account_type": "owner", "status": "active"}
-        ],
+        fake_list_accounts,
     )
     monkeypatch.setattr(main.data, "list_team_leader_accounts", lambda *args, **kwargs: [{"account_id": 4, "name": "Sales Leader B"}])
     monkeypatch.setattr(
@@ -511,8 +531,49 @@ def test_owner_accounts_render_responsive_cards(monkeypatch):
 
     assert response.status_code == 200
     assert "owner-account-card" in response.text
-    assert "owner-assignment-card" in response.text
-    assert "/portal/owner/resellers/2/team-leader" in response.text
+    assert "owner-assignment-card" not in response.text
+    assert "/portal/owner/resellers/2/team-leader" not in response.text
+    assert '<option value="reseller"' not in response.text
+    assert "/portal/owner/accounts/4/role" in response.text
+    assert '<option value="sales" selected>Sales leader</option>' in response.text
+    assert list_calls[0]["account_types"] == ("owner", "team_leader")
+    assert count_calls[0]["account_types"] == ("owner", "team_leader")
+
+
+def test_owner_can_update_only_team_leader_account_roles(monkeypatch):
+    client = TestClient(main.app)
+    updates = []
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(
+        main.data,
+        "update_team_leader_account_role",
+        lambda *args, **kwargs: updates.append((args, kwargs)) or {"account_id": args[0]},
+    )
+
+    response = client.post(
+        "/portal/owner/accounts/4/role",
+        data={"team_leader_role": "sales-supervisor"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert updates == [((4, "sales-supervisor"), {"actor_account_id": None})]
+
+
+def test_owner_activation_route_excludes_reseller_accounts(monkeypatch):
+    client = TestClient(main.app)
+    calls = []
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(
+        main.data,
+        "resend_activation",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    response = client.post("/portal/owner/accounts/8/activation", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert calls == [((8, 0), {"account_types": ("owner", "team_leader")})]
 
 
 def test_owner_reports_render_mobile_cards(monkeypatch):
@@ -844,6 +905,197 @@ def test_team_leader_dashboard_uses_priority_led_workspace():
     assert "Dashboard: one operational surface" in css
     assert ".role-team-leader.section-dashboard .portal-topbar" in css
     assert "@media (max-width: 760px)" in css
+
+
+def test_sales_team_leader_pages_use_workflow_specific_layouts():
+    templates = {
+        name: open(f"app/templates/portals/team-leader/{name}.html", encoding="utf-8").read()
+        for name in ("inquiries", "orders", "reports", "profile", "live_chat")
+    }
+    base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    css = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
+
+    assert "leader-role-{{ role.team_leader_role }}" in base_template
+    assert 'role_key in ["team-leader", "sales-supervisor"]' in base_template
+    assert "sales-review-surface" in templates["inquiries"]
+    assert "sales-review-surface" in templates["orders"]
+    assert "sales-report-builder" in templates["reports"]
+    assert "sales-report-history" in templates["reports"]
+    assert "sales-report-ledger" in templates["reports"]
+    assert "sales-profile-identity" in templates["profile"]
+    assert "sales-profile-security" in templates["profile"]
+    assert "sales-live-chat-page" in templates["live_chat"]
+    assert "Sales portal: shared materials" in css
+    assert ".role-team-leader.leader-role-sales .sales-review-surface" in css
+    assert ".role-team-leader.leader-role-sales .sales-page .sales-report-history" in css
+    assert ".role-team-leader.leader-role-sales .sales-page .sales-profile-identity" in css
+    assert "min-height: 42px" in css
+    assert "@media (max-width: 860px)" in css
+
+
+def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
+    client = TestClient(main.app)
+    list_calls = []
+    count_calls = []
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main, "session_team_leader_role", lambda request: "sales-supervisor")
+    monkeypatch.setattr(main.data, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(main.data, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    def fake_count_accounts(*args, **kwargs):
+        count_calls.append(kwargs)
+        return 2
+
+    monkeypatch.setattr(main.data, "count_accounts", fake_count_accounts)
+    monkeypatch.setattr(main.data, "list_team_leader_accounts", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        main.data,
+        "list_reseller_assignments",
+        lambda *args, **kwargs: [
+            {
+                "reseller_id": 2,
+                "business_name": "Lipa Store",
+                "reseller_status": "active",
+                "contact_person": "Rina",
+                "email": "rina@example.test",
+                "team_leader_account_id": None,
+                "team_leader_name": None,
+            }
+        ],
+    )
+    def fake_list_accounts(*args, **kwargs):
+        list_calls.append(kwargs)
+        return [
+            {
+                "account_id": 7,
+                "name": "Sales Supervisor",
+                "email": "supervisor@example.test",
+                "account_type": "team_leader",
+                "team_leader_role": "sales-supervisor",
+                "status": "pending",
+                "activation_status": "pending",
+            },
+            {
+                "account_id": 8,
+                "name": "Rina Reseller",
+                "email": "rina@example.test",
+                "account_type": "reseller",
+                "status": "pending",
+                "activation_status": "pending",
+            },
+        ]
+
+    monkeypatch.setattr(main.data, "list_accounts", fake_list_accounts)
+
+    sales_nav = [slug for slug, *_ in main.data.portal_nav_for("team-leader", "sales")]
+    supervisor_nav = [slug for slug, *_ in main.data.portal_nav_for("sales-supervisor", "sales-supervisor")]
+    response = client.get("/portal/sales-supervisor/accounts")
+
+    assert "accounts" not in sales_nav
+    assert "accounts" in supervisor_nav
+    assert response.status_code == 200
+    assert "role-team-leader role-sales-supervisor" in response.text
+    assert 'css/portals/team-leader.css' in response.text
+    assert 'action="/portal/sales-supervisor/accounts"' in response.text
+    assert '<option value="owner">Owner</option>' not in response.text
+    assert '<option value="reseller" >Reseller</option>' in response.text
+    assert '<option value="sales-supervisor">Sales supervisor</option>' in response.text
+    assert "Rina Reseller" in response.text
+    assert "owner-assignment-card" in response.text
+    assert "/portal/sales-supervisor/resellers/2/team-leader" in response.text
+    assert list_calls[0]["account_types"] == ("team_leader", "reseller")
+    assert count_calls[0]["account_types"] == ("team_leader", "reseller")
+
+
+def test_sales_supervisor_account_post_cannot_create_owner(monkeypatch):
+    client = TestClient(main.app)
+    created = []
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main.data, "add_account", lambda *args, **kwargs: created.append((args, kwargs)))
+
+    blocked = client.post(
+        "/portal/sales-supervisor/accounts",
+        data={"account_type": "owner", "name": "Owner Two", "email": "owner2@example.test"},
+        follow_redirects=False,
+    )
+    allowed = client.post(
+        "/portal/sales-supervisor/accounts",
+        data={
+            "account_type": "team_leader",
+            "name": "Supervisor Two",
+            "email": "supervisor2@example.test",
+            "team_leader_role": "sales-supervisor",
+        },
+        follow_redirects=False,
+    )
+
+    assert blocked.status_code == 303
+    assert "Sales+supervisors+can+create+team+leader+accounts+only" in blocked.headers["location"]
+    assert allowed.status_code == 303
+    assert created == [(("team_leader", "Supervisor Two", "supervisor2@example.test"), {"team_leader_role": "sales-supervisor"})]
+
+
+def test_sales_supervisor_activation_route_includes_reseller_accounts(monkeypatch):
+    client = TestClient(main.app)
+    calls = []
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main, "session_team_leader_role", lambda request: "sales-supervisor")
+    monkeypatch.setattr(
+        main.data,
+        "resend_activation",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    response = client.post("/portal/sales-supervisor/accounts/8/activation", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert calls == [((8, 0), {"account_types": ("team_leader", "reseller")})]
+
+
+def test_owner_pages_use_workflow_specific_modern_layouts():
+    templates = {
+        name: open(f"app/templates/portals/owner/{name}.html", encoding="utf-8").read()
+        for name in ("dashboard", "products", "reports", "forecasts", "accounts", "profile")
+    }
+    base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    css = open("app/static/css/portals/owner.css", encoding="utf-8").read()
+
+    assert 'role_key == "owner" or' in base_template
+    assert "owner-dashboard-page" in templates["dashboard"]
+    assert "owner-signal-strip" in templates["dashboard"]
+    assert "metric-card" not in templates["dashboard"]
+    assert "owner-products-page" in templates["products"]
+    assert "owner-workspace-surface" in templates["products"]
+    assert "owner-reports-page" in templates["reports"]
+    assert "owner-forecasts-page" in templates["forecasts"]
+    assert "owner-accounts-page" in templates["accounts"]
+    assert "owner-profile-identity" in templates["profile"]
+    assert "owner-profile-security" in templates["profile"]
+    assert "Owner workspace: restrained operational layouts" in css
+    assert ".role-owner .owner-product-image::after" in css
+    assert ".role-owner .owner-forecast-run-panel" in css
+    assert ".role-owner .owner-profile-page" in css
+    assert ".role-owner .owner-filter-bar label:first-child" in css
+    assert ".role-owner .owner-horizon-picker input" in css
+    assert "width: 100%;" in css
+    assert "@media (max-width: 1440px)" in css
+    assert "@media (max-width: 860px)" in css
+
+
+def test_dropdown_controls_use_shared_stable_styles():
+    portal_css = open("app/static/css/portal_base.css", encoding="utf-8").read()
+    public_css = open("app/static/css/public.css", encoding="utf-8").read()
+    owner_css = open("app/static/css/portals/owner.css", encoding="utf-8").read()
+
+    for css in (portal_css, public_css):
+        assert "--select-caret" in css
+        assert "select:not([multiple])" in css
+        assert "padding-right: 2.85rem !important" in css
+        assert "background-image: var(--select-caret) !important" in css
+        assert "text-overflow: ellipsis" in css
+
+    assert ".role-owner .owner-forecast-result-card summary" in owner_css
+    assert "details[open] summary::after" in owner_css
 
 
 def test_payment_proof_route_is_registered_before_generic_portal_route():

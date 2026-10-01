@@ -1,4 +1,5 @@
-            <section class="panel">
+            <div class="sales-page sales-review-page sales-inquiries-page">
+            <section class="panel sales-review-surface">
                 <div class="panel-heading">
                     <h2>Assigned reseller inquiries</h2>
                     <span class="hint">Approvals are handled by the assigned team leader.</span>
@@ -41,7 +42,7 @@
                         <td>
                           {% if inquiry.status in ["pending", "assigned", "contacted"] %}
                           <div class="table-actions">
-                            <form action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/approve" method="post">
+                            <form action="/portal/{{ role_key }}/inquiries/{{ inquiry.inquiry_id }}/approve" method="post">
                                 <button class="icon-button" type="submit" title="Approve"><i data-lucide="check"></i></button>
                             </form>
                             <button
@@ -50,7 +51,7 @@
                               title="Reject"
                               aria-label="Reject {{ inquiry.business_name }} inquiry"
                               data-inquiry-reject-open
-                              data-inquiry-reject-action="/portal/team-leader/inquiries/{{ inquiry.inquiry_id }}/reject"
+                              data-inquiry-reject-action="/portal/{{ role_key }}/inquiries/{{ inquiry.inquiry_id }}/reject"
                               data-inquiry-reject-business="{{ inquiry.business_name }}"
                             ><i data-lucide="x"></i></button>
                           </div>
@@ -95,4 +96,5 @@
                   </footer>
                 </form>
               </section>
+            </div>
             </div>

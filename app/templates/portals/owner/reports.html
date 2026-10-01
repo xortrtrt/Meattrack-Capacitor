@@ -1,4 +1,5 @@
-<section class="panel owner-reports-panel">
+<div class="owner-page owner-reports-page">
+<section class="panel owner-reports-panel owner-workspace-surface">
   <div class="panel-heading">
     <div>
       <h2>Team leader sales reports</h2>
@@ -77,3 +78,4 @@
     {% if sales_reports_page.pagination.has_next %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page + 1 }}">Next</a>{% endif %}
   </div>
 </section>
+</div>

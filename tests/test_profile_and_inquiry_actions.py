@@ -89,6 +89,80 @@ def test_profile_password_fields_render_live_rule_tracking():
     assert ".password-rule-list li.is-met" in portal_css
 
 
+def test_profile_picture_controls_render_for_all_portals():
+    owner_profile = open("app/templates/portals/owner/profile.html", encoding="utf-8").read()
+    reseller_profile = open("app/templates/portals/reseller/profile.html", encoding="utf-8").read()
+    team_profile = open("app/templates/portals/team-leader/profile.html", encoding="utf-8").read()
+    profile_partial = open("app/templates/portals/_profile_picture.html", encoding="utf-8").read()
+    base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    portal_css = open("app/static/css/portal_base.css", encoding="utf-8").read()
+
+    for template in (owner_profile, reseller_profile, team_profile):
+        assert 'include "portals/_profile_picture.html"' in template
+
+    assert "data-profile-picture-open" in profile_partial
+    assert "data-profile-picture-modal" in profile_partial
+    assert "profile-picture-file-button" in profile_partial
+    assert 'action="/portal/{{ role_key }}/profile/picture"' in profile_partial
+    assert 'accept="image/png,image/jpeg,image/webp"' in profile_partial
+    assert 'name="profile_image_position_x"' in profile_partial
+    assert 'name="profile_image_position_y"' in profile_partial
+    assert 'name="profile_image_scale"' in profile_partial
+    assert 'action="/portal/{{ role_key }}/profile/picture/remove"' in profile_partial
+    assert "role.profile_image_path" in base_template
+    assert "role.profile_image_position_x" in base_template
+    assert ".profile-picture-panel" in portal_css
+    assert ".profile-picture-camera" in portal_css
+    assert ".profile-picture-file-button" in portal_css
+    assert ".profile-picture-modal" in portal_css
+    assert ".portal-user-avatar" in portal_css
+
+
+@pytest.mark.parametrize("role_key", ["owner", "team-leader", "sales-supervisor", "reseller"])
+def test_profile_picture_upload_route_updates_account(monkeypatch, role_key):
+    calls = []
+
+    async def fake_save(account_id, upload):
+        calls.append(("save", account_id, upload.filename, upload.content_type))
+        return "uploads/profiles/account-7-demo.png"
+
+    monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(main, "session_account_id", lambda request: 7)
+    monkeypatch.setattr(main.shared_portal, "save_profile_image_upload", fake_save)
+    monkeypatch.setattr(main.shared_portal, "remove_profile_image_file", lambda path: calls.append(("remove", path)))
+    monkeypatch.setattr(
+        main.data,
+        "update_account_profile_image",
+        lambda account_id, path, **kwargs: calls.append(("update", account_id, path, kwargs)) or {
+            "profile_image_path": path,
+            "profile_image_position_x": kwargs["position_x"],
+            "profile_image_position_y": kwargs["position_y"],
+            "profile_image_scale": kwargs["scale"],
+        },
+    )
+
+    response = TestClient(main.app).post(
+        f"/portal/{role_key}/profile/picture",
+        data={
+            "profile_image_position_x": "32",
+            "profile_image_position_y": "64",
+            "profile_image_scale": "1.25",
+        },
+        files={"profile_picture": ("avatar.png", b"image-bytes", "image/png")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert f"/portal/{role_key}/profile" in response.headers["location"]
+    assert ("save", 7, "avatar.png", "image/png") in calls
+    assert (
+        "update",
+        7,
+        "uploads/profiles/account-7-demo.png",
+        {"position_x": "32", "position_y": "64", "scale": "1.25"},
+    ) in calls
+
+
 def test_reseller_password_route_rejects_mismatched_confirmation(monkeypatch):
     monkeypatch.setattr(main, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(main, "session_account_id", lambda request: 7)

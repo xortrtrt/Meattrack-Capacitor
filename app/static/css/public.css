@@ -119,6 +119,7 @@
   --success: #2f6f4e;
   --error: #b23b35;
   --shadow: 0 18px 46px rgba(13, 12, 11, 0.16);
+  --select-caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5 10 12.5 15 7.5' stroke='%23aa8616' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --mobile-bottom-reserve: 112px;
 }
 
@@ -160,6 +161,34 @@ textarea {
 button {
   border: 0;
   cursor: pointer;
+}
+
+select {
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.2;
+}
+
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.85rem !important;
+  background-image: var(--select-caret) !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.95rem center !important;
+  background-size: 18px 18px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+select::-ms-expand {
+  display: none;
+}
+
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .container {
