@@ -5,10 +5,9 @@
     <meta name="csrf-token" content="{{ csrf_token(request) }}" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>About Us | Batangas Premium</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', path='css/public.css') }}?v=20260929-live-chat-ui-8"
-    />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/public/base.css') }}?v=20261001-public-split-1" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/public/pages.css') }}?v=20261001-public-split-1" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/public/visitor-chat.css') }}?v=20261001-public-split-1" />
   </head>
   <body>
     <nav class="navbar">
@@ -193,3 +192,4 @@
     <script type="module" src="{{ url_for('static', path='js/public-site.js') }}?v=20261001-frontend-modules-1"></script>
   </body>
 </html>
+

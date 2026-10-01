@@ -8,6 +8,12 @@ from app import main
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PUBLIC_STYLESHEETS = (
+    "/static/css/public/base.css",
+    "/static/css/public/pages.css",
+    "/static/css/public/landing.css",
+    "/static/css/public/visitor-chat.css",
+)
 
 
 def test_media_route_redirects_to_local_static_assets():
@@ -56,3 +62,21 @@ def test_vendored_assets_exist_and_receive_immutable_cache_headers():
         response = client.get(asset_path)
         assert response.status_code == 200
         assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_public_stylesheets_are_split_and_served():
+    client = TestClient(main.app)
+    for asset_path in PUBLIC_STYLESHEETS:
+        response = client.get(asset_path)
+        assert response.status_code == 200
+        assert response.text.strip()
+
+    public_templates = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in PROJECT_ROOT.glob("app/templates/*.html")
+    )
+    assert "css/public.css" not in public_templates
+    assert "css/public/base.css" in public_templates
+    assert "css/public/pages.css" in public_templates
+    base_css = (PROJECT_ROOT / "app/static/css/public/base.css").read_text(encoding="utf-8")
+    assert 'url("../../fonts/rubik-latin-300-800-v31.woff2")' in base_css

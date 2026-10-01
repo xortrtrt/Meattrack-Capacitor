@@ -253,7 +253,15 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
 
     monkeypatch.setattr(repositories, "list_products", list_products)
     response = TestClient(main.app).get("/")
-    css = open("app/static/css/public.css", encoding="utf-8").read()
+    css = "\n".join(
+        open(path, encoding="utf-8").read()
+        for path in (
+            "app/static/css/public/base.css",
+            "app/static/css/public/pages.css",
+            "app/static/css/public/landing.css",
+            "app/static/css/public/visitor-chat.css",
+        )
+    )
 
     assert response.status_code == 200
     assert calls == [((), {"active_only": True, "page": 1, "page_size": 6})]
@@ -1088,7 +1096,7 @@ def test_owner_pages_use_workflow_specific_modern_layouts():
 
 def test_dropdown_controls_use_shared_stable_styles():
     portal_css = open("app/static/css/portal_base.css", encoding="utf-8").read()
-    public_css = open("app/static/css/public.css", encoding="utf-8").read()
+    public_css = open("app/static/css/public/base.css", encoding="utf-8").read()
     owner_css = open("app/static/css/portals/owner.css", encoding="utf-8").read()
 
     for css in (portal_css, public_css):

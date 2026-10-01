@@ -37,11 +37,36 @@ def test_public_and_supervisor_profile_smoke(page: Page) -> None:
     console_errors: list[str] = []
     page.on("console", lambda message: console_errors.append(message.text) if message.type == "error" else None)
     page.on("pageerror", lambda error: console_errors.append(str(error)))
+    page.on(
+        "response",
+        lambda response: console_errors.append(f"HTTP {response.status} {response.url}")
+        if response.status >= 400
+        else None,
+    )
 
     response = page.goto(f"{BASE_URL}/", wait_until="networkidle")
     assert response is not None and response.ok
     expect(page.locator("body")).to_have_class(re.compile(r"\blanding-page\b"))
     expect(page.locator('script[src*="/static/js/public-site.js"]')).to_have_count(1)
+
+    footer_text = page.locator(".landing-footer p")
+    footer_text.scroll_into_view_if_needed()
+    desktop_offset = footer_text.evaluate(
+        "element => { const box = element.getBoundingClientRect(); "
+        "return box.left + box.width / 2 - window.innerWidth / 2; }"
+    )
+    assert abs(desktop_offset) < 2
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.reload(wait_until="networkidle")
+    footer_text = page.locator(".landing-footer p")
+    footer_text.scroll_into_view_if_needed()
+    mobile_offset = footer_text.evaluate(
+        "element => { const box = element.getBoundingClientRect(); "
+        "return box.left + box.width / 2 - window.innerWidth / 2; }"
+    )
+    assert abs(mobile_offset) < 2
+    page.set_viewport_size({"width": 1280, "height": 720})
 
     response = page.goto(f"{BASE_URL}/products", wait_until="networkidle")
     assert response is not None and response.ok

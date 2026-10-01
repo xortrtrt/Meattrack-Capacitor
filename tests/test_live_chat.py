@@ -283,7 +283,7 @@ def test_live_chat_clients_render_ephemeral_typing_indicators():
 
 def test_visitor_message_keeps_leader_identity_outside_the_bubble():
     source = open("app/static/js/public-site.js", encoding="utf-8").read()
-    public_css = open("app/static/css/public.css", encoding="utf-8").read()
+    public_css = open("app/static/css/public/visitor-chat.css", encoding="utf-8").read()
 
     assert "function addLiveSenderLabel(bubble, senderName)" in source
     assert "messages.insertBefore(label, bubble)" in source
