@@ -34,6 +34,7 @@ export function bindVisitorChat() {
     let visitorTypingTimer = null;
     let visitorTypingSent = false;
     let visitorTypingLastSentAt = 0;
+    let dismissedInquiryRequestKey = "";
 
     messages.setAttribute("role", "log");
     messages.setAttribute("aria-live", "polite");
@@ -498,12 +499,20 @@ export function bindVisitorChat() {
         renderSuggestions(defaultSuggestions);
         inquiryFormPanel.hidden = true;
         inquiryStatus.textContent = "";
+        dismissedInquiryRequestKey = "";
+    }
+
+    function inquiryRequestKey(conversation) {
+        if (!conversation?.conversation_id || !conversation?.inquiry_form_requested_at) return "";
+        return `${conversation.conversation_id}:${conversation.inquiry_form_requested_at}`;
     }
 
     function renderInquiryForm(conversation) {
-        const shouldShow = Boolean(conversation?.inquiry_form_requested_at)
+        const requestKey = inquiryRequestKey(conversation);
+        const shouldShow = Boolean(requestKey)
             && !conversation?.has_reseller_inquiry
-            && conversation.status === "active";
+            && conversation.status === "active"
+            && requestKey !== dismissedInquiryRequestKey;
         inquiryFormPanel.hidden = !shouldShow;
         if (!shouldShow) return;
         const nameInput = inquiryForm.elements.namedItem("name");
@@ -511,7 +520,9 @@ export function bindVisitorChat() {
         messages.scrollTop = messages.scrollHeight;
     }
 
-    inquiryFormPanel.querySelector("[data-chatbot-inquiry-later]").addEventListener("click", () => {
+    inquiryFormPanel.querySelector("[data-chatbot-inquiry-later]").addEventListener("click", (event) => {
+        event.preventDefault();
+        dismissedInquiryRequestKey = inquiryRequestKey(liveConversation);
         inquiryFormPanel.hidden = true;
         addMessage("You can complete the reseller inquiry form anytime while this live chat remains open.", "bot");
     });

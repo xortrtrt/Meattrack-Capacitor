@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import time
 
 import pytest
 from playwright.sync_api import Page, expect, sync_playwright
@@ -81,10 +83,11 @@ def test_send_button_recovers_after_each_message(page: Page, active_live_chat: s
     send_button = composer.get_by_role("button", name="Send")
 
     message_input.fill("First reply")
-    send_button.click()
+    message_input.press("Enter")
     expect(send_button).to_be_enabled()
     expect(send_button).not_to_have_class("is-loading")
     expect(message_input).to_be_enabled()
+    expect(message_input).to_have_value("")
 
     message_input.fill("Second reply")
     send_button.click()
@@ -101,3 +104,47 @@ def test_send_button_recovers_after_each_message(page: Page, active_live_chat: s
             (active_live_chat,),
         )
         assert int(cursor.fetchone()["total"]) == 2
+
+
+def test_complete_later_keeps_visitor_inquiry_form_dismissed(page: Page) -> None:
+    conversation_id = "e2e-visitor-inquiry"
+    conversation = {
+        "conversation_id": conversation_id,
+        "display_name": "E2E Visitor",
+        "status": "active",
+        "claimed_at": "2026-10-02T10:00:00+08:00",
+        "assigned_team_leader_account_id": 42,
+        "assigned_team_leader_name": "E2E Leader",
+        "inquiry_form_requested_at": "2026-10-02T10:01:00+08:00",
+        "has_reseller_inquiry": False,
+        "leader_is_typing": False,
+    }
+    inquiry_submissions: list[str] = []
+
+    def handle_live_chat(route) -> None:
+        if route.request.url.endswith("/inquiry"):
+            inquiry_submissions.append(route.request.method)
+        payload = {"messages": []} if "/messages" in route.request.url else {"conversation": conversation}
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    page.route(f"**/api/live-chat/{conversation_id}**", handle_live_chat)
+    page.goto(f"{BASE_URL}/", wait_until="networkidle")
+    page.evaluate(
+        "([key, value]) => localStorage.setItem(key, value)",
+        [
+            "meattrack_live_chat_v1",
+            json.dumps({"conversation_id": conversation_id, "savedAt": int(time.time() * 1000)}),
+        ],
+    )
+    page.reload(wait_until="networkidle")
+    page.locator(".chatbot-toggle").evaluate("element => element.click()")
+    expect(page.locator(".chatbot-toggle")).to_have_attribute("aria-expanded", "true")
+
+    inquiry_panel = page.locator(".chatbot-inquiry-form")
+    expect(inquiry_panel).to_be_visible()
+    inquiry_panel.get_by_role("button", name="Complete later").click()
+    expect(inquiry_panel).to_be_hidden()
+
+    page.wait_for_timeout(3500)
+    expect(inquiry_panel).to_be_hidden()
+    assert inquiry_submissions == []

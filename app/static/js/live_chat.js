@@ -465,6 +465,13 @@
         }
     });
     messageInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+            event.preventDefault();
+            if (!messageInput.disabled && messageInput.value.trim()) {
+                messageForm.requestSubmit();
+            }
+            return;
+        }
         if (event.key.length === 1 && activeConversation?.status === "active") sendLeaderTyping(true);
     });
     messageInput.addEventListener("blur", stopLeaderTyping);

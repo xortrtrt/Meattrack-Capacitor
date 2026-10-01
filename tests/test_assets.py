@@ -98,4 +98,4 @@ def test_public_javascript_modules_are_split_and_served():
     entrypoint = (PROJECT_ROOT / "app/static/js/public-site.js").read_text(encoding="utf-8")
     assert 'from "./public-navigation.js"' in entrypoint
     assert 'from "./landing-experience.js"' in entrypoint
-    assert 'from "./visitor-chat.js"' in entrypoint
+    assert 'from "./visitor-chat.js?v=20261002-chat-interactions-1"' in entrypoint
