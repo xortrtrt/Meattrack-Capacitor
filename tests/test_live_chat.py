@@ -181,7 +181,7 @@ def test_live_chat_clears_recovered_errors_and_exposes_availability_state():
 
 
 def test_both_live_chat_participants_have_an_end_chat_action():
-    visitor_source = open("app/static/js/public-site.js", encoding="utf-8").read()
+    visitor_source = open("app/static/js/visitor-chat.js", encoding="utf-8").read()
     leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
     leader_template = open("app/templates/portals/team-leader/live_chat.html", encoding="utf-8").read()
 
@@ -195,7 +195,7 @@ def test_both_live_chat_participants_have_an_end_chat_action():
 
 
 def test_visitor_is_prompted_for_a_persisted_leader_rating_after_chat_ends():
-    source = open("app/static/js/public-site.js", encoding="utf-8").read()
+    source = open("app/static/js/visitor-chat.js", encoding="utf-8").read()
 
     assert 'const liveChatRatingStorageKey = "meattrack_live_chat_rating_v1"' in source
     assert "function offerLiveChatRating(conversation)" in source
@@ -268,7 +268,7 @@ def test_typing_update_requires_boolean_and_active_conversation(monkeypatch):
 
 
 def test_live_chat_clients_render_ephemeral_typing_indicators():
-    visitor_source = open("app/static/js/public-site.js", encoding="utf-8").read()
+    visitor_source = open("app/static/js/visitor-chat.js", encoding="utf-8").read()
     leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
     leader_template = open("app/templates/portals/team-leader/live_chat.html", encoding="utf-8").read()
     leader_css = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
@@ -282,7 +282,7 @@ def test_live_chat_clients_render_ephemeral_typing_indicators():
 
 
 def test_visitor_message_keeps_leader_identity_outside_the_bubble():
-    source = open("app/static/js/public-site.js", encoding="utf-8").read()
+    source = open("app/static/js/visitor-chat.js", encoding="utf-8").read()
     public_css = open("app/static/css/public/visitor-chat.css", encoding="utf-8").read()
 
     assert "function addLiveSenderLabel(bubble, senderName)" in source
@@ -292,7 +292,7 @@ def test_visitor_message_keeps_leader_identity_outside_the_bubble():
 
 
 def test_visitor_detects_fast_reassignment_even_when_status_stays_active():
-    source = open("app/static/js/public-site.js", encoding="utf-8").read()
+    source = open("app/static/js/visitor-chat.js", encoding="utf-8").read()
 
     assert "const assignmentChanged" in source
     assert 'next.status === "active" && (next.status !== previousStatus || assignmentChanged)' in source
@@ -334,7 +334,7 @@ def test_live_chat_actor_keeps_same_browser_visitor_and_leader_tabs_distinct(mon
 
 
 def test_live_chat_clients_send_validated_actor_headers():
-    visitor_source = open("app/static/js/public-site.js", encoding="utf-8").read()
+    visitor_source = open("app/static/js/visitor-chat.js", encoding="utf-8").read()
     leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
 
     assert '"X-Live-Chat-Actor": "visitor"' in visitor_source
@@ -349,7 +349,7 @@ def test_leader_channel_cleanup_does_not_treat_ably_unsubscribe_as_a_promise():
 
 
 def test_live_chat_clients_expose_visitor_owned_reseller_inquiry_form():
-    visitor_source = open("app/static/js/public-site.js", encoding="utf-8").read()
+    visitor_source = open("app/static/js/visitor-chat.js", encoding="utf-8").read()
     leader_source = open("app/static/js/live_chat.js", encoding="utf-8").read()
     leader_template = open("app/templates/portals/team-leader/live_chat.html", encoding="utf-8").read()
 

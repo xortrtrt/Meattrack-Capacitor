@@ -14,6 +14,12 @@ PUBLIC_STYLESHEETS = (
     "/static/css/public/landing.css",
     "/static/css/public/visitor-chat.css",
 )
+PUBLIC_SCRIPTS = (
+    "/static/js/public-site.js",
+    "/static/js/public-navigation.js",
+    "/static/js/landing-experience.js",
+    "/static/js/visitor-chat.js",
+)
 
 
 def test_media_route_redirects_to_local_static_assets():
@@ -80,3 +86,16 @@ def test_public_stylesheets_are_split_and_served():
     assert "css/public/pages.css" in public_templates
     base_css = (PROJECT_ROOT / "app/static/css/public/base.css").read_text(encoding="utf-8")
     assert 'url("../../fonts/rubik-latin-300-800-v31.woff2")' in base_css
+
+
+def test_public_javascript_modules_are_split_and_served():
+    client = TestClient(main.app)
+    for asset_path in PUBLIC_SCRIPTS:
+        response = client.get(asset_path)
+        assert response.status_code == 200
+        assert response.text.strip()
+
+    entrypoint = (PROJECT_ROOT / "app/static/js/public-site.js").read_text(encoding="utf-8")
+    assert 'from "./public-navigation.js"' in entrypoint
+    assert 'from "./landing-experience.js"' in entrypoint
+    assert 'from "./visitor-chat.js"' in entrypoint

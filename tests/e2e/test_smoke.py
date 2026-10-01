@@ -49,6 +49,19 @@ def test_public_and_supervisor_profile_smoke(page: Page) -> None:
     expect(page.locator("body")).to_have_class(re.compile(r"\blanding-page\b"))
     expect(page.locator('script[src*="/static/js/public-site.js"]')).to_have_count(1)
 
+    page.locator("[data-landing-product-open]").first.click()
+    expect(page.locator("[data-landing-product-modal]")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator("[data-landing-product-modal]")).to_be_hidden()
+
+    page.locator(".chatbot-toggle").click()
+    chat_input = page.locator("[data-chatbot-form] input[name='message']")
+    chat_input.fill("Hello")
+    page.locator("[data-chatbot-form]").get_by_role("button", name="Send message").click()
+    expect(page.locator("[data-chatbot-messages] .bot-message").last).to_contain_text(
+        "Batangas Premium"
+    )
+
     footer_text = page.locator(".landing-footer p")
     footer_text.scroll_into_view_if_needed()
     desktop_offset = footer_text.evaluate(
@@ -59,6 +72,11 @@ def test_public_and_supervisor_profile_smoke(page: Page) -> None:
 
     page.set_viewport_size({"width": 390, "height": 844})
     page.reload(wait_until="networkidle")
+    mobile_menu = page.locator("[data-mobile-nav-toggle]")
+    mobile_menu.click()
+    expect(mobile_menu).to_have_attribute("aria-expanded", "true")
+    page.keyboard.press("Escape")
+    expect(mobile_menu).to_have_attribute("aria-expanded", "false")
     footer_text = page.locator(".landing-footer p")
     footer_text.scroll_into_view_if_needed()
     mobile_offset = footer_text.evaluate(

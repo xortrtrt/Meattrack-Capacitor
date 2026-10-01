@@ -288,7 +288,15 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in css
     assert "@media (prefers-reduced-motion: reduce)" in css
     assert ".chatbot-widget.is-open .chatbot-toggle" in css
-    app_js = open("app/static/js/public-site.js", encoding="utf-8").read()
+    app_js = "\n".join(
+        open(path, encoding="utf-8").read()
+        for path in (
+            "app/static/js/public-site.js",
+            "app/static/js/public-navigation.js",
+            "app/static/js/landing-experience.js",
+            "app/static/js/visitor-chat.js",
+        )
+    )
     forms_js = open("app/static/js/forms.js", encoding="utf-8").read()
     assert "function bindLandingExperience()" in app_js
     assert "function bindLandingProductModal()" in app_js
