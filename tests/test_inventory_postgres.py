@@ -466,6 +466,59 @@ def test_reseller_cart_checkout_accepts_sales_supervisor_assignment(strict_inven
 
 
 @pytest.mark.postgres
+def test_reseller_checkout_keeps_unselected_items_in_cart(strict_inventory_database):
+    _, first_product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[10],
+        order_quantities=[],
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO inventory_items (
+                    item_type, category, name, description, unit, base_price,
+                    pack_size, pack_size_unit, pack_content_status
+                )
+                VALUES ('finished_product', 'Beef', 'Second Test Product',
+                        'Second product.', 'pack', 125, 500, 'g', 'declared')
+                RETURNING item_id;
+                """
+            )
+            second_product_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO inventory_batches (
+                    item_id, batch_code, source_type, quantity_received,
+                    quantity_available, unit, received_date, expiry_date, quality_status
+                )
+                VALUES (%s, 'SECOND-TEST', 'direct_received', 10, 10, 'pack',
+                        CURRENT_DATE, CURRENT_DATE + INTERVAL '7 days', 'approved');
+                """,
+                (second_product_id,),
+            )
+
+    repositories.add_reseller_cart_item(reseller_account_id, first_product_id, "2")
+    repositories.add_reseller_cart_item(reseller_account_id, second_product_id, "3")
+
+    order = repositories.checkout_reseller_cart(
+        reseller_account_id,
+        "Selected items only",
+        [first_product_id],
+    )
+
+    remaining_items = repositories.list_reseller_cart_items(reseller_account_id)
+    assert [item["product_id"] for item in remaining_items] == [second_product_id]
+    assert repositories.reseller_cart_count(reseller_account_id) == 3
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT product_id, quantity FROM order_items WHERE order_id = %s;", (order["order_id"],))
+            assert cursor.fetchall() == [(first_product_id, 2)]
+
+
+@pytest.mark.postgres
 def test_reseller_cart_checkout_http_flow_redirects_to_history(strict_inventory_database, monkeypatch):
     leader_id, product_id, _, _ = _seed_fulfillment(
         strict_inventory_database,
@@ -487,12 +540,12 @@ def test_reseller_cart_checkout_http_flow_redirects_to_history(strict_inventory_
 
     response = TestClient(main.app).post(
         "/portal/reseller/cart/checkout",
-        data={"notes": "HTTP checkout"},
+        data={"notes": "HTTP checkout", "product_id": str(product_id)},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/portal/reseller/history?message=")
+    assert response.headers["location"].startswith("/portal/reseller/checkout?placed=")
     assert repositories.reseller_cart_count(reseller_account_id) == 0
 
 
@@ -546,6 +599,7 @@ def test_reseller_checkout_http_flow_returns_assignment_error_and_preserves_cart
 
     response = TestClient(main.app).post(
         "/portal/reseller/cart/checkout",
+        data={"product_id": str(product_id)},
         follow_redirects=False,
     )
 

@@ -1,21 +1,9 @@
 <section class="order-flow" data-cart>
-  <nav class="order-flow-steps" aria-label="Order progress">
-    <a class="is-active" href="/portal/reseller/cart" aria-current="step">
-      <span>1</span><strong>Cart</strong><small>Edit quantities</small>
-    </a>
-    <a href="/portal/reseller/checkout">
-      <span>2</span><strong>Review</strong><small>Confirm order</small>
-    </a>
-    <span class="order-flow-step">
-      <span>3</span><strong>Approval</strong><small>Track status</small>
-    </span>
-  </nav>
-
-  <header class="order-flow-hero">
+  <header class="order-page-header">
     <div>
-      <span class="eyebrow">Reseller order desk</span>
-      <h2>Build your next stock order.</h2>
-      <p>Adjust pack quantities here. Changes save automatically before you continue to review.</p>
+      <span class="order-page-kicker">Shopping cart</span>
+      <h2>Your cart</h2>
+      <p>Choose the products you want to include in this order.</p>
     </div>
     <a class="button subtle order-flow-secondary" href="/portal/reseller/order">
       <i data-lucide="plus"></i> Add products
@@ -26,16 +14,27 @@
   <div class="cart-workspace">
     <div class="cart-manifest">
       <div class="cart-manifest-heading">
-        <div>
-          <span class="eyebrow">Order manifest</span>
-          <h3>{{ cart_count|number }} packs selected</h3>
-        </div>
+        <label class="cart-select-all">
+          <input type="checkbox" data-cart-select-all />
+          <span>Select all</span>
+        </label>
         <span class="cart-save-status" data-cart-save-status aria-live="polite"></span>
       </div>
 
       <div class="cart-lines">
         {% for item in cart_items %}
         <article class="cart-line" data-cart-item data-product-id="{{ item.product_id }}" data-unit-price="{{ item.base_price }}">
+          <label class="cart-item-check" title="Include {{ item.name }} in checkout">
+            <input
+              type="checkbox"
+              name="product_id"
+              value="{{ item.product_id }}"
+              form="cart-confirm-form"
+              data-cart-select
+              aria-label="Include {{ item.name }} in checkout"
+            />
+            <span aria-hidden="true"><i data-lucide="check"></i></span>
+          </label>
           <img class="cart-line-image" src="{{ item.name|product_image|media_url }}" alt="{{ item.name }}" loading="lazy" />
           <div class="cart-line-copy">
             <span class="reseller-product-category">{{ item.category }}</span>
@@ -71,20 +70,25 @@
     </div>
 
     <aside class="order-summary-card" aria-labelledby="cart-summary-title">
-      <span class="eyebrow">Running total</span>
+      <span class="order-page-kicker">Your selection</span>
       <h3 id="cart-summary-title">Order summary</h3>
-      <div class="order-summary-row"><span>Selected packs</span><strong data-cart-count>{{ cart_count|number }}</strong></div>
-      <div class="order-summary-total"><span>Subtotal</span><strong data-cart-total>{{ cart_total|currency }}</strong></div>
-      <a class="button primary order-summary-action" href="/portal/reseller/checkout">Review checkout <i data-lucide="arrow-right"></i></a>
-      <p><i data-lucide="shield-check"></i><span>Availability and pricing are checked once more when you place the request.</span></p>
+      <div class="order-summary-row"><span>Selected products</span><strong data-cart-selected-items>0</strong></div>
+      <div class="order-summary-row"><span>Selected packs</span><strong data-cart-count>0</strong></div>
+      <div class="order-summary-total"><span>Subtotal</span><strong data-cart-total>{{ 0|currency }}</strong></div>
+      <form id="cart-confirm-form" action="/portal/reseller/checkout" method="get">
+        <button class="button primary order-summary-action" type="submit" data-cart-confirm disabled>
+          Confirm selected items <i data-lucide="arrow-right"></i>
+        </button>
+      </form>
+      <p data-cart-selection-hint><i data-lucide="circle-check-big"></i><span>Select at least one product to continue. Items you leave unchecked will stay in your cart.</span></p>
     </aside>
   </div>
   {% else %}
   <div class="order-empty-state">
     <span class="order-empty-icon"><i data-lucide="shopping-basket"></i></span>
-    <span class="eyebrow">Your manifest is clear</span>
-    <h2>Start with the products your customers need.</h2>
-    <p>Browse the current catalog, choose quantities, and your selections will appear here.</p>
+    <span class="order-page-kicker">Your cart is empty</span>
+    <h2>Add products for your next stock order.</h2>
+    <p>Browse the current catalog and choose the products your customers need.</p>
     <a class="button primary" href="/portal/reseller/order">Browse products <i data-lucide="arrow-right"></i></a>
   </div>
   {% endif %}

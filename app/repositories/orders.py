@@ -17,6 +17,7 @@ def list_orders(
     page: int | None = None,
     page_size: int = 10,
     sort: str = "",
+    without_payment_proof: bool = False,
 ) -> list[dict]:
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
@@ -30,6 +31,12 @@ def list_orders(
     if status:
         where.append("o.status = %s")
         params.append(status)
+    if without_payment_proof:
+        where.append("""NOT EXISTS (
+            SELECT 1
+            FROM order_payment_proofs opp_filter
+            WHERE opp_filter.order_id = o.order_id
+        )""")
     if team_leader_account_id is not None:
         if order_type == "walk_in":
             where.append("o.created_by_account_id = %s")
@@ -270,6 +277,7 @@ def count_orders(
     status: str = "",
     team_leader_account_id: int | None = None,
     reseller_account_id: int | None = None,
+    without_payment_proof: bool = False,
 ) -> int:
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
@@ -286,6 +294,12 @@ def count_orders(
     if status:
         where.append("o.status = %s")
         params.append(status)
+    if without_payment_proof:
+        where.append("""NOT EXISTS (
+            SELECT 1
+            FROM order_payment_proofs opp_filter
+            WHERE opp_filter.order_id = o.order_id
+        )""")
     if team_leader_account_id is not None:
         if order_type == "walk_in":
             where.append("o.created_by_account_id = %s")
@@ -381,6 +395,21 @@ def reseller_cart_count(account_id: int) -> float:
         WHERE account_id = %s;
     """, (account_id,))
     return float(row["total"] if row else 0)
+
+
+def reseller_order_confirmation(account_id: int, order_id: int) -> dict | None:
+    return clean_row(fetch_one(
+        """
+        SELECT o.order_id, o.status, o.total_amount
+        FROM orders o
+        JOIN accounts a ON a.reseller_id = o.reseller_id
+        WHERE a.account_id = %s
+          AND o.order_id = %s
+          AND o.order_type = 'reseller'
+        LIMIT 1;
+        """,
+        (account_id, order_id),
+    ))
 
 
 def _reseller_available_product(cur, product_id: int) -> dict | None:
@@ -479,6 +508,7 @@ def create_order_from_items(
     account_id: int | None = None,
     *,
     checkout_cart: bool = False,
+    checkout_product_ids: list[int] | None = None,
 ) -> dict:
     if not items and not checkout_cart:
         raise ValueError("Add at least one product to the cart.")
@@ -549,6 +579,14 @@ def create_order_from_items(
         if checkout_cart:
             if role != "reseller" or account_id is None:
                 raise ValueError("Cart checkout requires a signed-in reseller.")
+            selected_product_ids = None
+            if checkout_product_ids is not None:
+                try:
+                    selected_product_ids = {int(product_id) for product_id in checkout_product_ids}
+                except (TypeError, ValueError):
+                    raise ValueError("One or more selected cart items are invalid.")
+                if not selected_product_ids:
+                    raise ValueError("Select at least one cart item to continue.")
             cur.execute(
                 """
                 SELECT product_id, quantity
@@ -562,9 +600,13 @@ def create_order_from_items(
             locked_cart = cur.fetchall()
             if not locked_cart:
                 raise ValueError("Your cart is empty.")
+            cart_product_ids = {int(row["product_id"]) for row in locked_cart}
+            if selected_product_ids is not None and not selected_product_ids.issubset(cart_product_ids):
+                raise ValueError("One or more selected items are no longer in your cart. Please review your cart and try again.")
             quantities = {
                 int(row["product_id"]): measurements.parse_whole_packs(row["quantity"])
                 for row in locked_cart
+                if selected_product_ids is None or int(row["product_id"]) in selected_product_ids
             }
 
         cur.execute("""
@@ -651,7 +693,14 @@ def create_order_from_items(
                 dedupe_key=f"reseller-order-{order_id}",
             )
         if checkout_cart:
-            cur.execute("DELETE FROM reseller_cart_items WHERE account_id = %s;", (account_id,))
+            cur.execute(
+                """
+                DELETE FROM reseller_cart_items
+                WHERE account_id = %s
+                  AND product_id = ANY(%s);
+                """,
+                (account_id, list(quantities.keys())),
+            )
 
     return clean_row(ord_res)
 
@@ -660,8 +709,27 @@ def create_order(role: str, product_id: int, quantity: object, notes: str = "", 
     return create_order_from_items(role, [(product_id, quantity)], notes, account_id=account_id)
 
 
-def checkout_reseller_cart(account_id: int, notes: str = "") -> dict:
-    return create_order_from_items("reseller", [], notes, account_id=account_id, checkout_cart=True)
+def checkout_reseller_cart(
+    account_id: int,
+    notes: str = "",
+    product_ids: list[int] | None = None,
+) -> dict:
+    if product_ids is None:
+        return create_order_from_items(
+            "reseller",
+            [],
+            notes,
+            account_id=account_id,
+            checkout_cart=True,
+        )
+    return create_order_from_items(
+        "reseller",
+        [],
+        notes,
+        account_id=account_id,
+        checkout_cart=True,
+        checkout_product_ids=product_ids,
+    )
 
 
 def decide_order(order_id: int, decision: str, team_leader_account_id: int | None = None) -> bool:
@@ -758,4 +826,4 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
     return True
 
 
-__all__ = ['list_orders', 'add_order_payment_proofs', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']
+__all__ = ['list_orders', 'add_order_payment_proofs', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', 'reseller_order_confirmation', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']

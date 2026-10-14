@@ -226,6 +226,43 @@ def test_section_filters_are_applied(monkeypatch):
     assert calls["count_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None})]
 
 
+def test_reseller_order_history_views_apply_server_side_filters(monkeypatch):
+    calls = install_read_spies(monkeypatch)
+    client = TestClient(main.app)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+
+    response = client.get("/portal/reseller/history?view=to-pay&q=tocino")
+
+    assert response.status_code == 200
+    assert 'class="active"' in response.text
+    assert calls["list_orders"] == [((), {
+        "order_type": "reseller",
+        "q": "tocino",
+        "status": "",
+        "team_leader_account_id": None,
+        "reseller_account_id": None,
+        "page": 1,
+        "page_size": 10,
+        "sort": "",
+        "without_payment_proof": True,
+    })]
+    assert calls["count_orders"] == [((), {
+        "order_type": "reseller",
+        "q": "tocino",
+        "status": "",
+        "team_leader_account_id": None,
+        "reseller_account_id": None,
+        "without_payment_proof": True,
+    })]
+
+    calls = install_read_spies(monkeypatch)
+    response = client.get("/portal/reseller/history?view=approved")
+
+    assert response.status_code == 200
+    assert calls["list_orders"][0][1]["status"] == "approved"
+    assert "without_payment_proof" not in calls["list_orders"][0][1]
+
+
 def test_reseller_checkout_page_renders_cart_manifest(monkeypatch):
     item = {
         "product_id": 17,
@@ -244,7 +281,7 @@ def test_reseller_checkout_page_renders_cart_manifest(monkeypatch):
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
 
-    response = TestClient(main.app).get("/portal/reseller/checkout")
+    response = TestClient(main.app).get("/portal/reseller/checkout?product_id=17")
 
     assert response.status_code == 200
     assert "Confirm the manifest." in response.text
@@ -257,17 +294,115 @@ def test_reseller_checkout_post_uses_dedicated_route(monkeypatch):
     submitted = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
-    monkeypatch.setattr(repositories, "checkout_reseller_cart", lambda account_id, notes: submitted.append((account_id, notes)))
+    monkeypatch.setattr(
+        repositories,
+        "checkout_reseller_cart",
+        lambda account_id, notes, product_ids: submitted.append((account_id, notes, product_ids)) or {"order_id": 73},
+    )
 
     response = TestClient(main.app).post(
         "/portal/reseller/checkout",
-        data={"notes": "  Deliver Friday  "},
+        data={"notes": "  Deliver Friday  ", "product_id": "17"},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/portal/reseller/history")
-    assert submitted == [(42, "Deliver Friday")]
+    assert response.headers["location"] == "/portal/reseller/checkout?placed=73"
+    assert submitted == [(42, "Deliver Friday", [17])]
+
+
+def test_reseller_checkout_requires_an_explicit_selection(monkeypatch):
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        repositories,
+        "checkout_reseller_cart",
+        lambda *args, **kwargs: pytest.fail("Checkout must not run without selected products."),
+    )
+
+    response = TestClient(main.app).post("/portal/reseller/checkout", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/portal/reseller/cart?error=")
+
+
+def test_reseller_checkout_only_renders_selected_cart_items(monkeypatch):
+    items = [
+        {
+            "product_id": 17,
+            "name": "Premium Tocino",
+            "category": "Pork",
+            "unit": "pack",
+            "base_price": Decimal("180.00"),
+            "available": Decimal("24"),
+            "cart_quantity": Decimal("3"),
+            "line_total": Decimal("540.00"),
+        },
+        {
+            "product_id": 18,
+            "name": "Garlic Longganisa",
+            "category": "Pork",
+            "unit": "pack",
+            "base_price": Decimal("160.00"),
+            "available": Decimal("12"),
+            "cart_quantity": Decimal("2"),
+            "line_total": Decimal("320.00"),
+        },
+    ]
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda account_id: 5)
+    monkeypatch.setattr(repositories, "list_reseller_cart_items", lambda account_id: items)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/reseller/checkout?product_id=18")
+
+    assert response.status_code == 200
+    assert "Garlic Longganisa" in response.text
+    assert "Premium Tocino" not in response.text
+    assert "PHP 320.00" in response.text
+
+
+def test_reseller_selected_checkout_redirects_to_order_confirmation(monkeypatch):
+    submitted = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        repositories,
+        "checkout_reseller_cart",
+        lambda account_id, notes, product_ids: submitted.append((account_id, notes, product_ids)) or {"order_id": 91},
+    )
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/checkout",
+        data={"notes": "Pickup Friday", "product_id": ["17", "18"]},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/portal/reseller/checkout?placed=91"
+    assert submitted == [(42, "Pickup Friday", [17, 18])]
+
+
+def test_reseller_checkout_success_prompt_links_to_owned_order(monkeypatch):
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda account_id: 0)
+    monkeypatch.setattr(repositories, "list_reseller_cart_items", lambda account_id: [])
+    monkeypatch.setattr(
+        repositories,
+        "reseller_order_confirmation",
+        lambda account_id, order_id: {"order_id": order_id, "status": "pending", "total_amount": 215.0},
+    )
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/reseller/checkout?placed=91")
+
+    assert response.status_code == 200
+    assert "Your order has been placed." in response.text
+    assert 'href="/portal/reseller/history#order-91"' in response.text
 
 
 def test_landing_page_does_not_load_metrics(monkeypatch):
@@ -957,6 +1092,17 @@ def test_inventory_dashboard_renders_product_movement_chart(monkeypatch):
     assert "Recent inventory logs" not in response.text
 
 
+def test_portal_shell_does_not_repeat_the_active_sidebar_page_title():
+    template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    css = open("app/static/css/portal_base.css", encoding="utf-8").read()
+
+    assert "portal-title-copy" not in template
+    assert "{{ role.label }} workspace" not in template
+    assert '<h1 class="sr-only">{{ section_title }}</h1>' in template
+    assert "min-height: 44px" in css
+    assert "justify-content: flex-end" in css
+
+
 def test_team_leader_dashboard_uses_priority_led_workspace():
     template = open("app/templates/portals/team-leader/dashboard.html", encoding="utf-8").read()
     base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
@@ -969,7 +1115,6 @@ def test_team_leader_dashboard_uses_priority_led_workspace():
     assert "dashboard-ledger" in template
     assert "metric-card" not in template
     assert 'section-{{ section }}' in base_template
-    assert 'section != "dashboard"' in base_template
     assert "Dashboard: one operational surface" in css
     assert ".role-team-leader.section-dashboard .portal-topbar" in css
     assert "@media (max-width: 760px)" in css
@@ -1125,10 +1270,8 @@ def test_owner_pages_use_workflow_specific_modern_layouts():
         name: open(f"app/templates/portals/owner/{name}.html", encoding="utf-8").read()
         for name in ("dashboard", "products", "reports", "forecasts", "accounts", "profile")
     }
-    base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
     css = open("app/static/css/portals/owner.css", encoding="utf-8").read()
 
-    assert 'role_key == "owner" or' in base_template
     assert "owner-dashboard-page" in templates["dashboard"]
     assert "owner-signal-strip" in templates["dashboard"]
     assert "metric-card" not in templates["dashboard"]

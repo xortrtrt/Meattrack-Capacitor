@@ -37,7 +37,44 @@ def cart_context(request: Request) -> dict:
 
 
 def checkout_context(request: Request) -> dict:
-    return cart_summary_context(request)
+    context = cart_summary_context(request)
+    placed_order_id = request.query_params.get("placed")
+    context["placed_order_id"] = None
+    try:
+        clean_placed_order_id = int(placed_order_id) if placed_order_id else None
+    except ValueError:
+        clean_placed_order_id = None
+    account_id = shared.session_account_id(request)
+    if clean_placed_order_id is not None and account_id is not None:
+        confirmation = data.reseller_order_confirmation(account_id, clean_placed_order_id)
+        if confirmation:
+            context["placed_order_id"] = int(confirmation["order_id"])
+
+    selected_product_ids: list[int] = []
+    for value in request.query_params.getlist("product_id"):
+        try:
+            product_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if product_id not in selected_product_ids:
+            selected_product_ids.append(product_id)
+
+    selected_id_set = set(selected_product_ids)
+    checkout_items = [
+        item for item in context["cart_items"]
+        if int(item["product_id"]) in selected_id_set
+    ]
+    selected_product_ids = [int(item["product_id"]) for item in checkout_items]
+    context.update({
+        "checkout_items": checkout_items,
+        "checkout_total": sum(
+            (Decimal(str(item.get("line_total") or 0)) for item in checkout_items),
+            Decimal("0.00"),
+        ).quantize(Decimal("0.01")),
+        "checkout_count": sum(item["cart_quantity"] for item in checkout_items),
+        "selected_product_ids": selected_product_ids,
+    })
+    return context
 
 
 def cart_payload(account_id: int, message: str = "") -> JSONResponse:
@@ -122,7 +159,18 @@ def order_context(request: Request) -> dict:
 
 
 def history_context(request: Request) -> dict:
-    page = shared.orders_page(request, "reseller", reseller_account_id=shared.session_account_id(request))
+    history_view = request.query_params.get("view", "all").strip().lower()
+    if history_view not in {"all", "to-pay", "approved", "fulfilled"}:
+        history_view = "all"
+    status_override = history_view if history_view in {"approved", "fulfilled"} else None
+    page = shared.orders_page(
+        request,
+        "reseller",
+        reseller_account_id=shared.session_account_id(request),
+        status_override=status_override,
+        without_payment_proof=history_view == "to-pay",
+    )
+    page["filters"]["view"] = history_view
     return {"orders_page": page, "orders": page["items"]}
 
 
@@ -187,19 +235,28 @@ async def reseller_cart_update(
 
 @router.post("/portal/reseller/cart/checkout")
 @router.post("/portal/reseller/checkout")
-async def reseller_cart_checkout(request: Request, notes: str = Form("")):
+async def reseller_cart_checkout(
+    request: Request,
+    notes: str = Form(""),
+    product_id: list[int] | None = Form(None),
+):
     guard = shared.require_portal_session(request, "reseller")
     if guard:
         return guard
     account_id = shared.session_account_id(request)
     if account_id is None:
         return shared.redirect_to(shared.safe_portal_path("reseller", "cart", error="Your session expired. Please sign in again."))
+    if not product_id:
+        return shared.redirect_to(
+            shared.safe_portal_path("reseller", "cart", error="Select at least one cart item to continue.")
+        )
+    selected_product_ids = list(dict.fromkeys(product_id))
     try:
-        data.checkout_reseller_cart(account_id, notes.strip())
+        order = data.checkout_reseller_cart(account_id, notes.strip(), selected_product_ids)
     except ValueError as exc:
         error_section = "checkout" if request.url.path == "/portal/reseller/checkout" else "cart"
         return shared.redirect_to(shared.safe_portal_path("reseller", error_section, error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("reseller", "history", message="Order submitted for team leader approval."))
+    return shared.redirect_to(f"/portal/reseller/checkout?placed={int(order['order_id'])}")
 
 
 @router.post("/portal/reseller/orders/{order_id}/payment-proof")

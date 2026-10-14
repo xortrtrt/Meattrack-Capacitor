@@ -2,21 +2,36 @@
   <div class="panel-heading">
     <h2>Order history</h2>
     <span class="hint"
-      >Pending, approved, rejected, fulfilled, and cancelled records</span
+      >Track payment, approval, and fulfillment in one place</span
     >
   </div>
-  <form class="filter-bar" method="get">
+
+  <nav class="order-history-tabs" aria-label="Order history views">
+    <a
+      class="{{ 'active' if orders_page.filters.view == 'all' else '' }}"
+      href="?view=all{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
+      {% if orders_page.filters.view == 'all' %}aria-current="page"{% endif %}
+    ><i data-lucide="list"></i> All orders</a>
+    <a
+      class="{{ 'active' if orders_page.filters.view == 'to-pay' else '' }}"
+      href="?view=to-pay{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
+      {% if orders_page.filters.view == 'to-pay' %}aria-current="page"{% endif %}
+    ><i data-lucide="wallet-cards"></i> To pay</a>
+    <a
+      class="{{ 'active' if orders_page.filters.view == 'approved' else '' }}"
+      href="?view=approved{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
+      {% if orders_page.filters.view == 'approved' %}aria-current="page"{% endif %}
+    ><i data-lucide="badge-check"></i> Approved</a>
+    <a
+      class="{{ 'active' if orders_page.filters.view == 'fulfilled' else '' }}"
+      href="?view=fulfilled{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
+      {% if orders_page.filters.view == 'fulfilled' %}aria-current="page"{% endif %}
+    ><i data-lucide="package-check"></i> Fulfilled</a>
+  </nav>
+
+  <form class="filter-bar history-filter-bar" method="get">
+    <input type="hidden" name="view" value="{{ orders_page.filters.view }}" />
     <label>Search <input name="q" value="{{ orders_page.filters.q }}" placeholder="Order or product"></label>
-    <label>Status
-      <select name="status">
-        <option value="">All</option>
-        <option value="pending" {{ 'selected' if orders_page.filters.status == 'pending' else '' }}>Pending</option>
-        <option value="approved" {{ 'selected' if orders_page.filters.status == 'approved' else '' }}>Approved</option>
-        <option value="fulfilled" {{ 'selected' if orders_page.filters.status == 'fulfilled' else '' }}>Fulfilled</option>
-        <option value="rejected" {{ 'selected' if orders_page.filters.status == 'rejected' else '' }}>Rejected</option>
-        <option value="cancelled" {{ 'selected' if orders_page.filters.status == 'cancelled' else '' }}>Cancelled</option>
-      </select>
-    </label>
     <label>Sort
       <select name="sort">
         <option value="">Newest</option>
@@ -28,6 +43,7 @@
     </label>
     <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
+  {% if orders %}
   <div class="table-wrap">
     <table class="responsive-card-table order-history-table">
       <thead>
@@ -41,8 +57,8 @@
         </tr>
       </thead>
       <tbody>
-        {% for order in orders if order.order_type == "reseller" %}
-        <tr>
+        {% for order in orders %}
+        <tr id="order-{{ order.order_id }}">
           <td data-label="Order">#{{ order.order_id }}</td>
           <td data-label="Date">{{ order.order_date|nice_date }}</td>
           <td data-label="Product">
@@ -105,13 +121,26 @@
       </tbody>
     </table>
   </div>
+  {% else %}
+  <div class="history-empty-state">
+    <span><i data-lucide="{{ 'wallet-cards' if orders_page.filters.view == 'to-pay' else 'badge-check' if orders_page.filters.view == 'approved' else 'package-check' if orders_page.filters.view == 'fulfilled' else 'clipboard-list' }}"></i></span>
+    <strong>
+      {% if orders_page.filters.view == 'to-pay' %}No orders are waiting for payment.
+      {% elif orders_page.filters.view == 'approved' %}No approved orders yet.
+      {% elif orders_page.filters.view == 'fulfilled' %}No fulfilled orders yet.
+      {% else %}No orders match your filters.
+      {% endif %}
+    </strong>
+    <small>{{ 'Try another search or choose a different view.' if orders_page.filters.q else 'New orders will appear here as they move through the process.' }}</small>
+  </div>
+  {% endif %}
   <div class="pagination">
     {% if orders_page.pagination.has_prev %}
-    <a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}">Previous</a>
+    <a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}">Previous</a>
     {% endif %}
     <span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>
     {% if orders_page.pagination.has_next %}
-    <a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next</a>
+    <a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next</a>
     {% endif %}
   </div>
 </section>

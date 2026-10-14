@@ -10,11 +10,11 @@
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portal_base.css') }}?v=20260930-profile-picture-studio-4"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20261015-utility-topbar-1"
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261015-cart-checkout-1"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261015-order-history-tabs-3"
     />
   </head>
   <body class="portal-body {{ portal_body_roles|default('role-' ~ role_key) }} section-{{ section }}{% if role_key in ['team-leader', 'sales-supervisor'] %} leader-role-{{ role.team_leader_role }}{% endif %}">
@@ -80,22 +80,17 @@
     </aside>
 
     <main class="portal-main">
-      <header class="portal-topbar">
-        <div class="portal-title-block">
-          <button
-            class="portal-menu-toggle"
-            type="button"
-            aria-expanded="false"
-            aria-controls="portal-nav-drawer"
-            data-portal-nav-toggle
-          >
-            <i data-lucide="menu"></i>
-          </button>
-          {% if role_key == "owner" or (section != "dashboard" and role_key != "owner" and not (role_key in ["team-leader", "sales-supervisor"] and role.team_leader_role in ["sales", "sales-supervisor"])) %}<div class="portal-title-copy">
-            <span class="eyebrow">{{ role.label }} workspace</span>
-            <h1>{{ section_title }}</h1>
-          </div>{% endif %}
-        </div>
+      <header class="portal-topbar" aria-label="Portal utilities">
+        <button
+          class="portal-menu-toggle"
+          type="button"
+          aria-label="Open portal menu"
+          aria-expanded="false"
+          aria-controls="portal-nav-drawer"
+          data-portal-nav-toggle
+        >
+          <i data-lucide="menu"></i>
+        </button>
         <div class="topbar-actions">
           {% if role_key == "reseller" %}
           <a
@@ -173,6 +168,7 @@
           </details>
         </div>
       </header>
+      <h1 class="sr-only">{{ section_title }}</h1>
 
       <div class="toast-region" aria-live="polite" aria-atomic="true" data-toast-region>
         {% if message or error %}
@@ -281,7 +277,7 @@
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261002-async-forms-1"></script>
-    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261015-cart-autosave-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261015-cart-selection-2"></script>
     <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261001-frontend-modules-1"></script>
     {% if role_key in ["team-leader", "sales-supervisor"] and section == "live-chat" %}

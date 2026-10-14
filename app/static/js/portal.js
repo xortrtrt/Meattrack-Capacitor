@@ -412,6 +412,10 @@
         }
 
         const status = cart.querySelector("[data-cart-save-status]");
+        const selectAll = cart.querySelector("[data-cart-select-all]");
+        const confirmButton = cart.querySelector("[data-cart-confirm]");
+        const confirmForm = cart.querySelector("#cart-confirm-form");
+        const selectionHint = cart.querySelector("[data-cart-selection-hint]");
         const timers = new Map();
 
         function setStatus(text, state = "") {
@@ -425,9 +429,12 @@
         function recalculateCart() {
             let totalAmount = 0;
             let totalQuantity = 0;
+            let selectedItems = 0;
+            const cartItems = Array.from(cart.querySelectorAll("[data-cart-item]"));
 
-            cart.querySelectorAll("[data-cart-item]").forEach((item) => {
+            cartItems.forEach((item) => {
                 const input = item.querySelector("[data-cart-quantity]");
+                const selection = item.querySelector("[data-cart-select]");
                 const lineTotal = item.querySelector("[data-cart-line-total]");
                 if (!input) {
                     return;
@@ -438,11 +445,15 @@
                 const unitPrice = Number(item.dataset.unitPrice || 0);
                 const lineAmount = quantity * unitPrice;
 
-                totalQuantity += quantity;
-                totalAmount += lineAmount;
-
                 if (lineTotal) {
                     lineTotal.textContent = formatMoney(lineAmount);
+                }
+                const selected = Boolean(selection?.checked);
+                item.classList.toggle("is-selected", selected);
+                if (selected) {
+                    selectedItems += 1;
+                    totalQuantity += quantity;
+                    totalAmount += lineAmount;
                 }
             });
 
@@ -450,11 +461,27 @@
                 element.textContent = formatMoney(totalAmount);
             });
             cart.querySelectorAll("[data-cart-count]").forEach((element) => {
-                element.textContent = `${formatQuantity(totalQuantity)} packs in cart`;
-            });
-            document.querySelectorAll("[data-cart-nav-count]").forEach((element) => {
                 element.textContent = formatQuantity(totalQuantity);
             });
+            cart.querySelectorAll("[data-cart-selected-items]").forEach((element) => {
+                element.textContent = String(selectedItems);
+            });
+            if (selectAll) {
+                selectAll.checked = cartItems.length > 0 && selectedItems === cartItems.length;
+                selectAll.indeterminate = selectedItems > 0 && selectedItems < cartItems.length;
+            }
+            if (confirmButton) {
+                confirmButton.disabled = selectedItems === 0;
+            }
+            if (selectionHint) {
+                selectionHint.classList.toggle("has-selection", selectedItems > 0);
+                const copy = selectionHint.querySelector("span");
+                if (copy) {
+                    copy.textContent = selectedItems > 0
+                        ? `${selectedItems} product${selectedItems === 1 ? "" : "s"} will move to order review. Unchecked items will stay in your cart.`
+                        : "Select at least one product to continue. Items you leave unchecked will stay in your cart.";
+                }
+            }
         }
 
         async function saveCartItem(form) {
@@ -484,15 +511,10 @@
                 if (lineTotal && typeof serverLineTotal === "number") {
                     lineTotal.textContent = formatMoney(serverLineTotal);
                 }
-                cart.querySelectorAll("[data-cart-total]").forEach((element) => {
-                    element.textContent = formatMoney(result.cart_total);
-                });
-                cart.querySelectorAll("[data-cart-count]").forEach((element) => {
-                    element.textContent = `${formatQuantity(result.cart_count)} packs in cart`;
-                });
                 document.querySelectorAll("[data-cart-nav-count]").forEach((element) => {
                     element.textContent = formatQuantity(result.cart_count);
                 });
+                recalculateCart();
                 setStatus("Cart saved.", "saved");
             } catch (error) {
                 setStatus(error.message || "Cart could not be saved.", "error");
@@ -520,6 +542,24 @@
                 window.clearTimeout(timers.get(form));
                 timers.set(form, window.setTimeout(() => saveCartItem(form), 450));
             });
+        });
+
+        cart.querySelectorAll("[data-cart-select]").forEach((checkbox) => {
+            checkbox.addEventListener("change", recalculateCart);
+        });
+
+        selectAll?.addEventListener("change", () => {
+            cart.querySelectorAll("[data-cart-select]").forEach((checkbox) => {
+                checkbox.checked = selectAll.checked;
+            });
+            recalculateCart();
+        });
+
+        confirmForm?.addEventListener("submit", (event) => {
+            if (!cart.querySelector("[data-cart-select]:checked")) {
+                event.preventDefault();
+                recalculateCart();
+            }
         });
 
         recalculateCart();

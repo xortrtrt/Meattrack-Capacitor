@@ -106,3 +106,20 @@ def test_checkout_entrypoint_uses_atomic_cart_mode(monkeypatch):
     result = repositories.checkout_reseller_cart(7, "note")
     assert result["order_id"] == 1
     assert calls == [(("reseller", [], "note"), {"account_id": 7, "checkout_cart": True})]
+
+
+def test_checkout_entrypoint_passes_selected_product_ids(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        order_repository,
+        "create_order_from_items",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or {"order_id": 1},
+    )
+
+    result = repositories.checkout_reseller_cart(7, "note", [11, 14])
+
+    assert result["order_id"] == 1
+    assert calls == [(
+        ("reseller", [], "note"),
+        {"account_id": 7, "checkout_cart": True, "checkout_product_ids": [11, 14]},
+    )]

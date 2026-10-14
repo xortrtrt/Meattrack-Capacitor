@@ -150,26 +150,42 @@ def orders_page(
     page_size: int = 10,
     team_leader_account_id: int | None = None,
     reseller_account_id: int | None = None,
+    status_override: str | None = None,
+    without_payment_proof: bool = False,
 ) -> dict:
     filters = portal_filters(request)
-    items = data.list_orders(
-        order_type=order_type,
+    status = filters["status"] if status_override is None else status_override
+    list_kwargs = {
+        "order_type": order_type,
+        "q": filters["q"],
+        "status": status,
+        "team_leader_account_id": team_leader_account_id,
+        "reseller_account_id": reseller_account_id,
+        "page": filters["page"],
+        "page_size": page_size,
+        "sort": filters["sort"],
+    }
+    count_kwargs = {
+        "order_type": order_type,
+        "q": filters["q"],
+        "status": status,
+        "team_leader_account_id": team_leader_account_id,
+        "reseller_account_id": reseller_account_id,
+    }
+    if without_payment_proof:
+        list_kwargs["without_payment_proof"] = True
+        count_kwargs["without_payment_proof"] = True
+    items = data.list_orders(**list_kwargs)
+    total = data.count_orders(**count_kwargs)
+    return paged(
+        items,
+        total,
+        filters["page"],
+        page_size,
         q=filters["q"],
-        status=filters["status"],
-        team_leader_account_id=team_leader_account_id,
-        reseller_account_id=reseller_account_id,
-        page=filters["page"],
-        page_size=page_size,
+        status=status,
         sort=filters["sort"],
     )
-    total = data.count_orders(
-        order_type=order_type,
-        q=filters["q"],
-        status=filters["status"],
-        team_leader_account_id=team_leader_account_id,
-        reseller_account_id=reseller_account_id,
-    )
-    return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"], sort=filters["sort"])
 
 
 def reports_page(

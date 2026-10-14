@@ -269,27 +269,10 @@ select:disabled {
 
 .portal-topbar {
   display: flex;
-  min-height: 82px;
+  min-height: 44px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 18px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid rgba(170, 134, 22, 0.28);
-}
-
-.portal-title-block {
-  min-width: 0;
-}
-
-.portal-title-copy {
-  min-width: 0;
-}
-
-.portal-topbar h1 {
-  margin: 0;
-  color: var(--primary);
-  font-size: 2.35rem;
-  line-height: 1;
 }
 
 .eyebrow {
@@ -2271,10 +2254,12 @@ select:disabled {
   }
 
   .portal-menu-toggle {
+    width: 44px;
     min-height: 42px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    justify-self: start;
     gap: 8px;
     padding: 0 14px;
     border: 1px solid rgba(215, 182, 33, 0.64);
@@ -2324,28 +2309,6 @@ select:disabled {
     color: #f7f4ef;
     border-bottom: 1px solid rgba(215, 182, 33, 0.46);
     box-shadow: 0 12px 28px rgba(13, 12, 11, 0.18);
-  }
-
-  .portal-title-block {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    min-width: 0;
-    gap: 12px;
-  }
-
-  .portal-title-copy {
-    min-width: 0;
-  }
-
-  .portal-title-copy .eyebrow {
-    color: var(--gold);
-  }
-
-  .portal-topbar h1 {
-    color: #f7f4ef;
-    font-size: 1.22rem;
-    line-height: 1.12;
   }
 
   .topbar-actions .icon-button {
@@ -2613,12 +2576,6 @@ select:disabled {
 
   .portal-brand small {
     font-size: 0.78rem;
-  }
-
-  .portal-topbar h1 {
-    font-size: 1.12rem;
-    line-height: 1.08;
-    overflow-wrap: anywhere;
   }
 
   .panel h2 {

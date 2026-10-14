@@ -1,34 +1,44 @@
 <section class="order-flow checkout-flow">
-  <nav class="order-flow-steps" aria-label="Order progress">
-    <a class="is-complete" href="/portal/reseller/cart">
-      <span><i data-lucide="check"></i></span><strong>Cart</strong><small>Quantities ready</small>
-    </a>
-    <span class="order-flow-step is-active" aria-current="step">
-      <span>2</span><strong>Review</strong><small>Confirm order</small>
-    </span>
-    <span class="order-flow-step">
-      <span>3</span><strong>Approval</strong><small>Track status</small>
-    </span>
-  </nav>
-
-  <header class="order-flow-hero checkout-hero">
+  {% if placed_order_id %}
+  <div class="order-success" role="status" aria-labelledby="order-success-title">
+    <span class="order-success-mark"><i data-lucide="check"></i></span>
+    <span class="order-page-kicker">Order #{{ placed_order_id }}</span>
+    <h2 id="order-success-title">Your order has been placed.</h2>
+    <p>It is now pending review by your team leader. You can follow its status and open the full order details from Order History.</p>
+    <div class="order-success-actions">
+      <a class="button primary" href="/portal/reseller/history#order-{{ placed_order_id }}">
+        View order details <i data-lucide="arrow-right"></i>
+      </a>
+      {% if cart_items %}
+      <a class="button subtle" href="/portal/reseller/cart">Return to cart</a>
+      {% else %}
+      <a class="button subtle" href="/portal/reseller/order">Continue shopping</a>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <header class="order-page-header checkout-page-header">
     <div>
       <a class="order-flow-back" href="/portal/reseller/cart"><i data-lucide="arrow-left"></i> Back to cart</a>
-      <span class="eyebrow">Final review</span>
-      <h2>Confirm the manifest.</h2>
-      <p>Review every line before sending this order to your team leader for approval.</p>
+      <span class="order-page-kicker">Final review</span>
+      <h2>Confirm your order</h2>
+      <span class="sr-only">Confirm the manifest.</span>
+      <p>Check the selected products and add any delivery or pickup details before placing the order.</p>
     </div>
   </header>
 
-  {% if cart_items %}
+  {% if checkout_items %}
   <div class="checkout-workspace">
     <div class="checkout-manifest" aria-labelledby="checkout-manifest-title">
       <div class="checkout-section-heading">
-        <div><span class="eyebrow">Order manifest</span><h3 id="checkout-manifest-title">{{ cart_count|number }} packs across {{ cart_items|length }} products</h3></div>
-        <a href="/portal/reseller/cart">Edit cart</a>
+        <div>
+          <span class="order-page-kicker">Selected items</span>
+          <h3 id="checkout-manifest-title">{{ checkout_items|length }} products · {{ checkout_count|number }} packs</h3>
+        </div>
+        <a href="/portal/reseller/cart">Edit selection</a>
       </div>
       <div class="checkout-lines">
-        {% for item in cart_items %}
+        {% for item in checkout_items %}
         <article class="checkout-line">
           <img src="{{ item.name|product_image|media_url }}" alt="" loading="lazy" />
           <div><span>{{ item.category }}</span><strong>{{ item.name }}</strong><small>{{ item.base_price|currency }} / {{ item.unit }}</small></div>
@@ -37,34 +47,37 @@
         </article>
         {% endfor %}
       </div>
-      <div class="checkout-subtotal"><span>Order subtotal</span><strong>{{ cart_total|currency }}</strong></div>
+      <div class="checkout-subtotal"><span>Order subtotal</span><strong>{{ checkout_total|currency }}</strong></div>
     </div>
 
     <aside class="checkout-confirmation">
       <span class="checkout-confirmation-mark"><i data-lucide="clipboard-check"></i></span>
-      <span class="eyebrow">Ready to submit</span>
-      <h3>Send for approval</h3>
-      <p>Your team leader will review availability and approve or reject the request.</p>
+      <span class="order-page-kicker">One last check</span>
+      <h3>Confirm details</h3>
+      <p>Only the products listed here will be placed. Any unchecked products remain safely in your cart.</p>
       <form action="/portal/reseller/checkout" method="post" class="checkout-form">
+        {% for product_id in selected_product_ids %}
+        <input type="hidden" name="product_id" value="{{ product_id }}" />
+        {% endfor %}
         <label for="checkout-notes">Order notes <small>Optional</small></label>
-        <textarea id="checkout-notes" name="notes" rows="5" maxlength="1000" placeholder="Add a preferred pickup date, delivery details, or preparation requests."></textarea>
+        <textarea id="checkout-notes" name="notes" rows="5" maxlength="1000" placeholder="Preferred pickup date, delivery details, or preparation requests"></textarea>
         <small class="checkout-field-hint">Payment proof can be uploaded from Order History after submission.</small>
-        <button class="button primary checkout-submit" type="submit"><i data-lucide="send"></i> Place order request</button>
+        <button class="button primary checkout-submit" type="submit" aria-label="Place order request"><i data-lucide="package-check"></i> Place order</button>
       </form>
       <ul class="checkout-assurances">
-        <li><i data-lucide="refresh-cw"></i><span>Stock is validated when submitted.</span></li>
-        <li><i data-lucide="clock-3"></i><span>Your request begins with pending status.</span></li>
-        <li><i data-lucide="package-check"></i><span>Stock is reserved only during fulfillment.</span></li>
+        <li><i data-lucide="refresh-cw"></i><span>Stock is checked again when you place the order.</span></li>
+        <li><i data-lucide="clock-3"></i><span>The order begins with pending status.</span></li>
       </ul>
     </aside>
   </div>
   {% else %}
   <div class="order-empty-state">
-    <span class="order-empty-icon"><i data-lucide="shopping-basket"></i></span>
-    <span class="eyebrow">Nothing to review</span>
-    <h2>Your cart needs at least one product.</h2>
-    <p>Add products to create a manifest before returning to checkout.</p>
-    <a class="button primary" href="/portal/reseller/order">Browse products <i data-lucide="arrow-right"></i></a>
+    <span class="order-empty-icon"><i data-lucide="list-checks"></i></span>
+    <span class="order-page-kicker">No items selected</span>
+    <h2>Choose products before confirming.</h2>
+    <p>Return to your cart and check at least one product to include in this order.</p>
+    <a class="button primary" href="/portal/reseller/cart">Return to cart <i data-lucide="arrow-right"></i></a>
   </div>
+  {% endif %}
   {% endif %}
 </section>

@@ -142,6 +142,30 @@ def test_team_leader_order_scope_is_parameterized(monkeypatch):
     assert calls[0][1] == ("reseller", 42)
 
 
+def test_order_payment_proof_filter_uses_not_exists(monkeypatch):
+    list_calls = []
+    count_calls = []
+    patch_repository_read(
+        monkeypatch,
+        "fetch_all",
+        lambda query, params=None: list_calls.append((query, params)) or [],
+    )
+    patch_repository_read(
+        monkeypatch,
+        "fetch_one",
+        lambda query, params=None: count_calls.append((query, params)) or {"total": 0},
+    )
+
+    repositories.list_orders(order_type="reseller", without_payment_proof=True)
+    repositories.count_orders(order_type="reseller", without_payment_proof=True)
+
+    assert "NOT EXISTS" in list_calls[0][0]
+    assert "FROM order_payment_proofs opp_filter" in list_calls[0][0]
+    assert list_calls[0][1] == ("reseller",)
+    assert "NOT EXISTS" in count_calls[0][0]
+    assert count_calls[0][1] == ("reseller",)
+
+
 def test_reseller_report_scope_is_parameterized(monkeypatch):
     calls = []
     patch_repository_read(
