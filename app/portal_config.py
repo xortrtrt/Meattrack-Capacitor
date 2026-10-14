@@ -67,6 +67,14 @@ portal_nav = {
 }
 
 
+# Workflow pages that are valid portal destinations without appearing in navigation.
+portal_secondary_sections = {
+    "reseller": {
+        "checkout": ("Checkout", "credit-card"),
+    },
+}
+
+
 team_leader_nav_by_role = {
     "inventory": [
         ("dashboard", "Dashboard", "layout-dashboard"),
@@ -110,4 +118,4 @@ def default_section_for(role_key: str, team_leader_role: str | None = None) -> s
     return nav[0][0] if nav else roles[role_key]["default_section"]
 
 
-__all__ = ['default_section_for', 'portal_nav', 'portal_nav_for', 'roles', 'team_leader_nav_by_role', 'team_leader_role_labels']
+__all__ = ['default_section_for', 'portal_nav', 'portal_nav_for', 'portal_secondary_sections', 'roles', 'team_leader_nav_by_role', 'team_leader_role_labels']

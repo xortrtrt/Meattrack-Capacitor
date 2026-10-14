@@ -1,0 +1,70 @@
+<section class="order-flow checkout-flow">
+  <nav class="order-flow-steps" aria-label="Order progress">
+    <a class="is-complete" href="/portal/reseller/cart">
+      <span><i data-lucide="check"></i></span><strong>Cart</strong><small>Quantities ready</small>
+    </a>
+    <span class="order-flow-step is-active" aria-current="step">
+      <span>2</span><strong>Review</strong><small>Confirm order</small>
+    </span>
+    <span class="order-flow-step">
+      <span>3</span><strong>Approval</strong><small>Track status</small>
+    </span>
+  </nav>
+
+  <header class="order-flow-hero checkout-hero">
+    <div>
+      <a class="order-flow-back" href="/portal/reseller/cart"><i data-lucide="arrow-left"></i> Back to cart</a>
+      <span class="eyebrow">Final review</span>
+      <h2>Confirm the manifest.</h2>
+      <p>Review every line before sending this order to your team leader for approval.</p>
+    </div>
+  </header>
+
+  {% if cart_items %}
+  <div class="checkout-workspace">
+    <div class="checkout-manifest" aria-labelledby="checkout-manifest-title">
+      <div class="checkout-section-heading">
+        <div><span class="eyebrow">Order manifest</span><h3 id="checkout-manifest-title">{{ cart_count|number }} packs across {{ cart_items|length }} products</h3></div>
+        <a href="/portal/reseller/cart">Edit cart</a>
+      </div>
+      <div class="checkout-lines">
+        {% for item in cart_items %}
+        <article class="checkout-line">
+          <img src="{{ item.name|product_image|media_url }}" alt="" loading="lazy" />
+          <div><span>{{ item.category }}</span><strong>{{ item.name }}</strong><small>{{ item.base_price|currency }} / {{ item.unit }}</small></div>
+          <div class="checkout-line-quantity"><small>Quantity</small><strong>{{ item.cart_quantity|number }} packs</strong></div>
+          <strong class="checkout-line-total">{{ item.line_total|currency }}</strong>
+        </article>
+        {% endfor %}
+      </div>
+      <div class="checkout-subtotal"><span>Order subtotal</span><strong>{{ cart_total|currency }}</strong></div>
+    </div>
+
+    <aside class="checkout-confirmation">
+      <span class="checkout-confirmation-mark"><i data-lucide="clipboard-check"></i></span>
+      <span class="eyebrow">Ready to submit</span>
+      <h3>Send for approval</h3>
+      <p>Your team leader will review availability and approve or reject the request.</p>
+      <form action="/portal/reseller/checkout" method="post" class="checkout-form">
+        <label for="checkout-notes">Order notes <small>Optional</small></label>
+        <textarea id="checkout-notes" name="notes" rows="5" maxlength="1000" placeholder="Add a preferred pickup date, delivery details, or preparation requests."></textarea>
+        <small class="checkout-field-hint">Payment proof can be uploaded from Order History after submission.</small>
+        <button class="button primary checkout-submit" type="submit"><i data-lucide="send"></i> Place order request</button>
+      </form>
+      <ul class="checkout-assurances">
+        <li><i data-lucide="refresh-cw"></i><span>Stock is validated when submitted.</span></li>
+        <li><i data-lucide="clock-3"></i><span>Your request begins with pending status.</span></li>
+        <li><i data-lucide="package-check"></i><span>Stock is reserved only during fulfillment.</span></li>
+      </ul>
+    </aside>
+  </div>
+  {% else %}
+  <div class="order-empty-state">
+    <span class="order-empty-icon"><i data-lucide="shopping-basket"></i></span>
+    <span class="eyebrow">Nothing to review</span>
+    <h2>Your cart needs at least one product.</h2>
+    <p>Add products to create a manifest before returning to checkout.</p>
+    <a class="button primary" href="/portal/reseller/order">Browse products <i data-lucide="arrow-right"></i></a>
+  </div>
+  {% endif %}
+</section>

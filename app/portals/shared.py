@@ -296,8 +296,10 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         return guard
     nav = portal_nav_for_request(role_key, request)
     nav_sections = {item[0]: item for item in nav}
-    if section not in nav_sections:
+    secondary_section = portal_config.portal_secondary_sections.get(role_key, {}).get(section)
+    if section not in nav_sections and secondary_section is None:
         raise HTTPException(status_code=404)
+    section_title = nav_sections[section][1] if section in nav_sections else secondary_section[0]
 
     context = {
         "request": request,
@@ -311,7 +313,7 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "role": portal_role_for_request(role_key, request),
         "nav": nav,
         "section": section,
-        "section_title": nav_sections[section][1],
+        "section_title": section_title,
         "message": message,
         "error": error,
         "cart_count": data.reseller_cart_count(session_account_id(request)) if role_key == "reseller" else 0,

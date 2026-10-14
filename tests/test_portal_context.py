@@ -53,6 +53,7 @@ READ_FUNCTIONS = (
     "reseller_sales_series",
     "reseller_reportable_products",
     "reseller_cart_count",
+    "list_reseller_cart_items",
     "reseller_account_profile",
     "account_portal_profile",
     "list_team_leader_accounts",
@@ -107,7 +108,8 @@ EXPECTED_CALLS = {
         "unread_notification_count",
     },
     ("reseller", "order"): {"list_products", "count_products", "reseller_cart_count", "list_notifications", "unread_notification_count"},
-    ("reseller", "cart"): {"list_products", "reseller_cart_count", "list_notifications", "unread_notification_count"},
+    ("reseller", "cart"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
+    ("reseller", "checkout"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "history"): {"list_orders", "count_orders", "reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "profile"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
 }
@@ -222,6 +224,50 @@ def test_section_filters_are_applied(monkeypatch):
     assert client.get("/portal/reseller/history?q=order&status=pending&page=2").status_code == 200
     assert calls["list_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None, "page": 2, "page_size": 10, "sort": ""})]
     assert calls["count_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None})]
+
+
+def test_reseller_checkout_page_renders_cart_manifest(monkeypatch):
+    item = {
+        "product_id": 17,
+        "name": "Premium Tocino",
+        "category": "Pork",
+        "unit": "pack",
+        "base_price": Decimal("180.00"),
+        "available": Decimal("24"),
+        "cart_quantity": Decimal("3"),
+        "line_total": Decimal("540.00"),
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda account_id: 3)
+    monkeypatch.setattr(repositories, "list_reseller_cart_items", lambda account_id: [item])
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/reseller/checkout")
+
+    assert response.status_code == 200
+    assert "Confirm the manifest." in response.text
+    assert "Premium Tocino" in response.text
+    assert 'action="/portal/reseller/checkout"' in response.text
+    assert "Place order request" in response.text
+
+
+def test_reseller_checkout_post_uses_dedicated_route(monkeypatch):
+    submitted = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(repositories, "checkout_reseller_cart", lambda account_id, notes: submitted.append((account_id, notes)))
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/checkout",
+        data={"notes": "  Deliver Friday  "},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/portal/reseller/history")
+    assert submitted == [(42, "Deliver Friday")]
 
 
 def test_landing_page_does_not_load_metrics(monkeypatch):

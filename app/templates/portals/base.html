@@ -14,7 +14,7 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20260929-profile-picture-drag-2"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261015-cart-checkout-1"
     />
   </head>
   <body class="portal-body {{ portal_body_roles|default('role-' ~ role_key) }} section-{{ section }}{% if role_key in ['team-leader', 'sales-supervisor'] %} leader-role-{{ role.team_leader_role }}{% endif %}">
@@ -281,7 +281,7 @@
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261002-async-forms-1"></script>
-    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261015-cart-autosave-1"></script>
     <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261001-frontend-modules-1"></script>
     {% if role_key in ["team-leader", "sales-supervisor"] and section == "live-chat" %}

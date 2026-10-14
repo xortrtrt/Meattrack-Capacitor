@@ -21,17 +21,23 @@ def cart_count(request: Request) -> float:
     return data.reseller_cart_count(account_id)
 
 
-def cart_context(request: Request) -> dict:
-    products = data.list_products(active_only=True)
+def cart_summary_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
     items = data.list_reseller_cart_items(account_id) if account_id is not None else []
     total = sum((Decimal(str(item.get("line_total") or 0)) for item in items), Decimal("0.00"))
     return {
-        "products": products,
         "cart_items": items,
         "cart_total": total.quantize(Decimal("0.01")),
         "cart_count": sum(item["cart_quantity"] for item in items),
     }
+
+
+def cart_context(request: Request) -> dict:
+    return cart_summary_context(request)
+
+
+def checkout_context(request: Request) -> dict:
+    return cart_summary_context(request)
 
 
 def cart_payload(account_id: int, message: str = "") -> JSONResponse:
@@ -124,6 +130,7 @@ SECTION_LOADERS = {
     ("reseller", "dashboard"): dashboard_context,
     ("reseller", "order"): order_context,
     ("reseller", "cart"): cart_context,
+    ("reseller", "checkout"): checkout_context,
     ("reseller", "history"): history_context,
     ("reseller", "profile"): profile_context,
 }
@@ -179,6 +186,7 @@ async def reseller_cart_update(
 
 
 @router.post("/portal/reseller/cart/checkout")
+@router.post("/portal/reseller/checkout")
 async def reseller_cart_checkout(request: Request, notes: str = Form("")):
     guard = shared.require_portal_session(request, "reseller")
     if guard:
@@ -189,7 +197,8 @@ async def reseller_cart_checkout(request: Request, notes: str = Form("")):
     try:
         data.checkout_reseller_cart(account_id, notes.strip())
     except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("reseller", "cart", error=str(exc)))
+        error_section = "checkout" if request.url.path == "/portal/reseller/checkout" else "cart"
+        return shared.redirect_to(shared.safe_portal_path("reseller", error_section, error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path("reseller", "history", message="Order submitted for team leader approval."))
 
 

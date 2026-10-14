@@ -465,7 +465,7 @@
 
             setStatus("Saving cart...", "saving");
             try {
-                const response = await fetch(form.action, {
+                const response = await fetch(form.getAttribute("action") || window.location.pathname, {
                     method: "POST",
                     body: new FormData(form),
                     headers: {

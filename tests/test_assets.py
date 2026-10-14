@@ -99,3 +99,10 @@ def test_public_javascript_modules_are_split_and_served():
     assert 'from "./public-navigation.js"' in entrypoint
     assert 'from "./landing-experience.js"' in entrypoint
     assert 'from "./visitor-chat.js?v=20261002-inquiry-modal-2"' in entrypoint
+
+
+def test_cart_autosave_uses_the_form_action_attribute():
+    source = (PROJECT_ROOT / "app/static/js/portal.js").read_text(encoding="utf-8")
+
+    # A named input called "action" shadows HTMLFormElement.action in browsers.
+    assert 'fetch(form.getAttribute("action") || window.location.pathname' in source

@@ -39,6 +39,7 @@ def safe_portal_path(
         }
     else:
         allowed_sections = {item[0] for item in portal_config.portal_nav[role_key]}
+    allowed_sections.update(portal_config.portal_secondary_sections.get(role_key, {}))
     if section not in allowed_sections:
         raise HTTPException(status_code=404)
     params = {key: value for key, value in extra_params.items() if value}

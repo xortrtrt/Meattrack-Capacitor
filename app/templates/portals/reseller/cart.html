@@ -1,142 +1,91 @@
-<section class="reseller-cart-page" data-cart>
-  <article class="panel reseller-cart-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>Your cart</h2>
-        <span class="hint"
-          >Review quantities, remove items, then submit the full order for
-          approval.</span
-        >
-      </div>
-      <a class="button subtle" href="/portal/reseller/order">
-        <i data-lucide="plus"></i> Add more products
-      </a>
+<section class="order-flow" data-cart>
+  <nav class="order-flow-steps" aria-label="Order progress">
+    <a class="is-active" href="/portal/reseller/cart" aria-current="step">
+      <span>1</span><strong>Cart</strong><small>Edit quantities</small>
+    </a>
+    <a href="/portal/reseller/checkout">
+      <span>2</span><strong>Review</strong><small>Confirm order</small>
+    </a>
+    <span class="order-flow-step">
+      <span>3</span><strong>Approval</strong><small>Track status</small>
+    </span>
+  </nav>
+
+  <header class="order-flow-hero">
+    <div>
+      <span class="eyebrow">Reseller order desk</span>
+      <h2>Build your next stock order.</h2>
+      <p>Adjust pack quantities here. Changes save automatically before you continue to review.</p>
     </div>
-    {% if cart_items %}
-    <div class="reseller-cart-layout">
-      <div class="reseller-cart-items">
+    <a class="button subtle order-flow-secondary" href="/portal/reseller/order">
+      <i data-lucide="plus"></i> Add products
+    </a>
+  </header>
+
+  {% if cart_items %}
+  <div class="cart-workspace">
+    <div class="cart-manifest">
+      <div class="cart-manifest-heading">
+        <div>
+          <span class="eyebrow">Order manifest</span>
+          <h3>{{ cart_count|number }} packs selected</h3>
+        </div>
+        <span class="cart-save-status" data-cart-save-status aria-live="polite"></span>
+      </div>
+
+      <div class="cart-lines">
         {% for item in cart_items %}
-        <article
-          class="reseller-cart-item"
-          data-cart-item
-          data-product-id="{{ item.product_id }}"
-          data-unit-price="{{ item.base_price }}"
-        >
-          <img
-            src="{{ item.name|product_image|media_url }}"
-            alt="{{ item.name }}"
-            loading="lazy"
-          />
-          <div>
+        <article class="cart-line" data-cart-item data-product-id="{{ item.product_id }}" data-unit-price="{{ item.base_price }}">
+          <img class="cart-line-image" src="{{ item.name|product_image|media_url }}" alt="{{ item.name }}" loading="lazy" />
+          <div class="cart-line-copy">
             <span class="reseller-product-category">{{ item.category }}</span>
-            <strong>{{ item.name }}</strong>
-            <small>{{ item.base_price|currency }}/{{ item.unit }}</small>
-            <small>{{ item.available|number }} packs currently available; not reserved.</small>
+            <h3>{{ item.name }}</h3>
+            <p>{{ item.base_price|currency }} per {{ item.unit }}</p>
+            <small><i data-lucide="warehouse"></i> {{ item.available|number }} packs available</small>
           </div>
-          <form
-            action="/portal/reseller/cart"
-            method="post"
-            data-cart-update-form
-          >
-            <input
-              type="hidden"
-              name="product_id"
-              value="{{ item.product_id }}"
-            />
+          <form class="cart-line-quantity" action="/portal/reseller/cart" method="post" data-cart-update-form>
+            <input type="hidden" name="product_id" value="{{ item.product_id }}" />
             <input type="hidden" name="action" value="update" />
-            <label>
-              Qty
-              <span class="reseller-quantity-stepper cart-quantity-stepper">
-                <span>
-                  <button
-                    class="quantity-step"
-                    type="button"
-                    data-quantity-step="-1"
-                    aria-label="Decrease quantity"
-                  >
-                    <i data-lucide="minus"></i>
-                  </button>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    step="1"
-                    max="{{ item.available }}"
-                    name="quantity"
-                    value="{{ item.cart_quantity|number }}"
-                    data-quantity-input
-                    data-cart-quantity
-                  />
-                  <button
-                    class="quantity-step"
-                    type="button"
-                    data-quantity-step="1"
-                    aria-label="Increase quantity"
-                  >
-                    <i data-lucide="plus"></i>
-                  </button>
-                </span>
+            <label for="cart-quantity-{{ item.product_id }}">Quantity</label>
+            <span class="reseller-quantity-stepper cart-quantity-stepper">
+              <span>
+                <button class="quantity-step" type="button" data-quantity-step="-1" aria-label="Decrease {{ item.name }} quantity"><i data-lucide="minus"></i></button>
+                <input id="cart-quantity-{{ item.product_id }}" required type="number" min="1" step="1" max="{{ item.available }}" name="quantity" value="{{ item.cart_quantity|number }}" data-quantity-input data-cart-quantity />
+                <button class="quantity-step" type="button" data-quantity-step="1" aria-label="Increase {{ item.name }} quantity"><i data-lucide="plus"></i></button>
               </span>
-            </label>
+            </span>
           </form>
-          <strong class="reseller-cart-line-total" data-cart-line-total
-            >{{ item.line_total|currency }}</strong
-          >
-          <form action="/portal/reseller/cart" method="post">
-            <input
-              type="hidden"
-              name="product_id"
-              value="{{ item.product_id }}"
-            />
+          <div class="cart-line-price">
+            <small>Line total</small>
+            <strong data-cart-line-total>{{ item.line_total|currency }}</strong>
+          </div>
+          <form class="cart-line-remove" action="/portal/reseller/cart" method="post">
+            <input type="hidden" name="product_id" value="{{ item.product_id }}" />
             <input type="hidden" name="quantity" value="0" />
             <input type="hidden" name="action" value="remove" />
-            <button class="icon-button danger" type="submit" title="Remove">
-              <i data-lucide="trash-2"></i>
-            </button>
+            <button class="icon-button danger" type="submit" title="Remove {{ item.name }}" aria-label="Remove {{ item.name }} from cart"><i data-lucide="trash-2"></i></button>
           </form>
         </article>
         {% endfor %}
       </div>
-      <aside class="reseller-summary-card">
-        <span class="eyebrow">Checkout</span>
-        <div class="reseller-total-box">
-          <span>Cart total</span>
-          <strong data-cart-total>{{ cart_total|currency }}</strong>
-          <small data-cart-count>{{ cart_count|number }} packs in cart</small>
-        </div>
-        <small class="hint cart-save-status" data-cart-save-status></small>
-        <form
-          class="reseller-checkout-form"
-          action="/portal/reseller/cart/checkout"
-          method="post"
-        >
-          <label class="reseller-notes-field">
-            Order notes (optional)
-            <textarea
-              name="notes"
-              rows="4"
-              placeholder="Pickup date, delivery notes, preparation requests, or special instructions. Upload proof of payment from Order History after submitting."
-            ></textarea>
-          </label>
-          <button class="button primary reseller-submit-order" type="submit">
-            <i data-lucide="send"></i> Submit order request
-          </button>
-        </form>
-        <p class="hint">
-          Quantities are checked again when you submit. Stock is not reserved until fulfillment,
-          and your order remains pending until the team leader reviews it.
-        </p>
-      </aside>
     </div>
-    {% else %}
-    <div class="reseller-empty-cart">
-      <i data-lucide="shopping-cart"></i>
-      <strong>Your cart is empty.</strong>
-      <span>Add products first before submitting an order request.</span>
-      <a class="button primary" href="/portal/reseller/order"
-        >Browse products</a
-      >
-    </div>
-    {% endif %}
-  </article>
+
+    <aside class="order-summary-card" aria-labelledby="cart-summary-title">
+      <span class="eyebrow">Running total</span>
+      <h3 id="cart-summary-title">Order summary</h3>
+      <div class="order-summary-row"><span>Selected packs</span><strong data-cart-count>{{ cart_count|number }}</strong></div>
+      <div class="order-summary-total"><span>Subtotal</span><strong data-cart-total>{{ cart_total|currency }}</strong></div>
+      <a class="button primary order-summary-action" href="/portal/reseller/checkout">Review checkout <i data-lucide="arrow-right"></i></a>
+      <p><i data-lucide="shield-check"></i><span>Availability and pricing are checked once more when you place the request.</span></p>
+    </aside>
+  </div>
+  {% else %}
+  <div class="order-empty-state">
+    <span class="order-empty-icon"><i data-lucide="shopping-basket"></i></span>
+    <span class="eyebrow">Your manifest is clear</span>
+    <h2>Start with the products your customers need.</h2>
+    <p>Browse the current catalog, choose quantities, and your selections will appear here.</p>
+    <a class="button primary" href="/portal/reseller/order">Browse products <i data-lucide="arrow-right"></i></a>
+  </div>
+  {% endif %}
 </section>
