@@ -10,8 +10,10 @@ import psycopg2
 from psycopg2 import sql
 from psycopg2.pool import ThreadedConnectionPool
 import pytest
+from fastapi.testclient import TestClient
 
-from app import database, repositories
+from app import database, main, repositories
+from app.portals import shared as shared_portal
 
 
 def _dsn_with_search_path(dsn: str, schema: str) -> str:
@@ -425,3 +427,146 @@ def test_reseller_cart_and_checkout_reject_quantities_above_current_stock(strict
         with connection.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM orders;")
             assert cursor.fetchone()[0] == 0
+
+
+@pytest.mark.postgres
+def test_reseller_cart_checkout_accepts_sales_supervisor_assignment(strict_inventory_database):
+    leader_id, product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[5],
+        order_quantities=[],
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE accounts SET team_leader_role = 'sales-supervisor' WHERE account_id = %s;",
+                (leader_id,),
+            )
+            cursor.execute("SELECT account_id, reseller_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id, reseller_id = cursor.fetchone()
+
+    assert leader_id in {row["account_id"] for row in repositories.list_team_leader_accounts()}
+    assignment = repositories.set_reseller_team_leader(reseller_id, leader_id)
+    assert assignment["team_leader_account_id"] == leader_id
+
+    repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
+    order = repositories.checkout_reseller_cart(reseller_account_id, "Supervisor-owned order")
+
+    assert order["status"] == "pending"
+    assert order["total_amount"] == 200.0
+    assert repositories.reseller_cart_count(reseller_account_id) == 0
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT team_leader_account_id FROM orders WHERE order_id = %s;",
+                (order["order_id"],),
+            )
+            assert cursor.fetchone()[0] == leader_id
+
+
+@pytest.mark.postgres
+def test_reseller_cart_checkout_http_flow_redirects_to_history(strict_inventory_database, monkeypatch):
+    leader_id, product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[5],
+        order_quantities=[],
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE accounts SET team_leader_role = 'sales-supervisor' WHERE account_id = %s;",
+                (leader_id,),
+            )
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id = cursor.fetchone()[0]
+
+    repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: reseller_account_id)
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/cart/checkout",
+        data={"notes": "HTTP checkout"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/portal/reseller/history?message=")
+    assert repositories.reseller_cart_count(reseller_account_id) == 0
+
+
+@pytest.mark.postgres
+def test_reseller_checkout_preserves_cart_when_assigned_leader_is_ineligible(strict_inventory_database):
+    leader_id, product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[5],
+        order_quantities=[],
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE accounts SET team_leader_role = 'inventory' WHERE account_id = %s;",
+                (leader_id,),
+            )
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id = cursor.fetchone()[0]
+
+    repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
+
+    with pytest.raises(ValueError, match="assigned sales team leader is unavailable"):
+        repositories.checkout_reseller_cart(reseller_account_id)
+
+    assert repositories.reseller_cart_count(reseller_account_id) == 2
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM orders;")
+            assert cursor.fetchone()[0] == 0
+
+
+@pytest.mark.postgres
+def test_reseller_checkout_http_flow_returns_assignment_error_and_preserves_cart(strict_inventory_database, monkeypatch):
+    leader_id, product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[5],
+        order_quantities=[],
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE accounts SET team_leader_role = 'inventory' WHERE account_id = %s;",
+                (leader_id,),
+            )
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id = cursor.fetchone()[0]
+
+    repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: reseller_account_id)
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/cart/checkout",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/portal/reseller/cart?error=")
+    assert "assigned+sales+team+leader+is+unavailable" in response.headers["location"]
+    assert repositories.reseller_cart_count(reseller_account_id) == 2
+
+
+@pytest.mark.postgres
+def test_assigned_sales_leader_cannot_be_changed_to_inventory(strict_inventory_database):
+    leader_id, _, _, _ = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[],
+        order_quantities=[],
+    )
+
+    with pytest.raises(ValueError, match="Reassign this leader's resellers"):
+        repositories.update_team_leader_account_role(leader_id, "inventory")
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT team_leader_role FROM accounts WHERE account_id = %s;", (leader_id,))
+            assert cursor.fetchone()[0] == "sales"

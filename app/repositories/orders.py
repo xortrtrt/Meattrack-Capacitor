@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 from ._shared import *
-from .accounts import require_reseller_team_leader, reseller_account_profile
+from .accounts import reseller_account_profile
 from .inventory import _apply_fefo_allocations, _inventory_actor_name, _plan_fefo_allocations
 from .notifications import _create_notification_cursor
 
@@ -502,19 +502,13 @@ def create_order_from_items(
     if role == "reseller":
         if account_id is None:
             raise ValueError("Your session expired. Please sign in again.")
-        profile = require_reseller_team_leader(account_id)
-        reseller_id = profile["reseller_id"]
-        created_by_name = profile["business_name"]
-        team_leader_account_id = profile["team_leader_account_id"]
     elif account_id is not None:
         account = fetch_one("SELECT name FROM accounts WHERE account_id = %s LIMIT 1;", (account_id,))
         if account:
             created_by_name = account["name"]
 
     with get_transaction_cursor() as cur:
-        if checkout_cart:
-            if role != "reseller" or account_id is None:
-                raise ValueError("Cart checkout requires a signed-in reseller.")
+        if role == "reseller":
             cur.execute(
                 """
                 SELECT a.account_id, r.reseller_id, r.business_name, r.team_leader_account_id
@@ -527,11 +521,34 @@ def create_order_from_items(
                 (account_id,),
             )
             locked_profile = cur.fetchone()
-            if not locked_profile or locked_profile["team_leader_account_id"] is None:
-                raise ValueError("Your account does not have an assigned sales team leader.")
+            if not locked_profile:
+                raise ValueError("This reseller account is not linked to an active reseller profile.")
+            if locked_profile["team_leader_account_id"] is None:
+                raise ValueError("Your reseller account is not assigned to a team leader yet. Please contact the owner before submitting orders.")
+            cur.execute(
+                """
+                SELECT account_type, team_leader_role, is_active
+                FROM accounts
+                WHERE account_id = %s
+                FOR SHARE;
+                """,
+                (locked_profile["team_leader_account_id"],),
+            )
+            locked_leader = cur.fetchone()
+            if (
+                not locked_leader
+                or locked_leader["account_type"] != "team_leader"
+                or locked_leader["team_leader_role"] not in {"sales", "sales-supervisor"}
+                or not locked_leader["is_active"]
+            ):
+                raise ValueError("Your assigned sales team leader is unavailable. Please contact the owner before submitting orders.")
             reseller_id = locked_profile["reseller_id"]
             created_by_name = locked_profile["business_name"]
             team_leader_account_id = locked_profile["team_leader_account_id"]
+
+        if checkout_cart:
+            if role != "reseller" or account_id is None:
+                raise ValueError("Cart checkout requires a signed-in reseller.")
             cur.execute(
                 """
                 SELECT product_id, quantity

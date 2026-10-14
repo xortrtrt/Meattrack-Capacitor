@@ -211,6 +211,13 @@ Migration `004_live_chat.sql` adds anonymous prospect conversations, durable
 messages, sales-team-leader presence, and atomic rate-limit buckets. Apply it
 before enabling `LIVE_CHAT_ENABLED`.
 
+Migration `012_allow_sales_supervisor_orders.sql` updates reseller-order
+ownership validation so active sales supervisors can own and review orders.
+It is backward compatible and does not require a write-maintenance window, but
+it must complete before the matching application build starts. The production
+Compose dependency on the `migrate` service enforces this ordering; do not
+bypass that service during deployment.
+
 For least-privilege Ably setup, create two server-only keys. Give
 `ABLY_API_KEY` `publish` access to `support:*` and `leader:*`, and give
 `ABLY_TOKEN_SIGNING_KEY` `subscribe` access to those same namespaces. If one

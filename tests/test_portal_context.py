@@ -52,6 +52,7 @@ READ_FUNCTIONS = (
     "reseller_most_bought_products",
     "reseller_sales_series",
     "reseller_reportable_products",
+    "reseller_cart_count",
     "reseller_account_profile",
     "account_portal_profile",
     "list_team_leader_accounts",
@@ -101,13 +102,14 @@ EXPECTED_CALLS = {
         "current_metrics",
         "reseller_most_bought_products",
         "reseller_sales_series",
+        "reseller_cart_count",
         "list_notifications",
         "unread_notification_count",
     },
-    ("reseller", "order"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
-    ("reseller", "cart"): {"list_products", "list_notifications", "unread_notification_count"},
-    ("reseller", "history"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
-    ("reseller", "profile"): {"list_notifications", "unread_notification_count"},
+    ("reseller", "order"): {"list_products", "count_products", "reseller_cart_count", "list_notifications", "unread_notification_count"},
+    ("reseller", "cart"): {"list_products", "reseller_cart_count", "list_notifications", "unread_notification_count"},
+    ("reseller", "history"): {"list_orders", "count_orders", "reseller_cart_count", "list_notifications", "unread_notification_count"},
+    ("reseller", "profile"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
 }
 
 INVENTORY_EXPECTED_CALLS = {
@@ -131,7 +133,7 @@ INVENTORY_EXPECTED_CALLS = {
 def install_read_spies(monkeypatch):
     calls = defaultdict(list)
     for name in READ_FUNCTIONS:
-        result = METRICS if name == "current_metrics" else 0 if name.startswith(("count_", "unread_")) else []
+        result = METRICS if name == "current_metrics" else 0 if name.startswith(("count_", "unread_", "reseller_cart_count")) else []
 
         def fake(*args, _name=name, _result=result, **kwargs):
             calls[_name].append((args, kwargs))

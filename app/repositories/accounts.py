@@ -77,7 +77,7 @@ def list_team_leader_accounts() -> list[dict]:
         FROM accounts
         WHERE account_type = 'team_leader'
           AND is_active = true
-          AND team_leader_role = 'sales'
+          AND team_leader_role IN ('sales', 'sales-supervisor')
         ORDER BY name, account_id;
     """))
 
@@ -128,7 +128,9 @@ def set_reseller_team_leader(reseller_id: int, team_leader_account_id: int, acto
         cur.execute("""
             SELECT account_id, name FROM accounts
             WHERE account_id = %s AND account_type = 'team_leader' AND is_active = true
-              AND team_leader_role = 'sales' LIMIT 1;
+              AND team_leader_role IN ('sales', 'sales-supervisor')
+            LIMIT 1
+            FOR SHARE;
         """, (team_leader_account_id,))
         leader = cur.fetchone()
         if not leader:
@@ -149,6 +151,19 @@ def update_team_leader_account_role(account_id: int, team_leader_role: str, acto
         raise ValueError("Select a valid team leader role.")
     with get_transaction_cursor() as cur:
         cur.execute(
+            "SELECT account_id FROM accounts WHERE account_id = %s AND account_type = 'team_leader' FOR UPDATE;",
+            (account_id,),
+        )
+        if not cur.fetchone():
+            raise ValueError("Only team leader accounts can change team leader roles.")
+        if team_leader_role == "inventory":
+            cur.execute(
+                "SELECT 1 FROM resellers WHERE team_leader_account_id = %s LIMIT 1;",
+                (account_id,),
+            )
+            if cur.fetchone():
+                raise ValueError("Reassign this leader's resellers before changing the role to inventory.")
+        cur.execute(
             """
             UPDATE accounts
             SET team_leader_role = %s
@@ -159,8 +174,6 @@ def update_team_leader_account_role(account_id: int, team_leader_role: str, acto
             (team_leader_role, account_id),
         )
         account = cur.fetchone()
-        if not account:
-            raise ValueError("Only team leader accounts can change team leader roles.")
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_team_leader_role", entity_type="accounts", entity_id=account_id)
     clean = clean_row(account)
     clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
@@ -627,7 +640,10 @@ def reseller_account_profile(account_id: int) -> dict:
                r.address,
                r.team_leader_account_id,
                tl.name AS team_leader_name,
-               tl.email AS team_leader_email
+               tl.email AS team_leader_email,
+               tl.account_type AS team_leader_account_type,
+               tl.team_leader_role,
+               tl.is_active AS team_leader_is_active
         FROM accounts a
         LEFT JOIN resellers r ON r.reseller_id = a.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
@@ -646,7 +662,10 @@ def reseller_account_profile(account_id: int) -> dict:
                    r.address,
                    r.team_leader_account_id,
                    tl.name AS team_leader_name,
-                   tl.email AS team_leader_email
+                   tl.email AS team_leader_email,
+                   tl.account_type AS team_leader_account_type,
+                   tl.team_leader_role,
+                   tl.is_active AS team_leader_is_active
             FROM resellers r
             LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
             WHERE lower(r.email) = lower(%s)
@@ -661,6 +680,9 @@ def reseller_account_profile(account_id: int) -> dict:
             row["team_leader_account_id"] = reseller["team_leader_account_id"]
             row["team_leader_name"] = reseller["team_leader_name"]
             row["team_leader_email"] = reseller["team_leader_email"]
+            row["team_leader_account_type"] = reseller["team_leader_account_type"]
+            row["team_leader_role"] = reseller["team_leader_role"]
+            row["team_leader_is_active"] = reseller["team_leader_is_active"]
     if row["reseller_id"] is None:
         raise ValueError("This reseller account is not linked to an approved reseller profile.")
     return clean_row(row)
@@ -670,6 +692,12 @@ def require_reseller_team_leader(account_id: int) -> dict:
     profile = reseller_account_profile(account_id)
     if not profile.get("team_leader_account_id"):
         raise ValueError("Your reseller account is not assigned to a team leader yet. Please contact the owner before submitting orders or reports.")
+    if (
+        profile.get("team_leader_account_type") != "team_leader"
+        or profile.get("team_leader_role") not in {"sales", "sales-supervisor"}
+        or not profile.get("team_leader_is_active")
+    ):
+        raise ValueError("Your assigned sales team leader is unavailable. Please contact the owner before submitting orders or reports.")
     return profile
 
 

@@ -145,9 +145,11 @@ def product_sales_history(product_ids: list[int], start_date: date, end_date: da
         LEFT JOIN accounts assigned_leader ON assigned_leader.account_id = o.team_leader_account_id
         WHERE o.status = 'fulfilled'
           AND (
-              (o.order_type = 'walk_in' AND creator.account_type = 'team_leader' AND creator.team_leader_role = 'sales')
+              (o.order_type = 'walk_in' AND creator.account_type = 'team_leader'
+               AND creator.team_leader_role IN ('sales', 'sales-supervisor'))
               OR
-              (o.order_type = 'reseller' AND assigned_leader.account_type = 'team_leader' AND assigned_leader.team_leader_role = 'sales')
+              (o.order_type = 'reseller' AND assigned_leader.account_type = 'team_leader'
+               AND assigned_leader.team_leader_role IN ('sales', 'sales-supervisor'))
           )
           AND p.item_type = 'finished_product'
           AND oi.product_id = ANY(%s)

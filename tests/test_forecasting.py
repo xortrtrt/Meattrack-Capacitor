@@ -188,7 +188,7 @@ def test_sales_history_uses_sales_leader_attributed_fulfilled_orders(monkeypatch
 
     assert "o.order_type = 'walk_in'" in captured["query"]
     assert "o.order_type = 'reseller'" in captured["query"]
-    assert "team_leader_role = 'sales'" in captured["query"]
+    assert "team_leader_role IN ('sales', 'sales-supervisor')" in captured["query"]
     assert "sales_report_items" not in captured["query"]
 
 
