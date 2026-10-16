@@ -1,0 +1,73 @@
+<form
+  action="/portal/reseller/orders/{{ order.order_id }}/payment"
+  method="post"
+  enctype="multipart/form-data"
+  class="receipt-payment-form"
+  data-receipt-checkout
+  data-payment-deadline="{{ order.payment_due_at.isoformat() }}"
+>
+  <div class="to-pay-clock">
+    <span><i data-lucide="timer"></i> Pay before expiry</span>
+    <strong data-payment-countdown aria-live="polite">15:00</strong>
+    <small>{{ order.payment_due_at|nice_date }}</small>
+  </div>
+  <label class="receipt-file-picker compact" for="payment-proof-{{ order.order_id }}">
+    <i data-lucide="image-up"></i>
+    <span><strong>Upload payment receipt</strong><small>Recognition starts automatically</small></span>
+    <input id="payment-proof-{{ order.order_id }}" required type="file" name="payment_proofs" accept="image/png,image/jpeg,image/webp" multiple data-receipt-files />
+  </label>
+  <div class="receipt-file-list" data-receipt-file-list aria-live="polite"></div>
+  <p class="receipt-scan-status" data-receipt-card-status aria-live="polite">Choose 1–3 receipt screenshots, up to 5 MB each.</p>
+  <input type="hidden" name="receipt_scan_token" data-receipt-token />
+  <div class="receipt-confirmed-summary" data-receipt-summary hidden>
+    <span class="receipt-summary-mark"><i data-lucide="badge-check"></i></span>
+    <span>
+      <strong>Payment details confirmed</strong>
+      <small><span data-receipt-summary-reference></span> · <span data-receipt-summary-amount></span></small>
+      <small data-receipt-summary-date></small>
+    </span>
+    <button class="button subtle small" type="button" data-receipt-edit>Edit</button>
+  </div>
+  <button class="button primary small" type="submit" data-receipt-submit disabled><i data-lucide="send"></i> <span>Submit payment</span></button>
+
+  <div class="receipt-modal" data-receipt-modal hidden>
+    <div class="receipt-modal-backdrop" data-receipt-modal-close></div>
+    <section class="receipt-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="receipt-modal-title-{{ order.order_id }}" aria-describedby="receipt-modal-description-{{ order.order_id }}" data-receipt-dialog tabindex="-1">
+      <header class="receipt-modal-header">
+        <span>
+          <span class="order-page-kicker">Order #{{ order.order_id }} · Payment verification</span>
+          <h3 id="receipt-modal-title-{{ order.order_id }}">Check your receipt details</h3>
+          <p id="receipt-modal-description-{{ order.order_id }}">MEATTRACK reads the screenshot automatically. Correct any value that does not match the receipt.</p>
+        </span>
+        <button class="receipt-modal-close" type="button" aria-label="Close receipt details" data-receipt-modal-close><i data-lucide="x"></i></button>
+      </header>
+      <div class="receipt-modal-body">
+        <div class="receipt-preview-panel">
+          <div class="receipt-preview-heading"><strong>Uploaded receipt</strong><small>Use this image while checking the values</small></div>
+          <div class="receipt-previews" data-receipt-previews></div>
+        </div>
+        <div class="receipt-details-panel">
+          <p class="receipt-scan-status" data-receipt-status aria-live="polite">Reading receipt…</p>
+          <div class="receipt-fields" data-receipt-fields>
+            <label for="transaction-number-{{ order.order_id }}">Transaction number <span>Required</span></label>
+            <input id="transaction-number-{{ order.order_id }}" name="transaction_number" maxlength="100" autocomplete="off" required disabled data-receipt-transaction />
+            <label for="payment-amount-{{ order.order_id }}">Money sent <span>Required</span></label>
+            <div class="receipt-amount-input"><span aria-hidden="true">₱</span><input id="payment-amount-{{ order.order_id }}" type="number" name="payment_amount" min="0.01" max="9999999999.99" step="0.01" inputmode="decimal" required disabled data-receipt-amount /></div>
+            <div class="receipt-date-time">
+              <span><label for="payment-date-{{ order.order_id }}">Payment date</label><input id="payment-date-{{ order.order_id }}" type="date" name="payment_date" required disabled data-receipt-date /></span>
+              <span><label for="payment-time-{{ order.order_id }}">Payment time</label><input id="payment-time-{{ order.order_id }}" type="time" name="payment_time" required disabled data-receipt-time /></span>
+            </div>
+            <label class="receipt-confirmation">
+              <input type="checkbox" name="payment_details_confirmed" value="yes" disabled data-receipt-confirm />
+              <span><strong>I checked these details.</strong><small>The transaction number, money sent, date, and time match my receipt.</small></span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <footer class="receipt-modal-actions">
+        <button class="button subtle" type="button" data-receipt-modal-close>Review later</button>
+        <button class="button primary" type="button" data-receipt-accept disabled><i data-lucide="check"></i><span>Use these payment details</span></button>
+      </footer>
+    </section>
+  </div>
+</form>

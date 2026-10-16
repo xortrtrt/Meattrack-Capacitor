@@ -1,0 +1,82 @@
+<section class="sales-reseller-messenger" data-sales-reseller-messages>
+  <header class="reseller-inbox-hero sales-message-hero">
+    <div>
+      <span class="eyebrow">Registered resellers</span>
+      <h2>Reseller messages</h2>
+      <p>Keep an ongoing conversation with every reseller assigned to you.</p>
+    </div>
+    <div class="reseller-inbox-status" data-sales-message-status aria-live="polite">
+      <span class="reseller-inbox-status-dot"></span>
+      <span>{{ reseller_message_threads|length }} reseller{{ '' if reseller_message_threads|length == 1 else 's' }}</span>
+    </div>
+  </header>
+
+  <div class="sales-message-layout">
+    <aside class="sales-message-rail" aria-label="Reseller conversations">
+      <header>
+        <div>
+          <span class="eyebrow">Conversations</span>
+          <h3>Your resellers</h3>
+        </div>
+        <button class="icon-button" type="button" title="Refresh messages" aria-label="Refresh messages" data-sales-messages-refresh>
+          <i data-lucide="refresh-cw"></i>
+        </button>
+      </header>
+      <div class="sales-message-list" data-sales-message-list>
+        {% for item in reseller_message_threads %}
+        <button type="button" class="sales-message-row" data-reseller-id="{{ item.reseller_account_id }}">
+          <span class="sales-message-avatar">{{ item.business_name[:1]|upper }}</span>
+          <span class="sales-message-row-copy">
+            <strong>{{ item.business_name }}</strong>
+            <small>{{ item.last_message or 'Start a conversation' }}</small>
+          </span>
+          {% if item.unread_count %}<b>{{ '99+' if item.unread_count > 99 else item.unread_count }}</b>{% endif %}
+        </button>
+        {% else %}
+        <div class="sales-message-list-empty">
+          <i data-lucide="users"></i>
+          <strong>No assigned resellers</strong>
+          <p>Assigned reseller accounts will appear here.</p>
+        </div>
+        {% endfor %}
+      </div>
+    </aside>
+
+    <section class="sales-message-stage">
+      <div class="sales-message-placeholder" data-sales-message-placeholder>
+        <span><i data-lucide="message-circle"></i></span>
+        <h3>Select a reseller</h3>
+        <p>Open a conversation to see its complete message history.</p>
+      </div>
+      <div class="sales-message-thread" data-sales-message-thread hidden>
+        <header class="sales-message-thread-head">
+          <span class="sales-message-avatar" data-sales-thread-avatar>R</span>
+          <div>
+            <h3 data-sales-thread-business>Reseller</h3>
+            <small data-sales-thread-person>Registered reseller</small>
+          </div>
+          <div class="sales-message-thread-actions">
+            <span class="sales-message-assignment" data-sales-thread-assignment>Assigned to you</span>
+            <button class="message-delete-button" type="button" title="Delete conversation" data-sales-message-delete hidden>
+              <i data-lucide="trash-2"></i><span>Delete</span>
+            </button>
+          </div>
+        </header>
+        <div class="reseller-chat-messages sales-message-feed" role="log" aria-live="polite" data-sales-message-feed>
+          <div class="reseller-message-empty" data-sales-message-empty>
+            <span><i data-lucide="message-circle-plus"></i></span>
+            <strong>Start the conversation</strong>
+            <p>Send a message. This thread remains available to both accounts.</p>
+          </div>
+        </div>
+        <form class="reseller-chat-composer" data-sales-message-form>
+          <label class="sr-only" for="sales-reseller-message">Message</label>
+          <textarea id="sales-reseller-message" maxlength="500" rows="1" placeholder="Message this reseller…" required></textarea>
+          <button class="button primary" type="submit">
+            <span class="sr-only">Send message</span><i data-lucide="send"></i>
+          </button>
+        </form>
+      </div>
+    </section>
+  </div>
+</section>

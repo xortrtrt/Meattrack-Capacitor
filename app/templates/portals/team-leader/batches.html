@@ -1,59 +1,118 @@
-<section class="panel">
-  <div class="panel-heading">
-    <h2>Finished product batches</h2>
-    <span class="hint">Search and review produced batches by product category.</span>
-  </div>
-  <form class="filter-bar" method="get">
-    <label>Search <input name="q" value="{{ inventory_batches_page.filters.q }}" placeholder="Batch, product, source"></label>
-    {% if inventory_batches_page.filters.type %}
-    <input type="hidden" name="type" value="{{ inventory_batches_page.filters.type }}">
-    {% endif %}
-    <label>Sort
-      <select name="sort">
-        <option value="">Newest</option>
-        <option value="expiry_asc" {{ 'selected' if inventory_batches_page.filters.sort == 'expiry_asc' else '' }}>Earliest expiry</option>
-        <option value="available_desc" {{ 'selected' if inventory_batches_page.filters.sort == 'available_desc' else '' }}>Available high-low</option>
-        <option value="product_asc" {{ 'selected' if inventory_batches_page.filters.sort == 'product_asc' else '' }}>Product A-Z</option>
-        <option value="oldest" {{ 'selected' if inventory_batches_page.filters.sort == 'oldest' else '' }}>Oldest</option>
-      </select>
-    </label>
-    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
-  </form>
-  <nav class="portal-category-tabs" aria-label="Product batch categories">
-    <a class="{{ 'active' if not inventory_batches_page.filters.type else '' }}" href="?sort={{ inventory_batches_page.filters.sort|urlencode }}{% if inventory_batches_page.filters.q %}&q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}">All</a>
-    {% for category in product_categories %}
+<section class="stock-ledger batch-ledger" aria-labelledby="batch-ledger-title">
+  <header class="stock-ledger__header">
+    <div>
+      <span class="stock-ledger__eyebrow">Shelf-life control</span>
+      <h2 id="batch-ledger-title">Product batches</h2>
+      <p>Available stock and expiry dates, without the extra noise.</p>
+    </div>
+    <div class="stock-ledger__count" aria-label="{{ inventory_batches_page.pagination.total }} total batches" data-async-filter-sync="batch-count">
+      <strong>{{ inventory_batches_page.pagination.total|number }}</strong>
+      <span>batch{{ '' if inventory_batches_page.pagination.total == 1 else 'es' }}</span>
+    </div>
+  </header>
+
+  <nav class="movement-categories" aria-label="Product batch categories" data-async-filter-target="[data-async-filter-results]" data-async-filter-sync="batch-categories">
+    {% for value, label in batch_categories %}
     <a
-      class="{{ 'active' if inventory_batches_page.filters.type == category else '' }}"
-      href="?type={{ category|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}{% if inventory_batches_page.filters.q %}&q={{ inventory_batches_page.filters.q|urlencode }}{% endif %}"
-    >{{ category }}</a>
+      class="movement-category {{ 'is-active' if inventory_batches_page.filters.type == value else '' }}"
+      href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ value|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page=1"
+      {% if inventory_batches_page.filters.type == value %}aria-current="page"{% endif %}
+    >{{ label }}</a>
     {% endfor %}
   </nav>
-  <div class="table-wrap">
-    <table class="responsive-card-table">
-      <thead><tr><th>Batch</th><th>Product</th><th>Category</th><th>Available</th><th>Expiry</th><th>Source</th></tr></thead>
-      <tbody>
-      {% for batch in inventory_batches %}
-      <tr>
-        <td data-label="Batch">{{ batch.batch_code }}</td>
-        <td data-label="Product">{{ batch.item_name }}</td>
-        <td data-label="Category">{{ batch.category }}</td>
-        <td data-label="Available">{{ batch.quantity_available|number }} {{ batch.unit }}</td>
-        <td data-label="Expiry">{{ batch.expiry_date|nice_date }}</td>
-        <td data-label="Source"><span class="status-badge {{ batch.source_type }}">{{ batch.source_type.replace("_", " ") }}</span></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6">No finished product batches found.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+
+  <form class="stock-ledger__filters" method="get" role="search" data-async-filter-target="[data-async-filter-results]">
+    <input type="hidden" name="type" value="{{ inventory_batches_page.filters.type }}" data-async-filter-sync="batch-type" />
+    <label class="stock-search">
+      <span class="sr-only">Search product batches</span>
+      <i data-lucide="search" aria-hidden="true"></i>
+      <input
+        name="q"
+        value="{{ inventory_batches_page.filters.q }}"
+        placeholder="Search product or batch code"
+        autocomplete="off"
+      />
+    </label>
+    <label class="stock-sort">
+      <span>Order</span>
+      <select name="sort" aria-label="Sort product batches">
+        <option value="">Newest first</option>
+        <option value="expiry_asc" {{ 'selected' if inventory_batches_page.filters.sort == 'expiry_asc' else '' }}>Expiring first</option>
+        <option value="available_desc" {{ 'selected' if inventory_batches_page.filters.sort == 'available_desc' else '' }}>Most stock</option>
+        <option value="product_asc" {{ 'selected' if inventory_batches_page.filters.sort == 'product_asc' else '' }}>Product A–Z</option>
+      </select>
+    </label>
+    <a class="stock-clear-button" href="/portal/team-leader/batches" data-async-filter-sync="batch-clear" {% if not (inventory_batches_page.filters.q or inventory_batches_page.filters.type or inventory_batches_page.filters.sort) %}hidden{% endif %}>Clear</a>
+  </form>
+
+  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+  <div class="batch-list" role="list" aria-label="Finished product batches">
+    {% for batch in inventory_batches %}
+      {% set is_hold = batch.quality_status == 'pending' %}
+      {% set is_rejected = batch.quality_status in ['rejected', 'spoiled'] %}
+      {% set is_expired = batch.quality_status == 'expired' or (batch.days_until_expiry is not none and batch.days_until_expiry < 0) %}
+      {% set is_expiring = batch.days_until_expiry is not none and batch.days_until_expiry >= 0 and batch.days_until_expiry <= 7 %}
+      {% set batch_state = 'expired' if is_expired or is_rejected else 'hold' if is_hold else 'expiring' if is_expiring else 'healthy' %}
+      {% set source_label = 'Produced in-house' if batch.source_type == 'production' else 'Directly received' %}
+    <article class="batch-row batch-row--{{ batch_state }}" role="listitem">
+      <span class="batch-row__icon" aria-hidden="true"><i data-lucide="package-open"></i></span>
+      <div class="batch-row__identity">
+        <strong>{{ batch.item_name }}</strong>
+        <span><b>{{ batch.batch_code }}</b> · {{ source_label }}</span>
+      </div>
+      <div class="batch-row__stock">
+        <span>Available</span>
+        <strong>{{ batch.quantity_available|number }} <small>{{ batch.unit }}</small></strong>
+      </div>
+      <div class="batch-row__expiry">
+        <span class="batch-state">
+          {% if batch.quality_status == 'rejected' %}Quality rejected
+          {% elif batch.quality_status == 'spoiled' %}Spoiled
+          {% elif is_expired %}Expired
+          {% elif is_hold %}Quality pending
+          {% elif batch.days_until_expiry == 0 %}Expires today
+          {% elif is_expiring %}{{ batch.days_until_expiry }} day{{ '' if batch.days_until_expiry == 1 else 's' }} left
+          {% else %}Within shelf life{% endif %}
+        </span>
+        <strong><i data-lucide="calendar-days" aria-hidden="true"></i>{{ batch.expiry_date|nice_date }}</strong>
+      </div>
+    </article>
+    {% else %}
+    <div class="batch-empty">
+      <span><i data-lucide="package-search" aria-hidden="true"></i></span>
+      <strong>No batches found</strong>
+      <p>Try another category or clear your search.</p>
+      <a href="/portal/team-leader/batches">Show all batches</a>
+    </div>
+    {% endfor %}
   </div>
-  <div class="pagination">
-    {% if inventory_batches_page.pagination.has_prev %}
-    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page={{ inventory_batches_page.pagination.page - 1 }}">Previous</a>
-    {% endif %}
-    <span>Page {{ inventory_batches_page.pagination.page }} of {{ inventory_batches_page.pagination.total_pages }}</span>
-    {% if inventory_batches_page.pagination.has_next %}
-    <a href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page={{ inventory_batches_page.pagination.page + 1 }}">Next</a>
-    {% endif %}
+
+  {% if inventory_batches_page.pagination.total_pages > 1 %}
+  <nav class="stock-pagination" aria-label="Product batch pages">
+    <span class="stock-pagination__summary">
+      Page {{ inventory_batches_page.pagination.page }} of {{ inventory_batches_page.pagination.total_pages }}
+    </span>
+    <div class="stock-pagination__controls">
+      {% if inventory_batches_page.pagination.has_prev %}
+      <a class="stock-page stock-page--step" aria-label="Previous page" href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page={{ inventory_batches_page.pagination.page - 1 }}">
+        <i data-lucide="chevron-left" aria-hidden="true"></i><span>Previous</span>
+      </a>
+      {% endif %}
+      {% for page_number in inventory_batches_page.pagination.page_numbers %}
+      <a
+        class="stock-page {{ 'is-current' if page_number == inventory_batches_page.pagination.page else '' }}"
+        href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page={{ page_number }}"
+        aria-label="Page {{ page_number }}"
+        {% if page_number == inventory_batches_page.pagination.page %}aria-current="page"{% endif %}
+      >{{ page_number }}</a>
+      {% endfor %}
+      {% if inventory_batches_page.pagination.has_next %}
+      <a class="stock-page stock-page--step" aria-label="Next page" href="?q={{ inventory_batches_page.filters.q|urlencode }}&type={{ inventory_batches_page.filters.type|urlencode }}&sort={{ inventory_batches_page.filters.sort|urlencode }}&page={{ inventory_batches_page.pagination.page + 1 }}">
+        <span>Next</span><i data-lucide="chevron-right" aria-hidden="true"></i>
+      </a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
   </div>
 </section>

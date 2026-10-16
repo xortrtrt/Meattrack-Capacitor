@@ -5,6 +5,15 @@ from app.portal_config import team_leader_role_labels
 from ._shared import *
 
 
+TEAM_RESELLER_SORTS = {
+    "newest": "r.created_at DESC, r.reseller_id DESC",
+    "oldest": "r.created_at ASC, r.reseller_id ASC",
+    "business_asc": "lower(r.business_name) ASC, r.reseller_id ASC",
+    "status_asc": "r.reseller_status ASC, lower(r.business_name) ASC",
+    "recent_order": "last_order_at DESC NULLS LAST, lower(r.business_name) ASC",
+}
+
+
 def list_accounts(
     q: str = "",
     account_type: str = "",
@@ -95,6 +104,35 @@ def next_sales_team_leader() -> dict | None:
     return leaders[index]
 
 
+def next_sales_supervisor(preferred_account_id: int | None = None) -> dict | None:
+    supervisors = clean_row(fetch_all("""
+        SELECT account_id, name, email, team_leader_role
+        FROM accounts
+        WHERE account_type = 'team_leader'
+          AND is_active = true
+          AND team_leader_role = 'sales-supervisor'
+        ORDER BY name, account_id;
+    """))
+    if not supervisors:
+        return None
+    if preferred_account_id is not None:
+        preferred_id = int(preferred_account_id)
+        preferred = next(
+            (supervisor for supervisor in supervisors if int(supervisor["account_id"]) == preferred_id),
+            None,
+        )
+        if preferred is not None:
+            return preferred
+    row = fetch_one("""
+        SELECT COUNT(*) AS total
+        FROM inquiries i
+        JOIN accounts a ON a.account_id = i.assigned_team_leader_account_id
+        WHERE a.team_leader_role = 'sales-supervisor';
+    """)
+    index = int(row["total"] if row else 0) % len(supervisors)
+    return supervisors[index]
+
+
 def list_all_team_leader_accounts() -> list[dict]:
     return clean_row(fetch_all("""
         SELECT account_id, name, email, team_leader_role
@@ -121,6 +159,86 @@ def list_reseller_assignments() -> list[dict]:
         LEFT JOIN accounts a ON a.reseller_id = r.reseller_id
         ORDER BY r.business_name, r.reseller_id;
     """))
+
+
+def list_team_resellers(
+    team_leader_account_id: int,
+    q: str = "",
+    status: str = "",
+    page: int = 1,
+    page_size: int = 10,
+    sort: str = "",
+) -> list[dict]:
+    if page < 1:
+        raise ValueError("page must be positive")
+    if page_size < 1:
+        raise ValueError("page_size must be positive")
+    where = ["r.team_leader_account_id = %s"]
+    params: list[object] = [team_leader_account_id]
+    q = q.strip()
+    status = status.strip()
+    if q:
+        where.append(
+            "(r.business_name ILIKE %s OR r.contact_person ILIKE %s "
+            "OR r.email ILIKE %s OR r.contact_number ILIKE %s)"
+        )
+        search = f"%{q}%"
+        params.extend([search, search, search, search])
+    if status:
+        where.append("r.reseller_status = %s")
+        params.append(status)
+    order_sql = safe_sort_sql(sort, TEAM_RESELLER_SORTS, TEAM_RESELLER_SORTS["newest"])
+    params.extend([page_size, (page - 1) * page_size])
+    return clean_row(fetch_all(f"""
+        SELECT r.reseller_id, r.business_name, r.contact_person, r.email,
+               r.contact_number, r.address, r.reseller_status, r.created_at,
+               a.account_id, a.activation_status,
+               a.profile_image_path, a.profile_image_position_x,
+               a.profile_image_position_y, a.profile_image_scale,
+               CASE
+                   WHEN a.account_id IS NULL THEN 'not created'
+                   WHEN a.activation_status = 'pending' THEN 'pending activation'
+                   WHEN a.is_active THEN 'active'
+                   ELSE 'inactive'
+               END AS account_status,
+               COUNT(o.order_id) AS total_orders,
+               MAX(o.order_date) AS last_order_at
+        FROM resellers r
+        LEFT JOIN accounts a ON a.reseller_id = r.reseller_id
+        LEFT JOIN orders o
+          ON o.created_by_account_id = a.account_id
+         AND o.order_type = 'reseller'
+        WHERE {" AND ".join(where)}
+        GROUP BY r.reseller_id, a.account_id
+        ORDER BY {order_sql}
+        LIMIT %s OFFSET %s;
+    """, tuple(params)))
+
+
+def count_team_resellers(
+    team_leader_account_id: int,
+    q: str = "",
+    status: str = "",
+) -> int:
+    where = ["r.team_leader_account_id = %s"]
+    params: list[object] = [team_leader_account_id]
+    q = q.strip()
+    status = status.strip()
+    if q:
+        where.append(
+            "(r.business_name ILIKE %s OR r.contact_person ILIKE %s "
+            "OR r.email ILIKE %s OR r.contact_number ILIKE %s)"
+        )
+        search = f"%{q}%"
+        params.extend([search, search, search, search])
+    if status:
+        where.append("r.reseller_status = %s")
+        params.append(status)
+    row = fetch_one(
+        f"SELECT COUNT(*) AS total FROM resellers r WHERE {' AND '.join(where)};",
+        tuple(params),
+    )
+    return int(row["total"])
 
 
 def set_reseller_team_leader(reseller_id: int, team_leader_account_id: int, actor_account_id: int | None = None) -> dict:
@@ -803,4 +921,4 @@ def resend_activation(account_id: int, actor_account_id: int, account_types: tup
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="resent_activation", entity_type="accounts", entity_id=account_id)
 
 
-__all__ = ['list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'resend_activation']
+__all__ = ['list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'next_sales_supervisor', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'list_team_resellers', 'count_team_resellers', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'resend_activation']

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from decimal import Decimal
+import hashlib
 from pathlib import Path
 import os
 import uuid
@@ -13,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import database, main, repositories
+from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
 
 
@@ -116,22 +120,85 @@ def _seed_fulfillment(
                     VALUES (%s, %s, 'opening_balance', %s, 'pack', 0, %s, 'MEATTRACK', 'Test opening');
                 """, (product_id, batch_id, quantity, quantity))
             order_ids = []
-            for quantity in order_quantities:
+            for order_index, quantity in enumerate(order_quantities, start=1):
+                transaction_key = f"SEEDREF{order_index:08d}"
                 cursor.execute("""
                     INSERT INTO orders (
                         order_type, reseller_id, created_by_account_id,
-                        team_leader_account_id, approved_by_account_id, approved_at, status, total_amount
+                        team_leader_account_id, status, total_amount,
+                        payment_transaction_number, payment_transaction_key,
+                        payment_paid_at, payment_amount, payment_ocr_confidence,
+                        payment_extraction_method, payment_confirmed_at, payment_ocr_engine
                     )
-                    VALUES ('reseller', %s, %s, %s, %s, now(), %s, %s)
+                    VALUES ('reseller', %s, %s, %s, 'pending', %s,
+                            %s, %s, now(), 500.00, 0.9, 'ocr_confirmed', now(), 'tesseract-test')
                     RETURNING order_id;
-                """, (reseller_id, reseller_account_id, leader_id, leader_id, order_status, quantity * 100))
+                """, (
+                    reseller_id, reseller_account_id, leader_id, quantity * 100,
+                    transaction_key, transaction_key,
+                ))
                 order_id = cursor.fetchone()[0]
                 order_ids.append(order_id)
                 cursor.execute("""
                     INSERT INTO order_items (order_id, product_id, quantity, unit, unit_price)
                     VALUES (%s, %s, %s, 'pack', 100);
                 """, (order_id, product_id, quantity))
+                proof_content = f"seed-proof-{order_index}".encode()
+                cursor.execute("""
+                    INSERT INTO order_payment_proofs (
+                        order_id, uploaded_by_account_id, filename, content_type,
+                        content, size_bytes, checksum_sha256
+                    ) VALUES (%s, %s, %s, 'image/png', %s, %s, %s);
+                """, (
+                    order_id,
+                    reseller_account_id,
+                    f"seed-proof-{order_index}.png",
+                    proof_content,
+                    len(proof_content),
+                    hashlib.sha256(proof_content).hexdigest(),
+                ))
+                if order_status in {"approved", "fulfilled"}:
+                    cursor.execute(
+                        """
+                        UPDATE orders
+                        SET status = 'approved', approved_by_account_id = %s, approved_at = now()
+                        WHERE order_id = %s;
+                        """,
+                        (leader_id, order_id),
+                    )
+                if order_status == "fulfilled":
+                    cursor.execute(
+                        "UPDATE orders SET status = 'fulfilled', fulfilled_at = now() WHERE order_id = %s;",
+                        (order_id,),
+                    )
+                if order_status == "rejected":
+                    cursor.execute("UPDATE orders SET status = 'rejected' WHERE order_id = %s;", (order_id,))
     return leader_id, product_id, batch_ids, order_ids
+
+
+def _payment_submission(label: str, *, transaction_number: str | None = None):
+    content = f"receipt-image-{label}".encode()
+    checksum = hashlib.sha256(content).hexdigest()
+    clean_reference = transaction_number or f"TXN{hashlib.sha256(label.encode()).hexdigest()[:16].upper()}"
+    return (
+        [{
+            "filename": f"receipt-{label}.png",
+            "content_type": "image/png",
+            "content": content,
+            "size_bytes": len(content),
+            "checksum_sha256": checksum,
+        }],
+        {
+            "transaction_number": clean_reference,
+            "transaction_key": "".join(character for character in clean_reference.upper() if character.isalnum()),
+            "paid_at": datetime.now(timezone.utc),
+            "payment_amount": Decimal("500.00"),
+            "ocr_confidence": 0.91,
+            "extraction_method": "ocr_confirmed",
+            "confirmed_at": datetime.now(timezone.utc),
+            "ocr_engine": "tesseract-test",
+        },
+    )
 
 
 @pytest.mark.postgres
@@ -142,6 +209,187 @@ def test_latest_baseline_accepts_all_numbered_migrations(strict_inventory_databa
                 cursor.execute(migration.read_text(encoding="utf-8"))
             cursor.execute("SELECT to_regclass('inventory_movements');")
             assert cursor.fetchone()[0] == "inventory_movements"
+
+
+@pytest.mark.postgres
+def test_database_rejects_new_reseller_order_without_confirmed_payment(strict_inventory_database):
+    leader_id, _, _, _ = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[]
+    )
+    connection = psycopg2.connect(strict_inventory_database)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT account_id, reseller_id FROM accounts WHERE email = 'account@test.local';")
+            account_id, reseller_id = cursor.fetchone()
+            cursor.execute(
+                """
+                INSERT INTO orders (
+                    order_type, reseller_id, created_by_account_id,
+                    team_leader_account_id, status, total_amount
+                ) VALUES ('reseller', %s, %s, %s, 'pending', 100);
+                """,
+                (reseller_id, account_id, leader_id),
+            )
+        with pytest.raises(psycopg2.Error, match="confirmed payment details and proof"):
+            connection.commit()
+        connection.rollback()
+    finally:
+        connection.close()
+
+
+@pytest.mark.postgres
+def test_legacy_unpaid_pending_reseller_order_can_be_rejected(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="pending"
+    )
+    order_id = order_ids[0]
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("ALTER TABLE orders DISABLE TRIGGER trg_require_reseller_order_payment;")
+            cursor.execute(
+                """
+                UPDATE orders
+                SET payment_transaction_number = NULL,
+                    payment_transaction_key = NULL,
+                    payment_paid_at = NULL,
+                    payment_amount = NULL,
+                    payment_ocr_confidence = NULL,
+                    payment_extraction_method = NULL,
+                    payment_confirmed_at = NULL,
+                    payment_ocr_engine = NULL
+                WHERE order_id = %s;
+                """,
+                (order_id,),
+            )
+            cursor.execute("DELETE FROM order_payment_proofs WHERE order_id = %s;", (order_id,))
+            cursor.execute("ALTER TABLE orders ENABLE TRIGGER trg_require_reseller_order_payment;")
+
+    assert repositories.decide_order(
+        order_id,
+        "reject",
+        team_leader_account_id=leader_id,
+        rejection_reason="The submitted receipt could not be verified.",
+    )
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT status FROM orders WHERE order_id = %s;", (order_id,))
+            assert cursor.fetchone()[0] == "rejected"
+
+
+@pytest.mark.postgres
+def test_approved_reseller_order_cannot_be_rejected(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="approved"
+    )
+    order_id = order_ids[0]
+
+    assert not repositories.decide_order(
+        order_id,
+        "reject",
+        team_leader_account_id=leader_id,
+        rejection_reason="The submitted receipt could not be verified.",
+    )
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT status FROM orders WHERE order_id = %s;", (order_id,))
+            assert cursor.fetchone()[0] == "approved"
+
+
+@pytest.mark.postgres
+def test_order_decisions_create_reseller_system_messages(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[10],
+        order_quantities=[1, 1, 1],
+        order_status="pending",
+    )
+
+    assert repositories.decide_order(order_ids[0], "approve", team_leader_account_id=leader_id)
+    assert repositories.decide_order(
+        order_ids[1],
+        "reject",
+        team_leader_account_id=leader_id,
+        rejection_reason="The payment reference does not match the uploaded receipt.",
+    )
+    assert repositories.decide_order(order_ids[2], "approve", team_leader_account_id=leader_id)
+    assert repositories.decide_order(order_ids[2], "fulfill", team_leader_account_id=leader_id)
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT osm.order_system_message_id, osm.event_type, osm.title, osm.message,
+                       osm.rejection_reason, osm.order_id
+                FROM order_system_messages osm
+                JOIN accounts a ON a.account_id = osm.reseller_account_id
+                WHERE a.email = 'account@test.local'
+                ORDER BY osm.order_system_message_id;
+                """
+            )
+            messages = cursor.fetchall()
+            assert [message[1] for message in messages] == [
+                "approved",
+                "rejected",
+                "approved",
+                "fulfilled",
+            ]
+            assert [message[2] for message in messages] == [
+                "Order approved",
+                "Order rejected",
+                "Order approved",
+                "Order fulfilled",
+            ]
+            assert messages[1][3] == f"Your reseller order #{order_ids[1]} was rejected."
+            assert messages[1][4] == "The payment reference does not match the uploaded receipt."
+            assert [message[5] for message in messages] == [
+                order_ids[0],
+                order_ids[1],
+                order_ids[2],
+                order_ids[2],
+            ]
+            cursor.execute(
+                """
+                SELECT n.source_id, n.target_url, n.title
+                FROM notifications n
+                JOIN notification_recipients nr ON nr.notification_id = n.notification_id
+                JOIN accounts a ON a.account_id = nr.account_id
+                WHERE a.email = 'account@test.local'
+                  AND n.category = 'order'
+                  AND n.source_type = 'order_system_messages'
+                ORDER BY n.notification_id;
+                """
+            )
+            notification_rows = cursor.fetchall()
+            assert [row[0] for row in notification_rows] == [message[0] for message in messages]
+            assert all(
+                row[1] == f"/portal/reseller/inbox?system_message={row[0]}#system-message-{row[0]}"
+                for row in notification_rows
+            )
+            assert [row[2] for row in notification_rows] == [message[2] for message in messages]
+            cursor.execute("SELECT rejection_reason FROM orders WHERE order_id = %s;", (order_ids[1],))
+            assert cursor.fetchone()[0] == "The payment reference does not match the uploaded receipt."
+
+
+@pytest.mark.postgres
+def test_pending_order_rejection_requires_explanation(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database,
+        batch_quantities=[5],
+        order_quantities=[1],
+        order_status="pending",
+    )
+
+    with pytest.raises(ValueError, match="at least 5 characters"):
+        repositories.decide_order(order_ids[0], "reject", team_leader_account_id=leader_id)
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT status, rejection_reason FROM orders WHERE order_id = %s;", (order_ids[0],))
+            assert cursor.fetchone() == ("pending", None)
+            cursor.execute("SELECT COUNT(*) FROM order_system_messages WHERE order_id = %s;", (order_ids[0],))
+            assert cursor.fetchone()[0] == 0
 
 
 @pytest.mark.postgres
@@ -179,7 +427,7 @@ def test_payment_proof_limit_and_pending_only_are_database_enforced(strict_inven
     order_id = order_ids[0]
     with psycopg2.connect(strict_inventory_database) as connection:
         with connection.cursor() as cursor:
-            with pytest.raises(psycopg2.Error, match="pending orders"):
+            with pytest.raises(psycopg2.Error, match="awaiting payment or review"):
                 cursor.execute(
                     """
                     INSERT INTO order_payment_proofs
@@ -404,9 +652,9 @@ def test_reseller_cart_and_checkout_reject_quantities_above_current_stock(strict
     second = repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
     assert second["quantity"] == 5
 
-    with pytest.raises(ValueError, match="Only 5 packs.*not reserved"):
+    with pytest.raises(ValueError, match="Only 5 packs.*reserved by orders awaiting payment"):
         repositories.add_reseller_cart_item(reseller_account_id, product_id, "1")
-    with pytest.raises(ValueError, match="Only 5 packs.*not reserved"):
+    with pytest.raises(ValueError, match="Only 5 packs.*reserved by orders awaiting payment"):
         repositories.update_reseller_cart_item(reseller_account_id, product_id, "6")
 
     with psycopg2.connect(strict_inventory_database) as connection:
@@ -416,7 +664,7 @@ def test_reseller_cart_and_checkout_reject_quantities_above_current_stock(strict
                 (batch_ids[0],),
             )
 
-    with pytest.raises(ValueError, match="Only 4 packs.*not reserved"):
+    with pytest.raises(ValueError, match="Only 4 packs.*reserved by orders awaiting payment"):
         repositories.create_order_from_items(
             "reseller",
             [(product_id, "5")],
@@ -452,17 +700,208 @@ def test_reseller_cart_checkout_accepts_sales_supervisor_assignment(strict_inven
     repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
     order = repositories.checkout_reseller_cart(reseller_account_id, "Supervisor-owned order")
 
-    assert order["status"] == "pending"
+    assert order["status"] == "to_pay"
     assert order["total_amount"] == 200.0
+    assert order["payment_due_at"] is not None
     assert repositories.reseller_cart_count(reseller_account_id) == 0
+
+    proofs, payment = _payment_submission("supervisor")
+    submitted = repositories.submit_order_payment(
+        reseller_account_id, order["order_id"], proofs, payment
+    )
+    assert submitted["status"] == "pending"
 
     with psycopg2.connect(strict_inventory_database) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT team_leader_account_id FROM orders WHERE order_id = %s;",
+                """
+                SELECT team_leader_account_id, payment_transaction_number,
+                       payment_paid_at, payment_amount, payment_extraction_method,
+                       (SELECT count(*) FROM order_payment_proofs WHERE order_id = orders.order_id)
+                FROM orders WHERE order_id = %s;
+                """,
                 (order["order_id"],),
             )
-            assert cursor.fetchone()[0] == leader_id
+            stored = cursor.fetchone()
+            assert stored[0] == leader_id
+            assert stored[1] == payment["transaction_number"]
+            assert stored[2] is not None
+            assert stored[3] == payment["payment_amount"]
+            assert stored[4] == "ocr_confirmed"
+            assert stored[5] == 1
+
+
+@pytest.mark.postgres
+def test_reseller_cannot_reuse_receipt_or_transaction_but_other_reseller_can(strict_inventory_database):
+    leader_id, product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[10], order_quantities=[]
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            first_account_id = cursor.fetchone()[0]
+
+    proofs, payment = _payment_submission("reuse-check", transaction_number="SHARED-REF-123456")
+    repositories.add_reseller_cart_item(first_account_id, product_id, "1")
+    first_order = repositories.checkout_reseller_cart(first_account_id)
+    repositories.submit_order_payment(first_account_id, first_order["order_id"], proofs, payment)
+
+    repositories.add_reseller_cart_item(first_account_id, product_id, "1")
+    second_order = repositories.checkout_reseller_cart(first_account_id)
+    _, different_payment = _payment_submission("different-reference")
+    with pytest.raises(ValueError, match="screenshot has already been used"):
+        repositories.submit_order_payment(
+            first_account_id, second_order["order_id"], proofs, different_payment
+        )
+    assert repositories.reseller_cart_count(first_account_id) == 0
+
+    different_proof, _ = _payment_submission("different-screenshot")
+    with pytest.raises(ValueError, match="transaction number has already been used"):
+        repositories.submit_order_payment(
+            first_account_id, second_order["order_id"], different_proof, payment
+        )
+    assert repositories.reseller_cart_count(first_account_id) == 0
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO resellers (
+                    business_name, contact_person, email, contact_number,
+                    reseller_status, team_leader_account_id
+                ) VALUES ('Other Reseller', 'Other Person', 'other@test.local',
+                          '09171111111', 'active', %s)
+                RETURNING reseller_id;
+                """,
+                (leader_id,),
+            )
+            other_reseller_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, reseller_id, name, email, password_hash)
+                VALUES ('reseller', %s, 'Other Reseller', 'other-account@test.local', 'hash')
+                RETURNING account_id;
+                """,
+                (other_reseller_id,),
+            )
+            other_account_id = cursor.fetchone()[0]
+
+    repositories.add_reseller_cart_item(other_account_id, product_id, "1")
+    other_proof, _ = _payment_submission("other-reseller")
+    other_order = repositories.checkout_reseller_cart(other_account_id)
+    other_payment = repositories.submit_order_payment(
+        other_account_id, other_order["order_id"], other_proof, payment
+    )
+    assert other_payment["status"] == "pending"
+
+
+@pytest.mark.postgres
+def test_concurrent_checkout_allows_only_one_active_payment_window(strict_inventory_database):
+    _, first_product_id, _, _ = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[10], order_quantities=[]
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO inventory_items (
+                    item_type, category, name, description, unit, base_price,
+                    pack_size, pack_size_unit, pack_content_status
+                ) VALUES ('finished_product', 'Pork', 'Concurrent Product',
+                          'Second concurrency product.', 'pack', 110, 500, 'g', 'declared')
+                RETURNING item_id;
+                """
+            )
+            second_product_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO inventory_batches (
+                    item_id, batch_code, source_type, quantity_received,
+                    quantity_available, unit, received_date, expiry_date, quality_status
+                ) VALUES (%s, 'CONCURRENT-TEST', 'direct_received', 10, 10, 'pack',
+                          CURRENT_DATE, CURRENT_DATE + INTERVAL '7 days', 'approved');
+                """,
+                (second_product_id,),
+            )
+
+    repositories.add_reseller_cart_item(reseller_account_id, first_product_id, "1")
+    repositories.add_reseller_cart_item(reseller_account_id, second_product_id, "1")
+    def checkout(product_id):
+        try:
+            return repositories.checkout_reseller_cart(
+                reseller_account_id,
+                product_ids=[product_id],
+            )
+        except ValueError as exc:
+            return str(exc)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(checkout, first_product_id)
+        second = executor.submit(checkout, second_product_id)
+        results = [first.result(), second.result()]
+
+    assert sum(isinstance(result, dict) for result in results) == 1
+    assert sum("still awaiting payment" in str(result) for result in results) == 1
+    assert repositories.reseller_cart_count(reseller_account_id) == 1
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM orders;")
+            assert cursor.fetchone()[0] == 1
+
+
+@pytest.mark.postgres
+def test_unpaid_order_expires_after_fifteen_minutes_and_releases_stock(strict_inventory_database):
+    _, product_id, batch_ids, _ = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[]
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT account_id FROM accounts WHERE email = 'account@test.local';")
+            reseller_account_id = cursor.fetchone()[0]
+
+    repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
+    order = repositories.checkout_reseller_cart(reseller_account_id)
+    assert order["status"] == "to_pay"
+    remaining_seconds = (order["payment_due_at"] - datetime.now(timezone.utc)).total_seconds()
+    assert 14 * 60 <= remaining_seconds <= 15 * 60
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT quantity FROM order_stock_reservations WHERE order_id = %s AND product_id = %s;",
+                (order["order_id"], product_id),
+            )
+            assert cursor.fetchone()[0] == 2
+            cursor.execute(
+                """
+                UPDATE orders
+                SET order_date = now() - INTERVAL '30 minutes',
+                    payment_due_at = now() - INTERVAL '1 minute'
+                WHERE order_id = %s;
+                """,
+                (order["order_id"],),
+            )
+
+    assert repositories.expire_unpaid_orders(account_id=reseller_account_id) == 1
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT status, expired_at FROM orders WHERE order_id = %s;",
+                (order["order_id"],),
+            )
+            status, expired_at = cursor.fetchone()
+            assert status == "expired"
+            assert expired_at is not None
+            cursor.execute("SELECT count(*) FROM order_stock_reservations WHERE order_id = %s;", (order["order_id"],))
+            assert cursor.fetchone()[0] == 0
+            cursor.execute("SELECT quantity_available FROM inventory_batches WHERE batch_id = %s;", (batch_ids[0],))
+            assert cursor.fetchone()[0] == 5
+
+    repositories.add_reseller_cart_item(reseller_account_id, product_id, "5")
+    replacement = repositories.checkout_reseller_cart(reseller_account_id)
+    assert replacement["status"] == "to_pay"
 
 
 @pytest.mark.postgres
@@ -537,10 +976,12 @@ def test_reseller_cart_checkout_http_flow_redirects_to_history(strict_inventory_
     repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: reseller_account_id)
-
     response = TestClient(main.app).post(
-        "/portal/reseller/cart/checkout",
-        data={"notes": "HTTP checkout", "product_id": str(product_id)},
+        "/portal/reseller/checkout",
+        data={
+            "notes": "HTTP checkout",
+            "product_id": str(product_id),
+        },
         follow_redirects=False,
     )
 
@@ -568,7 +1009,10 @@ def test_reseller_checkout_preserves_cart_when_assigned_leader_is_ineligible(str
     repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
 
     with pytest.raises(ValueError, match="assigned sales team leader is unavailable"):
-        repositories.checkout_reseller_cart(reseller_account_id)
+        proofs, payment = _payment_submission("ineligible-leader")
+        repositories.checkout_reseller_cart(
+            reseller_account_id, payment_proofs=proofs, payment_details=payment
+        )
 
     assert repositories.reseller_cart_count(reseller_account_id) == 2
     with psycopg2.connect(strict_inventory_database) as connection:
@@ -596,16 +1040,30 @@ def test_reseller_checkout_http_flow_returns_assignment_error_and_preserves_cart
     repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: reseller_account_id)
+    proofs, payment = _payment_submission("http-ineligible")
+
+    async def parse_uploads(_uploads):
+        return proofs
+
+    monkeypatch.setattr(shared_portal, "parse_payment_proof_attachments", parse_uploads)
+    monkeypatch.setattr(reseller_portal.receipt_ocr, "confirmed_payment_details", lambda *args: payment)
 
     response = TestClient(main.app).post(
-        "/portal/reseller/cart/checkout",
-        data={"product_id": str(product_id)},
+        "/portal/reseller/checkout",
+        data={
+            "product_id": str(product_id),
+            "receipt_scan_token": "signed",
+            "transaction_number": payment["transaction_number"],
+            "payment_date": "2026-10-15",
+            "payment_time": "10:30",
+            "payment_details_confirmed": "yes",
+        },
+        files={"payment_proofs": ("receipt.png", b"image", "image/png")},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert response.headers["location"].startswith("/portal/reseller/cart?error=")
-    assert "assigned+sales+team+leader+is+unavailable" in response.headers["location"]
+    assert response.headers["location"] == "/portal/reseller/checkout?restore=1"
     assert repositories.reseller_cart_count(reseller_account_id) == 2
 
 

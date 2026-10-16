@@ -43,7 +43,7 @@
         <span class="hint">Search and review portal access.</span>
       </div>
     </div>
-    <form class="filter-bar owner-filter-bar" method="get">
+    <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
       <label>Search <input name="q" value="{{ accounts_page.filters.q }}" placeholder="Name or email"></label>
       <label>Type
         <select name="type">
@@ -62,8 +62,8 @@
           <option value="newest" {{ 'selected' if accounts_page.filters.sort == 'newest' else '' }}>Newest</option>
         </select>
       </label>
-      <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
     </form>
+    <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
     <div class="owner-account-card-list">
       {% for account in accounts %}
       <article class="owner-account-card">
@@ -110,6 +110,7 @@
       {% if accounts_page.pagination.has_prev %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&sort={{ accounts_page.filters.sort|urlencode }}&page={{ accounts_page.pagination.page - 1 }}">Previous</a>{% endif %}
       <span>Page {{ accounts_page.pagination.page }} of {{ accounts_page.pagination.total_pages }}</span>
       {% if accounts_page.pagination.has_next %}<a href="?q={{ accounts_page.filters.q|urlencode }}&type={{ accounts_page.filters.type|urlencode }}&sort={{ accounts_page.filters.sort|urlencode }}&page={{ accounts_page.pagination.page + 1 }}">Next</a>{% endif %}
+    </div>
     </div>
   </article>
 </section>

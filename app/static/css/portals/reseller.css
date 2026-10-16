@@ -821,7 +821,7 @@ body.modal-is-open {
 
 .role-reseller .reseller-product-search {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
   gap: 7px;
   align-items: end;
   margin: 14px 0;
@@ -844,13 +844,6 @@ body.modal-is-open {
   height: 18px;
   color: var(--text-light);
   pointer-events: none;
-}
-
-.role-reseller .reseller-product-search .button svg {
-  position: static;
-  width: 18px;
-  height: 18px;
-  pointer-events: auto;
 }
 
 .role-reseller .reseller-product-search input,
@@ -2113,6 +2106,755 @@ body.modal-is-open {
 
   .role-reseller .reseller-cart-line-total {
     grid-column: 1 / 3;
+  }
+}
+
+/* Timed payment keeps unpaid orders actionable without making the whole page
+   feel like an alert. The clock becomes urgent only as the deadline closes. */
+.role-reseller .checkout-payment-window {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 13px;
+  align-items: center;
+  margin: 18px 0;
+  padding: 15px;
+  border: 1px solid rgba(170, 134, 22, 0.35);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(246, 236, 208, 0.72), #fffdf8);
+}
+
+.role-reseller .checkout-payment-window > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--primary);
+  color: var(--gold);
+}
+
+.role-reseller .checkout-payment-window strong,
+.role-reseller .checkout-payment-window small {
+  display: block;
+}
+
+.role-reseller .checkout-payment-window small {
+  margin-top: 2px;
+  color: var(--text-light);
+  line-height: 1.45;
+}
+
+.role-reseller .payment-deadline {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  width: min(340px, 100%);
+  margin: 22px auto 4px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(13, 12, 11, 0.16);
+}
+
+.role-reseller .payment-deadline > span:first-child {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.role-reseller .payment-deadline strong {
+  color: var(--gold);
+  font-size: clamp(2rem, 7vw, 3.25rem);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.role-reseller [data-payment-deadline][data-urgency="warning"] [data-payment-countdown] {
+  color: #b26700;
+}
+
+.role-reseller .payment-deadline[data-urgency="warning"] {
+  background: #fff1d7;
+  color: var(--text);
+}
+
+.role-reseller .payment-deadline[data-urgency="critical"] {
+  background: #8f2d28;
+}
+
+.role-reseller [data-payment-deadline][data-urgency="critical"] [data-payment-countdown] {
+  color: #fff;
+}
+
+.role-reseller .to-pay-clock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  width: 100%;
+  color: var(--gold-deep);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+}
+
+.role-reseller .to-pay-clock > span {
+  min-width: 0;
+}
+
+.role-reseller .to-pay-clock > strong {
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.role-reseller .to-pay-clock > small {
+  grid-column: 1 / -1;
+  color: var(--text-light);
+  font-weight: 650;
+}
+
+.role-reseller .status-countdown {
+  display: block;
+  margin-top: 6px;
+}
+
+.role-reseller .receipt-payment-form {
+  display: grid;
+  gap: 14px;
+  min-width: min(370px, 72vw);
+  padding: 15px;
+  border: 1px solid rgba(170, 134, 22, 0.35);
+  border-radius: 12px;
+  background: linear-gradient(145deg, var(--surface-muted), #fff);
+}
+
+.role-reseller .receipt-payment-form .payment-deadline {
+  width: 100%;
+  margin: 0;
+  padding: 14px 18px;
+  box-shadow: none;
+}
+
+.role-reseller .receipt-payment-form .payment-deadline strong {
+  font-size: 2.15rem;
+}
+
+.role-reseller .receipt-file-picker.compact {
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-items: start;
+  gap: 10px;
+  padding: 14px;
+  text-align: left;
+}
+
+.role-reseller .receipt-file-picker.compact > svg {
+  width: 24px;
+  height: 24px;
+  color: var(--gold-deep);
+}
+
+.role-reseller .receipt-payment-form .button {
+  justify-content: center;
+  width: 100%;
+}
+
+.role-reseller .receipt-payment-form[data-expired="true"] {
+  border-color: rgba(178, 59, 53, 0.32);
+  background: rgba(178, 59, 53, 0.055);
+}
+
+/* The history table has a narrow proof column. Keep the payment controls
+   actionable there without making the entire order row as tall as a checkout
+   form. The selected-file state can still grow below this compact layout. */
+@media (min-width: 761px) {
+  .role-reseller .order-history-table .receipt-payment-form {
+    grid-template-columns: minmax(0, 1fr) 135px;
+    align-items: start;
+    gap: 8px 10px;
+    width: 100%;
+    min-width: 0;
+    padding: 11px 12px;
+  }
+
+  .role-reseller .order-history-table .to-pay-clock {
+    grid-column: 1 / -1;
+  }
+
+  .role-reseller .order-history-table .receipt-file-picker.compact {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    gap: 8px;
+    min-height: 0;
+    padding: 8px 11px;
+  }
+
+  .role-reseller .order-history-table .receipt-file-picker.compact > svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .role-reseller .order-history-table .receipt-file-picker.compact small {
+    display: none;
+  }
+
+  .role-reseller .order-history-table .receipt-payment-form > [data-receipt-submit] {
+    grid-column: 1;
+    grid-row: 3;
+    width: 100%;
+    min-height: 40px;
+    padding-inline: 12px;
+  }
+
+  .role-reseller .order-history-table .receipt-scan-status[data-receipt-card-status] {
+    grid-column: 2;
+    grid-row: 3;
+    align-self: end;
+    min-height: 0;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    text-align: right;
+  }
+
+  .role-reseller .order-history-table .receipt-file-list {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+
+  .role-reseller .order-history-table .receipt-file-list:empty {
+    display: none;
+  }
+
+  .role-reseller .order-history-table .receipt-confirmed-summary {
+    grid-column: 1 / -1;
+    grid-row: 5;
+  }
+}
+
+@media (max-width: 760px) {
+  .role-reseller .receipt-payment-form {
+    min-width: min(310px, 78vw);
+  }
+}
+
+@media (max-width: 560px) {
+  .role-reseller .checkout-payment-window {
+    grid-template-columns: 40px minmax(0, 1fr);
+    padding: 13px;
+  }
+
+  .role-reseller .checkout-payment-window > span:first-child {
+    width: 40px;
+    height: 40px;
+  }
+
+  .role-reseller .receipt-payment-form {
+    min-width: 270px;
+  }
+}
+
+/* Receipt verification begins in the checkout card and expands into a focused
+   review dialog as soon as screenshots are selected. */
+.role-reseller .receipt-inline-alert {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(183, 54, 54, 0.28);
+  border-radius: 10px;
+  background: rgba(183, 54, 54, 0.07);
+  color: #8b2727;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.role-reseller .receipt-verification {
+  display: grid;
+  gap: 16px;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-muted);
+}
+
+.role-reseller .receipt-verification-heading {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.role-reseller .receipt-verification-heading h4,
+.role-reseller .receipt-verification-heading p {
+  margin: 0;
+}
+
+.role-reseller .receipt-verification-heading > span:last-child,
+.role-reseller .receipt-file-picker > span,
+.role-reseller .receipt-confirmation > span {
+  display: grid;
+  gap: 3px;
+}
+
+.role-reseller .receipt-verification-heading small,
+.role-reseller .receipt-file-picker small,
+.role-reseller .receipt-confirmation small {
+  display: block;
+  line-height: 1.45;
+}
+
+.role-reseller .receipt-verification-heading p {
+  margin-top: 3px;
+  color: var(--text-light);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.role-reseller .receipt-verification-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--primary);
+  color: var(--gold);
+}
+
+.role-reseller .receipt-verification-icon svg {
+  width: 21px;
+  height: 21px;
+}
+
+.role-reseller .receipt-file-picker {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 20px 16px;
+  border: 1.5px dashed rgba(76, 61, 42, 0.3);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+  text-align: center;
+}
+
+.role-reseller .receipt-file-picker:hover {
+  border-color: var(--gold);
+  background: #fffdf7;
+}
+
+.role-reseller .receipt-file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.role-reseller .receipt-file-picker small {
+  color: var(--text-light);
+}
+
+.role-reseller .receipt-file-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.role-reseller .receipt-file-list > span {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: 0.82rem;
+}
+
+.role-reseller .receipt-file-list > span > span {
+  display: grid;
+  min-width: 0;
+}
+
+.role-reseller .receipt-file-list > span > span > strong,
+.role-reseller .receipt-file-list > span > span > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-reseller .receipt-file-list button {
+  border: 0;
+  background: transparent;
+  color: #a12e2e;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.role-reseller .receipt-scan-button {
+  width: 100%;
+}
+
+.role-reseller .receipt-scan-status {
+  min-height: 1.3em;
+  margin: 0;
+  color: var(--text-light);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.role-reseller .receipt-scan-status[data-state="error"] {
+  color: #9c2929;
+}
+
+.role-reseller .receipt-scan-status[data-state="success"] {
+  color: #26704b;
+}
+
+.role-reseller .receipt-scan-status[data-state="warning"] {
+  color: #855c00;
+}
+
+.role-reseller .receipt-scan-status[data-state="scanning"] {
+  color: #155e75;
+}
+
+.role-reseller .receipt-fields {
+  display: grid;
+  gap: 13px;
+  padding-top: 2px;
+}
+
+.role-reseller .receipt-fields[hidden] {
+  display: none;
+}
+
+.role-reseller .receipt-date-time {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.role-reseller .receipt-fields input {
+  width: 100%;
+}
+
+.role-reseller .receipt-confirmed-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(38, 112, 75, 0.25);
+  border-radius: 10px;
+  background: rgba(38, 112, 75, 0.08);
+}
+
+.role-reseller .receipt-confirmed-summary[hidden] {
+  display: none;
+}
+
+.role-reseller .receipt-confirmed-summary > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.role-reseller .receipt-confirmed-summary small {
+  overflow: hidden;
+  color: var(--text-light);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-reseller .receipt-summary-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #26704b;
+  color: #fff;
+}
+
+.receipt-modal-open {
+  overflow: hidden;
+}
+
+.role-reseller .receipt-modal {
+  position: fixed;
+  z-index: 1400;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.role-reseller .receipt-modal[hidden] {
+  display: none;
+}
+
+.role-reseller .receipt-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(21, 18, 13, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.role-reseller .receipt-modal-dialog {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(980px, 100%);
+  max-height: min(88dvh, 820px);
+  overflow: hidden;
+  border: 1px solid rgba(111, 103, 93, 0.32);
+  border-radius: 18px;
+  outline: none;
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(13, 12, 11, 0.35);
+}
+
+.role-reseller .receipt-modal-header,
+.role-reseller .receipt-modal-actions {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  background: #fffdf8;
+}
+
+.role-reseller .receipt-modal-header {
+  border-bottom: 1px solid var(--border);
+}
+
+.role-reseller .receipt-modal-header > span {
+  display: grid;
+  gap: 4px;
+}
+
+.role-reseller .receipt-modal-header h3,
+.role-reseller .receipt-modal-header p {
+  margin: 0;
+}
+
+.role-reseller .receipt-modal-header h3 {
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+}
+
+.role-reseller .receipt-modal-header p {
+  max-width: 680px;
+  color: var(--text-light);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.role-reseller .receipt-modal-close {
+  display: grid;
+  flex: 0 0 44px;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.role-reseller .receipt-modal-close:hover,
+.role-reseller .receipt-modal-close:focus-visible {
+  border-color: var(--primary);
+  background: var(--surface-muted);
+}
+
+.role-reseller .receipt-modal-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
+  min-height: 0;
+  overflow: auto;
+}
+
+.role-reseller .receipt-preview-panel,
+.role-reseller .receipt-details-panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-width: 0;
+  padding: 24px;
+}
+
+.role-reseller .receipt-preview-panel {
+  border-right: 1px solid var(--border);
+  background: #eeeae2;
+}
+
+.role-reseller .receipt-preview-heading {
+  display: grid;
+  gap: 2px;
+}
+
+.role-reseller .receipt-preview-heading small {
+  color: var(--text-light);
+}
+
+.role-reseller .receipt-previews {
+  display: grid;
+  gap: 16px;
+}
+
+.role-reseller .receipt-previews figure {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.role-reseller .receipt-previews img {
+  width: 100%;
+  max-height: 54dvh;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(13, 12, 11, 0.14);
+}
+
+.role-reseller .receipt-previews figcaption {
+  overflow: hidden;
+  color: var(--text-light);
+  font-size: 0.78rem;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-reseller .receipt-details-panel .receipt-fields {
+  gap: 12px;
+}
+
+.role-reseller .receipt-amount-input {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.role-reseller .receipt-amount-input:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(28, 57, 47, 0.12);
+}
+
+.role-reseller .receipt-amount-input > span {
+  padding-left: 12px;
+  color: var(--text-light);
+  font-weight: 800;
+}
+
+.role-reseller .receipt-amount-input input {
+  border: 0;
+  box-shadow: none;
+}
+
+.role-reseller .receipt-modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+}
+
+.role-reseller .receipt-confirmation {
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  margin: 0;
+  padding: 13px;
+  border-radius: 10px;
+  background: rgba(215, 182, 33, 0.1);
+  cursor: pointer;
+}
+
+.role-reseller .receipt-confirmation input {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+@media (max-width: 560px) {
+  .role-reseller .receipt-verification {
+    padding: 14px;
+  }
+
+  .role-reseller .receipt-date-time {
+    grid-template-columns: 1fr;
+  }
+
+  .role-reseller .receipt-confirmed-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .role-reseller .receipt-confirmed-summary .button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .role-reseller .receipt-modal {
+    align-items: end;
+    padding: 0;
+  }
+
+  .role-reseller .receipt-modal-dialog {
+    width: 100%;
+    max-height: 94dvh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .role-reseller .receipt-modal-header,
+  .role-reseller .receipt-modal-actions {
+    padding: 16px;
+  }
+
+  .role-reseller .receipt-modal-body {
+    grid-template-columns: 1fr;
+  }
+
+  .role-reseller .receipt-preview-panel,
+  .role-reseller .receipt-details-panel {
+    padding: 18px 16px;
+  }
+
+  .role-reseller .receipt-preview-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .role-reseller .receipt-previews img {
+    max-height: 42dvh;
+  }
+
+  .role-reseller .receipt-modal-actions .button {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .role-reseller .receipt-modal-dialog {
+    animation: receipt-modal-enter 160ms ease-out;
+  }
+
+  @keyframes receipt-modal-enter {
+    from { opacity: 0; transform: translateY(12px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
 }
 

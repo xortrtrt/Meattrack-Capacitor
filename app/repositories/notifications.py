@@ -84,6 +84,43 @@ def create_notification(
         )
 
 
+def _create_order_system_message_cursor(
+    cur,
+    *,
+    reseller_account_id: int,
+    order_id: int,
+    event_type: str,
+    title: str,
+    message: str,
+    rejection_reason: str | None = None,
+) -> int:
+    if event_type not in {"approved", "rejected", "fulfilled"}:
+        raise ValueError("Unsupported order system message type.")
+    cur.execute(
+        """
+        INSERT INTO order_system_messages (
+            reseller_account_id, order_id, event_type, title, message, rejection_reason
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (reseller_account_id, order_id, event_type)
+        DO UPDATE SET
+            title = EXCLUDED.title,
+            message = EXCLUDED.message,
+            rejection_reason = EXCLUDED.rejection_reason
+        RETURNING order_system_message_id;
+        """,
+        (
+            reseller_account_id,
+            order_id,
+            event_type,
+            title,
+            message,
+            rejection_reason,
+        ),
+    )
+    return int(cur.fetchone()["order_system_message_id"])
+
+
 def list_notifications(role_key: str, account_id: int | None = None, limit: int = 8) -> list[dict]:
     return clean_row(fetch_all(
         """
@@ -92,11 +129,145 @@ def list_notifications(role_key: str, account_id: int | None = None, limit: int 
         FROM notification_recipients nr
         JOIN notifications n ON n.notification_id = nr.notification_id
         WHERE nr.account_id = %s
-        ORDER BY nr.read_at NULLS FIRST, n.created_at DESC
+        ORDER BY n.created_at DESC, n.notification_id DESC
         LIMIT %s;
         """,
         (account_id, limit),
     ))
+
+
+def list_order_system_messages(account_id: int | None, limit: int = 20) -> list[dict]:
+    return clean_row(fetch_all(
+        """
+        SELECT osm.order_system_message_id, osm.event_type,
+               CASE WHEN osm.event_type = 'rejected' THEN 'critical' ELSE 'info' END AS severity,
+               osm.title, osm.message, osm.rejection_reason, osm.order_id,
+               osm.read_at, osm.created_at
+        FROM order_system_messages osm
+        WHERE osm.reseller_account_id = %s
+        ORDER BY osm.created_at DESC, osm.order_system_message_id DESC
+        LIMIT %s;
+        """,
+        (account_id, min(max(1, int(limit)), 50)),
+    ))
+
+
+def get_order_system_message(account_id: int | None, system_message_id: int) -> dict | None:
+    return clean_row(fetch_one(
+        """
+        SELECT osm.order_system_message_id, osm.event_type,
+               CASE WHEN osm.event_type = 'rejected' THEN 'critical' ELSE 'info' END AS severity,
+               osm.title, osm.message, osm.rejection_reason, osm.order_id,
+               osm.read_at, osm.created_at
+        FROM order_system_messages osm
+        WHERE osm.reseller_account_id = %s
+          AND osm.order_system_message_id = %s;
+        """,
+        (account_id, system_message_id),
+    ))
+
+
+def unread_order_system_message_count(account_id: int | None) -> int:
+    row = fetch_one(
+        """
+        SELECT COUNT(*) AS total
+        FROM order_system_messages
+        WHERE reseller_account_id = %s
+          AND read_at IS NULL;
+        """,
+        (account_id,),
+    )
+    return int(row["total"])
+
+
+def mark_order_system_message_read(account_id: int | None, system_message_id: int) -> bool:
+    if account_id is None:
+        return False
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE order_system_messages
+            SET read_at = COALESCE(read_at, now())
+            WHERE order_system_message_id = %s
+              AND reseller_account_id = %s
+            RETURNING order_system_message_id;
+            """,
+            (system_message_id, account_id),
+        )
+        return cur.fetchone() is not None
+
+
+def mark_notification_read(account_id: int | None, notification_id: int) -> dict | None:
+    if account_id is None:
+        return None
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE notification_recipients nr
+            SET read_at = COALESCE(nr.read_at, now())
+            FROM notifications n
+            WHERE nr.notification_id = n.notification_id
+              AND nr.notification_id = %s
+              AND nr.account_id = %s
+            RETURNING n.notification_id, n.target_url, n.source_type, n.source_id;
+            """,
+            (notification_id, account_id),
+        )
+        row = cur.fetchone()
+    return clean_row(row)
+
+
+def list_notification_history(
+    account_id: int | None,
+    *,
+    status: str = "",
+    category: str = "",
+    page: int = 1,
+    page_size: int = 15,
+) -> list[dict]:
+    offset = (max(page, 1) - 1) * page_size
+    return clean_row(fetch_all(
+        """
+        SELECT n.notification_id, n.category, n.severity, n.title, n.message, n.target_url,
+               nr.read_at, n.created_at
+        FROM notification_recipients nr
+        JOIN notifications n ON n.notification_id = nr.notification_id
+        WHERE nr.account_id = %s
+          AND (
+              %s = ''
+              OR (%s = 'unread' AND nr.read_at IS NULL)
+              OR (%s = 'read' AND nr.read_at IS NOT NULL)
+          )
+          AND (%s = '' OR lower(n.category) = lower(%s))
+        ORDER BY n.created_at DESC, n.notification_id DESC
+        LIMIT %s OFFSET %s;
+        """,
+        (account_id, status, status, status, category, category, page_size, offset),
+    ))
+
+
+def count_notification_history(
+    account_id: int | None,
+    *,
+    status: str = "",
+    category: str = "",
+) -> int:
+    row = fetch_one(
+        """
+        SELECT COUNT(*) AS total
+        FROM notification_recipients nr
+        JOIN notifications n ON n.notification_id = nr.notification_id
+        WHERE nr.account_id = %s
+          AND (
+              %s = ''
+              OR (%s = 'unread' AND nr.read_at IS NULL)
+              OR (%s = 'read' AND nr.read_at IS NOT NULL)
+          )
+          AND (%s = '' OR lower(n.category) = lower(%s));
+        """,
+        (account_id, status, status, status, category, category),
+    )
+    return int(row["total"])
 
 
 def unread_notification_count(role_key: str, account_id: int | None = None) -> int:
@@ -122,4 +293,4 @@ def mark_notifications_read(role_key: str, account_id: int | None = None) -> Non
     )
 
 
-__all__ = ['_notification_recipient_ids', '_create_notification_cursor', 'create_notification', 'list_notifications', 'unread_notification_count', 'mark_notifications_read']
+__all__ = ['_notification_recipient_ids', '_create_notification_cursor', '_create_order_system_message_cursor', 'create_notification', 'list_notifications', 'list_order_system_messages', 'get_order_system_message', 'unread_order_system_message_count', 'mark_order_system_message_read', 'mark_notification_read', 'list_notification_history', 'count_notification_history', 'unread_notification_count', 'mark_notifications_read']

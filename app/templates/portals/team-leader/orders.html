@@ -1,15 +1,17 @@
             <div class="sales-page sales-review-page sales-orders-page">
             <section class="panel sales-review-surface">
-                <div class="panel-heading"><h2>Reseller order review</h2><span class="hint">Approve only after proof of payment is uploaded.</span></div>
-                <form class="filter-bar" method="get">
+                <div class="panel-heading"><h2>Reseller order review</h2><span class="hint">Compare the confirmed payment details with the receipt before approval.</span></div>
+                <form class="filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
                     <label>Search <input name="q" value="{{ orders_page.filters.q }}" placeholder="Order, reseller, product"></label>
                     <label>Status
                         <select name="status">
                             <option value="">All</option>
+                            <option value="to_pay" {{ 'selected' if orders_page.filters.status == 'to_pay' else '' }}>To pay</option>
                             <option value="pending" {{ 'selected' if orders_page.filters.status == 'pending' else '' }}>Pending</option>
                             <option value="approved" {{ 'selected' if orders_page.filters.status == 'approved' else '' }}>Approved</option>
                             <option value="fulfilled" {{ 'selected' if orders_page.filters.status == 'fulfilled' else '' }}>Fulfilled</option>
                             <option value="rejected" {{ 'selected' if orders_page.filters.status == 'rejected' else '' }}>Rejected</option>
+                            <option value="expired" {{ 'selected' if orders_page.filters.status == 'expired' else '' }}>Expired</option>
                         </select>
                     </label>
                     <label>Sort
@@ -21,22 +23,51 @@
                             <option value="status_asc" {{ 'selected' if orders_page.filters.sort == 'status_asc' else '' }}>Status</option>
                         </select>
                     </label>
-                    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
                 </form>
+                <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
                 <div class="table-wrap">
                     <table class="responsive-card-table order-review-table">
                         <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Status</th><th>Total</th><th>Proof</th><th>Action</th></tr></thead>
                         <tbody>
                         {% for order in orders if order.order_type == "reseller" %}
-                            {% set order_locked = order.status in ["fulfilled", "rejected"] %}
+                            {% set order_locked = order.status in ["fulfilled", "rejected", "cancelled", "expired"] %}
                             <tr>
                                 <td data-label="Order">#{{ order.order_id }}</td>
                                 <td data-label="Reseller">{{ order.reseller }}</td>
-                                <td data-label="Product">{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}No item{% endif %}</td>
-                                <td data-label="Status"><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+                                <td data-label="Product">
+                                    {% if order["items"] %}
+                                    <div class="order-review-items">
+                                        {% set visible_item_count = 3 %}
+                                        {% for item in order["items"][:visible_item_count] %}
+                                        <span><strong>{{ item.quantity|number }} packs</strong> {{ item.name }}</span>
+                                        {% endfor %}
+                                        {% if order["items"]|length > visible_item_count %}
+                                        <details class="order-items-overflow">
+                                            <summary>Show {{ order["items"]|length - visible_item_count }} more product{{ '' if order["items"]|length - visible_item_count == 1 else 's' }}</summary>
+                                            <div class="order-items-overflow-list">
+                                                {% for item in order["items"][visible_item_count:] %}
+                                                <span><strong>{{ item.quantity|number }} packs</strong> {{ item.name }}</span>
+                                                {% endfor %}
+                                            </div>
+                                        </details>
+                                        {% endif %}
+                                    </div>
+                                    {% else %}
+                                    No item
+                                    {% endif %}
+                                </td>
+                                <td data-label="Status"><span class="status-badge {{ order.status }}">{{ 'To pay' if order.status == 'to_pay' else order.status }}</span></td>
                                 <td data-label="Total">{{ order.total_amount|currency }}</td>
                                 <td data-label="Proof">
                                     {% if order.payment_proofs %}
+                                    {% if order.payment_transaction_number %}
+                                    <div class="payment-details-summary">
+                                        <strong>{{ order.payment_transaction_number }}</strong>
+                                        {% if order.payment_amount is not none %}<span>Amount sent: {{ order.payment_amount|currency }}</span>{% endif %}
+                                        <span>{{ order.payment_paid_at|nice_date }}</span>
+                                        {% if order.payment_extraction_method == 'manual_corrected' %}<small>Customer corrected</small>{% endif %}
+                                    </div>
+                                    {% endif %}
                                     <div class="proof-links">
                                         {% for proof in order.payment_proofs %}
                                         <a
@@ -51,15 +82,16 @@
                                         {% endfor %}
                                     </div>
                                     {% else %}
-                                    <span class="status-badge pending">Missing</span>
+                                    <span class="status-badge {{ 'to_pay' if order.status == 'to_pay' else 'expired' if order.status == 'expired' else 'pending' }}">{{ 'Awaiting customer' if order.status == 'to_pay' else 'Payment expired' if order.status == 'expired' else 'Missing' }}</span>
                                     {% endif %}
                                 </td>
                                 <td data-label="Action">
                                     {% set approval_blocked = order.status != "pending" or not order.payment_proofs %}
+                                    {% set rejection_blocked = order.status != "pending" %}
                                     <div class="table-actions">
-                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/approve" method="post"><button class="icon-button" title="{{ 'Proof of payment required' if approval_blocked else 'Approve' }}" {% if order_locked or approval_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="check"></i></button></form>
-                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/reject" method="post"><button class="icon-button danger" title="Reject" {% if order_locked %}disabled aria-disabled="true"{% endif %}><i data-lucide="x"></i></button></form>
-                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/fulfill" method="post"><button class="icon-button" title="{{ 'Approve order before fulfillment' if order.status != 'approved' else 'Fulfill' }}" {% if order.status != "approved" %}disabled aria-disabled="true"{% endif %}><i data-lucide="package-check"></i></button></form>
+                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/approve" method="post" data-order-action-form data-order-action="approve" data-order-id="{{ order.order_id }}"><button class="icon-button" title="{{ 'Proof of payment required' if approval_blocked else 'Approve' }}" {% if order_locked or approval_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="check"></i></button></form>
+                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/reject" method="post" data-order-action-form data-order-action="reject" data-order-id="{{ order.order_id }}"><input type="hidden" name="rejection_reason" value="" data-order-rejection-value><button class="icon-button danger" title="{{ 'Only pending orders can be rejected' if rejection_blocked else 'Reject' }}" {% if order_locked or rejection_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="x"></i></button></form>
+                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/fulfill" method="post" data-order-action-form data-order-action="fulfill" data-order-id="{{ order.order_id }}"><button class="icon-button" title="{{ 'Approve order before fulfillment' if order.status != 'approved' else 'Fulfill' }}" {% if order.status != "approved" %}disabled aria-disabled="true"{% endif %}><i data-lucide="package-check"></i></button></form>
                                     </div>
                                 </td>
                             </tr>
@@ -72,5 +104,26 @@
                     <span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>
                     {% if orders_page.pagination.has_next %}<a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next</a>{% endif %}
                 </div>
+                </div>
             </section>
+            <div class="proof-modal order-action-modal" data-order-action-modal hidden>
+                <button class="proof-modal-backdrop" type="button" aria-label="Cancel order action" data-order-action-close></button>
+                <section class="proof-modal-card order-action-modal-card" role="dialog" aria-modal="true" aria-labelledby="order-action-modal-title" aria-describedby="order-action-modal-description" tabindex="-1">
+                    <span class="order-action-modal-icon" data-order-action-icon aria-hidden="true"><i data-lucide="circle-check"></i></span>
+                    <div class="order-action-modal-copy">
+                        <span class="eyebrow" data-order-action-eyebrow>Confirm action</span>
+                        <h2 id="order-action-modal-title" data-order-action-title>Confirm order action</h2>
+                        <p id="order-action-modal-description" data-order-action-description>Review this action before continuing.</p>
+                    </div>
+                    <div class="order-rejection-field" data-order-rejection-field hidden>
+                        <label for="order-rejection-reason">Reason for rejection</label>
+                        <textarea id="order-rejection-reason" minlength="5" maxlength="400" rows="5" data-order-rejection-reason></textarea>
+                        <small>This note will be saved and sent to the reseller under System messages.</small>
+                    </div>
+                    <div class="order-action-modal-actions">
+                        <button class="button subtle" type="button" data-order-action-close>Cancel</button>
+                        <button class="button primary" type="button" data-order-action-confirm><span>Continue</span></button>
+                    </div>
+                </section>
+            </div>
             </div>

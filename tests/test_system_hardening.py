@@ -93,7 +93,21 @@ def test_notification_queries_are_account_scoped(monkeypatch):
     repositories.list_notifications("team-leader", 42)
     assert "notification_recipients" in calls[0][0]
     assert "nr.account_id = %s" in calls[0][0]
+    assert "ORDER BY n.created_at DESC, n.notification_id DESC" in calls[0][0]
+    assert "NULLS FIRST" not in calls[0][0]
     assert calls[0][1] == (42, 8)
+
+    calls.clear()
+    repositories.list_notification_history(
+        42,
+        status="unread",
+        category="order",
+        page=2,
+        page_size=15,
+    )
+    assert "nr.account_id = %s" in calls[0][0]
+    assert "ORDER BY n.created_at DESC, n.notification_id DESC" in calls[0][0]
+    assert calls[0][1] == (42, "unread", "unread", "unread", "order", "order", 15, 15)
 
 
 def test_checkout_entrypoint_uses_atomic_cart_mode(monkeypatch):
@@ -103,9 +117,16 @@ def test_checkout_entrypoint_uses_atomic_cart_mode(monkeypatch):
         "create_order_from_items",
         lambda *args, **kwargs: calls.append((args, kwargs)) or {"order_id": 1},
     )
-    result = repositories.checkout_reseller_cart(7, "note")
+    proofs = [{"checksum_sha256": "abc"}]
+    payment = {"transaction_number": "TXN123456"}
+    result = repositories.checkout_reseller_cart(7, "note", payment_proofs=proofs, payment_details=payment)
     assert result["order_id"] == 1
-    assert calls == [(("reseller", [], "note"), {"account_id": 7, "checkout_cart": True})]
+    assert calls == [(("reseller", [], "note"), {
+        "account_id": 7,
+        "checkout_cart": True,
+        "payment_proofs": proofs,
+        "payment_details": payment,
+    })]
 
 
 def test_checkout_entrypoint_passes_selected_product_ids(monkeypatch):
@@ -116,10 +137,18 @@ def test_checkout_entrypoint_passes_selected_product_ids(monkeypatch):
         lambda *args, **kwargs: calls.append((args, kwargs)) or {"order_id": 1},
     )
 
-    result = repositories.checkout_reseller_cart(7, "note", [11, 14])
+    proofs = [{"checksum_sha256": "abc"}]
+    payment = {"transaction_number": "TXN123456"}
+    result = repositories.checkout_reseller_cart(7, "note", [11, 14], proofs, payment)
 
     assert result["order_id"] == 1
     assert calls == [(
         ("reseller", [], "note"),
-        {"account_id": 7, "checkout_cart": True, "checkout_product_ids": [11, 14]},
+        {
+            "account_id": 7,
+            "checkout_cart": True,
+            "checkout_product_ids": [11, 14],
+            "payment_proofs": proofs,
+            "payment_details": payment,
+        },
     )]

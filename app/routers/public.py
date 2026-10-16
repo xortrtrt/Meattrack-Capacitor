@@ -22,6 +22,13 @@ def public_products(limit: int | None = None) -> list[dict]:
         return []
 
 
+def public_best_selling_products(limit: int = 3) -> list[dict]:
+    try:
+        return data.list_best_selling_products(limit=limit)
+    except Exception:
+        return public_products(limit=limit)
+
+
 @router.get("/")
 async def landing(request: Request, message: str = "", error: str = ""):
     return templates.TemplateResponse(

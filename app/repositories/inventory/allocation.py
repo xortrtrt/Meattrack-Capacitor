@@ -6,10 +6,19 @@ from .._shared import display_decimal
 from .movements import _insert_inventory_movement
 
 
-def _plan_fefo_allocations(cur, quantities: dict[int, Decimal]) -> list[dict]:
+def _plan_fefo_allocations(
+    cur,
+    quantities: dict[int, Decimal],
+    *,
+    reservation_order_id: int | None = None,
+) -> list[dict]:
     allocations: list[dict] = []
     for product_id in sorted(quantities):
         required = quantities[product_id]
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0));",
+            (f"inventory-product:{product_id}",),
+        )
         cur.execute("""
             SELECT ii.name, ii.unit
             FROM inventory_items ii
@@ -32,7 +41,22 @@ def _plan_fefo_allocations(cur, quantities: dict[int, Decimal]) -> list[dict]:
             FOR UPDATE;
         """, (product_id,))
         batches = cur.fetchall()
-        available = sum((Decimal(row["quantity_available"]) for row in batches), Decimal("0"))
+        if reservation_order_id is None:
+            cur.execute(
+                "SELECT COALESCE(SUM(quantity), 0) AS reserved FROM order_stock_reservations WHERE product_id = %s;",
+                (product_id,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT COALESCE(SUM(quantity), 0) AS reserved
+                FROM order_stock_reservations
+                WHERE product_id = %s AND order_id <> %s;
+                """,
+                (product_id, reservation_order_id),
+            )
+        reserved = Decimal(cur.fetchone()["reserved"])
+        available = sum((Decimal(row["quantity_available"]) for row in batches), Decimal("0")) - reserved
         if available < required:
             raise ValueError(
                 f"Not enough {product['name']}. Required {display_decimal(required)} packs, "

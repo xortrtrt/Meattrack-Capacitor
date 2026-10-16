@@ -12,6 +12,14 @@ from .._shared import (
 )
 
 
+MOVEMENT_CATEGORY_TYPES = {
+    "opening": ("opening_balance",),
+    "receipts": ("raw_receipt", "direct_finished_receipt"),
+    "production": ("production_consumption", "production_output"),
+    "sales": ("sale_fulfillment",),
+}
+
+
 def inventory_item_filter(category: str) -> tuple[str, str]:
     raw = (category or "").strip()
     if ":" in raw:
@@ -117,7 +125,8 @@ def list_inventory_batches(q: str = "", category: str = "", page: int | None = N
                END AS item_type_label,
                ii.name AS item_name, ii.category, ib.batch_code, ib.source_type,
                ib.quantity_received, ib.quantity_available, ib.unit,
-               ib.received_date, ib.expiry_date, ib.quality_status
+               ib.received_date, ib.expiry_date, ib.quality_status,
+               ib.expiry_date - CURRENT_DATE AS days_until_expiry
         FROM inventory_batches ib
         JOIN inventory_items ii ON ii.item_id = ib.item_id
         WHERE {where_sql}
@@ -182,10 +191,14 @@ def list_products(
                    WHERE pr.product_item_id = p.item_id
                      AND rm.item_type = 'raw_material'
                ) AS recipe_count,
-               COALESCE(SUM(pb.quantity_available) FILTER (
+               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
                      AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
-               ), 0) AS available
+               ), 0) - COALESCE((
+                   SELECT SUM(osr.quantity)
+                   FROM order_stock_reservations osr
+                   WHERE osr.product_id = p.item_id
+               ), 0), 0) AS available
         FROM inventory_items p
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_type = 'finished_product'
@@ -199,6 +212,37 @@ def list_products(
         order_sql=order_sql,
         paging_sql=paging_sql,
     ), tuple(params) or None))
+
+
+def list_best_selling_products(limit: int = 3) -> list[dict]:
+    clean_limit = max(1, min(int(limit), 12))
+    return clean_row(fetch_all("""
+        SELECT p.item_id AS product_id,
+               p.name,
+               p.description,
+               p.unit,
+               p.base_price,
+               p.category,
+               p.pack_size,
+               p.pack_size_unit,
+               COALESCE(sales.total_quantity, 0) AS total_quantity
+        FROM inventory_items p
+        LEFT JOIN (
+            SELECT oi.product_id,
+                   SUM(oi.quantity) AS total_quantity,
+                   SUM(oi.line_total) AS total_amount
+            FROM order_items oi
+            JOIN orders o ON o.order_id = oi.order_id
+            WHERE o.status = 'fulfilled'
+            GROUP BY oi.product_id
+        ) sales ON sales.product_id = p.item_id
+        WHERE p.item_type = 'finished_product'
+          AND p.is_active = true
+        ORDER BY COALESCE(sales.total_quantity, 0) DESC,
+                 COALESCE(sales.total_amount, 0) DESC,
+                 p.name ASC
+        LIMIT %s;
+    """, (clean_limit,)))
 
 
 def count_products(q: str = "", category: str = "", active_only: bool = False) -> int:
@@ -280,23 +324,26 @@ def list_alerts() -> list[dict]:
 
 def list_inventory_movements(
     q: str = "",
+    category: str = "",
     page: int | None = None,
     page_size: int = 10,
     sort: str = "",
 ) -> list[dict]:
     params: list[object] = []
-    where_sql = ""
+    where: list[str] = []
     q = q.strip()
+    category = category.strip()
     if q:
         search = f"%{q}%"
-        where_sql = """
-            WHERE im.actor_name ILIKE %s
-               OR im.movement_type ILIKE %s
-               OR ii.name ILIKE %s
-               OR COALESCE(ib.batch_code, '') ILIKE %s
-               OR COALESCE(im.order_id::text, '') ILIKE %s
-        """
-        params.extend([search, search, search, search, search])
+        where.append("""(
+            im.movement_type ILIKE %s
+            OR ii.name ILIKE %s
+        )""")
+        params.extend([search, search])
+    if category in MOVEMENT_CATEGORY_TYPES:
+        where.append("im.movement_type = ANY(%s)")
+        params.append(list(MOVEMENT_CATEGORY_TYPES[category]))
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     paging_sql = ""
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
@@ -304,45 +351,40 @@ def list_inventory_movements(
     order_sql = safe_sort_sql(sort, MOVEMENT_SORTS, MOVEMENT_SORTS["newest"])
     return clean_row(fetch_all(f"""
         SELECT im.movement_id,
-               im.actor_name AS actor,
                im.movement_type AS action,
                ii.name AS entity,
                im.quantity_delta,
                im.unit,
-               im.balance_before,
                im.balance_after,
-               ib.batch_code,
-               im.order_id,
-               im.note,
                im.created_at
         FROM inventory_movements im
         JOIN inventory_items ii ON ii.item_id = im.item_id
-        LEFT JOIN inventory_batches ib ON ib.batch_id = im.affected_batch_id
         {where_sql}
         ORDER BY {order_sql}
         {paging_sql};
     """, tuple(params) or None))
 
 
-def count_inventory_movements(q: str = "") -> int:
+def count_inventory_movements(q: str = "", category: str = "") -> int:
     params: list[object] = []
-    where_sql = ""
+    where: list[str] = []
     q = q.strip()
+    category = category.strip()
     if q:
         search = f"%{q}%"
-        where_sql = """
-            WHERE im.actor_name ILIKE %s
-               OR im.movement_type ILIKE %s
-               OR ii.name ILIKE %s
-               OR COALESCE(ib.batch_code, '') ILIKE %s
-               OR COALESCE(im.order_id::text, '') ILIKE %s
-        """
-        params.extend([search, search, search, search, search])
+        where.append("""(
+            im.movement_type ILIKE %s
+            OR ii.name ILIKE %s
+        )""")
+        params.extend([search, search])
+    if category in MOVEMENT_CATEGORY_TYPES:
+        where.append("im.movement_type = ANY(%s)")
+        params.append(list(MOVEMENT_CATEGORY_TYPES[category]))
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     row = fetch_one(f"""
         SELECT COUNT(*) AS total
         FROM inventory_movements im
         JOIN inventory_items ii ON ii.item_id = im.item_id
-        LEFT JOIN inventory_batches ib ON ib.batch_id = im.affected_batch_id
         {where_sql};
     """, tuple(params) or None)
     return int(row["total"])

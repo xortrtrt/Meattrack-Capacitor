@@ -52,11 +52,18 @@
 
 .chatbot-panel:not([hidden]) {
   display: grid;
+  grid-template-areas:
+    "header"
+    "inquiry"
+    "messages"
+    "suggestions"
+    "composer";
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   animation: chatbot-panel-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .chatbot-header {
+  grid-area: header;
   min-height: 80px;
   align-items: center;
   gap: 8px;
@@ -105,9 +112,16 @@
     color 160ms ease;
 }
 
-.chatbot-reset:hover {
+.chatbot-reset:not(:disabled):hover {
   background: rgba(255, 255, 255, 0.09);
   color: var(--gold);
+}
+
+.chatbot-reset:disabled {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.52);
+  cursor: not-allowed;
+  opacity: 0.78;
 }
 
 .chatbot-header .close-btn {
@@ -136,6 +150,7 @@
 }
 
 .chatbot-messages {
+  grid-area: messages;
   height: auto;
   min-height: 0;
   gap: 13px;
@@ -173,6 +188,113 @@
 .bot-message.agent-message {
   border-color: rgba(210, 176, 25, 0.55);
   background: #fff9da;
+}
+
+.bot-message.product-preview-message {
+  width: min(94%, 340px);
+  max-width: 94%;
+  padding: 14px;
+}
+
+.product-preview-intro {
+  margin: 0 0 10px;
+  color: #514a40;
+  font-size: 0.78rem;
+}
+
+.product-preview-title {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--ink);
+  font-size: 0.76rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.product-preview-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-preview-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 8px;
+  border: 1px solid rgba(36, 32, 27, 0.09);
+  border-radius: 10px;
+  background: #faf7ef;
+}
+
+.product-preview-rank {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--black);
+  color: var(--gold);
+  font-size: 0.64rem;
+  font-weight: 800;
+}
+
+.product-preview-details {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.product-preview-details strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-preview-details > span {
+  overflow: hidden;
+  margin-top: 2px;
+  color: #746d61;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-preview-price {
+  color: #61520d;
+  font-size: 0.68rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.product-preview-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  margin-top: 10px;
+  border-radius: 9px;
+  background: var(--gold);
+  color: var(--black);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.product-preview-link:hover {
+  transform: translateY(-1px);
+  background: #e3c93b;
+}
+
+.product-preview-link:focus-visible {
+  outline: 3px solid rgba(215, 182, 33, 0.3);
+  outline-offset: 2px;
 }
 
 .live-message-sender-label {
@@ -227,6 +349,9 @@
 }
 
 .chatbot-suggestions {
+  grid-area: suggestions;
+  align-items: center;
+  align-content: center;
   flex-wrap: wrap;
   gap: 7px;
   padding: 11px 16px 12px;
@@ -258,6 +383,7 @@
 }
 
 .chatbot-form {
+  grid-area: composer;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 9px;
   padding: 13px 14px 14px;
@@ -444,6 +570,7 @@
 }
 /* Visitor-owned reseller inquiry shared during an active live conversation. */
 .chatbot-inquiry-prompt {
+  grid-area: inquiry;
   position: sticky;
   top: 0;
   z-index: 3;

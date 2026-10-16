@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -9,7 +9,9 @@ from fastapi.testclient import TestClient
 
 from app import main, repositories, web
 from app.portals import owner as owner_portal
+from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
+from app.portals import team_leader as team_leader_portal
 
 
 METRICS = {
@@ -58,10 +60,17 @@ READ_FUNCTIONS = (
     "account_portal_profile",
     "list_team_leader_accounts",
     "list_reseller_assignments",
+    "list_team_resellers",
+    "count_team_resellers",
     "latest_forecast_run",
     "get_forecast_run",
     "list_forecast_runs",
     "list_notifications",
+    "list_order_system_messages",
+    "get_order_system_message",
+    "unread_order_system_message_count",
+    "list_notification_history",
+    "count_notification_history",
     "unread_notification_count",
 )
 
@@ -86,15 +95,15 @@ EXPECTED_CALLS = {
         "list_notifications",
         "unread_notification_count",
     },
-    ("team-leader", "dashboard"): {"current_metrics", "list_inquiries", "list_orders", "list_notifications", "unread_notification_count"},
-    ("team-leader", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
+    ("team-leader", "dashboard"): {"current_metrics", "list_orders", "list_notifications", "unread_notification_count"},
+    ("team-leader", "resellers"): {"list_team_resellers", "count_team_resellers", "list_notifications", "unread_notification_count"},
+    ("sales-supervisor", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
     ("team-leader", "orders"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "reports"): {
         "list_sales_reports",
         "count_sales_reports",
         "team_sales_report_entries",
         "team_rejected_order_entries",
-        "team_reseller_purchase_summary",
         "list_notifications",
         "unread_notification_count",
     },
@@ -111,6 +120,7 @@ EXPECTED_CALLS = {
     ("reseller", "cart"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "checkout"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "history"): {"list_orders", "count_orders", "reseller_cart_count", "list_notifications", "unread_notification_count"},
+    ("reseller", "inbox"): {"list_order_system_messages", "unread_order_system_message_count", "reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "profile"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
 }
 
@@ -173,8 +183,11 @@ def test_inventory_team_leader_sections_load_only_inventory_data(monkeypatch, ro
     if section == "dashboard":
         assert calls["inventory_product_movement_analytics"] == [((), {"days": 30, "limit": 8})]
     if section == "logs":
-        assert calls["list_inventory_movements"] == [((), {"q": "", "page": 1, "page_size": 10, "sort": ""})]
-        assert calls["count_inventory_movements"] == [((), {"q": ""})]
+        assert calls["list_inventory_movements"] == [(
+            (),
+            {"q": "", "category": "", "page": 1, "page_size": 10, "sort": ""},
+        )]
+        assert calls["count_inventory_movements"] == [((), {"q": "", "category": ""})]
 
     if section == "inventory":
         assert calls["list_products"] == [
@@ -204,8 +217,37 @@ def test_section_filters_are_applied(monkeypatch):
 
     assert client.get("/portal/team-leader/dashboard").status_code == 200
     assert calls["current_metrics"] == [((), {"team_leader_account_id": None})]
-    assert calls["list_inquiries"] == [((), {"limit": 4, "assigned_team_leader_account_id": None})]
+    assert calls["list_inquiries"] == []
     assert calls["list_orders"] == [((), {"order_type": "reseller", "limit": 5, "team_leader_account_id": None})]
+
+    calls = install_read_spies(monkeypatch)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 17)
+    response = client.get("/portal/team-leader/resellers?q=lipa&status=active&sort=business_asc&page=2")
+    assert response.status_code == 200
+    assert calls["list_team_resellers"] == [(
+        (),
+        {
+            "team_leader_account_id": 17,
+            "q": "lipa",
+            "status": "active",
+            "page": 2,
+            "page_size": 10,
+            "sort": "business_asc",
+        },
+    )]
+    assert calls["count_team_resellers"] == [(
+        (),
+        {"team_leader_account_id": 17, "q": "lipa", "status": "active"},
+    )]
+
+    calls = install_read_spies(monkeypatch)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales-supervisor")
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: None)
+    assert client.get("/portal/sales-supervisor/dashboard").status_code == 200
+    assert calls["list_inquiries"] == [(
+        (),
+        {"limit": 4, "assigned_team_leader_account_id": None, "include_unassigned": True},
+    )]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/dashboard").status_code == 200
@@ -226,33 +268,278 @@ def test_section_filters_are_applied(monkeypatch):
     assert calls["count_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None})]
 
 
+def test_team_leader_order_review_lists_every_order_item(monkeypatch):
+    order = {
+        "order_id": 26,
+        "order_type": "reseller",
+        "reseller": "Xort's store",
+        "status": "fulfilled",
+        "total_amount": Decimal("910.00"),
+        "items": [
+            {"quantity": 5, "name": "Tocino Ala Eh"},
+            {"quantity": 8, "name": "Chicken Tocino"},
+            {"quantity": 4, "name": "Deli Beef"},
+            {"quantity": 2, "name": "Cheesy Overload Sausage"},
+            {"quantity": 1, "name": "Bacon"},
+        ],
+        "payment_proofs": [],
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(repositories, "list_orders", lambda **kwargs: [order])
+    monkeypatch.setattr(repositories, "count_orders", lambda **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/team-leader/orders")
+
+    assert response.status_code == 200
+    assert "5 packs</strong> Tocino Ala Eh" in response.text
+    assert "8 packs</strong> Chicken Tocino" in response.text
+    assert "Show 2 more products" in response.text
+    assert "4 packs</strong> Deli Beef" in response.text
+    assert "1 packs</strong> Bacon" in response.text
+
+
+def test_approved_order_review_allows_fulfillment_only(monkeypatch):
+    order = {
+        "order_id": 27,
+        "order_type": "reseller",
+        "reseller": "Xort's store",
+        "status": "approved",
+        "total_amount": Decimal("910.00"),
+        "items": [{"quantity": 5, "name": "Tocino Ala Eh"}],
+        "payment_proofs": [{"order_payment_proof_id": 8, "filename": "receipt.png"}],
+        "payment_transaction_number": "9045990596496",
+        "payment_amount": Decimal("910.00"),
+        "payment_paid_at": datetime(2026, 10, 11, 7, 4),
+        "payment_extraction_method": "ocr_confirmed",
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(repositories, "list_orders", lambda **kwargs: [order])
+    monkeypatch.setattr(repositories, "count_orders", lambda **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/team-leader/orders")
+
+    assert response.status_code == 200
+    reject_control = response.text.split('data-order-action="reject"', 1)[1].split("</form>", 1)[0]
+    fulfill_control = response.text.split('data-order-action="fulfill"', 1)[1].split("</form>", 1)[0]
+    assert "disabled" in reject_control
+    assert "disabled" not in fulfill_control
+    assert "data-order-action-modal" in response.text
+    assert "data-order-action-confirm" in response.text
+    assert "data-order-rejection-field" in response.text
+    assert "data-order-rejection-reason" in response.text
+    assert 'name="rejection_reason"' in response.text
+
+
+def test_reseller_inbox_renders_order_system_messages(monkeypatch):
+    calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "unread_order_system_message_count", lambda *args, **kwargs: 7)
+    monkeypatch.setattr(
+        repositories,
+        "list_order_system_messages",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or [
+            {
+                "order_system_message_id": 91,
+                "event_type": "rejected",
+                "severity": "critical",
+                "title": "Order rejected",
+                "message": "Your reseller order #28 was rejected.",
+                "rejection_reason": "Receipt amount does not match.",
+                "order_id": 28,
+                "read_at": None,
+                "created_at": datetime(2026, 10, 17, 9, 30, tzinfo=timezone.utc),
+            }
+        ],
+    )
+
+    response = TestClient(main.app).get("/portal/reseller/inbox")
+
+    assert response.status_code == 200
+    assert "System messages" in response.text
+    assert "Order rejected" in response.text
+    assert "Receipt amount does not match." in response.text
+    assert "reseller-system-message critical is-unread" in response.text
+    assert calls == [((42,), {"limit": 20})]
+    assert 'id="system-message-91"' in response.text
+    assert 'data-system-message-id="91"' in response.text
+    assert 'data-system-message-event="rejected"' in response.text
+    assert 'action="/portal/reseller/notifications/9/open"' not in response.text
+    assert 'href="/portal/reseller/notifications?type=order"' not in response.text
+    assert 'data-system-message-modal' in response.text
+    assert 'data-system-message-dialog-reason' in response.text
+    assert 'data-reseller-inbox-tab="messages"' in response.text
+    assert 'data-reseller-inbox-tab="system"' in response.text
+    assert ">7</b>" in response.text
+
+
+def test_opening_reseller_order_notification_marks_it_read_and_deep_links(monkeypatch):
+    calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        repositories,
+        "mark_notification_read",
+        lambda account_id, notification_id: calls.append((account_id, notification_id)) or {
+            "notification_id": notification_id,
+            "target_url": "/portal/reseller/history",
+            "source_type": "order_system_messages",
+            "source_id": 91,
+        },
+    )
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/notifications/9/open",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/portal/reseller/inbox?system_message=91#system-message-91"
+    assert calls == [(42, 9)]
+
+
+def test_reseller_inbox_deep_link_loads_system_message_outside_recent_window(monkeypatch):
+    linked_calls = []
+    linked_message = {
+        "order_system_message_id": 91,
+        "event_type": "approved",
+        "severity": "info",
+        "title": "Order approved",
+        "message": "Your reseller order #28 was approved and is ready for fulfillment.",
+        "rejection_reason": None,
+        "order_id": 28,
+        "read_at": None,
+        "created_at": datetime(2026, 10, 1, 9, 30, tzinfo=timezone.utc),
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "unread_order_system_message_count", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "list_order_system_messages", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        repositories,
+        "get_order_system_message",
+        lambda account_id, system_message_id: linked_calls.append((account_id, system_message_id)) or linked_message,
+    )
+
+    response = TestClient(main.app).get("/portal/reseller/inbox?system_message=91")
+
+    assert response.status_code == 200
+    assert linked_calls == [(42, 91)]
+    assert 'data-open-system-message="91"' in response.text
+    assert 'data-system-message-id="91"' in response.text
+    assert "Order approved" in response.text
+
+
+def test_reseller_system_message_read_is_separate_from_notification_read(monkeypatch):
+    calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        repositories,
+        "mark_order_system_message_read",
+        lambda account_id, system_message_id: calls.append((account_id, system_message_id)) or True,
+    )
+
+    response = TestClient(main.app).post("/portal/reseller/system-messages/91/read")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert calls == [(42, 91)]
+
+
+def test_inventory_logs_apply_movement_category_and_render_compact_ledger(monkeypatch):
+    calls = install_read_spies(monkeypatch)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
+
+    response = TestClient(main.app).get("/portal/team-leader/logs?type=production&q=tocino&page=2")
+
+    assert response.status_code == 200
+    assert calls["list_inventory_movements"] == [(
+        (),
+        {"q": "tocino", "category": "production", "page": 2, "page_size": 10, "sort": ""},
+    )]
+    assert calls["count_inventory_movements"] == [((), {"q": "tocino", "category": "production"})]
+    assert "Stock movements" in response.text
+    assert 'aria-label="Movement categories"' in response.text
+    assert "Actor</th>" not in response.text
+    assert "Reference</th>" not in response.text
+
+
+def test_inventory_batches_render_compact_shelf_life_ledger(monkeypatch):
+    calls = []
+    batch = {
+        "batch_id": 17,
+        "item_id": 8,
+        "item_name": "Tocino Ala Eh",
+        "category": "Package",
+        "batch_code": "TOC-2026-017",
+        "source_type": "production",
+        "quantity_received": Decimal("40"),
+        "quantity_available": Decimal("26"),
+        "unit": "pack",
+        "received_date": date(2026, 10, 10),
+        "expiry_date": date(2026, 10, 20),
+        "quality_status": "approved",
+        "days_until_expiry": 4,
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
+    monkeypatch.setattr(
+        repositories,
+        "list_inventory_batches",
+        lambda **kwargs: calls.append(kwargs) or [batch],
+    )
+    monkeypatch.setattr(repositories, "count_inventory_batches", lambda **kwargs: 24)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/team-leader/batches?type=Package&page=2")
+
+    assert response.status_code == 200
+    assert calls == [{"q": "", "category": "Package", "page": 2, "page_size": 10, "sort": ""}]
+    assert "Product batches" in response.text
+    assert 'aria-label="Product batch categories"' in response.text
+    assert "4 days left" in response.text
+    assert 'aria-label="Page 2"' in response.text
+    assert "<table" not in response.text
+
+
 def test_reseller_order_history_views_apply_server_side_filters(monkeypatch):
     calls = install_read_spies(monkeypatch)
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
 
-    response = client.get("/portal/reseller/history?view=to-pay&q=tocino")
+    response = client.get("/portal/reseller/history?view=pending&q=tocino")
 
     assert response.status_code == 200
     assert 'class="active"' in response.text
     assert calls["list_orders"] == [((), {
         "order_type": "reseller",
         "q": "tocino",
-        "status": "",
+        "status": "pending",
         "team_leader_account_id": None,
         "reseller_account_id": None,
         "page": 1,
         "page_size": 10,
         "sort": "",
-        "without_payment_proof": True,
     })]
     assert calls["count_orders"] == [((), {
         "order_type": "reseller",
         "q": "tocino",
-        "status": "",
+        "status": "pending",
         "team_leader_account_id": None,
         "reseller_account_id": None,
-        "without_payment_proof": True,
     })]
 
     calls = install_read_spies(monkeypatch)
@@ -260,7 +547,43 @@ def test_reseller_order_history_views_apply_server_side_filters(monkeypatch):
 
     assert response.status_code == 200
     assert calls["list_orders"][0][1]["status"] == "approved"
-    assert "without_payment_proof" not in calls["list_orders"][0][1]
+
+
+def test_reseller_history_hides_proof_upload_after_payment_is_submitted(monkeypatch):
+    order = {
+        "order_id": 28,
+        "order_type": "reseller",
+        "order_date": datetime(2026, 10, 16, 22, 50),
+        "status": "pending",
+        "total_amount": Decimal("1133.00"),
+        "items": [{"quantity": 1, "name": "Tocino Ala Eh"}],
+        "payment_proofs": [{"order_payment_proof_id": 9, "filename": "receipt.jpg"}],
+        "payment_transaction_number": "900629",
+        "payment_amount": Decimal("454.00"),
+        "payment_paid_at": datetime(2026, 10, 16, 22, 59),
+        "payment_extraction_method": "manual_corrected",
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: None)
+    monkeypatch.setattr(repositories, "list_orders", lambda **kwargs: [order])
+    monkeypatch.setattr(repositories, "count_orders", lambda **kwargs: 1)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/reseller/history?view=pending")
+
+    assert response.status_code == 200
+    assert "receipt.jpg" in response.text
+    assert 'class="proof-upload-form"' not in response.text
+    assert "Send proof" not in response.text
+
+    order["payment_proofs"] = []
+    response = TestClient(main.app).get("/portal/reseller/history?view=pending")
+
+    assert response.status_code == 200
+    assert 'class="proof-upload-form"' in response.text
+    assert "Send proof" in response.text
 
 
 def test_reseller_checkout_page_renders_cart_manifest(monkeypatch):
@@ -284,25 +607,34 @@ def test_reseller_checkout_page_renders_cart_manifest(monkeypatch):
     response = TestClient(main.app).get("/portal/reseller/checkout?product_id=17")
 
     assert response.status_code == 200
-    assert "Confirm the manifest." in response.text
+    assert "Confirm your order" in response.text
     assert "Premium Tocino" in response.text
     assert 'action="/portal/reseller/checkout"' in response.text
-    assert "Place order request" in response.text
+    assert "15-minute payment window" in response.text
+    assert "data-receipt-modal" not in response.text
+    assert 'name="payment_amount"' not in response.text
+    assert "Place order and reserve stock" in response.text
 
 
 def test_reseller_checkout_post_uses_dedicated_route(monkeypatch):
     submitted = []
+
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
     monkeypatch.setattr(
         repositories,
         "checkout_reseller_cart",
-        lambda account_id, notes, product_ids: submitted.append((account_id, notes, product_ids)) or {"order_id": 73},
+        lambda account_id, notes, product_ids: submitted.append(
+            (account_id, notes, product_ids)
+        ) or {"order_id": 73},
     )
 
     response = TestClient(main.app).post(
         "/portal/reseller/checkout",
-        data={"notes": "  Deliver Friday  ", "product_id": "17"},
+        data={
+            "notes": "  Deliver Friday  ",
+            "product_id": "17",
+        },
         follow_redirects=False,
     )
 
@@ -324,6 +656,100 @@ def test_reseller_checkout_requires_an_explicit_selection(monkeypatch):
 
     assert response.status_code == 303
     assert response.headers["location"].startswith("/portal/reseller/cart?error=")
+
+
+def test_reseller_checkout_starts_payment_window_without_proof(monkeypatch):
+    submitted = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        repositories,
+        "checkout_reseller_cart",
+        lambda *args, **kwargs: submitted.append((args, kwargs)) or {"order_id": 81},
+    )
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/checkout",
+        data={"product_id": "17"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/portal/reseller/checkout?placed=81"
+    assert submitted == [((42, "", [17]), {})]
+
+
+def test_receipt_scan_endpoint_returns_signed_suggestions(monkeypatch):
+    attachments = [{"checksum_sha256": "a" * 64, "filename": "receipt.png"}]
+
+    async def parse_uploads(_uploads):
+        return attachments
+
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(shared_portal, "parse_payment_proof_attachments", parse_uploads)
+    monkeypatch.setattr(
+        reseller_portal.receipt_ocr,
+        "scan_payment_proofs",
+        lambda _attachments: {
+            "transaction_number": "ABC123456",
+            "payment_date": "2026-10-15",
+            "payment_time": "10:30",
+            "payment_amount": "500.00",
+            "confidence": 0.9,
+            "engine": "tesseract-test",
+            "warnings": [],
+        },
+    )
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/checkout/receipt-scan",
+        files={"payment_proofs": ("receipt.png", b"image", "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["transaction_number"] == "ABC123456"
+    assert response.json()["payment_amount"] == "500.00"
+    assert response.json()["scan_token"]
+
+
+def test_reseller_payment_submission_moves_timed_order_to_pending(monkeypatch):
+    attachments = [{"checksum_sha256": "a" * 64, "filename": "receipt.png"}]
+    payment = {"transaction_number": "TXN-123456", "payment_amount": Decimal("500.00")}
+    submitted = []
+
+    async def parse_uploads(_uploads):
+        return attachments
+
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(shared_portal, "parse_payment_proof_attachments", parse_uploads)
+    monkeypatch.setattr(reseller_portal.receipt_ocr, "confirmed_payment_details", lambda *args: payment)
+    monkeypatch.setattr(
+        repositories,
+        "submit_order_payment",
+        lambda account_id, order_id, proofs, details: submitted.append(
+            (account_id, order_id, proofs, details)
+        ) or {"order_id": order_id, "status": "pending"},
+    )
+
+    response = TestClient(main.app).post(
+        "/portal/reseller/orders/91/payment",
+        data={
+            "receipt_scan_token": "signed",
+            "transaction_number": "TXN-123456",
+            "payment_date": "2026-10-15",
+            "payment_time": "10:30",
+            "payment_amount": "500.00",
+            "payment_details_confirmed": "yes",
+        },
+        files={"payment_proofs": ("receipt.png", b"image", "image/png")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/portal/reseller/history?view=pending")
+    assert submitted == [(42, 91, attachments, payment)]
 
 
 def test_reseller_checkout_only_renders_selected_cart_items(monkeypatch):
@@ -366,17 +792,23 @@ def test_reseller_checkout_only_renders_selected_cart_items(monkeypatch):
 
 def test_reseller_selected_checkout_redirects_to_order_confirmation(monkeypatch):
     submitted = []
+
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
     monkeypatch.setattr(
         repositories,
         "checkout_reseller_cart",
-        lambda account_id, notes, product_ids: submitted.append((account_id, notes, product_ids)) or {"order_id": 91},
+        lambda account_id, notes, product_ids: submitted.append(
+            (account_id, notes, product_ids)
+        ) or {"order_id": 91},
     )
 
     response = TestClient(main.app).post(
         "/portal/reseller/checkout",
-        data={"notes": "Pickup Friday", "product_id": ["17", "18"]},
+        data={
+            "notes": "Pickup Friday",
+            "product_id": ["17", "18"],
+        },
         follow_redirects=False,
     )
 
@@ -393,7 +825,12 @@ def test_reseller_checkout_success_prompt_links_to_owned_order(monkeypatch):
     monkeypatch.setattr(
         repositories,
         "reseller_order_confirmation",
-        lambda account_id, order_id: {"order_id": order_id, "status": "pending", "total_amount": 215.0},
+        lambda account_id, order_id: {
+            "order_id": order_id,
+            "status": "to_pay",
+            "total_amount": 215.0,
+            "payment_due_at": datetime.now(timezone.utc) + timedelta(minutes=15),
+        },
     )
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
@@ -401,8 +838,9 @@ def test_reseller_checkout_success_prompt_links_to_owned_order(monkeypatch):
     response = TestClient(main.app).get("/portal/reseller/checkout?placed=91")
 
     assert response.status_code == 200
-    assert "Your order has been placed." in response.text
-    assert 'href="/portal/reseller/history#order-91"' in response.text
+    assert "Your items are reserved." in response.text
+    assert "15:00" in response.text
+    assert 'href="/portal/reseller/history?view=to_pay#order-91"' in response.text
 
 
 def test_landing_page_does_not_load_metrics(monkeypatch):
@@ -501,7 +939,7 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert app_js.index('if (!response.ok)') < app_js.index('messages.innerHTML = "";', app_js.index('resetButton.addEventListener'))
     assert 'bubble.classList.add("is-typing")' in app_js
     assert "@keyframes chatbot-caret" in css
-    assert "20261002-inquiry-modal-2" in response.text
+    assert "20261016-product-preview-1" in response.text
     assert "BP ChatBot" in response.text
     assert "chatbot-avatar" not in response.text
     assert 'role="dialog" aria-label="Batangas Premium support"' in response.text
@@ -808,6 +1246,85 @@ def test_owner_reports_render_mobile_cards(monkeypatch):
     assert response.status_code == 200
     assert "owner-report-card" in response.text
     assert "owner-report-table" in response.text
+
+
+def test_team_leader_reports_render_business_date_products_pagination_and_mobile_cards(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 5)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(team_leader_portal, "business_today", lambda: date(2026, 10, 17))
+    monkeypatch.setattr(repositories, "count_sales_reports", lambda *args, **kwargs: 11)
+    monkeypatch.setattr(
+        repositories,
+        "list_sales_reports",
+        lambda *args, **kwargs: [
+            {
+                "sales_report_id": 1,
+                "report_source": "team_leader",
+                "submitted_by": "Sales Leader B",
+                "period_start": date(2026, 10, 17),
+                "period_end": date(2026, 10, 17),
+                "total_sales": 910,
+                "total_orders": 1,
+                "notes": "Daily report",
+                "items": [],
+            }
+        ],
+    )
+    monkeypatch.setattr(repositories, "team_sales_report_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        repositories,
+        "team_rejected_order_entries",
+        lambda *args, **kwargs: [
+            {
+                "order_id": 28,
+                "reseller": "Xort's store",
+                "items": "1 pack Bacon, 3 pack Chicken Tocino",
+                "rejected_at": datetime(2026, 10, 17, 9, 30, tzinfo=timezone.utc),
+                "total_amount": 1133,
+                "notes": "",
+            }
+        ],
+    )
+
+    response = client.get("/portal/team-leader/reports")
+
+    assert response.status_code == 200
+    assert 'data-business-date="2026-10-17"' in response.text
+    assert response.text.count('value="2026-10-17"') == 2
+    assert "Assigned reseller purchase summary" not in response.text
+    assert 'class="rejected-order-card"' in response.text
+    assert "1 pack Bacon" in response.text
+    assert "3 pack Chicken Tocino" in response.text
+    assert "No notes were provided." in response.text
+    assert "built-in method items" not in response.text
+    assert "PHP 910.00 - 1 order" in response.text
+    assert "Page 1 of 2" in response.text
+    assert "page=2" in response.text
+    assert response.text.count("responsive-card-table") == 1
+    assert "compact-table responsive-card-table report-items-table" in response.text
+
+
+def test_team_leader_reports_render_search_empty_state(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 5)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_sales_reports", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_sales_reports", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "team_sales_report_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "team_rejected_order_entries", lambda *args, **kwargs: [])
+
+    response = client.get("/portal/team-leader/reports?q=missing")
+
+    assert response.status_code == 200
+    assert "No team reports found" in response.text
+    assert "Try a different name, report number, or note." in response.text
+    assert "No rejected reseller orders" in response.text
+    assert 'role="status"' in response.text
 
 
 def test_owner_forecasts_render_prophet_ui(monkeypatch):
@@ -1134,7 +1651,8 @@ def test_sales_team_leader_pages_use_workflow_specific_layouts():
     assert "sales-review-surface" in templates["orders"]
     assert "sales-report-builder" in templates["reports"]
     assert "sales-report-history" in templates["reports"]
-    assert "sales-report-ledger" in templates["reports"]
+    assert "sales-report-rejections" in templates["reports"]
+    assert "rejected-order-card" in templates["reports"]
     assert "sales-profile-identity" in templates["profile"]
     assert "sales-profile-security" in templates["profile"]
     assert "sales-live-chat-page" in templates["live_chat"]
@@ -1206,6 +1724,8 @@ def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
 
     assert "accounts" not in sales_nav
     assert "accounts" in supervisor_nav
+    assert "inquiries" not in sales_nav
+    assert "inquiries" in supervisor_nav
     assert response.status_code == 200
     assert "role-team-leader role-sales-supervisor" in response.text
     assert 'css/portals/team-leader.css' in response.text
@@ -1218,6 +1738,57 @@ def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
     assert "/portal/sales-supervisor/resellers/2/team-leader" in response.text
     assert list_calls[0]["account_types"] == ("team_leader", "reseller")
     assert count_calls[0]["account_types"] == ("team_leader", "reseller")
+
+
+def test_regular_sales_leader_sees_read_only_team_reseller_roster(monkeypatch):
+    reseller = {
+        "reseller_id": 3,
+        "business_name": "Lipa Fresh Mart",
+        "contact_person": "Carlo Mendoza",
+        "email": "carlo@example.test",
+        "contact_number": "09171234567",
+        "address": "Lipa City",
+        "reseller_status": "active",
+        "account_status": "active",
+        "total_orders": 4,
+        "last_order_at": None,
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 17)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_team_resellers", lambda **kwargs: [reseller])
+    monkeypatch.setattr(repositories, "count_team_resellers", lambda **kwargs: 1)
+
+    response = TestClient(main.app).get("/portal/team-leader/resellers")
+
+    assert response.status_code == 200
+    assert "My Resellers" in response.text
+    assert "Lipa Fresh Mart" in response.text
+    assert "Carlo Mendoza" in response.text
+    assert "4 orders" in response.text
+    reseller_card = response.text.split("team-reseller-card", 1)[1].split("</article>", 1)[0]
+    assert "<form" not in reseller_card
+    assert 'data-lucide="user-round"' in reseller_card
+
+
+def test_inventory_leader_cannot_open_sales_reseller_roster(monkeypatch):
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
+
+    response = TestClient(main.app).get("/portal/team-leader/resellers")
+
+    assert response.status_code == 404
+
+
+def test_regular_sales_leader_cannot_open_supervisor_inquiries(monkeypatch):
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+
+    response = TestClient(main.app).get("/portal/team-leader/inquiries")
+
+    assert response.status_code == 404
 
 
 def test_sales_supervisor_account_post_cannot_create_owner(monkeypatch):
@@ -1366,6 +1937,7 @@ def test_payment_proof_route_is_registered_before_generic_portal_route():
 def test_portal_notifications_use_modern_shared_visual_hierarchy():
     css = open("app/static/css/portal_base.css", encoding="utf-8").read()
     template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    portal_js = open("app/static/js/portal.js", encoding="utf-8").read()
 
     assert "grid-template-columns: 38px minmax(0, 1fr) 8px" in css
     assert "notification-panel-enter" in css
@@ -1376,6 +1948,79 @@ def test_portal_notifications_use_modern_shared_visual_hierarchy():
     assert "notification-item-icon" in template
     assert "notification-item-meta" in template
     assert "Mark all read" in template
+    assert "data-notification-menu" in template
+    assert 'aria-expanded="false"' in template
+    assert "notification-trigger-icon" in template
+    assert ".notification-menu summary::marker" in css
+    assert "flex: 0 0 42px" in css
+    assert "@media (min-width: 861px)" in css
+    assert "body.portal-body .portal-main > .portal-topbar" in css
+    assert "position: fixed" in css
+    assert "inset: 94px auto auto 22px" in css
+    assert "left: calc(100% + 14px)" in css
+    assert "notification-trigger-label" in template
+    assert "View all notifications" in template
+    assert ".portal-body .notification-center-hero" in css
+    assert ".portal-body .notification-center-toolbar" in css
+    assert "function bindNotificationMenu()" in portal_js
+    assert "function positionPanel()" in portal_js
+    assert "if (list) list.scrollTop = 0" in portal_js
+    assert 'window.matchMedia("(min-width: 861px)").matches' in portal_js
+    assert ".notification-menu.is-positioning .notification-panel" in css
+    assert 'event.key === "Escape" && menu.open' in portal_js
+    assert "!menu.contains(event.target)" in portal_js
+
+
+@pytest.mark.parametrize("role_key", ["owner", "team-leader", "sales-supervisor", "reseller"])
+def test_notification_center_is_available_to_every_portal_role(monkeypatch, role_key):
+    calls = install_read_spies(monkeypatch)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+
+    response = TestClient(main.app).get(
+        f"/portal/{role_key}/notifications?status=unread&type=order&page=2"
+    )
+
+    assert response.status_code == 200
+    assert "Activity center" in response.text
+    assert "No notifications found" in response.text
+    assert f'action="/portal/{role_key}/notifications"' in response.text
+    assert calls["list_notification_history"] == [(
+        (42,),
+        {"status": "unread", "category": "order", "page": 2, "page_size": 15},
+    )]
+    assert calls["count_notification_history"] == [(
+        (42,),
+        {"status": "unread", "category": "order"},
+    )]
+
+
+def test_notification_targets_are_normalized_for_the_signed_in_portal():
+    assert shared_portal.notification_target_for(
+        "sales-supervisor",
+        "sales-supervisor",
+        "/portal/team-leader/orders",
+    ) == "/portal/sales-supervisor/orders"
+    assert shared_portal.notification_target_for(
+        "team-leader",
+        "sales",
+        "/portal/sales-supervisor/inquiries",
+    ) == "/portal/team-leader/notifications"
+    assert shared_portal.notification_target_for(
+        "team-leader",
+        "inventory",
+        "/portal/team-leader/inventory?type=raw#stock",
+    ) == "/portal/team-leader/inventory?type=raw#stock"
+    assert shared_portal.notification_target_for(
+        "owner",
+        None,
+        "/portal/owner/forecasts?run_id=4",
+    ) == "/portal/owner/forecasts?run_id=4"
+    assert shared_portal.notification_target_for(
+        "reseller",
+        None,
+        "https://example.test/phishing",
+    ) == "/portal/reseller/notifications"
 
 
 def test_raw_materials_page_renders_only_raw_inventory(monkeypatch):
@@ -1406,10 +2051,66 @@ def test_raw_materials_page_renders_only_raw_inventory(monkeypatch):
     response = client.get("/portal/team-leader/raw-materials")
 
     assert response.status_code == 200
-    assert "Raw materials inventory" in response.text
+    assert "Raw materials" in response.text
+    assert "material-row" in response.text
     assert "Beef" in response.text
     assert "Finished products inventory" not in response.text
     assert "data-inventory-products-region" not in response.text
+    assert "<table" not in response.text
+
+
+def test_raw_materials_page_renders_compact_paginated_stock_ledger(monkeypatch):
+    client = TestClient(main.app)
+    inventory_calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_inventory_items", lambda *args, **kwargs: 23)
+
+    def list_inventory_items(**kwargs):
+        inventory_calls.append(kwargs)
+        return [
+            {
+                "item_id": 1,
+                "item_type": "raw_material",
+                "item_type_label": "Raw material",
+                "category": "meat",
+                "name": "Pork shoulder",
+                "unit": "kg",
+                "base_price": Decimal("0"),
+                "available": Decimal("24"),
+                "is_active": True,
+            },
+            {
+                "item_id": 2,
+                "item_type": "raw_material",
+                "item_type_label": "Raw material",
+                "category": "raw_material",
+                "name": "Curing salt",
+                "unit": "kg",
+                "base_price": Decimal("0"),
+                "available": Decimal("0"),
+                "is_active": True,
+            },
+        ]
+
+    monkeypatch.setattr(repositories, "list_inventory_items", list_inventory_items)
+
+    response = client.get("/portal/team-leader/raw-materials?type=meat&page=2")
+
+    assert response.status_code == 200
+    assert inventory_calls == [
+        {"q": "", "category": "raw_material:meat", "page": 2, "page_size": 10, "sort": ""}
+    ]
+    assert 'aria-label="Raw material categories"' in response.text
+    assert 'aria-label="Page 2"' in response.text
+    assert 'aria-current="page"' in response.text
+    assert "Page 2 of 3" in response.text
+    assert "Out of stock" in response.text
+    assert "--stock-fill: 100%" in response.text
+    assert "type=meat" in response.text
+    assert "<table" not in response.text
 
 
 def test_finished_products_page_renders_product_cards(monkeypatch):
@@ -1445,6 +2146,51 @@ def test_finished_products_page_renders_product_cards(monkeypatch):
     assert "Tocino Ala Eh" in response.text
     assert "data-inventory-products-region" in response.text
     assert "Raw materials inventory" not in response.text
+
+
+def test_finished_products_page_separates_packages_from_individual_products(monkeypatch):
+    client = TestClient(main.app)
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "count_inventory_items", lambda *args, **kwargs: 2)
+    monkeypatch.setattr(
+        repositories,
+        "list_inventory_items",
+        lambda *args, **kwargs: [
+            {
+                "item_id": 2,
+                "item_type": "finished_product",
+                "item_type_label": "Finished product",
+                "category": "Pork",
+                "name": "Tocino Ala Eh",
+                "unit": "pack",
+                "base_price": 70,
+                "available": 90,
+                "is_active": True,
+            },
+            {
+                "item_id": 3,
+                "item_type": "finished_product",
+                "item_type_label": "Finished product",
+                "category": "Package",
+                "name": "Resellers Package",
+                "unit": "set",
+                "base_price": 2500,
+                "available": 12,
+                "is_active": True,
+            },
+        ],
+    )
+
+    response = client.get("/portal/team-leader/finished-products")
+
+    assert response.status_code == 200
+    assert response.text.index('id="standard-products-title"') < response.text.index('id="package-products-title"')
+    assert "inventory-product-card--package" in response.text
+    assert "Resellers Package" in response.text
+    assert "type=Package" in response.text
 
 
 def test_inventory_finished_products_partial_returns_only_product_region(monkeypatch):

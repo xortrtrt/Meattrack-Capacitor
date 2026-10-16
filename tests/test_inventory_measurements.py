@@ -105,6 +105,8 @@ class _FefoCursor:
             self._one = {"name": "Tocino", "unit": "pack"}
         elif "FROM inventory_batches ib" in query:
             self._all = self.batches
+        elif "FROM order_stock_reservations" in query:
+            self._one = {"reserved": Decimal("0")}
 
     def fetchone(self):
         return self._one

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
@@ -23,6 +24,15 @@ PORTAL_TEMPLATES = {
 }
 
 PORTAL_SECTION_LOADERS = {}
+
+NOTIFICATION_CATEGORIES = (
+    ("account", "Accounts"),
+    ("forecast", "Forecasts"),
+    ("inquiry", "Inquiries"),
+    ("inventory", "Inventory"),
+    ("order", "Orders"),
+    ("report", "Reports"),
+)
 
 
 def templates():
@@ -151,7 +161,6 @@ def orders_page(
     team_leader_account_id: int | None = None,
     reseller_account_id: int | None = None,
     status_override: str | None = None,
-    without_payment_proof: bool = False,
 ) -> dict:
     filters = portal_filters(request)
     status = filters["status"] if status_override is None else status_override
@@ -172,9 +181,6 @@ def orders_page(
         "team_leader_account_id": team_leader_account_id,
         "reseller_account_id": reseller_account_id,
     }
-    if without_payment_proof:
-        list_kwargs["without_payment_proof"] = True
-        count_kwargs["without_payment_proof"] = True
     items = data.list_orders(**list_kwargs)
     total = data.count_orders(**count_kwargs)
     return paged(
@@ -214,12 +220,18 @@ def reports_page(
     return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
 
 
-def inquiries_page(request: Request, page_size: int = 10, assigned_team_leader_account_id: int | None = None) -> dict:
+def inquiries_page(
+    request: Request,
+    page_size: int = 10,
+    assigned_team_leader_account_id: int | None = None,
+    include_unassigned: bool = False,
+) -> dict:
     filters = portal_filters(request)
     items = data.list_inquiries(
         q=filters["q"],
         status=filters["status"],
         assigned_team_leader_account_id=assigned_team_leader_account_id,
+        include_unassigned=include_unassigned,
         page=filters["page"],
         page_size=page_size,
         sort=filters["sort"],
@@ -228,8 +240,95 @@ def inquiries_page(request: Request, page_size: int = 10, assigned_team_leader_a
         q=filters["q"],
         status=filters["status"],
         assigned_team_leader_account_id=assigned_team_leader_account_id,
+        include_unassigned=include_unassigned,
     )
     return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"], sort=filters["sort"])
+
+
+def notifications_context(request: Request, page_size: int = 15) -> dict:
+    account_id = session_account_id(request)
+    role_key = str(request.path_params.get("role_key") or request.session.get("role_key") or "")
+    requested_status = request.query_params.get("status", "").strip().lower()
+    status = requested_status if requested_status in {"unread", "read"} else ""
+    requested_category = request.query_params.get("type", "").strip().lower()
+    category_values = {value for value, _label in NOTIFICATION_CATEGORIES}
+    category = requested_category if requested_category in category_values else ""
+    page_number = positive_int(request.query_params.get("page"))
+    items = normalize_notification_targets(
+        data.list_notification_history(
+            account_id,
+            status=status,
+            category=category,
+            page=page_number,
+            page_size=page_size,
+        ),
+        role_key,
+        session_team_leader_role(request),
+    )
+    total = data.count_notification_history(account_id, status=status, category=category)
+    return {
+        "notifications_page": paged(
+            items,
+            total,
+            page_number,
+            page_size,
+            status=status,
+            type=category,
+        ),
+        "notification_categories": NOTIFICATION_CATEGORIES,
+    }
+
+
+def notification_target_for(
+    role_key: str,
+    team_leader_role: str | None,
+    target_url: str | None,
+) -> str:
+    fallback = f"/portal/{role_key}/notifications"
+    if role_key not in portal_config.roles or not target_url:
+        return fallback
+
+    parsed = urlsplit(str(target_url).strip())
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/portal/"):
+        return fallback
+
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) != 3:
+        return fallback
+    _portal, target_role, section = parts
+    current_sections = {
+        item[0] for item in portal_config.portal_nav_for(role_key, team_leader_role)
+    }
+    current_sections.update(portal_config.portal_secondary_sections.get(role_key, {}))
+    if section not in current_sections:
+        return fallback
+
+    leader_roles = {"team-leader", "sales-supervisor"}
+    same_portal = target_role == role_key
+    same_leader_family = role_key in leader_roles and target_role in leader_roles
+    if not same_portal and not same_leader_family:
+        return fallback
+
+    safe_path = f"/portal/{role_key}/{section}"
+    return urlunsplit(("", "", safe_path, parsed.query, parsed.fragment))
+
+
+def normalize_notification_targets(
+    items: list[dict],
+    role_key: str,
+    team_leader_role: str | None,
+) -> list[dict]:
+    return [
+        {
+            **item,
+            "target_url": notification_target_for(
+                role_key,
+                team_leader_role,
+                item.get("target_url"),
+            ),
+        }
+        for item in items
+    ]
 
 
 def portal_nav_for_request(role_key: str, request: Request) -> list[tuple[str, str, str]]:
@@ -333,7 +432,11 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "message": message,
         "error": error,
         "cart_count": data.reseller_cart_count(session_account_id(request)) if role_key == "reseller" else 0,
-        "notifications": data.list_notifications(role_key, request.session.get("account_id")),
+        "notifications": normalize_notification_targets(
+            data.list_notifications(role_key, request.session.get("account_id")),
+            role_key,
+            session_team_leader_role(request),
+        ),
         "unread_notifications": data.unread_notification_count(role_key, request.session.get("account_id")),
     }
     context.update(portal_section_context(role_key, section, request))
@@ -354,6 +457,34 @@ async def portal_notifications_read(request: Request, role_key: str):
     data.mark_notifications_read(role_key, request.session.get("account_id"))
     section = request.query_params.get("section") or portal_config.roles[role_key]["default_section"]
     return redirect_to(safe_portal_path(role_key, section))
+
+
+@router.post("/portal/{role_key}/notifications/{notification_id}/open")
+async def portal_notification_open(request: Request, role_key: str, notification_id: int):
+    if role_key not in portal_config.roles:
+        raise HTTPException(status_code=404)
+    guard = require_portal_session(request, role_key)
+    if guard:
+        return guard
+    notification = data.mark_notification_read(session_account_id(request), notification_id)
+    if not notification:
+        raise HTTPException(status_code=404)
+    if (
+        role_key == "reseller"
+        and notification.get("source_type") == "order_system_messages"
+        and notification.get("source_id") is not None
+    ):
+        system_message_id = int(notification["source_id"])
+        return redirect_to(
+            f"/portal/reseller/inbox?system_message={system_message_id}"
+            f"#system-message-{system_message_id}"
+        )
+    target_url = notification_target_for(
+        role_key,
+        session_team_leader_role(request),
+        notification.get("target_url"),
+    )
+    return redirect_to(target_url)
 
 
 @router.post("/portal/{role_key}/profile/picture")

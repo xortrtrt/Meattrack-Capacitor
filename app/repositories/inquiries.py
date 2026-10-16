@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 from ._shared import *
-from .accounts import _create_activation_token_cursor, next_sales_team_leader
+from .accounts import _create_activation_token_cursor, next_sales_supervisor
 from .notifications import _create_notification_cursor
 
 
@@ -11,6 +11,7 @@ def list_inquiries(
     q: str = "",
     status: str = "",
     assigned_team_leader_account_id: int | None = None,
+    include_unassigned: bool = False,
     page: int | None = None,
     page_size: int = 10,
     sort: str = "",
@@ -34,7 +35,11 @@ def list_inquiries(
         where.append("i.status = %s")
         params.append(status)
     if assigned_team_leader_account_id is not None:
-        where.append("i.assigned_team_leader_account_id = %s")
+        where.append(
+            "(i.assigned_team_leader_account_id = %s OR i.assigned_team_leader_account_id IS NULL)"
+            if include_unassigned
+            else "i.assigned_team_leader_account_id = %s"
+        )
         params.append(assigned_team_leader_account_id)
     if where:
         query += " WHERE " + " AND ".join(where)
@@ -54,7 +59,12 @@ def list_inquiries(
     return clean_row(fetch_all(query + ";", tuple(params) or None))
 
 
-def count_inquiries(q: str = "", status: str = "", assigned_team_leader_account_id: int | None = None) -> int:
+def count_inquiries(
+    q: str = "",
+    status: str = "",
+    assigned_team_leader_account_id: int | None = None,
+    include_unassigned: bool = False,
+) -> int:
     query = "SELECT COUNT(*) AS total FROM inquiries i"
     where = []
     params: list[object] = []
@@ -68,7 +78,11 @@ def count_inquiries(q: str = "", status: str = "", assigned_team_leader_account_
         where.append("i.status = %s")
         params.append(status)
     if assigned_team_leader_account_id is not None:
-        where.append("i.assigned_team_leader_account_id = %s")
+        where.append(
+            "(i.assigned_team_leader_account_id = %s OR i.assigned_team_leader_account_id IS NULL)"
+            if include_unassigned
+            else "i.assigned_team_leader_account_id = %s"
+        )
         params.append(assigned_team_leader_account_id)
     if where:
         query += " WHERE " + " AND ".join(where)
@@ -85,11 +99,8 @@ def add_inquiry(
     chat_conversation_id: str | None = None,
     assigned_team_leader_account_id: int | None = None,
 ) -> dict:
-    if assigned_team_leader_account_id is None:
-        leader = next_sales_team_leader()
-        leader_id = leader["account_id"] if leader else None
-    else:
-        leader_id = int(assigned_team_leader_account_id)
+    supervisor = next_sales_supervisor(assigned_team_leader_account_id)
+    leader_id = supervisor["account_id"] if supervisor else None
     with get_transaction_cursor() as cur:
         cur.execute("""
             INSERT INTO inquiries (
@@ -107,7 +118,8 @@ def add_inquiry(
         _create_notification_cursor(
             cur, recipient_account_id=leader_id, recipient_role=None if leader_id else "owner",
             category="inquiry", severity="info", title="New reseller inquiry",
-            message=f"{business_name} is waiting for review.", target_url="/portal/team-leader/inquiries",
+            message=f"{business_name} is waiting for review.",
+            target_url="/portal/sales-supervisor/inquiries" if leader_id else "/portal/owner/accounts",
             source_type="inquiries", source_id=inq["inquiry_id"], dedupe_key=f"inquiry-{inq['inquiry_id']}",
         )
     return clean_row(inq)
@@ -171,14 +183,14 @@ def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id:
                 FROM accounts
                 WHERE account_type = 'team_leader'
                   AND is_active = true
-                  AND team_leader_role = 'sales'
+                  AND team_leader_role = 'sales-supervisor'
                 ORDER BY account_id
                 LIMIT 1;
             """)
             leader = cur.fetchone()
             leader_id = leader["account_id"] if leader else None
         if leader_id is None:
-            raise ValueError("No active sales team leader is available for this reseller.")
+            raise ValueError("No active sales supervisor is available to review this inquiry.")
 
         cur.execute(
             """

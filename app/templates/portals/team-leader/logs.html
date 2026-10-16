@@ -1,57 +1,131 @@
-<section class="panel">
-    <div class="panel-heading">
-        <h2>Inventory logs</h2>
-        <span class="hint">Immutable stock receipts, production use, output, and sale deductions.</span>
+{% if activity_logs_page.inventory_movements %}
+<section class="stock-ledger" aria-labelledby="stock-ledger-title">
+  <header class="stock-ledger__header">
+    <div>
+      <span class="stock-ledger__eyebrow">Inventory control</span>
+      <h2 id="stock-ledger-title">Stock movements</h2>
+      <p>Every increase and deduction, in one clear timeline.</p>
     </div>
-    <form class="filter-bar" method="get">
-        <label>Search <input name="q" value="{{ activity_logs_page.filters.q }}" placeholder="Actor, action, entity"></label>
-        <label>Sort
-            <select name="sort">
-                <option value="">Newest</option>
-                <option value="oldest" {{ 'selected' if activity_logs_page.filters.sort == 'oldest' else '' }}>Oldest</option>
-                <option value="actor_asc" {{ 'selected' if activity_logs_page.filters.sort == 'actor_asc' else '' }}>Actor A-Z</option>
-                <option value="action_asc" {{ 'selected' if activity_logs_page.filters.sort == 'action_asc' else '' }}>Action A-Z</option>
-            </select>
-        </label>
-        <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
-    </form>
-    <div class="table-wrap">
-        <table>
-            {% if activity_logs_page.inventory_movements %}
-            <thead><tr><th>Actor</th><th>Movement</th><th>Item</th><th>Quantity</th><th>Balance</th><th>Reference</th><th>Date</th></tr></thead>
-            {% else %}
-            <thead><tr><th>Actor</th><th>Action</th><th>Entity</th><th>Date</th></tr></thead>
-            {% endif %}
-            <tbody>
-            {% for log in activity_logs %}
-            <tr>
-                <td>{{ log.actor }}</td>
-                <td>{{ log.action.replace("_", " ") }}</td>
-                <td>{{ log.entity }}</td>
-                {% if activity_logs_page.inventory_movements %}
-                <td>{{ '+' if log.quantity_delta > 0 else '' }}{{ log.quantity_delta|number }} {{ log.unit }}</td>
-                <td>{{ log.balance_before|number }} → {{ log.balance_after|number }} {{ log.unit }}</td>
-                <td>
-                    {% if log.batch_code %}Batch {{ log.batch_code }}{% endif %}
-                    {% if log.order_id %}Order #{{ log.order_id }}{% endif %}
-                    {% if not log.batch_code and not log.order_id %}{{ log.note or '—' }}{% endif %}
-                </td>
-                {% endif %}
-                <td>{{ log.created_at|nice_date }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="{{ 7 if activity_logs_page.inventory_movements else 4 }}">No inventory logs yet.</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
+    <div class="stock-ledger__count" aria-label="{{ activity_logs_page.pagination.total }} total movements" data-async-filter-sync="movement-count">
+      <strong>{{ activity_logs_page.pagination.total|number }}</strong>
+      <span>movement{{ '' if activity_logs_page.pagination.total == 1 else 's' }}</span>
     </div>
-    <div class="pagination">
-        {% if activity_logs_page.pagination.has_prev %}
-        <a href="?q={{ activity_logs_page.filters.q|urlencode }}&sort={{ activity_logs_page.filters.sort|urlencode }}&page={{ activity_logs_page.pagination.page - 1 }}">Previous</a>
-        {% endif %}
-        <span>Page {{ activity_logs_page.pagination.page }} of {{ activity_logs_page.pagination.total_pages }}</span>
-        {% if activity_logs_page.pagination.has_next %}
-        <a href="?q={{ activity_logs_page.filters.q|urlencode }}&sort={{ activity_logs_page.filters.sort|urlencode }}&page={{ activity_logs_page.pagination.page + 1 }}">Next</a>
-        {% endif %}
+  </header>
+
+  <nav class="movement-categories" aria-label="Movement categories" data-async-filter-target="[data-async-filter-results]" data-async-filter-sync="movement-categories">
+    {% for value, label in movement_categories %}
+    <a
+      class="movement-category {{ 'is-active' if activity_logs_page.filters.type == value else '' }}"
+      href="?q={{ activity_logs_page.filters.q|urlencode }}&type={{ value|urlencode }}&sort={{ activity_logs_page.filters.sort|urlencode }}&page=1"
+      {% if activity_logs_page.filters.type == value %}aria-current="page"{% endif %}
+    >{{ label }}</a>
+    {% endfor %}
+  </nav>
+
+  <form class="stock-ledger__filters" method="get" role="search" data-async-filter-target="[data-async-filter-results]">
+    <input type="hidden" name="type" value="{{ activity_logs_page.filters.type }}" data-async-filter-sync="movement-type" />
+    <label class="stock-search">
+      <span class="sr-only">Search stock movements</span>
+      <i data-lucide="search" aria-hidden="true"></i>
+      <input
+        name="q"
+        value="{{ activity_logs_page.filters.q }}"
+        placeholder="Search item or movement"
+        autocomplete="off"
+      />
+    </label>
+    <label class="stock-sort">
+      <span>Order</span>
+      <select name="sort" aria-label="Sort stock movements">
+        <option value="">Newest first</option>
+        <option value="oldest" {{ 'selected' if activity_logs_page.filters.sort == 'oldest' else '' }}>Oldest first</option>
+      </select>
+    </label>
+    <a class="stock-clear-button" href="/portal/team-leader/logs" data-async-filter-sync="movement-clear" {% if not (activity_logs_page.filters.q or activity_logs_page.filters.type or activity_logs_page.filters.sort) %}hidden{% endif %}>Clear</a>
+  </form>
+
+  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+  <div class="movement-list" role="list" aria-label="Stock movement history">
+    {% for log in activity_logs %}
+      {% set is_in = log.quantity_delta > 0 %}
+      {% set is_out = log.quantity_delta < 0 %}
+      {% set movement_label = 'Opening balance' if log.action == 'opening_balance' else 'Raw stock received' if log.action == 'raw_receipt' else 'Finished stock received' if log.action == 'direct_finished_receipt' else 'Used in production' if log.action == 'production_consumption' else 'Production output' if log.action == 'production_output' else 'Released for sale' if log.action == 'sale_fulfillment' else log.action.replace('_', ' ') %}
+      {% set movement_icon = 'arrow-down-to-line' if is_in else 'arrow-up-from-line' if is_out else 'minus' %}
+    <article class="movement-row movement-row--{{ 'in' if is_in else 'out' if is_out else 'neutral' }}" role="listitem">
+      <span class="movement-row__icon" aria-hidden="true"><i data-lucide="{{ movement_icon }}"></i></span>
+      <div class="movement-row__item">
+        <strong>{{ log.entity }}</strong>
+        <span>{{ movement_label }}</span>
+      </div>
+      <div class="movement-row__change">
+        <span class="movement-direction">{{ 'Stock in' if is_in else 'Stock out' if is_out else 'No change' }}</span>
+        <strong>{{ '+' if is_in else '' }}{{ log.quantity_delta|number }} <small>{{ log.unit }}</small></strong>
+      </div>
+      <div class="movement-row__balance">
+        <span>Balance after</span>
+        <strong>{{ log.balance_after|number }} <small>{{ log.unit }}</small></strong>
+      </div>
+      <time class="movement-row__date" datetime="{{ log.created_at }}">
+        <i data-lucide="calendar-days" aria-hidden="true"></i>
+        {{ log.created_at|nice_date }}
+      </time>
+    </article>
+    {% else %}
+    <div class="movement-empty">
+      <span><i data-lucide="package-search" aria-hidden="true"></i></span>
+      <strong>No movements found</strong>
+      <p>Try another category or clear your search.</p>
+      <a href="/portal/team-leader/logs">Show all movements</a>
     </div>
+    {% endfor %}
+  </div>
+
+  {% if activity_logs_page.pagination.total_pages > 1 %}
+  <nav class="stock-pagination" aria-label="Stock movement pages">
+    <span class="stock-pagination__summary">
+      Page {{ activity_logs_page.pagination.page }} of {{ activity_logs_page.pagination.total_pages }}
+    </span>
+    <div class="stock-pagination__controls">
+      {% if activity_logs_page.pagination.has_prev %}
+      <a class="stock-page stock-page--step" aria-label="Previous page" href="?q={{ activity_logs_page.filters.q|urlencode }}&type={{ activity_logs_page.filters.type|urlencode }}&sort={{ activity_logs_page.filters.sort|urlencode }}&page={{ activity_logs_page.pagination.page - 1 }}">
+        <i data-lucide="chevron-left" aria-hidden="true"></i><span>Previous</span>
+      </a>
+      {% endif %}
+      {% for page_number in activity_logs_page.pagination.page_numbers %}
+      <a
+        class="stock-page {{ 'is-current' if page_number == activity_logs_page.pagination.page else '' }}"
+        href="?q={{ activity_logs_page.filters.q|urlencode }}&type={{ activity_logs_page.filters.type|urlencode }}&sort={{ activity_logs_page.filters.sort|urlencode }}&page={{ page_number }}"
+        aria-label="Page {{ page_number }}"
+        {% if page_number == activity_logs_page.pagination.page %}aria-current="page"{% endif %}
+      >{{ page_number }}</a>
+      {% endfor %}
+      {% if activity_logs_page.pagination.has_next %}
+      <a class="stock-page stock-page--step" aria-label="Next page" href="?q={{ activity_logs_page.filters.q|urlencode }}&type={{ activity_logs_page.filters.type|urlencode }}&sort={{ activity_logs_page.filters.sort|urlencode }}&page={{ activity_logs_page.pagination.page + 1 }}">
+        <span>Next</span><i data-lucide="chevron-right" aria-hidden="true"></i>
+      </a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
+  </div>
 </section>
+{% else %}
+<section class="panel">
+  <div class="panel-heading">
+    <h2>Activity logs</h2>
+    <span class="hint">Account and portal activity.</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Actor</th><th>Action</th><th>Entity</th><th>Date</th></tr></thead>
+      <tbody>
+      {% for log in activity_logs %}
+      <tr><td>{{ log.actor }}</td><td>{{ log.action.replace('_', ' ') }}</td><td>{{ log.entity }}</td><td>{{ log.created_at|nice_date }}</td></tr>
+      {% else %}
+      <tr><td colspan="4">No activity logs yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}

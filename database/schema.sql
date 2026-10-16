@@ -160,10 +160,60 @@ CREATE TABLE orders (
     approved_at timestamptz,
     order_date timestamptz NOT NULL DEFAULT now(),
     status text NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'approved', 'rejected', 'fulfilled', 'cancelled')),
+        CHECK (status IN ('to_pay', 'pending', 'approved', 'rejected', 'fulfilled', 'cancelled', 'expired')),
     fulfilled_at timestamptz,
     total_amount numeric(12,2) NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
-    notes text
+    notes text,
+    rejection_reason text,
+    payment_transaction_number text,
+    payment_transaction_key text,
+    payment_paid_at timestamptz,
+    payment_amount numeric(12,2),
+    payment_ocr_confidence numeric(5,4),
+    payment_extraction_method text,
+    payment_confirmed_at timestamptz,
+    payment_ocr_engine text,
+    payment_due_at timestamptz,
+    expired_at timestamptz,
+    CONSTRAINT orders_rejection_reason_check CHECK (
+        rejection_reason IS NULL OR char_length(btrim(rejection_reason)) BETWEEN 5 AND 400
+    ),
+    CONSTRAINT orders_payment_transaction_number_check
+        CHECK (payment_transaction_number IS NULL OR btrim(payment_transaction_number) <> ''),
+    CONSTRAINT orders_payment_transaction_key_check
+        CHECK (payment_transaction_key IS NULL OR payment_transaction_key ~ '^[A-Z0-9]{6,64}$'),
+    CONSTRAINT orders_payment_transaction_normalized_check CHECK (
+        payment_transaction_key IS NULL OR (
+            payment_transaction_number IS NOT NULL
+            AND payment_transaction_key = upper(regexp_replace(payment_transaction_number, '[^A-Za-z0-9]', '', 'g'))
+        )
+    ),
+    CONSTRAINT orders_payment_ocr_confidence_check
+        CHECK (payment_ocr_confidence IS NULL OR payment_ocr_confidence BETWEEN 0 AND 1),
+    CONSTRAINT orders_payment_amount_check
+        CHECK (
+            payment_amount IS NULL OR (
+                payment_amount > 0
+                AND payment_amount NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)
+            )
+        ),
+    CONSTRAINT orders_payment_extraction_method_check
+        CHECK (payment_extraction_method IS NULL OR payment_extraction_method IN ('ocr_confirmed', 'manual_corrected')),
+    CONSTRAINT orders_to_pay_deadline_check CHECK (
+        status <> 'to_pay' OR (
+            order_type = 'reseller'
+            AND payment_due_at IS NOT NULL
+            AND payment_due_at > order_date
+            AND payment_transaction_number IS NULL
+            AND payment_transaction_key IS NULL
+            AND payment_paid_at IS NULL
+            AND payment_amount IS NULL
+            AND payment_ocr_confidence IS NULL
+            AND payment_extraction_method IS NULL
+            AND payment_confirmed_at IS NULL
+            AND payment_ocr_engine IS NULL
+        )
+    )
 );
 
 CREATE TABLE order_items (
@@ -176,6 +226,14 @@ CREATE TABLE order_items (
     line_total numeric(12,2) GENERATED ALWAYS AS (round(quantity * unit_price, 2)) STORED,
     CONSTRAINT order_items_whole_pack_check CHECK (quantity = trunc(quantity)),
     CONSTRAINT order_items_pack_unit_check CHECK (unit = 'pack')
+);
+
+CREATE TABLE order_stock_reservations (
+    order_id bigint NOT NULL REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    quantity numeric(12,3) NOT NULL CHECK (quantity > 0 AND quantity = trunc(quantity)),
+    reserved_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (order_id, product_id)
 );
 
 CREATE TABLE order_payment_proofs (
@@ -377,6 +435,23 @@ CREATE TABLE notifications (
     CHECK (btrim(category) <> ''),
     CHECK (btrim(title) <> ''),
     CHECK (btrim(message) <> '')
+);
+
+CREATE TABLE order_system_messages (
+    order_system_message_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    reseller_account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    order_id bigint NOT NULL REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    event_type text NOT NULL CHECK (event_type IN ('approved', 'rejected', 'fulfilled')),
+    title text NOT NULL CHECK (btrim(title) <> ''),
+    message text NOT NULL CHECK (btrim(message) <> ''),
+    rejection_reason text,
+    read_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (reseller_account_id, order_id, event_type),
+    CHECK (
+        (event_type = 'rejected' AND char_length(btrim(rejection_reason)) BETWEEN 5 AND 400)
+        OR (event_type <> 'rejected' AND rejection_reason IS NULL)
+    )
 );
 
 CREATE TABLE notification_recipients (
@@ -623,7 +698,8 @@ CREATE OR REPLACE FUNCTION enforce_order_status_transition()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.status = OLD.status THEN RETURN NEW; END IF;
-    IF OLD.status IN ('rejected', 'fulfilled', 'cancelled') THEN RAISE EXCEPTION 'Order status % is terminal.', OLD.status; END IF;
+    IF OLD.status IN ('rejected', 'fulfilled', 'cancelled', 'expired') THEN RAISE EXCEPTION 'Order status % is terminal.', OLD.status; END IF;
+    IF OLD.status = 'to_pay' AND NEW.status IN ('pending', 'expired') THEN RETURN NEW; END IF;
     IF OLD.status = 'pending' AND NEW.status = 'approved' THEN
         IF OLD.order_type = 'reseller' AND NOT EXISTS (SELECT 1 FROM order_payment_proofs WHERE order_id = OLD.order_id) THEN
             RAISE EXCEPTION 'Proof of payment is required before approval.';
@@ -631,7 +707,7 @@ BEGIN
         RETURN NEW;
     END IF;
     IF OLD.status = 'approved' AND NEW.status = 'fulfilled' THEN RETURN NEW; END IF;
-    IF OLD.status IN ('pending', 'approved') AND NEW.status = 'rejected' THEN RETURN NEW; END IF;
+    IF OLD.status = 'pending' AND NEW.status = 'rejected' THEN RETURN NEW; END IF;
     IF OLD.order_type = 'walk_in' AND OLD.status = 'pending' AND NEW.status = 'fulfilled' THEN RETURN NEW; END IF;
     RAISE EXCEPTION 'Invalid order status transition: % -> %.', OLD.status, NEW.status;
 END $$;
@@ -669,8 +745,8 @@ DECLARE order_status text; proof_count integer;
 BEGIN
     IF current_setting('meattrack.maintenance_import', true) = 'on' THEN RETURN NEW; END IF;
     SELECT status INTO order_status FROM orders WHERE order_id = NEW.order_id FOR UPDATE;
-    IF order_status IS DISTINCT FROM 'pending' THEN
-        RAISE EXCEPTION 'Payment proof uploads are allowed only for pending orders.';
+    IF order_status NOT IN ('to_pay', 'pending') THEN
+        RAISE EXCEPTION 'Payment proof uploads are allowed only for orders awaiting payment or review.';
     END IF;
     SELECT count(*) INTO proof_count FROM order_payment_proofs WHERE order_id = NEW.order_id;
     IF proof_count >= 3 THEN RAISE EXCEPTION 'An order can have at most three payment proofs.'; END IF;
@@ -678,6 +754,82 @@ BEGIN
 END $$;
 CREATE TRIGGER trg_enforce_payment_proof_limit
 BEFORE INSERT ON order_payment_proofs FOR EACH ROW EXECUTE FUNCTION enforce_payment_proof_limit();
+
+CREATE OR REPLACE FUNCTION require_reseller_order_payment()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.order_type = 'reseller' AND NEW.status IN ('pending', 'approved', 'fulfilled') AND (
+        NEW.payment_transaction_number IS NULL
+        OR NEW.payment_transaction_key IS NULL
+        OR NEW.payment_paid_at IS NULL
+        OR NEW.payment_amount IS NULL
+        OR NEW.payment_confirmed_at IS NULL
+        OR NOT EXISTS (
+            SELECT 1 FROM order_payment_proofs WHERE order_id = NEW.order_id
+        )
+    ) THEN
+        RAISE EXCEPTION 'Reseller orders require confirmed payment details and proof before commit.';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE CONSTRAINT TRIGGER trg_require_reseller_order_payment
+AFTER INSERT OR UPDATE ON orders DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION require_reseller_order_payment();
+
+CREATE OR REPLACE FUNCTION require_timed_order_reservations()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.order_type = 'reseller'
+       AND NEW.payment_due_at IS NOT NULL
+       AND NEW.status IN ('to_pay', 'pending', 'approved')
+       AND (
+            NOT EXISTS (SELECT 1 FROM order_items WHERE order_id = NEW.order_id)
+            OR EXISTS (
+            SELECT 1
+            FROM (
+                SELECT product_id, SUM(quantity) AS quantity
+                FROM order_items WHERE order_id = NEW.order_id GROUP BY product_id
+            ) items
+            FULL JOIN (
+                SELECT product_id, quantity
+                FROM order_stock_reservations
+                WHERE order_id = NEW.order_id
+            ) reservations
+              ON reservations.product_id = items.product_id
+            WHERE COALESCE(items.quantity, 0) <> COALESCE(reservations.quantity, 0)
+               OR items.product_id IS NULL
+               OR reservations.product_id IS NULL
+            )
+       )
+    THEN
+        RAISE EXCEPTION 'Timed reseller orders require matching stock reservations.';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE CONSTRAINT TRIGGER trg_require_timed_order_reservations
+AFTER INSERT OR UPDATE OF status ON orders DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION require_timed_order_reservations();
+
+CREATE OR REPLACE FUNCTION prevent_reused_payment_proof()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE proof_reseller_id bigint;
+BEGIN
+    SELECT reseller_id INTO proof_reseller_id FROM orders WHERE order_id = NEW.order_id;
+    IF proof_reseller_id IS NULL THEN RETURN NEW; END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended(proof_reseller_id::text || ':' || NEW.checksum_sha256, 0));
+    IF EXISTS (
+        SELECT 1
+        FROM order_payment_proofs existing_proof
+        JOIN orders existing_order ON existing_order.order_id = existing_proof.order_id
+        WHERE existing_order.reseller_id = proof_reseller_id
+          AND existing_proof.checksum_sha256 = NEW.checksum_sha256
+    ) THEN
+        RAISE EXCEPTION 'This payment screenshot has already been used for another order.';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER trg_prevent_reused_payment_proof
+BEFORE INSERT ON order_payment_proofs FOR EACH ROW EXECUTE FUNCTION prevent_reused_payment_proof();
 
 CREATE UNIQUE INDEX ux_accounts_email_lower ON accounts (lower(email));
 CREATE INDEX ix_accounts_team_leader_role ON accounts (team_leader_role)
@@ -688,7 +840,17 @@ CREATE INDEX ix_inventory_items_type_name ON inventory_items (item_type, name);
 CREATE INDEX ix_inventory_batches_fefo ON inventory_batches (item_id, expiry_date, quantity_available)
     WHERE quality_status = 'approved' AND quantity_available > 0;
 CREATE INDEX ix_orders_reseller_status ON orders (reseller_id, status);
+CREATE UNIQUE INDEX ux_orders_reseller_to_pay
+    ON orders (reseller_id)
+    WHERE order_type = 'reseller' AND status = 'to_pay';
+CREATE INDEX ix_orders_to_pay_due ON orders (payment_due_at, order_id)
+    WHERE status = 'to_pay';
+CREATE UNIQUE INDEX ux_orders_reseller_payment_transaction
+    ON orders (reseller_id, payment_transaction_key)
+    WHERE order_type = 'reseller' AND payment_transaction_key IS NOT NULL;
 CREATE INDEX ix_order_payment_proofs_order ON order_payment_proofs (order_id, uploaded_at DESC);
+CREATE INDEX ix_order_payment_proofs_checksum ON order_payment_proofs (checksum_sha256, order_id);
+CREATE INDEX ix_order_stock_reservations_product ON order_stock_reservations (product_id, order_id);
 CREATE INDEX ix_resellers_team_leader ON resellers (team_leader_account_id);
 CREATE INDEX ix_reseller_cart_items_account_updated ON reseller_cart_items (account_id, updated_at DESC);
 CREATE INDEX ix_reseller_cart_items_product ON reseller_cart_items (product_id);
@@ -705,6 +867,8 @@ CREATE INDEX ix_account_login_otps_pending ON account_login_otps (account_id, cr
 CREATE INDEX ix_notifications_role_read_created ON notifications (recipient_role, read_at, created_at DESC);
 CREATE INDEX ix_notifications_account_read_created ON notifications (recipient_account_id, read_at, created_at DESC);
 CREATE INDEX ix_notification_recipients_account_unread ON notification_recipients (account_id, read_at, notification_id DESC);
+CREATE INDEX ix_order_system_messages_reseller_created ON order_system_messages (reseller_account_id, created_at DESC, order_system_message_id DESC);
+CREATE INDEX ix_order_system_messages_order ON order_system_messages (order_id, event_type);
 CREATE INDEX ix_web_sessions_account ON web_sessions (account_id);
 CREATE INDEX ix_web_sessions_expiry ON web_sessions (expires_at);
 CREATE INDEX ix_security_events_window ON security_events (event_type, subject_key, created_at DESC);
@@ -769,6 +933,33 @@ CREATE TABLE chat_messages (
     UNIQUE (conversation_id, client_message_id)
 );
 
+CREATE TABLE reseller_conversations (
+    conversation_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    reseller_account_id bigint NOT NULL
+        REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    team_leader_account_id bigint NOT NULL
+        REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    last_message_at timestamptz,
+    reseller_deleted_at timestamptz,
+    team_leader_deleted_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (reseller_account_id, team_leader_account_id)
+);
+
+CREATE TABLE reseller_messages (
+    reseller_message_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    conversation_id bigint NOT NULL
+        REFERENCES reseller_conversations(conversation_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    client_message_id uuid NOT NULL,
+    sender_account_id bigint NOT NULL
+        REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    content text NOT NULL CHECK (char_length(btrim(content)) BETWEEN 1 AND 500),
+    read_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (conversation_id, client_message_id)
+);
+
 CREATE TABLE chat_service_ratings (
     conversation_id uuid PRIMARY KEY
         REFERENCES chat_conversations(conversation_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -803,6 +994,9 @@ CREATE INDEX ix_chat_conversations_queue ON chat_conversations (status, queued_a
 CREATE INDEX ix_chat_conversations_leader_status ON chat_conversations (assigned_team_leader_account_id, status, updated_at DESC);
 CREATE INDEX ix_chat_messages_conversation_id ON chat_messages (conversation_id, chat_message_id);
 CREATE INDEX ix_chat_messages_pending ON chat_messages (publication_status, created_at) WHERE publication_status <> 'published';
+CREATE INDEX ix_reseller_conversations_leader_activity ON reseller_conversations (team_leader_account_id, last_message_at DESC NULLS LAST);
+CREATE INDEX ix_reseller_messages_conversation ON reseller_messages (conversation_id, reseller_message_id);
+CREATE INDEX ix_reseller_messages_unread ON reseller_messages (conversation_id, sender_account_id) WHERE read_at IS NULL;
 CREATE INDEX ix_chat_service_ratings_leader_created ON chat_service_ratings (team_leader_account_id, created_at DESC);
 CREATE INDEX ix_team_leader_presence_available ON team_leader_presence (availability, heartbeat_at DESC);
 CREATE INDEX ix_rate_limit_buckets_expiry ON rate_limit_buckets (expires_at);

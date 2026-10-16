@@ -11,7 +11,7 @@
       {% if account_profile and account_profile.profile_image_path %}
       <img src="{{ url_for('static', path=account_profile.profile_image_path) }}" alt="{{ profile_name }} profile picture" />
       {% else %}
-      <span>{{ profile_name[:1]|upper }}</span>
+      <i class="profile-picture-placeholder" data-lucide="user-round" aria-label="No profile picture"></i>
       {% endif %}
     </div>
     <button class="profile-picture-camera" type="button" aria-label="Change profile picture" data-profile-picture-open>

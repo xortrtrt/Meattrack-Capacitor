@@ -37,15 +37,323 @@
 
     bindPortalDrawer();
 
-    function bindInquiryRejection() {
-        const modal = document.querySelector("[data-inquiry-reject-modal]");
-        if (!modal) return;
-        const form = modal.querySelector("[data-inquiry-reject-form]");
-        const reason = modal.querySelector("[data-inquiry-reject-reason]");
-        const business = modal.querySelector("[data-inquiry-reject-business]");
+    function bindNotificationMenu() {
+        const menu = document.querySelector("[data-notification-menu]");
+        const trigger = menu?.querySelector("[data-notification-trigger]");
+        const panel = menu?.querySelector("[data-notification-panel]");
+        const list = panel?.querySelector(".notification-list");
+        if (!menu || !trigger || !panel) {
+            return;
+        }
+
+        function positionPanel() {
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            const edge = 12;
+            const gap = 14;
+            const panelWidth = Math.min(410, viewportWidth - (edge * 2));
+            const triggerRect = trigger.getBoundingClientRect();
+            const desktop = window.matchMedia("(min-width: 861px)").matches;
+
+            panel.style.position = "fixed";
+            panel.style.width = `${panelWidth}px`;
+            panel.style.right = "auto";
+            panel.style.left = `${edge}px`;
+            panel.style.top = `${edge}px`;
+
+            const panelHeight = panel.offsetHeight;
+            const preferredLeft = desktop
+                ? triggerRect.right + gap
+                : triggerRect.right - panelWidth;
+            const preferredTop = desktop
+                ? triggerRect.top - 8
+                : triggerRect.bottom + 10;
+            const maxLeft = Math.max(edge, viewportWidth - panelWidth - edge);
+            const maxTop = Math.max(edge, viewportHeight - panelHeight - edge);
+            const left = Math.min(Math.max(edge, preferredLeft), maxLeft);
+            const top = Math.min(Math.max(edge, preferredTop), maxTop);
+
+            panel.style.left = `${Math.round(left)}px`;
+            panel.style.top = `${Math.round(top)}px`;
+        }
+
+        function prepareOpenPanel() {
+            menu.classList.add("is-positioning");
+            window.requestAnimationFrame(() => {
+                if (!menu.open) return;
+                if (list) list.scrollTop = 0;
+                positionPanel();
+                menu.classList.remove("is-positioning");
+            });
+        }
+
+        function setExpanded(open) {
+            trigger.setAttribute("aria-expanded", String(open));
+            menu.classList.toggle("is-open", open);
+            if (open) prepareOpenPanel();
+            else menu.classList.remove("is-positioning");
+        }
+
+        trigger.addEventListener("click", () => {
+            if (!menu.open) menu.classList.add("is-positioning");
+        });
+        menu.addEventListener("toggle", () => setExpanded(menu.open));
+        document.addEventListener("pointerdown", (event) => {
+            if (menu.open && !menu.contains(event.target)) {
+                menu.open = false;
+            }
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && menu.open) {
+                menu.open = false;
+                trigger.focus();
+            }
+        });
+        window.addEventListener("resize", () => {
+            if (menu.open) positionPanel();
+        });
+        window.visualViewport?.addEventListener("resize", () => {
+            if (menu.open) positionPanel();
+        });
+        setExpanded(menu.open);
+    }
+
+    bindNotificationMenu();
+
+    function bindSignOutConfirmation() {
+        const form = document.querySelector("[data-logout-form]");
+        const modal = document.querySelector("[data-logout-modal]");
+        const dialog = modal?.querySelector("[role='dialog']");
+        const confirmButton = modal?.querySelector("[data-logout-confirm]");
+        const cancelButtons = modal?.querySelectorAll("[data-logout-close]") || [];
+        if (!form || !modal || !dialog || !confirmButton) {
+            return;
+        }
+
         let returnFocus = null;
+        let isSubmitting = false;
+
+        function focusableElements() {
+            return Array.from(
+                dialog.querySelectorAll(
+                    "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+                )
+            ).filter((element) => !element.hidden);
+        }
+
+        function openModal() {
+            returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            modal.hidden = false;
+            document.body.classList.add("modal-is-open");
+            window.requestAnimationFrame(() => confirmButton.focus());
+        }
 
         function closeModal() {
+            if (isSubmitting) return;
+            modal.hidden = true;
+            document.body.classList.remove("modal-is-open");
+            returnFocus?.focus();
+        }
+
+        form.addEventListener("submit", (event) => {
+            if (isSubmitting) return;
+            event.preventDefault();
+            openModal();
+        });
+
+        cancelButtons.forEach((button) => button.addEventListener("click", closeModal));
+
+        confirmButton.addEventListener("click", () => {
+            if (isSubmitting) return;
+            isSubmitting = true;
+            confirmButton.disabled = true;
+            confirmButton.setAttribute("aria-busy", "true");
+            const label = confirmButton.querySelector("span");
+            if (label) label.textContent = "Signing out…";
+            HTMLFormElement.prototype.submit.call(form);
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !modal.hidden) {
+                event.preventDefault();
+                closeModal();
+            }
+        });
+
+        modal.addEventListener("keydown", (event) => {
+            if (event.key !== "Tab") return;
+
+            const elements = focusableElements();
+            if (!elements.length) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+            }
+            const first = elements[0];
+            const last = elements[elements.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    }
+
+    bindSignOutConfirmation();
+
+    function bindAutoFilterForms() {
+        const selector = [
+            "form.filter-bar[method='get']",
+            "form.stock-ledger__filters[method='get']",
+            "form.reseller-product-search[method='get']",
+            "form[data-auto-filter]",
+        ].join(", ");
+        const categorySelector = [
+            ".movement-categories a",
+            ".reseller-category-tabs a",
+            ".order-history-tabs a",
+            ".stock-clear-button",
+            "form[data-auto-filter] a.button",
+            "[data-async-filter-results] .pagination a",
+            "[data-async-filter-results] .stock-pagination a",
+        ].join(", ");
+        const timers = new WeakMap();
+        let activeRequest = null;
+
+        function isFilterForm(form) {
+            return form instanceof HTMLFormElement && form.matches(selector);
+        }
+
+        function formUrl(form) {
+            const url = new URL(form.getAttribute("action") || window.location.href, window.location.origin);
+            const values = new URLSearchParams();
+            new FormData(form).forEach((value, key) => {
+                if (typeof value === "string") values.append(key, value);
+            });
+            url.search = values.toString();
+            return url;
+        }
+
+        function bindRefreshedContent() {
+            bindReceiptCheckout();
+            bindPaymentCountdowns();
+        }
+
+        function targetSelectorFor(source) {
+            if (!(source instanceof Element)) return "";
+            const directTarget = source.closest("[data-async-filter-target]")?.dataset.asyncFilterTarget;
+            if (directTarget) return directTarget;
+            return source.closest(".panel")?.querySelector("form[data-async-filter-target]")?.dataset.asyncFilterTarget || "";
+        }
+
+        async function refreshContent(url, { pushState = true, targetSelector = "" } = {}) {
+            activeRequest?.abort();
+            const controller = new AbortController();
+            activeRequest = controller;
+            const contentSelector = targetSelector || "[data-portal-content]";
+            const currentContent = document.querySelector(contentSelector);
+            currentContent?.setAttribute("aria-busy", "true");
+
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        Accept: "text/html",
+                        "X-Requested-With": "fetch",
+                    },
+                    credentials: "same-origin",
+                    signal: controller.signal,
+                });
+                if (!response.ok) throw new Error("Unable to update the filtered results.");
+
+                const html = await response.text();
+                const documentResponse = new DOMParser().parseFromString(html, "text/html");
+                const replacement = documentResponse.querySelector(contentSelector);
+                if (!replacement || !currentContent) throw new Error("Unable to update the filtered results.");
+
+                currentContent.replaceWith(replacement);
+                document.querySelectorAll("[data-async-filter-sync]").forEach((currentElement) => {
+                    const syncKey = currentElement.dataset.asyncFilterSync;
+                    if (!syncKey) return;
+                    const nextElement = Array.from(documentResponse.querySelectorAll("[data-async-filter-sync]"))
+                        .find((candidate) => candidate.dataset.asyncFilterSync === syncKey);
+                    if (nextElement) currentElement.replaceWith(nextElement);
+                });
+                if (documentResponse.title) document.title = documentResponse.title;
+                if (pushState) window.history.pushState({}, "", url);
+                window.lucide?.createIcons();
+                bindRefreshedContent();
+            } catch (error) {
+                if (error.name === "AbortError") return;
+                window.location.assign(url);
+            } finally {
+                if (activeRequest === controller) activeRequest = null;
+                currentContent?.removeAttribute("aria-busy");
+            }
+        }
+
+        function queueFormRefresh(form) {
+            window.clearTimeout(timers.get(form));
+            timers.set(form, window.setTimeout(() => form.requestSubmit(), 300));
+        }
+
+        document.addEventListener("input", (event) => {
+            const control = event.target;
+            if (!(control instanceof HTMLInputElement) || !["search", "text"].includes(control.type) || event.isComposing) {
+                return;
+            }
+            const form = control.closest("form");
+            if (isFilterForm(form)) queueFormRefresh(form);
+        });
+
+        document.addEventListener("change", (event) => {
+            const control = event.target;
+            if (!(control instanceof HTMLSelectElement) && !(control instanceof HTMLInputElement)) return;
+            if (control instanceof HTMLInputElement && !["checkbox", "radio"].includes(control.type)) return;
+            const form = control.closest("form");
+            if (isFilterForm(form)) {
+                window.clearTimeout(timers.get(form));
+                form.requestSubmit();
+            }
+        });
+
+        document.addEventListener("submit", (event) => {
+            const form = event.target;
+            if (!isFilterForm(form)) return;
+            event.preventDefault();
+            refreshContent(formUrl(form), { targetSelector: targetSelectorFor(form) });
+        });
+
+        document.addEventListener("click", (event) => {
+            const link = event.target.closest(categorySelector);
+            if (!link || link.dataset.inventoryProductsLink !== undefined || event.defaultPrevented
+                || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                return;
+            }
+            event.preventDefault();
+            refreshContent(new URL(link.href), { targetSelector: targetSelectorFor(link) });
+        });
+
+        window.addEventListener("popstate", () => {
+            const targetForm = document.querySelector(`${selector}[data-async-filter-target]`);
+            refreshContent(new URL(window.location.href), {
+                pushState: false,
+                targetSelector: targetForm?.dataset.asyncFilterTarget || "",
+            });
+        });
+    }
+
+    bindAutoFilterForms();
+
+    function bindInquiryRejection() {
+        if (document.documentElement.dataset.inquiryRejectionBound === "true") return;
+        document.documentElement.dataset.inquiryRejectionBound = "true";
+        let returnFocus = null;
+
+        function closeModal(modal) {
+            const form = modal?.querySelector("[data-inquiry-reject-form]");
+            if (!modal || !form) return;
             modal.hidden = true;
             document.body.classList.remove("modal-is-open");
             form.reset();
@@ -53,21 +361,28 @@
             returnFocus = null;
         }
 
-        document.querySelectorAll("[data-inquiry-reject-open]").forEach((button) => {
-            button.addEventListener("click", () => {
+        document.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-inquiry-reject-open]");
+            if (button) {
+                const modal = document.querySelector("[data-inquiry-reject-modal]");
+                const form = modal?.querySelector("[data-inquiry-reject-form]");
+                const reason = modal?.querySelector("[data-inquiry-reject-reason]");
+                const business = modal?.querySelector("[data-inquiry-reject-business]");
+                if (!modal || !form || !reason || !business) return;
                 returnFocus = button;
                 form.action = button.dataset.inquiryRejectAction || "";
                 business.textContent = button.dataset.inquiryRejectBusiness || "this applicant";
                 modal.hidden = false;
                 document.body.classList.add("modal-is-open");
                 window.requestAnimationFrame(() => reason.focus());
-            });
-        });
-        modal.querySelectorAll("[data-inquiry-reject-close]").forEach((button) => {
-            button.addEventListener("click", closeModal);
+                return;
+            }
+            const closeButton = event.target.closest("[data-inquiry-reject-close]");
+            if (closeButton) closeModal(closeButton.closest("[data-inquiry-reject-modal]"));
         });
         document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape" && !modal.hidden) closeModal();
+            const modal = document.querySelector("[data-inquiry-reject-modal]");
+            if (event.key === "Escape" && modal && !modal.hidden) closeModal(modal);
         });
     }
 
@@ -280,13 +595,10 @@
             }
         }
 
-        document.querySelectorAll("[data-product-modal-open]").forEach((button) => {
-            button.addEventListener("click", () => {
-                const card = button.closest("[data-product-card]");
-                if (card) {
-                    openModal(card);
-                }
-            });
+        document.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-product-modal-open]");
+            const card = button?.closest("[data-product-card]");
+            if (card) openModal(card);
         });
 
         modal.querySelectorAll("[data-product-modal-close]").forEach((button) => {
@@ -310,7 +622,16 @@
         const image = modal.querySelector("[data-proof-modal-image]");
         const externalLink = modal.querySelector("[data-proof-modal-link]");
         const fullscreenToggle = modal.querySelector("[data-proof-fullscreen-toggle]");
+        const card = modal.querySelector(".proof-modal-card");
         let lastFocused = null;
+
+        function updateProofOrientation() {
+            if (!card || !image) return;
+            card.classList.toggle(
+                "is-portrait-proof",
+                image.naturalHeight > image.naturalWidth,
+            );
+        }
 
         function setFullscreen(active) {
             modal.classList.toggle("is-fullscreen", active);
@@ -336,6 +657,8 @@
             if (image) {
                 image.src = proofUrl;
                 image.alt = proofTitle;
+                image.addEventListener("load", updateProofOrientation, { once: true });
+                if (image.complete) updateProofOrientation();
             }
             if (externalLink) {
                 externalLink.href = proofUrl;
@@ -354,6 +677,7 @@
                 image.removeAttribute("src");
                 image.alt = "";
             }
+            card?.classList.remove("is-portrait-proof");
             if (lastFocused && typeof lastFocused.focus === "function") {
                 lastFocused.focus();
             }
@@ -369,11 +693,11 @@
             }
         });
 
-        document.querySelectorAll("[data-proof-modal-open]").forEach((trigger) => {
-            trigger.addEventListener("click", (event) => {
-                event.preventDefault();
-                openModal(trigger);
-            });
+        document.addEventListener("click", (event) => {
+            const trigger = event.target.closest("[data-proof-modal-open]");
+            if (!trigger) return;
+            event.preventDefault();
+            openModal(trigger);
         });
 
         modal.querySelectorAll("[data-proof-modal-close]").forEach((button) => {
@@ -387,6 +711,152 @@
                     return;
                 }
                 closeModal();
+            }
+        });
+    }
+
+    function bindOrderActionConfirmation() {
+        const modal = document.querySelector("[data-order-action-modal]");
+        const dialog = modal?.querySelector("[role='dialog']");
+        const icon = modal?.querySelector("[data-order-action-icon]");
+        const eyebrow = modal?.querySelector("[data-order-action-eyebrow]");
+        const title = modal?.querySelector("[data-order-action-title]");
+        const description = modal?.querySelector("[data-order-action-description]");
+        const confirmButton = modal?.querySelector("[data-order-action-confirm]");
+        const cancelButton = modal?.querySelector("[data-order-action-close]:not(.proof-modal-backdrop)");
+        const rejectionField = modal?.querySelector("[data-order-rejection-field]");
+        const rejectionReason = modal?.querySelector("[data-order-rejection-reason]");
+        if (!modal || !dialog || !icon || !eyebrow || !title || !description || !confirmButton || !rejectionField || !rejectionReason) {
+            return;
+        }
+
+        const actions = {
+            approve: {
+                icon: "circle-check",
+                eyebrow: "Approve order",
+                title: "Approve order",
+                description: "The order will move to the fulfillment queue.",
+                confirm: "Approve order",
+            },
+            reject: {
+                icon: "circle-x",
+                eyebrow: "Reject order",
+                title: "Reject order",
+                description: "Explain why this order cannot be approved before confirming the rejection.",
+                confirm: "Reject order",
+                destructive: true,
+                requiresReason: true,
+            },
+            fulfill: {
+                icon: "package-check",
+                eyebrow: "Fulfill order",
+                title: "Mark order fulfilled",
+                description: "This records the sale and deducts the reserved stock.",
+                confirm: "Fulfill order",
+            },
+        };
+        let activeForm = null;
+        let returnFocus = null;
+        let isSubmitting = false;
+
+        function focusableElements() {
+            return Array.from(dialog.querySelectorAll(
+                "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+            )).filter((element) => !element.hidden);
+        }
+
+        function closeModal() {
+            if (isSubmitting) return;
+            modal.hidden = true;
+            document.body.classList.remove("modal-is-open");
+            rejectionReason.value = "";
+            rejectionReason.setCustomValidity("");
+            activeForm = null;
+            returnFocus?.focus();
+            returnFocus = null;
+        }
+
+        function openModal(form, submitter) {
+            const action = actions[form.dataset.orderAction] || actions.approve;
+            const orderId = form.dataset.orderId || "";
+            activeForm = form;
+            returnFocus = submitter instanceof HTMLElement ? submitter : document.activeElement;
+            icon.innerHTML = `<i data-lucide="${action.icon}"></i>`;
+            eyebrow.textContent = action.eyebrow;
+            title.textContent = `${action.title}${orderId ? ` #${orderId}` : ""}?`;
+            description.textContent = action.description;
+            rejectionField.hidden = !action.requiresReason;
+            rejectionReason.required = Boolean(action.requiresReason);
+            rejectionReason.value = "";
+            rejectionReason.setCustomValidity("");
+            confirmButton.classList.toggle("danger", Boolean(action.destructive));
+            confirmButton.classList.toggle("primary", !action.destructive);
+            confirmButton.querySelector("span").textContent = action.confirm;
+            modal.hidden = false;
+            document.body.classList.add("modal-is-open");
+            window.lucide?.createIcons();
+            window.requestAnimationFrame(() => (action.requiresReason ? rejectionReason : (cancelButton || confirmButton)).focus());
+        }
+
+        document.addEventListener("submit", (event) => {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement) || !form.matches("[data-order-action-form]")) return;
+            if (isSubmitting) return;
+            event.preventDefault();
+            openModal(form, event.submitter);
+        });
+
+        modal.querySelectorAll("[data-order-action-close]").forEach((button) => {
+            button.addEventListener("click", closeModal);
+        });
+
+        confirmButton.addEventListener("click", () => {
+            if (!activeForm || isSubmitting) return;
+            if (activeForm.dataset.orderAction === "reject") {
+                const cleanedReason = rejectionReason.value
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .join("\n");
+                rejectionReason.setCustomValidity(
+                    cleanedReason.length < 5 ? "Enter at least 5 characters explaining why the order was rejected." : "",
+                );
+                if (!rejectionReason.reportValidity()) return;
+                const target = activeForm.querySelector("[data-order-rejection-value]");
+                if (!target) return;
+                target.value = cleanedReason;
+            }
+            isSubmitting = true;
+            confirmButton.disabled = true;
+            confirmButton.setAttribute("aria-busy", "true");
+            confirmButton.querySelector("span").textContent = "Saving…";
+            HTMLFormElement.prototype.submit.call(activeForm);
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (modal.hidden) return;
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeModal();
+            }
+        });
+
+        modal.addEventListener("keydown", (event) => {
+            if (event.key !== "Tab") return;
+            const elements = focusableElements();
+            if (!elements.length) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+            }
+            const first = elements[0];
+            const last = elements[elements.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
             }
         });
     }
@@ -602,6 +1072,9 @@
                 }
                 region.replaceWith(replacement);
                 window.history.pushState({}, "", link.href);
+                const selectedType = new URL(link.href).searchParams.get("type") || "";
+                const typeInput = document.querySelector("[data-inventory-products-type]");
+                if (typeInput) typeInput.value = selectedType;
                 if (window.lucide) {
                     window.lucide.createIcons();
                 }
@@ -658,11 +1131,476 @@
         updateRemoveButtons();
     }
 
+    function bindInventoryWorkspaceModals() {
+        const modals = Array.from(document.querySelectorAll("[data-inventory-modal]"));
+        if (!modals.length) {
+            return;
+        }
+
+        let activeModal = null;
+        let returnFocus = null;
+        const focusableSelector = [
+            "button:not([disabled])",
+            "input:not([disabled])",
+            "select:not([disabled])",
+            "textarea:not([disabled])",
+            "a[href]",
+            "summary",
+            "[tabindex]:not([tabindex='-1'])",
+        ].join(",");
+
+        function updateModalQuery(name) {
+            const url = new URL(window.location.href);
+            if (name) {
+                url.searchParams.set("modal", name);
+            } else {
+                url.searchParams.delete("modal");
+            }
+            window.history.replaceState({}, "", url);
+        }
+
+        function closeModal({ restoreFocus = true, updateUrl = true } = {}) {
+            if (!activeModal) {
+                return;
+            }
+            activeModal.hidden = true;
+            activeModal = null;
+            document.body.classList.remove("modal-is-open");
+            if (updateUrl) {
+                updateModalQuery("");
+            }
+            if (restoreFocus && returnFocus) {
+                returnFocus.focus();
+            }
+            returnFocus = null;
+        }
+
+        function openModal(name, trigger = null, { updateUrl = true } = {}) {
+            const modal = modals.find((item) => item.dataset.inventoryModal === name);
+            if (!modal) {
+                return;
+            }
+            if (activeModal && activeModal !== modal) {
+                closeModal({ restoreFocus: false, updateUrl: false });
+            }
+            returnFocus = trigger || document.querySelector(`[data-inventory-modal-open="${name}"]`);
+            activeModal = modal;
+            modal.hidden = false;
+            document.body.classList.add("modal-is-open");
+            if (updateUrl) {
+                updateModalQuery(name);
+            }
+            window.requestAnimationFrame(() => {
+                const preferredFocus = modal.querySelector(".inventory-modal-body input:not([type='hidden']):not([disabled]), .inventory-modal-body select:not([disabled])")
+                    || modal.querySelector("button[data-inventory-modal-close]");
+                (preferredFocus || modal.querySelector("[role='dialog']"))?.focus();
+            });
+        }
+
+        document.querySelectorAll("[data-inventory-modal-open]").forEach((trigger) => {
+            trigger.addEventListener("click", () => openModal(trigger.dataset.inventoryModalOpen, trigger));
+        });
+
+        modals.forEach((modal) => {
+            modal.querySelectorAll("[data-inventory-modal-close]").forEach((button) => {
+                button.addEventListener("click", () => closeModal());
+            });
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (!activeModal) {
+                return;
+            }
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeModal();
+                return;
+            }
+            if (event.key !== "Tab") {
+                return;
+            }
+            const focusable = Array.from(activeModal.querySelectorAll(focusableSelector)).filter((element) => element.offsetParent !== null);
+            if (!focusable.length) {
+                event.preventDefault();
+                activeModal.querySelector("[role='dialog']")?.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+
+        const requestedModal = new URLSearchParams(window.location.search).get("modal");
+        if (requestedModal) {
+            openModal(requestedModal, null, { updateUrl: false });
+        }
+    }
+
+    let paymentCountdownTimer = null;
+
+    function bindPaymentCountdowns() {
+        const deadlineContainers = document.querySelectorAll("[data-payment-deadline]");
+        if (!deadlineContainers.length) return;
+
+        function updateCountdowns() {
+            const now = Date.now();
+            document.querySelectorAll("[data-payment-deadline]").forEach((container) => {
+                const deadline = Date.parse(container.dataset.paymentDeadline || "");
+                const output = container.querySelector("[data-payment-countdown]");
+                if (!output || Number.isNaN(deadline)) return;
+                const remaining = Math.max(0, deadline - now);
+                const totalSeconds = Math.ceil(remaining / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                output.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+                container.dataset.urgency = totalSeconds <= 120 ? "critical" : totalSeconds <= 300 ? "warning" : "normal";
+                if (remaining <= 0 && container.dataset.expired !== "true") {
+                    container.dataset.expired = "true";
+                    output.textContent = "Expired";
+                    container.dispatchEvent(new CustomEvent("payment-expired", { bubbles: true }));
+                    if (!container.dataset.reloadScheduled) {
+                        container.dataset.reloadScheduled = "true";
+                        window.setTimeout(() => window.location.reload(), 1500);
+                    }
+                }
+            });
+        }
+
+        updateCountdowns();
+        if (!paymentCountdownTimer) paymentCountdownTimer = window.setInterval(updateCountdowns, 1000);
+    }
+
+    function bindReceiptCheckoutForm(form) {
+        if (form.dataset.receiptCheckoutBound === "true") return;
+        form.dataset.receiptCheckoutBound = "true";
+
+        const fileInput = form.querySelector("[data-receipt-files]");
+        const fileList = form.querySelector("[data-receipt-file-list]");
+        const cardStatus = form.querySelector("[data-receipt-card-status]");
+        const status = form.querySelector("[data-receipt-status]");
+        const transactionInput = form.querySelector("[data-receipt-transaction]");
+        const amountInput = form.querySelector("[data-receipt-amount]");
+        const dateInput = form.querySelector("[data-receipt-date]");
+        const timeInput = form.querySelector("[data-receipt-time]");
+        const confirmation = form.querySelector("[data-receipt-confirm]");
+        const tokenInput = form.querySelector("[data-receipt-token]");
+        const submitButton = form.querySelector("[data-receipt-submit]");
+        const modal = form.querySelector("[data-receipt-modal]");
+        const dialog = form.querySelector("[data-receipt-dialog]");
+        const previews = form.querySelector("[data-receipt-previews]");
+        const closeButtons = form.querySelectorAll("[data-receipt-modal-close]");
+        const acceptButton = form.querySelector("[data-receipt-accept]");
+        const editButton = form.querySelector("[data-receipt-edit]");
+        const summary = form.querySelector("[data-receipt-summary]");
+        const summaryReference = form.querySelector("[data-receipt-summary-reference]");
+        const summaryAmount = form.querySelector("[data-receipt-summary-amount]");
+        const summaryDate = form.querySelector("[data-receipt-summary-date]");
+        const acceptedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+        const maxBytes = 5 * 1024 * 1024;
+        const paymentInputs = [transactionInput, amountInput, dateInput, timeInput];
+        let previewUrls = [];
+        let priorFocus = null;
+        let scanGeneration = 0;
+        let isScanning = false;
+        let detailsAccepted = false;
+        let paymentExpired = false;
+
+        const selectedFiles = () => Array.from(fileInput?.files || []);
+
+        function validateFiles() {
+            const filesToCheck = selectedFiles();
+            if (filesToCheck.length < 1 || filesToCheck.length > 3) return "Choose between 1 and 3 receipt screenshots.";
+            const invalidType = filesToCheck.find((file) => !acceptedTypes.has(file.type));
+            if (invalidType) return `${invalidType.name} must be a JPG, PNG, or WebP image.`;
+            const oversized = filesToCheck.find((file) => file.size > maxBytes);
+            if (oversized) return `${oversized.name} is larger than 5 MB.`;
+            return "";
+        }
+
+        function detailsAreComplete() {
+            return Boolean(
+                tokenInput.value
+                && transactionInput.value.trim()
+                && Number(amountInput.value) > 0
+                && dateInput.value
+                && timeInput.value
+                && confirmation.checked
+                && !validateFiles()
+            );
+        }
+
+        function updateActionState() {
+            const complete = detailsAreComplete() && !isScanning && !paymentExpired;
+            acceptButton.disabled = !complete;
+            submitButton.disabled = !(complete && detailsAccepted);
+        }
+
+        function resetScan(message = "Receipt changed. Reading the updated screenshot automatically.") {
+            scanGeneration += 1;
+            isScanning = false;
+            detailsAccepted = false;
+            tokenInput.value = "";
+            paymentInputs.forEach((input) => {
+                input.value = "";
+                input.disabled = true;
+            });
+            confirmation.checked = false;
+            confirmation.disabled = true;
+            summary.hidden = true;
+            status.textContent = message;
+            status.dataset.state = "";
+            cardStatus.textContent = message;
+            cardStatus.dataset.state = "";
+            updateActionState();
+        }
+
+        function renderPreviews() {
+            previewUrls.forEach((url) => URL.revokeObjectURL(url));
+            previewUrls = [];
+            previews.replaceChildren();
+            selectedFiles().forEach((file, index) => {
+                const figure = document.createElement("figure");
+                const image = document.createElement("img");
+                const caption = document.createElement("figcaption");
+                const url = URL.createObjectURL(file);
+                previewUrls.push(url);
+                image.src = url;
+                image.alt = `Receipt screenshot ${index + 1}: ${file.name}`;
+                caption.textContent = file.name;
+                figure.append(image, caption);
+                previews.appendChild(figure);
+            });
+        }
+
+        function openModal() {
+            priorFocus = document.activeElement;
+            renderPreviews();
+            modal.hidden = false;
+            document.body.classList.add("receipt-modal-open");
+            requestAnimationFrame(() => dialog.focus());
+        }
+
+        function closeModal() {
+            modal.hidden = true;
+            document.body.classList.remove("receipt-modal-open");
+            if (!detailsAccepted && selectedFiles().length) {
+                cardStatus.textContent = isScanning
+                    ? "Receipt recognition is still running. Open the receipt to follow its progress."
+                    : "Receipt details still need your confirmation. Open the receipt to continue.";
+                cardStatus.dataset.state = "warning";
+            }
+            if (priorFocus instanceof HTMLElement) priorFocus.focus();
+        }
+
+        function renderFiles() {
+            fileList.replaceChildren();
+            selectedFiles().forEach((file, index) => {
+                const row = document.createElement("span");
+                const copy = document.createElement("span");
+                const name = document.createElement("strong");
+                const size = document.createElement("small");
+                const remove = document.createElement("button");
+                name.textContent = file.name;
+                size.textContent = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+                copy.append(name, size);
+                remove.type = "button";
+                remove.setAttribute("aria-label", `Remove ${file.name}`);
+                remove.innerHTML = '<i data-lucide="x"></i>';
+                remove.addEventListener("click", () => {
+                    const transfer = new DataTransfer();
+                    selectedFiles().forEach((selected, selectedIndex) => {
+                        if (selectedIndex !== index) transfer.items.add(selected);
+                    });
+                    fileInput.files = transfer.files;
+                    handleSelectionChange();
+                });
+                row.append(copy, remove);
+                fileList.appendChild(row);
+            });
+            window.lucide?.createIcons();
+        }
+
+        async function scanReceipt() {
+            const error = validateFiles();
+            if (error || paymentExpired) return;
+            const generation = ++scanGeneration;
+            isScanning = true;
+            detailsAccepted = false;
+            summary.hidden = true;
+            paymentInputs.forEach((input) => { input.disabled = true; });
+            confirmation.disabled = true;
+            confirmation.checked = false;
+            status.textContent = "Reading receipt… MEATTRACK is extracting the reference number, money sent, date, and time.";
+            status.dataset.state = "scanning";
+            cardStatus.textContent = "Reading receipt automatically…";
+            cardStatus.dataset.state = "scanning";
+            updateActionState();
+            const body = new FormData();
+            selectedFiles().forEach((file) => body.append("payment_proofs", file));
+            try {
+                const response = await fetch("/portal/reseller/orders/receipt-scan", {
+                    method: "POST",
+                    body,
+                    credentials: "same-origin",
+                    headers: { Accept: "application/json" },
+                });
+                const result = await response.json();
+                if (generation !== scanGeneration) return;
+                if (!response.ok || !result.ok) throw new Error(result.error || "The receipt could not be read.");
+                tokenInput.value = result.scan_token || "";
+                transactionInput.value = result.transaction_number || "";
+                amountInput.value = result.payment_amount || "";
+                dateInput.value = result.payment_date || "";
+                timeInput.value = result.payment_time || "";
+                [...paymentInputs, confirmation].forEach((input) => { input.disabled = false; });
+                const warnings = Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [];
+                status.textContent = warnings.length
+                    ? warnings.join(" ")
+                    : "Receipt read. Check every detail against the screenshot before confirming.";
+                status.dataset.state = warnings.length ? "warning" : "success";
+                cardStatus.textContent = "Receipt read. Confirm the extracted details in the open window.";
+                cardStatus.dataset.state = warnings.length ? "warning" : "success";
+                const firstMissing = paymentInputs.find((input) => !input.value);
+                (firstMissing || confirmation).focus();
+            } catch (scanError) {
+                if (generation !== scanGeneration) return;
+                tokenInput.value = "";
+                status.textContent = scanError.message || "The receipt could not be read. Try a clearer screenshot.";
+                status.dataset.state = "error";
+                cardStatus.textContent = status.textContent;
+                cardStatus.dataset.state = "error";
+            } finally {
+                if (generation === scanGeneration) {
+                    isScanning = false;
+                    updateActionState();
+                }
+            }
+        }
+
+        function handleSelectionChange() {
+            renderFiles();
+            const error = validateFiles();
+            resetScan(error || "Reading the selected receipt automatically…");
+            if (error) {
+                cardStatus.textContent = selectedFiles().length ? error : "Choose a clear screenshot. Receipt recognition starts automatically.";
+                cardStatus.dataset.state = selectedFiles().length ? "error" : "";
+                return;
+            }
+            openModal();
+            scanReceipt();
+        }
+
+        fileInput.addEventListener("change", handleSelectionChange);
+
+        paymentInputs.forEach((input) => {
+            input.addEventListener("input", () => {
+                detailsAccepted = false;
+                summary.hidden = true;
+                if (confirmation.checked) {
+                    confirmation.checked = false;
+                    status.textContent = "Payment details changed. Check them against the receipt and confirm again.";
+                    status.dataset.state = "warning";
+                }
+                updateActionState();
+            });
+            input.addEventListener("change", updateActionState);
+        });
+        confirmation.addEventListener("change", () => {
+            detailsAccepted = false;
+            summary.hidden = true;
+            updateActionState();
+        });
+
+        acceptButton.addEventListener("click", () => {
+            updateActionState();
+            if (acceptButton.disabled) {
+                status.textContent = "Complete every payment field and confirm that it matches the receipt.";
+                status.dataset.state = "error";
+                (paymentInputs.find((input) => !input.value) || confirmation).focus();
+                return;
+            }
+            detailsAccepted = true;
+            summaryReference.textContent = transactionInput.value.trim();
+            summaryAmount.textContent = `₱${Number(amountInput.value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            summaryDate.textContent = `${dateInput.value} at ${timeInput.value}`;
+            summary.hidden = false;
+            cardStatus.textContent = "Payment details confirmed. Submit them before the timer expires.";
+            cardStatus.dataset.state = "success";
+            updateActionState();
+            closeModal();
+        });
+
+        editButton.addEventListener("click", openModal);
+        closeButtons.forEach((button) => button.addEventListener("click", closeModal));
+        form.addEventListener("payment-expired", () => {
+            paymentExpired = true;
+            scanGeneration += 1;
+            fileInput.disabled = true;
+            confirmation.disabled = true;
+            paymentInputs.forEach((input) => { input.disabled = true; });
+            status.textContent = "The 15-minute payment window expired. This order can no longer accept payment.";
+            status.dataset.state = "error";
+            cardStatus.textContent = status.textContent;
+            cardStatus.dataset.state = "error";
+            updateActionState();
+        });
+        dialog.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                closeModal();
+                return;
+            }
+            if (event.key !== "Tab") return;
+            const focusable = Array.from(dialog.querySelectorAll("button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex='-1'])"));
+            if (!focusable.length) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+
+        form.addEventListener("submit", (event) => {
+            updateActionState();
+            if (submitButton.disabled) {
+                event.preventDefault();
+                status.textContent = "Review the receipt, complete all payment details, and confirm them before placing the order.";
+                status.dataset.state = "error";
+                if (selectedFiles().length) openModal();
+                return;
+            }
+            submitButton.disabled = true;
+            submitButton.setAttribute("aria-busy", "true");
+            submitButton.querySelector("span").textContent = "Submitting payment...";
+        });
+
+        renderFiles();
+        updateActionState();
+    }
+
+    function bindReceiptCheckout() {
+        document.querySelectorAll("[data-receipt-checkout]").forEach(bindReceiptCheckoutForm);
+    }
+
     bindQuantitySteppers();
     bindProductSearch();
     bindProductModal();
     bindProofModal();
+    bindOrderActionConfirmation();
     bindCartAutosave();
     bindInventoryProductsPagination();
+    bindInventoryWorkspaceModals();
     bindRecipeRows();
+    bindReceiptCheckout();
+    bindPaymentCountdowns();
 })();

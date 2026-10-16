@@ -4,6 +4,7 @@
       class="reseller-product-search"
       method="get"
       action="/portal/reseller/order"
+      data-async-filter-target="[data-async-filter-results]"
     >
       <label>
         <i data-lucide="search"></i>
@@ -15,13 +16,12 @@
           placeholder="Search by product name or category"
         />
       </label>
-      {% if products_page.filters.type %}
       <input
         type="hidden"
         name="type"
         value="{{ products_page.filters.type }}"
+        data-async-filter-sync="reseller-product-type"
       />
-      {% endif %}
       <label class="reseller-product-sort">
         <span>Sort products</span>
         <select name="sort">
@@ -32,11 +32,8 @@
           <option value="stock_desc" {{ 'selected' if products_page.filters.sort == 'stock_desc' else '' }}>Stock high-low</option>
         </select>
       </label>
-      <button class="button subtle" type="submit">
-        <i data-lucide="search"></i>
-        Search
-      </button>
     </form>
+    <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
     <nav class="reseller-category-tabs" aria-label="Product categories">
       <a
         class="{{ 'active' if not products_page.filters.type else '' }}"
@@ -115,6 +112,7 @@
         >Next</a
       >
       {% endif %}
+    </div>
     </div>
     <div class="reseller-product-modal" data-product-modal hidden>
       <button

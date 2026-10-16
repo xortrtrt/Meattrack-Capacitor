@@ -402,7 +402,7 @@ def team_rejected_order_entries(team_leader_account_id: int | None = None) -> li
                COALESCE(r.business_name, 'Retail counter') AS reseller,
                COALESCE(o.approved_at, o.order_date) AS rejected_at,
                o.total_amount,
-               o.notes,
+               COALESCE(o.rejection_reason, o.notes) AS notes,
                STRING_AGG(
                    TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM oi.quantity::text)) || ' ' || oi.unit || ' ' || p.name,
                    ', '
@@ -416,7 +416,7 @@ def team_rejected_order_entries(team_leader_account_id: int | None = None) -> li
           AND o.status = 'rejected'
           AND p.item_type = 'finished_product'
           {scope_sql}
-        GROUP BY o.order_id, r.business_name, o.approved_at, o.order_date, o.total_amount, o.notes
+        GROUP BY o.order_id, r.business_name, o.approved_at, o.order_date, o.total_amount, o.rejection_reason, o.notes
         ORDER BY rejected_at DESC, o.order_id DESC;
     """, tuple(params) or None))
 

@@ -10,12 +10,15 @@
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portal_base.css') }}?v=20261015-utility-topbar-1"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20261017-notification-position-1"
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261015-order-history-tabs-3"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261016-order-items-disclosure-1"
     />
+    {% if (role_key == "reseller" and section == "inbox") or (role_key in ["team-leader", "sales-supervisor"] and section == "messages") %}
+    <link rel="stylesheet" href="{{ url_for('static', path='css/reseller_inbox.css') }}?v=20261017-system-message-modal-1" />
+    {% endif %}
   </head>
   <body class="portal-body {{ portal_body_roles|default('role-' ~ role_key) }} section-{{ section }}{% if role_key in ['team-leader', 'sales-supervisor'] %} leader-role-{{ role.team_leader_role }}{% endif %}">
     <button
@@ -25,7 +28,7 @@
       data-portal-nav-dismiss
     ></button>
     <aside class="portal-sidebar" id="portal-nav-drawer" data-portal-drawer>
-      <a class="brand portal-brand" href="/">
+      <div class="brand portal-brand">
         <span class="brand-mark">
           <img
             src="{{ 'batangas_premium.png'|media_url }}"
@@ -36,7 +39,7 @@
           <strong>MEATTRACK</strong>
           <small>{{ role.label }} portal</small>
         </span>
-      </a>
+      </div>
       <button
         class="portal-drawer-close"
         type="button"
@@ -70,12 +73,23 @@
             style="--profile-x: {{ role.profile_image_position_x|default(50) }}%; --profile-y: {{ role.profile_image_position_y|default(50) }}%; --profile-scale: {{ role.profile_image_scale|default(1) }};"
           />
           {% else %}
-          {{ role.name[:1]|upper }}
+          <i class="profile-picture-placeholder" data-lucide="user-round"></i>
           {% endif %}
         </span>
         <span>{{ role.name }}</span>
         <small>{{ role.email }}</small>
-        <form action="/logout" method="post" class="logout-form"><button type="submit">Sign out</button></form>
+        <form action="/logout" method="post" class="logout-form" data-logout-form>
+          <button
+            class="portal-logout-button"
+            type="submit"
+            aria-haspopup="dialog"
+            aria-controls="logout-confirmation-dialog"
+          >
+            <i data-lucide="log-out" aria-hidden="true"></i>
+            <span>Sign out</span>
+            <i class="portal-logout-arrow" data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
+        </form>
       </div>
     </aside>
 
@@ -105,17 +119,23 @@
             {% endif %}
           </a>
           {% endif %}
-          <details class="notification-menu">
+          <details class="notification-menu {{ 'is-current' if section == 'notifications' else '' }}" data-notification-menu>
             <summary
               class="icon-button notification-trigger"
-              title="Notifications"
+              title="Notifications{% if unread_notifications %} ({{ unread_notifications }} unread){% endif %}"
+              aria-label="Notifications{% if unread_notifications %}, {{ unread_notifications }} unread{% endif %}"
+              aria-haspopup="true"
+              aria-expanded="false"
+              data-notification-trigger
             >
-              <i data-lucide="bell"></i>
+              <span class="notification-trigger-icon" aria-hidden="true"><i data-lucide="bell"></i></span>
+              <span class="notification-trigger-label">Notifications</span>
               {% if unread_notifications %}
-              <span class="notification-count">{{ unread_notifications }}</span>
+              <span class="notification-count" aria-hidden="true">{{ '99+' if unread_notifications > 99 else unread_notifications }}</span>
+              <span class="sr-only">{{ unread_notifications }} unread notifications</span>
               {% endif %}
             </summary>
-            <div class="notification-panel">
+            <div class="notification-panel" aria-label="Notifications" data-notification-panel>
               <div class="notification-head">
                 <div class="notification-head-copy">
                   <span class="eyebrow">Activity</span>
@@ -144,6 +164,7 @@
                 <a
                   class="notification-item {{ item.severity }} {{ 'is-read' if item.read_at else '' }}"
                   href="{{ item.target_url or '/portal/' ~ role_key }}"
+                  data-notification-id="{{ item.notification_id }}"
                 >
                   <span class="notification-item-icon"><i data-lucide="{{ item_icon }}"></i></span>
                   <span class="notification-item-copy">
@@ -164,6 +185,10 @@
                 </div>
                 {% endfor %}
               </div>
+              <a class="notification-view-all" href="/portal/{{ role_key }}/notifications">
+                <span>View all notifications</span>
+                <i data-lucide="arrow-right"></i>
+              </a>
             </div>
           </details>
         </div>
@@ -186,8 +211,44 @@
         </article>
         {% endif %}
       </div>
-      {% block portal_content %}{% endblock %}
+      <section data-portal-content aria-live="polite">
+        {% block portal_content %}{% endblock %}
+      </section>
     </main>
+
+    <div class="proof-modal logout-confirmation-modal" data-logout-modal hidden>
+      <button
+        class="proof-modal-backdrop"
+        type="button"
+        aria-label="Stay signed in"
+        data-logout-close
+      ></button>
+      <div
+        class="proof-modal-card logout-confirmation-card"
+        id="logout-confirmation-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logout-confirmation-title"
+        aria-describedby="logout-confirmation-description"
+        tabindex="-1"
+      >
+        <span class="logout-confirmation-icon" aria-hidden="true">
+          <i data-lucide="log-out"></i>
+        </span>
+        <div class="logout-confirmation-copy">
+          <span class="eyebrow">End session</span>
+          <h2 id="logout-confirmation-title">Sign out of MEATTRACK?</h2>
+          <p id="logout-confirmation-description">You’ll need to sign in again to return to your portal.</p>
+        </div>
+        <div class="logout-confirmation-actions">
+          <button class="button subtle" type="button" data-logout-close>Stay signed in</button>
+          <button class="button danger" type="button" data-logout-confirm>
+            <i data-lucide="log-out" aria-hidden="true"></i>
+            <span>Sign out</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div class="proof-modal" data-proof-modal hidden>
       <button
@@ -277,12 +338,18 @@
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261002-async-forms-1"></script>
-    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261015-cart-selection-2"></script>
+    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261017-notification-position-1"></script>
     <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261001-frontend-modules-1"></script>
     {% if role_key in ["team-leader", "sales-supervisor"] and section == "live-chat" %}
     <script src="{{ url_for('static', path='vendor/ably-2.17.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='js/live_chat.js') }}?v=20261002-chat-interactions-1"></script>
+    {% endif %}
+    {% if role_key == "reseller" and section == "inbox" %}
+    <script src="{{ url_for('static', path='js/reseller_inbox.js') }}?v=20261017-system-message-modal-1"></script>
+    {% endif %}
+    {% if role_key in ["team-leader", "sales-supervisor"] and section == "messages" %}
+    <script src="{{ url_for('static', path='js/sales_reseller_messages.js') }}?v=20261016-reseller-messages-1"></script>
     {% endif %}
   </body>
 </html>

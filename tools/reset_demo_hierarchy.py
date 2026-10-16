@@ -18,6 +18,7 @@ SALES_LEADERS = [
     ("Sales Leader A", "sales.leader.a@batangaspremium.test"),
     ("Sales Leader B", "sales.leader.b@batangaspremium.test"),
 ]
+SALES_SUPERVISOR = ("Sales Supervisor", "sales.supervisor@batangaspremium.test")
 INVENTORY_LEADER = ("Inventory Leader", "inventory.leader@batangaspremium.test")
 
 
@@ -98,6 +99,7 @@ def reset_demo_hierarchy() -> dict:
         cur.execute("DELETE FROM inquiries;")
 
         sales_emails = [email for _, email in SALES_LEADERS]
+        retained_sales_emails = [*sales_emails, SALES_SUPERVISOR[1]]
         cur.execute(
             """
             SELECT account_id, activation_status
@@ -108,7 +110,7 @@ def reset_demo_hierarchy() -> dict:
             LIMIT 1
             FOR UPDATE;
             """,
-            ([email.lower() for email in sales_emails],),
+            ([email.lower() for email in retained_sales_emails],),
         )
         inventory = cur.fetchone()
         if inventory:
@@ -147,7 +149,7 @@ def reset_demo_hierarchy() -> dict:
               AND account_id <> %s
               AND lower(email) <> ALL(%s);
             """,
-            (inventory_id, [email.lower() for email in sales_emails]),
+            (inventory_id, [email.lower() for email in retained_sales_emails]),
         )
 
         sales_ids = []
@@ -161,6 +163,15 @@ def reset_demo_hierarchy() -> dict:
             sales_ids.append(account_id)
             if activation_link:
                 activation_links.append((email, activation_link))
+
+        supervisor_id, activation_link = upsert_team_leader(
+            cur,
+            name=SALES_SUPERVISOR[0],
+            email=SALES_SUPERVISOR[1],
+            team_leader_role="sales-supervisor",
+        )
+        if activation_link:
+            activation_links.append((SALES_SUPERVISOR[1], activation_link))
 
         cur.execute("SELECT COUNT(*) AS total FROM accounts WHERE account_type = 'owner';")
         owner_count = int(cur.fetchone()["total"])
@@ -177,6 +188,7 @@ def reset_demo_hierarchy() -> dict:
         "owners": owner_count,
         "inventory_leader_id": inventory_id,
         "sales_leader_ids": sales_ids,
+        "sales_supervisor_id": supervisor_id,
         "resellers": reseller_count,
         "inquiries": inquiry_count,
         "orders": order_count,
@@ -192,6 +204,7 @@ if __name__ == "__main__":
     print(f"Inventory leader: {INVENTORY_LEADER[1]}")
     for _, email in SALES_LEADERS:
         print(f"Sales leader: {email}")
+    print(f"Sales supervisor: {SALES_SUPERVISOR[1]}")
     if result["activation_links"]:
         print("Pending team leaders must choose their own passwords using these one-time activation links:")
         for email, link in result["activation_links"]:

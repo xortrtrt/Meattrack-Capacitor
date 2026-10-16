@@ -11,7 +11,11 @@
   {% include "portals/reseller/checkout.html" %}
 {% elif section == "history" %}
   {% include "portals/reseller/history.html" %}
+{% elif section == "inbox" %}
+  {% include "portals/reseller/inbox.html" %}
 {% elif section == "profile" %}
   {% include "portals/reseller/profile.html" %}
+{% elif section == "notifications" %}
+  {% include "portals/notifications.html" %}
 {% endif %}
 {% endblock %}

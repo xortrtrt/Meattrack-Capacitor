@@ -171,6 +171,13 @@ def test_inquiry_prompt_opens_modal_and_complete_later_closes_it(page: Page) -> 
     expect(identity_name).to_have_text("E2E Leader")
     expect(identity_status).to_have_text("Live sales support")
 
+    reset_button = page.locator(".chatbot-reset")
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    reset_button.click()
+    expect(reset_button).to_be_enabled()
+    expect(reset_button).to_have_text("New chat")
+    expect(inquiry_prompt).to_be_visible()
+
     conversation["assigned_team_leader_account_id"] = 43
     conversation["assigned_team_leader_name"] = "Transferred Leader"
     expect(identity_name).to_have_text("Transferred Leader", timeout=5000)
@@ -215,3 +222,167 @@ def test_inquiry_prompt_opens_modal_and_complete_later_closes_it(page: Page) -> 
     expect(inquiry_modal).to_be_hidden()
     expect(inquiry_prompt).to_be_hidden()
     assert inquiry_submissions == ["POST"]
+
+
+def test_customer_quick_reply_buttons_stay_visible_and_compact(page: Page) -> None:
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{BASE_URL}/", wait_until="networkidle")
+    page.locator(".chatbot-toggle").evaluate("element => element.click()")
+
+    suggestions = page.locator(".chatbot-suggestions")
+    initial_buttons = suggestions.get_by_role("button")
+    expect(initial_buttons).to_have_count(3)
+    expect(initial_buttons).to_have_text(["View products", "Delivery details", "Become a reseller"])
+    assert suggestions.evaluate("element => element.getBoundingClientRect().height") < 100
+    for index in range(3):
+        expect(initial_buttons.nth(index)).to_be_visible()
+        assert initial_buttons.nth(index).evaluate("element => element.getBoundingClientRect().height") < 60
+
+    def handle_chatbot(route) -> None:
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "reply": "I can connect you with an available sales team leader.",
+                    "state": {"mode": "handoff", "step": "offer"},
+                    "suggestions": ["Connect me", "Not now"],
+                }
+            ),
+        )
+
+    page.route("**/api/chatbot", handle_chatbot)
+    page.locator("[data-chatbot-form] input").fill("Talk to a person")
+    page.locator("[data-chatbot-form]").get_by_role("button", name="Send message").click()
+
+    handoff_buttons = suggestions.get_by_role("button")
+    expect(handoff_buttons).to_have_count(2)
+    expect(handoff_buttons).to_have_text(["Connect me", "Not now"])
+    assert suggestions.evaluate("element => element.getBoundingClientRect().height") < 100
+    for index in range(2):
+        expect(handoff_buttons.nth(index)).to_be_visible()
+        assert handoff_buttons.nth(index).evaluate("element => element.getBoundingClientRect().height") < 60
+
+
+def test_view_products_renders_three_best_sellers_and_catalog_link(page: Page) -> None:
+    requested_messages: list[dict] = []
+
+    def handle_chatbot(route) -> None:
+        requested_messages.append(route.request.post_data_json)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "reply": "Here are our top 3 best-selling products.",
+                    "product_preview": {
+                        "title": "Top 3 best sellers",
+                        "products": [
+                            {"name": "Bacon", "category": "Pork", "base_price": 129},
+                            {"name": "Beef Tapa", "category": "Beef", "base_price": 99},
+                            {"name": "Chicken Rebusado", "category": "Chicken", "base_price": 85},
+                        ],
+                        "view_all_url": "/products",
+                    },
+                    "suggestions": ["View products", "Delivery details", "Become a reseller"],
+                }
+            ),
+        )
+
+    page.emulate_media(reduced_motion="reduce")
+    page.route("**/api/chatbot", handle_chatbot)
+    page.goto(f"{BASE_URL}/", wait_until="networkidle")
+    page.locator(".chatbot-toggle").evaluate("element => element.click()")
+    page.locator(".chatbot-suggestions").get_by_role("button", name="View products").click()
+
+    preview = page.locator(".product-preview-message")
+    expect(preview).to_be_visible()
+    expect(preview.locator(".product-preview-item")).to_have_count(3)
+    expect(preview.locator(".product-preview-details strong")).to_have_text(
+        ["Bacon", "Beef Tapa", "Chicken Rebusado"]
+    )
+    expect(preview.get_by_role("link", name="View all products")).to_have_attribute("href", "/products")
+    assert requested_messages == [{"message": "View products"}]
+
+
+def test_new_chat_success_cooldown_survives_widget_close(page: Page) -> None:
+    reset_requests: list[dict] = []
+
+    def handle_chatbot(route) -> None:
+        reset_requests.append(route.request.post_data_json)
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "reply": "Conversation reset. How can I help with Batangas Premium today?",
+                    "suggestions": ["View products", "Delivery details", "Become a reseller"],
+                }
+            ),
+        )
+
+    page.clock.install()
+    page.emulate_media(reduced_motion="reduce")
+    page.route("**/api/chatbot", handle_chatbot)
+    page.goto(f"{BASE_URL}/", wait_until="networkidle")
+    page.locator(".chatbot-toggle").evaluate("element => element.click()")
+
+    reset_button = page.locator(".chatbot-reset")
+    reset_button.click()
+    expect(reset_button).to_be_disabled()
+    expect(reset_button).to_have_text("Try again in 0:05")
+    assert reset_requests == [{"action": "reset"}]
+
+    page.locator("[data-chatbot-close]").click()
+    page.locator(".chatbot-toggle").evaluate("element => element.click()")
+    expect(reset_button).to_be_disabled()
+    expect(reset_button).to_contain_text("Try again in 0:")
+
+    reset_button.evaluate("element => element.click()")
+    assert reset_requests == [{"action": "reset"}]
+
+    page.clock.run_for(5000)
+    expect(reset_button).to_be_enabled()
+    expect(reset_button).to_have_text("New chat")
+
+
+def test_new_chat_rate_limit_uses_retry_after_and_server_message(page: Page) -> None:
+    reset_requests: list[dict] = []
+    server_message = "Too many new-chat requests. Please wait before resetting again."
+
+    def handle_chatbot(route) -> None:
+        reset_requests.append(route.request.post_data_json)
+        route.fulfill(
+            status=429,
+            headers={"Retry-After": "102"},
+            content_type="application/json",
+            body=json.dumps(
+                {
+                    "reply": server_message,
+                    "error": "rate_limited",
+                    "retry_after": 999,
+                }
+            ),
+        )
+
+    page.clock.install()
+    page.emulate_media(reduced_motion="reduce")
+    page.route("**/api/chatbot", handle_chatbot)
+    page.goto(f"{BASE_URL}/", wait_until="networkidle")
+    page.locator(".chatbot-toggle").evaluate("element => element.click()")
+
+    reset_button = page.locator(".chatbot-reset")
+    reset_button.click()
+    expect(reset_button).to_be_disabled()
+    expect(reset_button).to_have_text("Try again in 1:42")
+    bot_messages = page.locator("[data-chatbot-messages] .bot-message")
+    expect(bot_messages).to_have_count(2)
+    expect(bot_messages.first).to_contain_text("Welcome to Batangas Premium")
+    expect(bot_messages.last).to_have_text(server_message)
+
+    reset_button.evaluate("element => element.click()")
+    assert reset_requests == [{"action": "reset"}]
+
+    page.clock.run_for(102000)
+    expect(reset_button).to_be_enabled()
+    expect(reset_button).to_have_text("New chat")

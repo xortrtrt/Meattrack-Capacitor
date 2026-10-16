@@ -5,8 +5,10 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel, Field
 
 from app import live_chat
+from app import reseller_messaging
 from app import repositories as data
 from app.portal_dependencies import session_account_id, session_team_leader_role
 from app.routers._shared import json_payload, rate_limit_response
@@ -24,12 +26,24 @@ from app.web import require_email
 router = APIRouter()
 
 
+class ResellerMessagePayload(BaseModel):
+    message: str = Field(min_length=1, max_length=500)
+    client_message_id: uuid.UUID
+
+
 def _sales_live_account(request: Request) -> int:
     account_id = session_account_id(request)
     if request.session.get("role_key") not in {"team-leader", "sales-supervisor"} or account_id is None:
         raise HTTPException(status_code=401, detail="Sign in as a sales team leader.")
     if session_team_leader_role(request) not in {"sales", "sales-supervisor"}:
         raise HTTPException(status_code=403, detail="Live chat is available only to sales team leaders.")
+    return account_id
+
+
+def _reseller_message_account(request: Request) -> int:
+    account_id = session_account_id(request)
+    if request.session.get("role_key") != "reseller" or account_id is None:
+        raise HTTPException(status_code=401, detail="Sign in as a reseller.")
     return account_id
 
 
@@ -330,6 +344,89 @@ async def ably_token(request: Request):
     except live_chat.AblyUnavailable as exc:
         return JSONResponse({"error": "live_chat_unavailable", "message": str(exc)}, status_code=503)
     return Response(token, media_type="text/plain", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/portal/reseller/inbox")
+def reseller_inbox_workspace(request: Request, after_id: int = 0):
+    account_id = _reseller_message_account(request)
+    return reseller_messaging.reseller_workspace(account_id, after_id=after_id)
+
+
+@router.post("/api/portal/reseller/inbox/messages")
+def reseller_inbox_send(request: Request, payload: ResellerMessagePayload):
+    account_id = _reseller_message_account(request)
+    try:
+        enforce_live_message(request, account_id=account_id)
+        message = reseller_messaging.send_from_reseller(
+            account_id,
+            str(payload.client_message_id),
+            payload.message,
+        )
+    except RateLimitExceeded as exc:
+        return rate_limit_response(exc)
+    except ValueError as exc:
+        return JSONResponse({"error": "message_failed", "message": str(exc)}, status_code=400)
+    return {"message": message}
+
+
+@router.post("/api/portal/reseller/inbox/read")
+def reseller_inbox_read(request: Request):
+    account_id = _reseller_message_account(request)
+    return {"read_count": reseller_messaging.mark_read_for_reseller(account_id)}
+
+
+@router.delete("/api/portal/reseller/inbox")
+def reseller_inbox_delete(request: Request):
+    account_id = _reseller_message_account(request)
+    return {"deleted": reseller_messaging.delete_for_reseller(account_id)}
+
+
+@router.get("/api/portal/live-chat/resellers")
+def sales_reseller_conversations(request: Request):
+    account_id = _sales_live_account(request)
+    return {"conversations": reseller_messaging.leader_conversations(account_id)}
+
+
+@router.get("/api/portal/live-chat/resellers/{reseller_account_id}")
+def sales_reseller_thread(request: Request, reseller_account_id: int, after_id: int = 0):
+    account_id = _sales_live_account(request)
+    try:
+        return reseller_messaging.leader_thread(account_id, reseller_account_id, after_id=after_id)
+    except ValueError as exc:
+        return JSONResponse({"error": "conversation_unavailable", "message": str(exc)}, status_code=404)
+
+
+@router.post("/api/portal/live-chat/resellers/{reseller_account_id}/messages")
+def sales_reseller_send(request: Request, reseller_account_id: int, payload: ResellerMessagePayload):
+    account_id = _sales_live_account(request)
+    try:
+        enforce_live_message(request, account_id=account_id)
+        message = reseller_messaging.send_from_leader(
+            account_id,
+            reseller_account_id,
+            str(payload.client_message_id),
+            payload.message,
+        )
+    except RateLimitExceeded as exc:
+        return rate_limit_response(exc)
+    except ValueError as exc:
+        return JSONResponse({"error": "message_failed", "message": str(exc)}, status_code=400)
+    return {"message": message}
+
+
+@router.post("/api/portal/live-chat/resellers/{reseller_account_id}/read")
+def sales_reseller_read(request: Request, reseller_account_id: int):
+    account_id = _sales_live_account(request)
+    try:
+        return {"read_count": reseller_messaging.mark_read_for_leader(account_id, reseller_account_id)}
+    except ValueError as exc:
+        return JSONResponse({"error": "conversation_unavailable", "message": str(exc)}, status_code=404)
+
+
+@router.delete("/api/portal/live-chat/resellers/{reseller_account_id}")
+def sales_reseller_delete(request: Request, reseller_account_id: int):
+    account_id = _sales_live_account(request)
+    return {"deleted": reseller_messaging.delete_for_leader(account_id, reseller_account_id)}
 
 
 @router.get("/api/portal/live-chat/workspace")

@@ -61,7 +61,6 @@
         {% elif pending_inquiries %}{{ pending_inquiries|length }} reseller inquir{{ 'y' if pending_inquiries|length == 1 else 'ies' }} need review.
         {% else %}Your assigned work is up to date.{% endif %}
       </h2>
-      <p>Review new business first, then follow up with prospective resellers.</p>
     </div>
     <div class="dashboard-brief-actions">
       <span class="dashboard-command-status {{ 'has-attention' if metrics.pending_reseller_orders else '' }}"><i></i>{{ metrics.pending_reseller_orders if metrics.pending_reseller_orders else 'No' }} pending order{{ '' if metrics.pending_reseller_orders == 1 else 's' }}</span>
@@ -106,6 +105,7 @@
       </div>
     </section>
 
+    {% if team_leader_role == "sales-supervisor" %}
     <aside class="dashboard-queue" aria-labelledby="inquiries-title">
       <header class="dashboard-section-head">
         <div><span class="dashboard-kicker">Prospects</span><h2 id="inquiries-title">Assigned inquiries</h2><p>Newest inquiries assigned to you.</p></div>
@@ -124,6 +124,7 @@
         {% endfor %}
       </div>
     </aside>
+    {% endif %}
   </div>
 </div>
 {% endif %}

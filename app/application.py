@@ -56,7 +56,9 @@ def create_app() -> FastAPI:
             "Content-Security-Policy",
             "default-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; "
             "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
-            "connect-src 'self' https://*.ably.io wss://*.ably.io; "
+            "connect-src 'self' https://*.ably.io wss://*.ably.io "
+            "https://*.ably.net wss://*.ably.net "
+            "https://*.ably-realtime.com wss://*.ably-realtime.com; "
             "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         )
         return response
@@ -94,6 +96,10 @@ def create_app() -> FastAPI:
             **owner_portal.SECTION_LOADERS,
             **team_leader_portal.SECTION_LOADERS,
             **reseller_portal.SECTION_LOADERS,
+            **{
+                (role_key, "notifications"): shared_portal.notifications_context
+                for role_key in ("owner", "team-leader", "sales-supervisor", "reseller")
+            },
         }
     )
 

@@ -40,7 +40,7 @@
     </form>
   </article>
 
-  <article class="panel owner-forecast-status-panel">
+  <article class="panel owner-forecast-status-panel" data-async-filter-sync="forecast-run-status">
     <div class="panel-heading">
       <div>
         <h2>Latest run</h2>
@@ -75,9 +75,9 @@
     </div>
   </div>
   {% if forecast_runs %}
-  <form class="filter-bar owner-filter-bar" method="get">
+  <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
     <label>Forecast run
-      <select name="run_id" onchange="this.form.submit()">
+      <select name="run_id">
         {% for run in forecast_runs %}
         <option value="{{ run.forecast_run_id }}" {{ 'selected' if latest_forecast_run and latest_forecast_run.forecast_run_id == run.forecast_run_id else '' }}>
           #{{ run.forecast_run_id }} · {{ run.model_name }} · {{ run.status }}
@@ -88,8 +88,8 @@
     <noscript><button class="button subtle" type="submit">View run</button></noscript>
   </form>
   {% endif %}
-  <form class="filter-bar owner-filter-bar" method="get">
-    {% if forecasts_page.filters.run_id %}<input type="hidden" name="run_id" value="{{ forecasts_page.filters.run_id }}">{% endif %}
+  <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
+    <input type="hidden" name="run_id" value="{{ forecasts_page.filters.run_id }}" data-async-filter-sync="forecast-search-run-id">
     <label>Search <input name="q" value="{{ forecasts_page.filters.q }}" placeholder="Product"></label>
     <label>Sort
       <select name="sort">
@@ -99,9 +99,9 @@
         <option value="qty_desc" {{ 'selected' if forecasts_page.filters.sort == 'qty_desc' else '' }}>Demand high-low</option>
       </select>
     </label>
-    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
 
+  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
   <div class="owner-forecast-card-grid">
     {% for forecast in forecasts %}
     <article class="owner-forecast-result-card">
@@ -165,6 +165,7 @@
     {% if forecasts_page.pagination.has_prev %}<a href="?run_id={{ forecasts_page.filters.run_id }}&q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page - 1 }}">Previous</a>{% endif %}
     <span>Page {{ forecasts_page.pagination.page }} of {{ forecasts_page.pagination.total_pages }}</span>
     {% if forecasts_page.pagination.has_next %}<a href="?run_id={{ forecasts_page.filters.run_id }}&q={{ forecasts_page.filters.q|urlencode }}&sort={{ forecasts_page.filters.sort|urlencode }}&page={{ forecasts_page.pagination.page + 1 }}">Next</a>{% endif %}
+  </div>
   </div>
 </section>
 </div>

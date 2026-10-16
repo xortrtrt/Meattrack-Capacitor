@@ -1136,7 +1136,9 @@
 }
 
 .role-owner .owner-workspace-surface > .pagination,
-.role-owner .owner-forecast-results-panel > .pagination {
+.role-owner .owner-forecast-results-panel > .pagination,
+.role-owner .owner-workspace-surface > [data-async-filter-results] > .pagination,
+.role-owner .owner-forecast-results-panel > [data-async-filter-results] > .pagination {
   margin: 0;
   padding: 16px 28px;
   border-top: 1px solid rgba(72, 57, 24, 0.12);
@@ -1380,7 +1382,8 @@
   background: transparent;
 }
 
-.role-owner .owner-account-list > .pagination {
+.role-owner .owner-account-list > .pagination,
+.role-owner .owner-account-list > [data-async-filter-results] > .pagination {
   margin: 0;
   padding: 15px 26px;
   background: #faf7ef;

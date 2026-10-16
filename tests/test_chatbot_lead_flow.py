@@ -8,6 +8,7 @@ from app import chatbot, main, repositories
 from app.chatbot import catalog as chatbot_catalog
 from app.chatbot import provider as chatbot_provider
 from app.routers import chatbot as chatbot_routes
+from app.security_controls import RateLimitExceeded
 
 
 class ModelAnswerCompletions:
@@ -272,7 +273,7 @@ def test_chatbot_keeps_generic_price_list_for_generic_price_question(monkeypatch
     assert "Bacon (PHP 129)" in result["reply"]
 
 
-@pytest.mark.parametrize("question", ["View products", "What products do you have?", "Anong products ang meron?"])
+@pytest.mark.parametrize("question", ["What products do you have?", "Anong products ang meron?"])
 def test_catalog_listing_requests_are_generated_locally(monkeypatch, question):
     class FakeCompletions:
         @staticmethod
@@ -296,6 +297,25 @@ def test_catalog_listing_requests_are_generated_locally(monkeypatch, question):
 
     assert "Bacon (PHP 129)" in result["reply"]
     assert "Chicken Rebusado (PHP 85)" in result["reply"]
+
+
+def test_view_products_returns_top_three_structured_preview():
+    best_sellers = [
+        {"product_id": 3, "name": "Bacon", "base_price": 129, "category": "Pork"},
+        {"product_id": 7, "name": "Beef Tapa", "base_price": 99, "category": "Beef"},
+        {"product_id": 2, "name": "Chicken Rebusado", "base_price": 85, "category": "Chicken"},
+        {"product_id": 9, "name": "Fourth Product", "base_price": 75, "category": "Pork"},
+    ]
+
+    result = process_chatbot_message("View products", best_sellers=best_sellers)
+
+    assert result["reply"] == "Here are our top 3 best-selling products."
+    assert [product["name"] for product in result["product_preview"]["products"]] == [
+        "Bacon",
+        "Beef Tapa",
+        "Chicken Rebusado",
+    ]
+    assert result["product_preview"]["view_all_url"] == "/products"
 
 
 @pytest.mark.parametrize(
@@ -1476,6 +1496,47 @@ def test_chatbot_api_can_reset_server_side_conversation(monkeypatch):
     assert reset.status_code == 200
     assert "Conversation reset" in reset.json()["reply"]
     assert "Batangas Premium-related" in after_reset.json()["reply"]
+
+
+def test_chatbot_api_returns_best_sellers_for_view_products(monkeypatch):
+    ranked = [
+        {"product_id": 4, "name": "Bacon", "base_price": 129, "category": "Pork"},
+        {"product_id": 8, "name": "Beef Tapa", "base_price": 99, "category": "Beef"},
+        {"product_id": 3, "name": "Chicken Rebusado", "base_price": 85, "category": "Chicken"},
+    ]
+    monkeypatch.setattr(chatbot_routes, "public_best_selling_products", lambda limit=3: ranked[:limit])
+    monkeypatch.setattr(
+        chatbot_routes,
+        "public_products",
+        lambda *args, **kwargs: pytest.fail("The full catalog should not be loaded for the product preview."),
+    )
+
+    response = TestClient(main.app).post("/api/chatbot", json={"message": "View products"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [product["name"] for product in payload["product_preview"]["products"]] == [
+        "Bacon",
+        "Beef Tapa",
+        "Chicken Rebusado",
+    ]
+    assert payload["product_preview"]["view_all_url"] == "/products"
+
+
+def test_chatbot_reset_rate_limit_returns_retry_contract(monkeypatch):
+    def reject_reset(_request):
+        raise RateLimitExceeded("Too many new-chat requests. Please wait before resetting again.", 102)
+
+    monkeypatch.setattr(chatbot_routes, "enforce_chatbot_reset", reject_reset)
+    response = TestClient(main.app).post("/api/chatbot", json={"action": "reset"})
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "102"
+    assert response.json() == {
+        "reply": "Too many new-chat requests. Please wait before resetting again.",
+        "error": "rate_limited",
+        "retry_after": 102,
+    }
 
 
 def test_public_inquiry_form_is_disabled(monkeypatch):

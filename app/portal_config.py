@@ -46,6 +46,7 @@ portal_nav = {
         ("order", "Products", "shopping-basket"),
         ("cart", "Cart", "shopping-cart"),
         ("history", "Order History", "clipboard-list"),
+        ("inbox", "Inbox", "inbox"),
         ("profile", "Profile", "user-cog"),
     ],
     "team-leader": [
@@ -69,8 +70,18 @@ portal_nav = {
 
 # Workflow pages that are valid portal destinations without appearing in navigation.
 portal_secondary_sections = {
+    "owner": {
+        "notifications": ("Notifications", "bell"),
+    },
+    "team-leader": {
+        "notifications": ("Notifications", "bell"),
+    },
+    "sales-supervisor": {
+        "notifications": ("Notifications", "bell"),
+    },
     "reseller": {
         "checkout": ("Checkout", "credit-card"),
+        "notifications": ("Notifications", "bell"),
     },
 }
 
@@ -88,7 +99,8 @@ team_leader_nav_by_role = {
     "sales": [
         ("dashboard", "Dashboard", "layout-dashboard"),
         ("live-chat", "Live Chat", "messages-square"),
-        ("inquiries", "Inquiries", "user-check"),
+        ("messages", "Reseller Messages", "message-circle"),
+        ("resellers", "My Resellers", "users"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
         ("profile", "Profile", "user-cog"),
@@ -96,6 +108,7 @@ team_leader_nav_by_role = {
     "sales-supervisor": [
         ("dashboard", "Dashboard", "layout-dashboard"),
         ("live-chat", "Live Chat", "messages-square"),
+        ("messages", "Reseller Messages", "message-circle"),
         ("inquiries", "Inquiries", "user-check"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),

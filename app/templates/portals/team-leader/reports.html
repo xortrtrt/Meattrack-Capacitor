@@ -2,8 +2,8 @@
             <section class="content-grid two sales-report-builder">
                 <article class="panel sales-report-compose">
                     <h2>Submit team sales report</h2>
-                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post" data-team-report-form>
-                        <div class="form-grid"><label>Start <input required type="date" name="period_start"></label><label>End <input required type="date" name="period_end"></label></div>
+                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post" data-team-report-form data-business-date="{{ report_default_date }}">
+                        <div class="form-grid"><label>Start <input required type="date" name="period_start" value="{{ report_default_date }}"></label><label>End <input required type="date" name="period_end" value="{{ report_default_date }}"></label></div>
                         <div class="form-grid" data-team-report-totals>
                             <label>Total sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
                             <label>Total orders <input readonly type="text" data-report-total-orders value="0"></label>
@@ -14,10 +14,11 @@
                     <div class="report-order-items">
                         <h3>Included order items</h3>
                         <div class="table-wrap">
-                            <table class="compact-table">
+                            <table class="compact-table responsive-card-table report-items-table">
+                                <caption class="sr-only">Fulfilled order items included in this report</caption>
                                 <thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Quantity</th><th>Sales</th></tr></thead>
                                 <tbody data-report-order-items>
-                                    <tr><td colspan="5">No fulfilled order items in this period.</td></tr>
+                                    <tr class="report-table-empty"><td class="report-table-empty-cell" colspan="5">No fulfilled order items in this period.</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -27,71 +28,81 @@
                 </article>
                 <article class="panel sales-report-history">
                     <h2>Team reports</h2>
-                    <form class="filter-bar" method="get">
+                    <form class="filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
                         <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
-                        <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
                     </form>
-                    <div class="stack-list">
-                    {% for report in sales_reports if report.report_source == "team_leader" %}
-                        <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency }} - {{ report.total_orders }} orders</em></div>
-                    {% endfor %}
+                    <div class="sales-report-results" data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+                        <div class="stack-list">
+                        {% for report in sales_reports if report.report_source == "team_leader" %}
+                            <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency }} - {{ report.total_orders }} {{ "order" if report.total_orders == 1 else "orders" }}</em></div>
+                        {% else %}
+                            <div class="sales-report-empty" role="status">
+                                <i data-lucide="file-search" aria-hidden="true"></i>
+                                <strong>No team reports found</strong>
+                                <span>{% if sales_reports_page.filters.q %}Try a different name, report number, or note.{% else %}Submitted team reports will appear here.{% endif %}</span>
+                            </div>
+                        {% endfor %}
+                        </div>
+                        {% if sales_reports_page.pagination.total_pages > 1 %}
+                        <nav class="pagination sales-report-pagination" aria-label="Team report pages">
+                            {% if sales_reports_page.pagination.has_prev %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page - 1 }}">Previous</a>{% endif %}
+                            <span>Page {{ sales_reports_page.pagination.page }} of {{ sales_reports_page.pagination.total_pages }}</span>
+                            {% if sales_reports_page.pagination.has_next %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page + 1 }}">Next</a>{% endif %}
+                        </nav>
+                        {% endif %}
                     </div>
                 </article>
             </section>
-            <section class="panel sales-report-ledger">
+            <section class="panel sales-report-rejections" aria-labelledby="rejected-orders-title">
                 <div class="panel-heading">
-                    <h2>Assigned reseller purchase summary</h2>
-                    <span class="hint">Based only on approved or fulfilled reseller orders inside MEATTRACK.</span>
+                    <div>
+                        <span class="rejected-order-kicker">Order exceptions</span>
+                        <h2 id="rejected-orders-title">Rejected reseller orders</h2>
+                    </div>
+                    <span class="hint">Kept separate from fulfilled sales and report totals.</span>
                 </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Reseller</th>
-                                <th>Product</th>
-                                <th>Quantity bought</th>
-                                <th>Orders</th>
-                                <th>Total amount</th>
-                                <th>Latest order</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        {% for purchase in reseller_purchase_summary %}
-                            <tr>
-                                <td>{{ purchase.reseller }}</td>
-                                <td>{{ purchase.product }}</td>
-                                <td>{{ purchase.total_quantity|number }} {{ purchase.unit }}</td>
-                                <td>{{ purchase.order_count|number }}</td>
-                                <td>{{ purchase.total_amount|currency }}</td>
-                                <td>{{ purchase.latest_order_at|nice_date }}</td>
-                            </tr>
-                        {% else %}
-                            <tr><td colspan="6">No approved or fulfilled reseller purchases yet.</td></tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
+                {% if team_rejected_orders %}
+                <div class="rejected-order-list">
+                    {% for rejected in team_rejected_orders %}
+                    <article class="rejected-order-card">
+                        <header class="rejected-order-header">
+                            <div class="rejected-order-identity">
+                                <span>Order #{{ rejected.order_id }}</span>
+                                <h3>{{ rejected.reseller }}</h3>
+                            </div>
+                            <dl class="rejected-order-meta">
+                                <div>
+                                    <dt>Rejected</dt>
+                                    <dd>{{ rejected.rejected_at|nice_date }}</dd>
+                                </div>
+                                <div>
+                                    <dt>Order total</dt>
+                                    <dd>{{ rejected.total_amount|currency }}</dd>
+                                </div>
+                            </dl>
+                        </header>
+                        <div class="rejected-order-details">
+                            <div class="rejected-order-products">
+                                <h4>Products</h4>
+                                <ul>
+                                    {% for item in rejected["items"].split(", ") %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            <div class="rejected-order-notes">
+                                <h4>Notes</h4>
+                                <p>{{ rejected.notes or "No notes were provided." }}</p>
+                            </div>
+                        </div>
+                    </article>
+                    {% endfor %}
                 </div>
-            </section>
-            <section class="panel sales-report-ledger sales-report-rejections">
-                <div class="panel-heading"><h2>Rejected reseller orders</h2><span class="hint">Rejected orders are logged separately from fulfilled sales.</span></div>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Rejected</th><th>Total</th><th>Notes</th></tr></thead>
-                        <tbody>
-                        {% for rejected in team_rejected_orders %}
-                            <tr>
-                                <td>#{{ rejected.order_id }}</td>
-                                <td>{{ rejected.reseller }}</td>
-                                <td>{{ rejected.items }}</td>
-                                <td>{{ rejected.rejected_at|nice_date }}</td>
-                                <td>{{ rejected.total_amount|currency }}</td>
-                                <td>{{ rejected.notes or "No notes" }}</td>
-                            </tr>
-                        {% else %}
-                            <tr><td colspan="6">No rejected reseller orders.</td></tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
+                {% else %}
+                <div class="rejected-orders-empty" role="status">
+                    <i data-lucide="circle-check-big" aria-hidden="true"></i>
+                    <div><strong>No rejected reseller orders</strong><span>Rejected orders will appear here for review.</span></div>
                 </div>
+                {% endif %}
             </section>
             </div>

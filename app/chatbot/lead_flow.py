@@ -144,6 +144,7 @@ def process_chatbot_message(
     message: str,
     state: dict | None = None,
     catalog: Iterable[dict] | None = None,
+    best_sellers: Iterable[dict] | None = None,
 ) -> dict:
     text = message.strip()[:MAX_MESSAGE_LENGTH]
     state = dict(state or {})
@@ -238,7 +239,35 @@ def process_chatbot_message(
             "suggestions": ["Connect me", "Not now"],
         }
 
-    if normalized_quick_reply in {"view products", "delivery details"}:
+    if normalized_quick_reply == "view products":
+        history = state.get("history") if state.get("mode") == "support" else []
+        products = []
+        for product in list(best_sellers if best_sellers is not None else catalog or [])[:3]:
+            name = str(product.get("name") or "").strip()
+            if not name:
+                continue
+            try:
+                price = float(product.get("base_price") or 0)
+            except (TypeError, ValueError):
+                price = 0
+            products.append(
+                {
+                    "name": name[:120],
+                    "category": str(product.get("category") or "").strip()[:80],
+                    "base_price": price,
+                    "pack_size": str(product.get("pack_size") or "").strip()[:30],
+                    "pack_size_unit": str(product.get("pack_size_unit") or "").strip()[:20],
+                }
+            )
+        reply = "Here are our top 3 best-selling products." if products else "Browse our complete product catalog."
+        result = _support_result(reply, text, history, previous_state=state, answer_status="answered")
+        result["product_preview"] = {
+            "title": "Top 3 best sellers",
+            "products": products,
+            "view_all_url": "/products",
+        }
+        return result
+    if normalized_quick_reply == "delivery details":
         history = state.get("history") if state.get("mode") == "support" else []
         status_sink: dict = {}
         reply = ask_chatbot(text, history=history, catalog=catalog, _status_sink=status_sink)

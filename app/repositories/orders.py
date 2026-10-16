@@ -1,10 +1,27 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+from typing import TypedDict
+
+import psycopg2
+
+from app.config import UNPAID_ORDER_TTL_MINUTES
 
 from ._shared import *
 from .accounts import reseller_account_profile
 from .inventory import _apply_fefo_allocations, _inventory_actor_name, _plan_fefo_allocations
-from .notifications import _create_notification_cursor
+from .notifications import _create_notification_cursor, _create_order_system_message_cursor
+
+
+class ConfirmedPayment(TypedDict):
+    transaction_number: str
+    transaction_key: str
+    paid_at: datetime
+    payment_amount: Decimal
+    ocr_confidence: float
+    extraction_method: str
+    confirmed_at: datetime
+    ocr_engine: str
 
 
 def list_orders(
@@ -17,7 +34,6 @@ def list_orders(
     page: int | None = None,
     page_size: int = 10,
     sort: str = "",
-    without_payment_proof: bool = False,
 ) -> list[dict]:
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
@@ -31,12 +47,6 @@ def list_orders(
     if status:
         where.append("o.status = %s")
         params.append(status)
-    if without_payment_proof:
-        where.append("""NOT EXISTS (
-            SELECT 1
-            FROM order_payment_proofs opp_filter
-            WHERE opp_filter.order_id = o.order_id
-        )""")
     if team_leader_account_id is not None:
         if order_type == "walk_in":
             where.append("o.created_by_account_id = %s")
@@ -76,7 +86,11 @@ def list_orders(
                COALESCE(r.business_name, 'Retail counter') AS reseller,
                o.team_leader_account_id,
                tl.name AS team_leader_name,
-               o.status, o.order_date, o.total_amount, o.notes
+               o.status, o.order_date, o.total_amount, o.notes,
+               o.payment_transaction_number, o.payment_paid_at, o.payment_amount,
+               o.payment_ocr_confidence, o.payment_extraction_method,
+               o.payment_confirmed_at, o.payment_ocr_engine,
+               o.payment_due_at, o.expired_at
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = o.team_leader_account_id
@@ -125,60 +139,258 @@ def list_orders(
     return orders
 
 
+def _insert_order_payment_proofs_cursor(cur, account_id: int, order_id: int, attachments: list[dict]) -> int:
+    inserted = 0
+    for attachment in attachments:
+        cur.execute(
+            """
+            SELECT 1
+            FROM order_payment_proofs existing_proof
+            JOIN orders existing_order ON existing_order.order_id = existing_proof.order_id
+            JOIN orders target_order ON target_order.order_id = %s
+            WHERE existing_order.reseller_id = target_order.reseller_id
+              AND existing_proof.checksum_sha256 = %s
+            LIMIT 1;
+            """,
+            (order_id, attachment["checksum_sha256"]),
+        )
+        if cur.fetchone():
+            raise ValueError("This payment screenshot has already been used for another order.")
+        cur.execute(
+            """
+            INSERT INTO order_payment_proofs (
+                order_id, uploaded_by_account_id, filename, content_type,
+                content, size_bytes, checksum_sha256
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s);
+            """,
+            (
+                order_id,
+                account_id,
+                attachment["filename"],
+                attachment["content_type"],
+                attachment["content"],
+                attachment["size_bytes"],
+                attachment["checksum_sha256"],
+            ),
+        )
+        inserted += 1
+    return inserted
+
+
 def add_order_payment_proofs(account_id: int, order_id: int, attachments: list[dict]) -> int:
     if not attachments:
         raise ValueError("Attach at least one proof of payment screenshot.")
-    with get_transaction_cursor() as cur:
-        cur.execute(
-            """
-            SELECT o.order_id, o.status, o.team_leader_account_id, r.business_name
-            FROM orders o
-            JOIN resellers r ON r.reseller_id = o.reseller_id
-            JOIN accounts a ON a.reseller_id = r.reseller_id
-            WHERE o.order_id = %s AND o.order_type = 'reseller' AND a.account_id = %s
-            FOR UPDATE OF o;
-            """,
-            (order_id, account_id),
-        )
-        order = cur.fetchone()
-        if not order:
-            raise ValueError("Order was not found.")
-        if order["status"] != "pending":
-            raise ValueError("Proof of payment can only be uploaded while the order is pending.")
-        cur.execute("SELECT count(*) AS total FROM order_payment_proofs WHERE order_id = %s;", (order_id,))
-        existing = int(cur.fetchone()["total"])
-        if existing + len(attachments) > 3:
-            raise ValueError("An order can have at most three payment proof screenshots.")
-        inserted = 0
-        for attachment in attachments:
+    try:
+        with get_transaction_cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO order_payment_proofs (
-                    order_id, uploaded_by_account_id, filename, content_type,
-                    content, size_bytes, checksum_sha256
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s);
+                SELECT o.order_id, o.status, o.team_leader_account_id, r.business_name
+                FROM orders o
+                JOIN resellers r ON r.reseller_id = o.reseller_id
+                JOIN accounts a ON a.reseller_id = r.reseller_id
+                WHERE o.order_id = %s AND o.order_type = 'reseller' AND a.account_id = %s
+                FOR UPDATE OF o;
                 """,
-                (
-                    order_id,
-                    account_id,
-                    attachment["filename"],
-                    attachment["content_type"],
-                    attachment["content"],
-                    attachment["size_bytes"],
-                    attachment["checksum_sha256"],
-                ),
+                (order_id, account_id),
             )
-            inserted += 1
-        _add_log_cursor(cur, actor_account_id=account_id, action="uploaded_payment_proof", entity_type="orders", entity_id=order_id)
-        _create_notification_cursor(
-            cur, recipient_account_id=order["team_leader_account_id"], category="order", severity="info",
-            title="Payment proof uploaded",
-            message=f"{order['business_name']} uploaded payment proof for order #{order_id}.",
-            target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
-            dedupe_key=f"order-proof-{order_id}-{existing + inserted}",
-        )
+            order = cur.fetchone()
+            if not order:
+                raise ValueError("Order was not found.")
+            if order["status"] != "pending":
+                raise ValueError("Proof of payment can only be uploaded while the order is pending.")
+            cur.execute("SELECT count(*) AS total FROM order_payment_proofs WHERE order_id = %s;", (order_id,))
+            existing = int(cur.fetchone()["total"])
+            if existing + len(attachments) > 3:
+                raise ValueError("An order can have at most three payment proof screenshots.")
+            inserted = _insert_order_payment_proofs_cursor(cur, account_id, order_id, attachments)
+            _add_log_cursor(cur, actor_account_id=account_id, action="uploaded_payment_proof", entity_type="orders", entity_id=order_id)
+            _create_notification_cursor(
+                cur, recipient_account_id=order["team_leader_account_id"], category="order", severity="info",
+                title="Payment proof uploaded",
+                message=f"{order['business_name']} uploaded payment proof for order #{order_id}.",
+                target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
+                dedupe_key=f"order-proof-{order_id}-{existing + inserted}",
+            )
+    except psycopg2.Error as exc:
+        if "already been used" in str(exc):
+            raise ValueError("This payment screenshot has already been used for another order.")
+        raise
     return inserted
+
+
+def _expire_unpaid_orders_cursor(
+    cur,
+    *,
+    account_id: int | None = None,
+    reseller_id: int | None = None,
+    limit: int = 100,
+) -> int:
+    where = ["o.status = 'to_pay'", "o.payment_due_at <= now()"]
+    params: list[object] = []
+    if account_id is not None:
+        where.append("o.created_by_account_id = %s")
+        params.append(account_id)
+    if reseller_id is not None:
+        where.append("o.reseller_id = %s")
+        params.append(reseller_id)
+    params.append(limit)
+    cur.execute(
+        f"""
+        SELECT o.order_id, o.created_by_account_id
+        FROM orders o
+        WHERE {' AND '.join(where)}
+        ORDER BY o.payment_due_at, o.order_id
+        FOR UPDATE OF o SKIP LOCKED
+        LIMIT %s;
+        """,
+        tuple(params),
+    )
+    due_orders = cur.fetchall()
+    for order in due_orders:
+        order_id = int(order["order_id"])
+        cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
+        cur.execute(
+            """
+            UPDATE orders
+            SET status = 'expired', expired_at = now()
+            WHERE order_id = %s AND status = 'to_pay';
+            """,
+            (order_id,),
+        )
+        if cur.rowcount != 1:
+            continue
+        _add_log_cursor(
+            cur, actor_account_id=None, action="expired_unpaid_order",
+            entity_type="orders", entity_id=order_id,
+        )
+        _create_notification_cursor(
+            cur, recipient_account_id=order["created_by_account_id"], category="order", severity="warning",
+            title="Payment window expired",
+            message=f"Order #{order_id} expired because payment was not submitted within 15 minutes.",
+            target_url="/portal/reseller/history", source_type="orders", source_id=order_id,
+            dedupe_key=f"order-expired-{order_id}",
+        )
+    return len(due_orders)
+
+
+def expire_unpaid_orders(account_id: int | None = None, limit: int = 100) -> int:
+    with get_transaction_cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_xact_lock(hashtext('meattrack-unpaid-order-expiry')) AS locked;")
+        if not cur.fetchone()["locked"]:
+            return 0
+        return _expire_unpaid_orders_cursor(cur, account_id=account_id, limit=limit)
+
+
+def submit_order_payment(
+    account_id: int,
+    order_id: int,
+    attachments: list[dict],
+    payment_details: ConfirmedPayment,
+) -> dict:
+    if not attachments:
+        raise ValueError("Attach at least one proof of payment screenshot.")
+    if len(attachments) > 3:
+        raise ValueError("Attach up to 3 payment screenshots only.")
+
+    expired = False
+    result: dict = {}
+    try:
+        with get_transaction_cursor() as cur:
+            cur.execute(
+                """
+                SELECT o.order_id, o.status, o.payment_due_at, o.reseller_id,
+                       o.team_leader_account_id, o.created_by_account_id,
+                       r.business_name
+                FROM orders o
+                JOIN resellers r ON r.reseller_id = o.reseller_id
+                WHERE o.order_id = %s
+                  AND o.order_type = 'reseller'
+                  AND o.created_by_account_id = %s
+                FOR UPDATE OF o;
+                """,
+                (order_id, account_id),
+            )
+            order = cur.fetchone()
+            if not order:
+                raise ValueError("Order was not found.")
+            if order["status"] != "to_pay":
+                raise ValueError("This order is no longer awaiting payment.")
+            if order["payment_due_at"] is None or order["payment_due_at"] <= business_now():
+                cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
+                cur.execute(
+                    "UPDATE orders SET status = 'expired', expired_at = now() WHERE order_id = %s;",
+                    (order_id,),
+                )
+                _add_log_cursor(
+                    cur, actor_account_id=None, action="expired_unpaid_order",
+                    entity_type="orders", entity_id=order_id,
+                )
+                _create_notification_cursor(
+                    cur, recipient_account_id=order["created_by_account_id"],
+                    category="order", severity="warning",
+                    title="Payment window expired",
+                    message=f"Order #{order_id} expired because payment was not submitted within 15 minutes.",
+                    target_url="/portal/reseller/history", source_type="orders", source_id=order_id,
+                    dedupe_key=f"order-expired-{order_id}",
+                )
+                expired = True
+            else:
+                cur.execute(
+                    """
+                    SELECT 1 FROM orders
+                    WHERE reseller_id = %s
+                      AND payment_transaction_key = %s
+                      AND order_id <> %s
+                    LIMIT 1;
+                    """,
+                    (order["reseller_id"], payment_details["transaction_key"], order_id),
+                )
+                if cur.fetchone():
+                    raise ValueError("This payment transaction number has already been used for another order.")
+                _insert_order_payment_proofs_cursor(cur, account_id, order_id, attachments)
+                cur.execute(
+                    """
+                    UPDATE orders
+                    SET status = 'pending',
+                        payment_transaction_number = %s,
+                        payment_transaction_key = %s,
+                        payment_paid_at = %s,
+                        payment_amount = %s,
+                        payment_ocr_confidence = %s,
+                        payment_extraction_method = %s,
+                        payment_confirmed_at = %s,
+                        payment_ocr_engine = %s
+                    WHERE order_id = %s
+                    RETURNING order_id, status, payment_due_at, total_amount;
+                    """,
+                    (
+                        payment_details["transaction_number"], payment_details["transaction_key"],
+                        payment_details["paid_at"], payment_details["payment_amount"],
+                        payment_details["ocr_confidence"], payment_details["extraction_method"],
+                        payment_details["confirmed_at"], payment_details["ocr_engine"], order_id,
+                    ),
+                )
+                result = dict(cur.fetchone())
+                _add_log_cursor(
+                    cur, actor_account_id=account_id, action="submitted_order_payment",
+                    entity_type="orders", entity_id=order_id,
+                )
+                _create_notification_cursor(
+                    cur, recipient_account_id=order["team_leader_account_id"], category="order", severity="warning",
+                    title="Pending reseller order",
+                    message=f"Order #{order_id} from {order['business_name']} was paid and needs review.",
+                    target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
+                    dedupe_key=f"reseller-order-{order_id}",
+                )
+    except psycopg2.Error as exc:
+        message = str(exc)
+        if "already been used" in message or "ux_orders_reseller_payment_transaction" in message:
+            raise ValueError("This payment transaction number has already been used for another order.")
+        raise
+    if expired:
+        raise ValueError("The 15-minute payment window expired. This order was released and cannot be paid.")
+    return clean_row(result)
 
 
 def get_order_payment_proof(proof_id: int, account_id: int | None, role_key: str | None) -> dict | None:
@@ -277,7 +489,6 @@ def count_orders(
     status: str = "",
     team_leader_account_id: int | None = None,
     reseller_account_id: int | None = None,
-    without_payment_proof: bool = False,
 ) -> int:
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
@@ -294,12 +505,6 @@ def count_orders(
     if status:
         where.append("o.status = %s")
         params.append(status)
-    if without_payment_proof:
-        where.append("""NOT EXISTS (
-            SELECT 1
-            FROM order_payment_proofs opp_filter
-            WHERE opp_filter.order_id = o.order_id
-        )""")
     if team_leader_account_id is not None:
         if order_type == "walk_in":
             where.append("o.created_by_account_id = %s")
@@ -350,10 +555,14 @@ def product_by_id(product_id: int) -> dict | None:
                    WHERE pr.product_item_id = p.item_id
                      AND rm.item_type = 'raw_material'
                ) AS recipe_count,
-               COALESCE(SUM(pb.quantity_available) FILTER (
+               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
                      AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
-               ), 0) AS available
+               ), 0) - COALESCE((
+                   SELECT SUM(osr.quantity)
+                   FROM order_stock_reservations osr
+                   WHERE osr.product_id = p.item_id
+               ), 0), 0) AS available
         FROM inventory_items p
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_id = %s
@@ -368,10 +577,14 @@ def list_reseller_cart_items(account_id: int) -> list[dict]:
     return clean_row(fetch_all("""
         SELECT rci.cart_item_id, rci.account_id, rci.product_id,
                p.name, p.category, p.description, p.unit, p.base_price,
-               COALESCE(SUM(pb.quantity_available) FILTER (
+               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
                      AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
-               ), 0) AS available,
+               ), 0) - COALESCE((
+                   SELECT SUM(osr.quantity)
+                   FROM order_stock_reservations osr
+                   WHERE osr.product_id = p.item_id
+               ), 0), 0) AS available,
                rci.quantity AS cart_quantity,
                round(rci.quantity * p.base_price, 2) AS line_total,
                rci.updated_at
@@ -382,7 +595,7 @@ def list_reseller_cart_items(account_id: int) -> list[dict]:
           AND p.item_type = 'finished_product'
           AND p.is_active = true
         GROUP BY rci.cart_item_id, rci.account_id, rci.product_id,
-                 p.name, p.category, p.description, p.unit, p.base_price,
+                 p.item_id, p.name, p.category, p.description, p.unit, p.base_price,
                  rci.quantity, rci.updated_at
         ORDER BY rci.updated_at DESC, rci.cart_item_id DESC;
     """, (account_id,)))
@@ -400,7 +613,7 @@ def reseller_cart_count(account_id: int) -> float:
 def reseller_order_confirmation(account_id: int, order_id: int) -> dict | None:
     return clean_row(fetch_one(
         """
-        SELECT o.order_id, o.status, o.total_amount
+        SELECT o.order_id, o.status, o.total_amount, o.payment_due_at
         FROM orders o
         JOIN accounts a ON a.reseller_id = o.reseller_id
         WHERE a.account_id = %s
@@ -415,10 +628,14 @@ def reseller_order_confirmation(account_id: int, order_id: int) -> dict | None:
 def _reseller_available_product(cur, product_id: int) -> dict | None:
     cur.execute("""
         SELECT p.item_id AS product_id, p.name, p.is_active,
-               COALESCE(SUM(pb.quantity_available) FILTER (
+               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
                      AND pb.expiry_date >= CURRENT_DATE
-               ), 0) AS available
+               ), 0) - COALESCE((
+                   SELECT SUM(osr.quantity)
+                   FROM order_stock_reservations osr
+                   WHERE osr.product_id = p.item_id
+               ), 0), 0) AS available
         FROM inventory_items p
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_id = %s
@@ -436,7 +653,7 @@ def _require_reseller_quantity_available(product: dict | None, quantity: Decimal
     if quantity > available:
         raise ValueError(
             f"Only {display_decimal(available)} packs of {product['name']} are currently available. "
-            "Stock is not reserved until fulfillment."
+            "Some stock may already be reserved by orders awaiting payment."
         )
 
 
@@ -501,6 +718,18 @@ def clear_reseller_cart(account_id: int) -> None:
     execute_write("DELETE FROM reseller_cart_items WHERE account_id = %s;", (account_id,))
 
 
+def _reserve_order_stock_cursor(cur, order_id: int, quantities: dict[int, Decimal]) -> None:
+    _plan_fefo_allocations(cur, quantities)
+    for product_id, quantity in quantities.items():
+        cur.execute(
+            """
+            INSERT INTO order_stock_reservations (order_id, product_id, quantity)
+            VALUES (%s, %s, %s);
+            """,
+            (order_id, product_id, quantity),
+        )
+
+
 def create_order_from_items(
     role: str,
     items: list[tuple[int, object]],
@@ -509,6 +738,8 @@ def create_order_from_items(
     *,
     checkout_cart: bool = False,
     checkout_product_ids: list[int] | None = None,
+    payment_proofs: list[dict] | None = None,
+    payment_details: ConfirmedPayment | None = None,
 ) -> dict:
     if not items and not checkout_cart:
         raise ValueError("Add at least one product to the cart.")
@@ -527,11 +758,13 @@ def create_order_from_items(
     created_by_name = "MEATTRACK"
     team_leader_account_id = None
     creator_id = account_id
-    status = "pending"
+    status = "to_pay" if role == "reseller" else "pending"
+    payment_due_at = None
 
     if role == "reseller":
         if account_id is None:
             raise ValueError("Your session expired. Please sign in again.")
+        payment_due_at = business_now() + timedelta(minutes=UNPAID_ORDER_TTL_MINUTES)
     elif account_id is not None:
         account = fetch_one("SELECT name FROM accounts WHERE account_id = %s LIMIT 1;", (account_id,))
         if account:
@@ -575,6 +808,22 @@ def create_order_from_items(
             reseller_id = locked_profile["reseller_id"]
             created_by_name = locked_profile["business_name"]
             team_leader_account_id = locked_profile["team_leader_account_id"]
+            _expire_unpaid_orders_cursor(cur, reseller_id=reseller_id)
+            cur.execute(
+                """
+                SELECT order_id, payment_due_at
+                FROM orders
+                WHERE reseller_id = %s AND status = 'to_pay'
+                LIMIT 1;
+                """,
+                (reseller_id,),
+            )
+            active_unpaid = cur.fetchone()
+            if active_unpaid:
+                raise ValueError(
+                    f"Order #{active_unpaid['order_id']} is still awaiting payment. "
+                    "Pay or wait for it to expire before placing another order."
+                )
 
         if checkout_cart:
             if role != "reseller" or account_id is None:
@@ -611,13 +860,17 @@ def create_order_from_items(
 
         cur.execute("""
             SELECT p.item_id AS product_id, p.name, p.unit, p.base_price, p.is_active,
-                   COALESCE((
+                   GREATEST(COALESCE((
                        SELECT SUM(pb.quantity_available)
                        FROM inventory_batches pb
                        WHERE pb.item_id = p.item_id
                          AND pb.quality_status = 'approved'
                          AND pb.expiry_date >= CURRENT_DATE
-                   ), 0) AS available
+                   ), 0) - COALESCE((
+                       SELECT SUM(osr.quantity)
+                       FROM order_stock_reservations osr
+                       WHERE osr.product_id = p.item_id
+                   ), 0), 0) AS available
             FROM inventory_items p
             WHERE p.item_type = 'finished_product'
               AND p.is_active = true
@@ -645,15 +898,20 @@ def create_order_from_items(
 
         cur.execute("""
             INSERT INTO orders (order_type, reseller_id, created_by_account_id, team_leader_account_id,
-                                approved_by_account_id, approved_at, status, order_date, fulfilled_at, total_amount, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING order_id, order_type, reseller_id, status, order_date, total_amount, notes;
+                                approved_by_account_id, approved_at, status, order_date, fulfilled_at, total_amount, notes,
+                                payment_transaction_number, payment_transaction_key, payment_paid_at,
+                                payment_amount, payment_ocr_confidence, payment_extraction_method,
+                                payment_confirmed_at, payment_ocr_engine, payment_due_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING order_id, order_type, reseller_id, status, order_date, total_amount, notes, payment_due_at;
         """, (
             order_type, reseller_id, creator_id, team_leader_account_id,
             creator_id if role != "reseller" else None,
             business_now() if role != "reseller" else None,
             status, business_now(), None,
-            total.quantize(Decimal("0.01")), notes
+            total.quantize(Decimal("0.01")), notes,
+            None, None, None, None, None, None, None, None,
+            payment_due_at,
         ))
         ord_res = dict(cur.fetchone())
 
@@ -663,6 +921,9 @@ def create_order_from_items(
                 INSERT INTO order_items (order_id, product_id, quantity, unit, unit_price)
                 VALUES (%s, %s, %s, %s, %s);
             """, (order_id, product_id, quantity, unit, unit_price))
+
+        if role == "reseller":
+            _reserve_order_stock_cursor(cur, order_id, quantities)
 
         if role != "reseller":
             allocations = _plan_fefo_allocations(cur, quantities)
@@ -685,13 +946,6 @@ def create_order_from_items(
             action="created_reseller_order" if role == "reseller" else "created_walk_in_sale",
             entity_type="orders", entity_id=order_id,
         )
-        if role == "reseller":
-            _create_notification_cursor(
-                cur, recipient_account_id=team_leader_account_id, category="order", severity="warning",
-                title="Pending reseller order", message=f"Order #{order_id} from {created_by_name} needs review.",
-                target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
-                dedupe_key=f"reseller-order-{order_id}",
-            )
         if checkout_cart:
             cur.execute(
                 """
@@ -713,6 +967,8 @@ def checkout_reseller_cart(
     account_id: int,
     notes: str = "",
     product_ids: list[int] | None = None,
+    payment_proofs: list[dict] | None = None,
+    payment_details: ConfirmedPayment | None = None,
 ) -> dict:
     if product_ids is None:
         return create_order_from_items(
@@ -721,6 +977,8 @@ def checkout_reseller_cart(
             notes,
             account_id=account_id,
             checkout_cart=True,
+            payment_proofs=payment_proofs,
+            payment_details=payment_details,
         )
     return create_order_from_items(
         "reseller",
@@ -729,12 +987,32 @@ def checkout_reseller_cart(
         account_id=account_id,
         checkout_cart=True,
         checkout_product_ids=product_ids,
+        payment_proofs=payment_proofs,
+        payment_details=payment_details,
     )
 
 
-def decide_order(order_id: int, decision: str, team_leader_account_id: int | None = None) -> bool:
+ORDER_REJECTION_REASON_MAX_LENGTH = 400
+
+
+def _normalize_order_rejection_reason(value: str) -> str:
+    cleaned = "\n".join(line.strip() for line in str(value).strip().splitlines() if line.strip())
+    if len(cleaned) < 5:
+        raise ValueError("Enter at least 5 characters explaining why the order was rejected.")
+    if len(cleaned) > ORDER_REJECTION_REASON_MAX_LENGTH:
+        raise ValueError(f"Keep the rejection reason under {ORDER_REJECTION_REASON_MAX_LENGTH} characters.")
+    return cleaned
+
+
+def decide_order(
+    order_id: int,
+    decision: str,
+    team_leader_account_id: int | None = None,
+    rejection_reason: str = "",
+) -> bool:
     if decision not in {"approve", "reject", "fulfill"}:
         return False
+    cleaned_rejection_reason = ""
 
     with get_transaction_cursor() as cur:
         scope = ""
@@ -750,9 +1028,10 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
               {scope}
             FOR UPDATE OF o;
         """, tuple(params))
-        ord_res = dict(cur.fetchone())
-        if not ord_res:
+        order_row = cur.fetchone()
+        if not order_row:
             return False
+        ord_res = dict(order_row)
 
         leader_id = team_leader_account_id
         if leader_id is None:
@@ -773,14 +1052,16 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
                 WHERE order_id = %s;
             """, (leader_id, business_now(), order_id))
         elif decision == "reject":
-            if ord_res["status"] not in {"pending", "approved"}:
+            if ord_res["status"] != "pending":
                 return False
+            cleaned_rejection_reason = _normalize_order_rejection_reason(rejection_reason)
             cur.execute("""
                 UPDATE orders
                 SET status = 'rejected', approved_by_account_id = COALESCE(approved_by_account_id, %s),
-                    approved_at = COALESCE(approved_at, %s)
+                    approved_at = COALESCE(approved_at, %s), rejection_reason = %s
                 WHERE order_id = %s;
-            """, (leader_id, business_now(), order_id))
+            """, (leader_id, business_now(), cleaned_rejection_reason, order_id))
+            cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
         else:
             if ord_res["status"] != "approved":
                 raise ValueError("Order must be approved before it can be fulfilled.")
@@ -792,7 +1073,7 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
                 ORDER BY product_id;
             """, (order_id,))
             quantities = {row["product_id"]: Decimal(row["quantity"]) for row in cur.fetchall()}
-            allocations = _plan_fefo_allocations(cur, quantities)
+            allocations = _plan_fefo_allocations(cur, quantities, reservation_order_id=order_id)
             _apply_fefo_allocations(
                 cur,
                 allocations,
@@ -800,6 +1081,7 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
                 actor_account_id=leader_id,
                 actor_name=actor_name,
             )
+            cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
             cur.execute("""
                 UPDATE orders
                 SET status = 'fulfilled', fulfilled_at = %s
@@ -812,18 +1094,71 @@ def decide_order(order_id: int, decision: str, team_leader_account_id: int | Non
             "fulfill": "fulfilled_reseller_order",
         }[decision]
         _add_log_cursor(cur, actor_account_id=leader_id, action=action, entity_type="orders", entity_id=order_id)
-        notification = {
-            "approve": ("info", "Order approved", f"Your reseller order #{order_id} was approved."),
-            "reject": ("critical", "Order rejected", f"Your reseller order #{order_id} was rejected."),
-            "fulfill": ("info", "Order fulfilled", f"Your reseller order #{order_id} was marked fulfilled."),
+        system_message = {
+            "approve": (
+                "approved",
+                "Order approved",
+                f"Your reseller order #{order_id} was approved and is ready for fulfillment.",
+                None,
+            ),
+            "reject": (
+                "rejected",
+                "Order rejected",
+                f"Your reseller order #{order_id} was rejected.",
+                cleaned_rejection_reason,
+            ),
+            "fulfill": (
+                "fulfilled",
+                "Order fulfilled",
+                f"Your reseller order #{order_id} was fulfilled and recorded as a completed sale.",
+                None,
+            ),
         }[decision]
-        _create_notification_cursor(
-            cur, recipient_account_id=ord_res["created_by_account_id"], category="order",
-            severity=notification[0], title=notification[1], message=notification[2],
-            target_url="/portal/reseller/history", source_type="orders", source_id=order_id,
-            dedupe_key=f"order-{decision}-{order_id}",
-        )
+        recipient_account_id = ord_res.get("created_by_account_id")
+        if recipient_account_id is not None:
+            system_message_id = _create_order_system_message_cursor(
+                cur,
+                reseller_account_id=int(recipient_account_id),
+                order_id=order_id,
+                event_type=system_message[0],
+                title=system_message[1],
+                message=system_message[2],
+                rejection_reason=system_message[3],
+            )
+            notification = {
+                "approve": (
+                    "info",
+                    "Order approved",
+                    f"Order #{order_id} was approved. Open its system message for details.",
+                ),
+                "reject": (
+                    "critical",
+                    "Order rejected",
+                    f"Order #{order_id} was rejected. Open its system message for the reason.",
+                ),
+                "fulfill": (
+                    "info",
+                    "Order fulfilled",
+                    f"Order #{order_id} was fulfilled. Open its system message for details.",
+                ),
+            }[decision]
+            target_url = (
+                f"/portal/reseller/inbox?system_message={system_message_id}"
+                f"#system-message-{system_message_id}"
+            )
+            _create_notification_cursor(
+                cur,
+                recipient_account_id=int(recipient_account_id),
+                category="order",
+                severity=notification[0],
+                title=notification[1],
+                message=notification[2],
+                target_url=target_url,
+                source_type="order_system_messages",
+                source_id=system_message_id,
+                dedupe_key=f"order-{decision}-{order_id}",
+            )
     return True
 
 
-__all__ = ['list_orders', 'add_order_payment_proofs', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', 'reseller_order_confirmation', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']
+__all__ = ['list_orders', 'add_order_payment_proofs', 'submit_order_payment', 'expire_unpaid_orders', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', 'reseller_order_confirmation', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']

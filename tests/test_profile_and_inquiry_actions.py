@@ -114,11 +114,16 @@ def test_profile_picture_controls_render_for_all_portals():
     assert 'action="/portal/{{ role_key }}/profile/picture/remove"' in profile_partial
     assert "role.profile_image_path" in base_template
     assert "role.profile_image_position_x" in base_template
+    assert 'data-lucide="user-round"' in base_template
+    assert 'data-lucide="user-round"' in profile_partial
+    assert "role.name[:1]|upper" not in base_template
+    assert "profile_name[:1]|upper" not in profile_partial
     assert ".profile-picture-panel" in portal_css
     assert ".profile-picture-camera" in portal_css
     assert ".profile-picture-file-button" in portal_css
     assert ".profile-picture-modal" in portal_css
     assert ".portal-user-avatar" in portal_css
+    assert ".profile-picture-placeholder" in portal_css
 
 
 @pytest.mark.parametrize("role_key", ["owner", "team-leader", "sales-supervisor", "reseller"])
@@ -462,6 +467,77 @@ def test_duplicate_email_approval_keeps_inquiry_unapproved(monkeypatch):
     assert cursor.updated is False
 
 
+def test_new_inquiry_is_assigned_and_linked_to_sales_supervisor_portal(monkeypatch):
+    captured = {}
+
+    class Cursor:
+        def execute(self, query, params=None):
+            captured["insert_params"] = params
+
+        def fetchone(self):
+            return {
+                "inquiry_id": 22,
+                "name": "Demo Applicant",
+                "contact_number": "09170000000",
+                "email": "applicant@example.test",
+                "business_name": "Demo Store",
+                "message": "Interested",
+                "status": "assigned",
+                "assigned_team_leader_account_id": 14,
+                "created_at": None,
+            }
+
+    @contextmanager
+    def fake_transaction():
+        yield Cursor()
+
+    monkeypatch.setattr(inquiry_repository, "get_transaction_cursor", fake_transaction)
+    monkeypatch.setattr(
+        inquiry_repository,
+        "next_sales_supervisor",
+        lambda preferred_account_id=None: {
+            "account_id": 14,
+            "name": "Sales Supervisor",
+            "team_leader_role": "sales-supervisor",
+        },
+    )
+    monkeypatch.setattr(inquiry_repository, "_add_log_cursor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        inquiry_repository,
+        "_create_notification_cursor",
+        lambda *args, **kwargs: captured.update(notification=kwargs),
+    )
+
+    inquiry = repositories.add_inquiry(
+        "Demo Applicant",
+        "Demo Store",
+        "applicant@example.test",
+        "09170000000",
+        "Interested",
+        assigned_team_leader_account_id=4,
+    )
+
+    assert captured["insert_params"][-2] == 14
+    assert inquiry["assigned_team_leader_account_id"] == 14
+    assert captured["notification"]["recipient_account_id"] == 14
+    assert captured["notification"]["target_url"] == "/portal/sales-supervisor/inquiries"
+
+
+def test_sales_supervisor_is_preferred_for_inquiry_assignment(monkeypatch):
+    monkeypatch.setattr(
+        account_repository,
+        "fetch_all",
+        lambda *args, **kwargs: [
+            {"account_id": 11, "name": "Supervisor A", "team_leader_role": "sales-supervisor"},
+            {"account_id": 12, "name": "Supervisor B", "team_leader_role": "sales-supervisor"},
+        ],
+    )
+    monkeypatch.setattr(account_repository, "fetch_one", lambda *args, **kwargs: {"total": 1})
+
+    assert repositories.next_sales_supervisor(12)["account_id"] == 12
+    assert repositories.next_sales_supervisor(4)["account_id"] == 12
+
+
 def test_successful_approval_creates_reseller_account_and_marks_approved(monkeypatch):
     class Cursor:
         def __init__(self):
@@ -536,7 +612,7 @@ def test_successful_approval_creates_reseller_account_and_marks_approved(monkeyp
 
 def test_reviewed_inquiry_hides_approval_actions(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales-supervisor")
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 4)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
@@ -557,16 +633,16 @@ def test_reviewed_inquiry_hides_approval_actions(monkeypatch):
         ],
     )
 
-    response = TestClient(main.app).get("/portal/team-leader/inquiries")
+    response = TestClient(main.app).get("/portal/sales-supervisor/inquiries")
 
     assert response.status_code == 200
-    assert "/portal/team-leader/inquiries/2/approve" not in response.text
+    assert "/portal/sales-supervisor/inquiries/2/approve" not in response.text
     assert "Reviewed" in response.text
 
 
 def test_pending_inquiry_rejection_requires_reason_dialog(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales-supervisor")
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 4)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
@@ -586,7 +662,7 @@ def test_pending_inquiry_rejection_requires_reason_dialog(monkeypatch):
         }],
     )
 
-    response = TestClient(main.app).get("/portal/team-leader/inquiries")
+    response = TestClient(main.app).get("/portal/sales-supervisor/inquiries")
 
     assert response.status_code == 200
     assert "data-inquiry-reject-open" in response.text
@@ -646,4 +722,31 @@ def test_team_order_route_returns_error_when_proof_missing(monkeypatch):
 
     assert response.status_code == 303
     assert "Proof+of+payment+is+required" in response.headers["location"]
+
+
+def test_team_order_rejection_passes_required_reason(monkeypatch):
+    calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "require_team_leader_role", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 4)
+    monkeypatch.setattr(
+        repositories,
+        "decide_order",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or True,
+    )
+
+    response = TestClient(main.app).post(
+        "/portal/team-leader/orders/7/reject",
+        data={"rejection_reason": "The uploaded payment receipt is unreadable."},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert calls == [(
+        (7, "reject"),
+        {
+            "team_leader_account_id": 4,
+            "rejection_reason": "The uploaded payment receipt is unreadable.",
+        },
+    )]
 

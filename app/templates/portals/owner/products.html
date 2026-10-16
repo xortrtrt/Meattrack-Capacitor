@@ -6,7 +6,7 @@
       <span class="hint">Update product prices without changing inventory records.</span>
     </div>
   </div>
-  <form class="filter-bar owner-filter-bar" method="get">
+  <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
     <label>Search <input name="q" value="{{ products_page.filters.q }}" placeholder="Product name"></label>
     <label>Category
       <select name="type">
@@ -25,9 +25,9 @@
         <option value="stock_desc" {{ 'selected' if products_page.filters.sort == 'stock_desc' else '' }}>Stock high-low</option>
       </select>
     </label>
-    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
 
+  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
   <div class="owner-product-card-grid">
     {% for product in products %}
     <article class="owner-product-card">
@@ -55,6 +55,7 @@
     {% if products_page.pagination.has_prev %}<a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ products_page.pagination.page - 1 }}">Previous</a>{% endif %}
     <span>Page {{ products_page.pagination.page }} of {{ products_page.pagination.total_pages }}</span>
     {% if products_page.pagination.has_next %}<a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ products_page.pagination.page + 1 }}">Next</a>{% endif %}
+  </div>
   </div>
 </section>
 </div>

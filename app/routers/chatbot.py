@@ -10,7 +10,7 @@ from app import live_chat
 from app import repositories as data
 from app.chatbot import process_chatbot_message
 from app.routers._shared import rate_limit_response
-from app.routers.public import public_products
+from app.routers.public import public_best_selling_products, public_products
 from app.security_controls import (
     RateLimitExceeded,
     enforce_chatbot,
@@ -79,10 +79,12 @@ async def chatbot_api(request: Request):
         return JSONResponse({"reply": "Please contact Batangas Premium directly for complete details."})
     if len(message) > 500:
         return JSONResponse({"reply": "Please keep your message under 500 characters."}, status_code=400)
+    is_product_preview = " ".join(message.casefold().split()) == "view products"
     result = process_chatbot_message(
         message,
         request.session.get("chatbot_state") or {},
-        catalog=public_products(),
+        catalog=None if is_product_preview else public_products(),
+        best_sellers=public_best_selling_products(limit=3) if is_product_preview else None,
     )
     lead_created = False
     assigned_team_leader = None
@@ -152,17 +154,18 @@ async def chatbot_api(request: Request):
         data.add_log("Website visitor", "used_chatbot", "Public support widget")
     except Exception:
         logging.getLogger(__name__).warning("Unable to record non-critical chatbot activity log.")
-    return JSONResponse(
-        {
-            "reply": reply,
-            "answer_status": result.get("answer_status") or "answered",
-            "handoff": handoff,
-            "conversation": conversation,
-            "lead_created": lead_created,
-            "assigned_team_leader": assigned_team_leader,
-            "suggestions": result.get("suggestions") or [],
-        }
-    )
+    response_payload = {
+        "reply": reply,
+        "answer_status": result.get("answer_status") or "answered",
+        "handoff": handoff,
+        "conversation": conversation,
+        "lead_created": lead_created,
+        "assigned_team_leader": assigned_team_leader,
+        "suggestions": result.get("suggestions") or [],
+    }
+    if result.get("product_preview"):
+        response_payload["product_preview"] = result["product_preview"]
+    return JSONResponse(response_payload)
 
 
 

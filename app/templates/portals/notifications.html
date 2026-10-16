@@ -1,0 +1,89 @@
+{% set notification_items = notifications_page["items"] %}
+{% set notification_filters = notifications_page["filters"] %}
+<div class="notification-center-page">
+  <section class="notification-center-hero" aria-labelledby="notification-center-title">
+    <div>
+      <span class="eyebrow">Activity center</span>
+      <h2 id="notification-center-title">Notifications</h2>
+      <p>Review account, order, inquiry, inventory, forecast, and report activity in one place.</p>
+    </div>
+    <div class="notification-center-summary" aria-label="Notification summary" data-async-filter-sync="notification-summary">
+      <span><strong>{{ unread_notifications|number }}</strong> unread</span>
+      <span><strong>{{ notifications_page.pagination.total|number }}</strong> shown</span>
+    </div>
+  </section>
+
+  <section class="notification-center-toolbar" aria-label="Notification filters">
+    <form method="get" action="/portal/{{ role_key }}/notifications" data-auto-filter data-async-filter-target="[data-async-filter-results]">
+      <label>
+        Status
+        <select name="status">
+          <option value="" {{ 'selected' if not notification_filters.status else '' }}>All activity</option>
+          <option value="unread" {{ 'selected' if notification_filters.status == 'unread' else '' }}>Unread</option>
+          <option value="read" {{ 'selected' if notification_filters.status == 'read' else '' }}>Read</option>
+        </select>
+      </label>
+      <label>
+        Category
+        <select name="type">
+          <option value="" {{ 'selected' if not notification_filters.type else '' }}>All categories</option>
+          {% for value, label in notification_categories %}
+          <option value="{{ value }}" {{ 'selected' if notification_filters.type == value else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if notification_filters.status or notification_filters.type %}
+      <a class="button subtle" href="/portal/{{ role_key }}/notifications">Clear</a>
+      {% endif %}
+    </form>
+
+    {% if unread_notifications %}
+    <form action="/portal/{{ role_key }}/notifications/read?section=notifications" method="post">
+      <button class="button subtle" type="submit"><i data-lucide="check-check"></i> Mark all read</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+  <section class="notification-center-feed" aria-label="Notification history">
+    {% for item in notification_items %}
+    {% set item_icon = 'package-check' if item.category|lower == 'order' else 'user-round-plus' if item.category|lower == 'inquiry' else 'boxes' if item.category|lower == 'inventory' else 'circle-user-round' if item.category|lower == 'account' else 'chart-no-axes-combined' if item.category|lower == 'forecast' else 'file-chart-column' if item.category|lower == 'report' else 'bell' %}
+    <form class="notification-center-entry" action="/portal/{{ role_key }}/notifications/{{ item.notification_id }}/open" method="post">
+      <button class="notification-center-item {{ item.severity }} {{ 'is-read' if item.read_at else 'is-unread' }}" type="submit">
+        <span class="notification-center-icon"><i data-lucide="{{ item_icon }}"></i></span>
+        <span class="notification-center-copy">
+          <span class="notification-center-meta">
+            <b>{{ item.category }}</b>
+            <time datetime="{{ item.created_at }}">{{ item.created_at|nice_date }}</time>
+          </span>
+          <strong>{{ item.title }}</strong>
+          <small>{{ item.message }}</small>
+        </span>
+        <span class="notification-center-state">
+          {% if item.read_at %}<i data-lucide="check"></i> Read{% else %}<span></span> Unread{% endif %}
+        </span>
+        <i class="notification-center-arrow" data-lucide="chevron-right" aria-hidden="true"></i>
+      </button>
+    </form>
+    {% else %}
+    <div class="notification-center-empty">
+      <span><i data-lucide="bell-ring"></i></span>
+      <h3>No notifications found</h3>
+      <p>{% if notification_filters.status or notification_filters.type %}Try a different status or category.{% else %}New activity will appear here when it happens.{% endif %}</p>
+    </div>
+    {% endfor %}
+  </section>
+
+  {% if notifications_page.pagination.total_pages > 1 %}
+  <nav class="pagination" aria-label="Notification pages">
+    {% if notifications_page.pagination.has_prev %}
+    <a href="?status={{ notification_filters.status|urlencode }}&type={{ notification_filters.type|urlencode }}&page={{ notifications_page.pagination.page - 1 }}">Previous</a>
+    {% endif %}
+    <span>Page {{ notifications_page.pagination.page }} of {{ notifications_page.pagination.total_pages }}</span>
+    {% if notifications_page.pagination.has_next %}
+    <a href="?status={{ notification_filters.status|urlencode }}&type={{ notification_filters.type|urlencode }}&page={{ notifications_page.pagination.page + 1 }}">Next</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+  </div>
+</div>

@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app import repositories
+from app.repositories import accounts as account_repository
 from app.repositories import forecasts as forecast_repository
 from app.repositories import inquiries as inquiry_repository
 from app.repositories.inventory import queries as inventory_repository
@@ -22,6 +23,31 @@ READ_REPOSITORIES = (
 def patch_repository_read(monkeypatch, name, value):
     for repository in READ_REPOSITORIES:
         monkeypatch.setattr(repository, name, value)
+
+
+def test_team_reseller_roster_is_scoped_to_signed_in_leader(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        account_repository,
+        "fetch_all",
+        lambda query, params=None: calls.append((query, params)) or [],
+    )
+
+    repositories.list_team_resellers(
+        17,
+        q="lipa",
+        status="active",
+        page=2,
+        page_size=10,
+        sort="business_asc",
+    )
+
+    query, params = calls[0]
+    assert "r.team_leader_account_id = %s" in query
+    assert "r.reseller_status = %s" in query
+    assert "lower(r.business_name) ASC" in query
+    assert "a.profile_image_path" in query
+    assert params == (17, "%lipa%", "%lipa%", "%lipa%", "%lipa%", "active", 10, 10)
 
 
 def test_current_metrics_uses_one_database_round_trip(monkeypatch):
@@ -142,30 +168,6 @@ def test_team_leader_order_scope_is_parameterized(monkeypatch):
     assert calls[0][1] == ("reseller", 42)
 
 
-def test_order_payment_proof_filter_uses_not_exists(monkeypatch):
-    list_calls = []
-    count_calls = []
-    patch_repository_read(
-        monkeypatch,
-        "fetch_all",
-        lambda query, params=None: list_calls.append((query, params)) or [],
-    )
-    patch_repository_read(
-        monkeypatch,
-        "fetch_one",
-        lambda query, params=None: count_calls.append((query, params)) or {"total": 0},
-    )
-
-    repositories.list_orders(order_type="reseller", without_payment_proof=True)
-    repositories.count_orders(order_type="reseller", without_payment_proof=True)
-
-    assert "NOT EXISTS" in list_calls[0][0]
-    assert "FROM order_payment_proofs opp_filter" in list_calls[0][0]
-    assert list_calls[0][1] == ("reseller",)
-    assert "NOT EXISTS" in count_calls[0][0]
-    assert count_calls[0][1] == ("reseller",)
-
-
 def test_reseller_report_scope_is_parameterized(monkeypatch):
     calls = []
     patch_repository_read(
@@ -221,6 +223,35 @@ def test_inventory_activity_logs_are_scoped_to_inventory_actions(monkeypatch):
     assert fetch_one_calls[0][1][1:4] == ("%batch%", "%batch%", "%batch%")
 
 
+def test_inventory_movements_are_filtered_by_category_before_pagination(monkeypatch):
+    fetch_all_calls = []
+    fetch_one_calls = []
+    patch_repository_read(
+        monkeypatch,
+        "fetch_all",
+        lambda query, params=None: fetch_all_calls.append((query, params)) or [],
+    )
+    patch_repository_read(
+        monkeypatch,
+        "fetch_one",
+        lambda query, params=None: fetch_one_calls.append((query, params)) or {"total": 0},
+    )
+
+    repositories.list_inventory_movements(q="tocino", category="production", page=2, page_size=10)
+    repositories.count_inventory_movements(q="tocino", category="production")
+
+    assert "im.movement_type = ANY(%s)" in fetch_all_calls[0][0]
+    assert "im.movement_type = ANY(%s)" in fetch_one_calls[0][0]
+    assert fetch_all_calls[0][1] == (
+        "%tocino%",
+        "%tocino%",
+        ["production_consumption", "production_output"],
+        10,
+        10,
+    )
+    assert fetch_one_calls[0][1][-1] == ["production_consumption", "production_output"]
+
+
 def test_inventory_item_and_batch_filters_are_parameterized(monkeypatch):
     fetch_all_calls = []
     fetch_one_calls = []
@@ -248,6 +279,7 @@ def test_inventory_item_and_batch_filters_are_parameterized(monkeypatch):
     assert "LOWER(ii.category) = LOWER(%s)" in fetch_all_calls[1][0]
     assert fetch_all_calls[1][1] == ("raw_material", "raw material", 10, 0)
     assert "ii.category = %s" in fetch_all_calls[2][0]
+    assert "ib.expiry_date - CURRENT_DATE AS days_until_expiry" in fetch_all_calls[2][0]
     assert fetch_all_calls[2][1] == ("%batch%", "%batch%", "%batch%", "Pork", 10, 20)
     assert fetch_one_calls[1][1] == ("%batch%", "%batch%", "%batch%", "Pork")
 
@@ -299,6 +331,24 @@ def test_inventory_product_movement_analytics_uses_stock_in_and_fulfilled_out(mo
     assert calls[0][1] == (45, 45, 6)
 
 
+def test_best_selling_products_rank_active_products_by_fulfilled_quantity(monkeypatch):
+    calls = []
+    patch_repository_read(
+        monkeypatch,
+        "fetch_all",
+        lambda query, params=None: calls.append((query, params)) or [],
+    )
+
+    repositories.list_best_selling_products(limit=3)
+
+    assert len(calls) == 1
+    assert "o.status = 'fulfilled'" in calls[0][0]
+    assert "p.is_active = true" in calls[0][0]
+    assert "SUM(oi.quantity) AS total_quantity" in calls[0][0]
+    assert "ORDER BY COALESCE(sales.total_quantity, 0) DESC" in calls[0][0]
+    assert calls[0][1] == (3,)
+
+
 def test_schema_tracks_reseller_team_leader_assignment():
     schema = open("database/schema.sql", encoding="utf-8").read()
 
@@ -308,6 +358,14 @@ def test_schema_tracks_reseller_team_leader_assignment():
     assert "CREATE INDEX ix_accounts_team_leader_role" in schema
     assert "CREATE TABLE order_payment_proofs" in schema
     assert "CREATE INDEX ix_order_payment_proofs_order" in schema
+    assert "payment_transaction_number text" in schema
+    assert "payment_paid_at timestamptz" in schema
+    assert "payment_amount numeric(12,2)" in schema
+    assert "orders_payment_amount_check" in schema
+    assert "orders_payment_transaction_normalized_check" in schema
+    assert "CREATE CONSTRAINT TRIGGER trg_require_reseller_order_payment" in schema
+    assert "CREATE UNIQUE INDEX ux_orders_reseller_payment_transaction" in schema
+    assert "CREATE INDEX ix_order_payment_proofs_checksum" in schema
     assert "follow_up_sent_at timestamptz" in schema
     assert "CREATE TABLE account_password_otps" in schema
     assert "CREATE TABLE account_login_otps" in schema

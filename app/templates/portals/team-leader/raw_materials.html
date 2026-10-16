@@ -1,56 +1,108 @@
-<section class="panel inventory-items-browser">
-  <div class="panel-heading">
-    <h2>Raw materials inventory</h2>
-    <span class="hint">Ingredients and supplies used for production.</span>
-  </div>
-  <form class="filter-bar" method="get">
-    <label>Search <input name="q" value="{{ raw_materials_page.filters.q }}" placeholder="Raw material, category, unit"></label>
-    {% if raw_materials_page.filters.type %}
-    <input type="hidden" name="type" value="{{ raw_materials_page.filters.type }}">
-    {% endif %}
-    <label>Sort
-      <select name="sort">
-        <option value="">Default</option>
-        <option value="name_asc" {{ 'selected' if raw_materials_page.filters.sort == 'name_asc' else '' }}>Name A-Z</option>
-        <option value="category_asc" {{ 'selected' if raw_materials_page.filters.sort == 'category_asc' else '' }}>Category</option>
-        <option value="stock_desc" {{ 'selected' if raw_materials_page.filters.sort == 'stock_desc' else '' }}>Stock high-low</option>
-        <option value="stock_asc" {{ 'selected' if raw_materials_page.filters.sort == 'stock_asc' else '' }}>Stock low-high</option>
-      </select>
-    </label>
-    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
-  </form>
-  <nav class="portal-category-tabs" aria-label="Raw material categories">
-    {% for tab in raw_material_tabs %}
+<section class="stock-ledger material-ledger" aria-labelledby="material-ledger-title">
+  <header class="stock-ledger__header">
+    <div>
+      <span class="stock-ledger__eyebrow">Production supply</span>
+      <h2 id="material-ledger-title">Raw materials</h2>
+      <p>Current ingredient and supply levels, ready for production.</p>
+    </div>
+    <div class="stock-ledger__count" aria-label="{{ raw_materials_page.pagination.total }} total materials" data-async-filter-sync="raw-material-count">
+      <strong>{{ raw_materials_page.pagination.total|number }}</strong>
+      <span>material{{ '' if raw_materials_page.pagination.total == 1 else 's' }}</span>
+    </div>
+  </header>
+
+  <nav class="movement-categories" aria-label="Raw material categories" data-async-filter-target="[data-async-filter-results]" data-async-filter-sync="raw-material-categories">
+    {% for value, label in raw_material_tabs %}
     <a
-      class="{{ 'active' if raw_materials_page.filters.type == tab.value else '' }}"
-      href="/portal/team-leader/raw-materials?type={{ tab.value|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}{% if raw_materials_page.filters.q %}&q={{ raw_materials_page.filters.q|urlencode }}{% endif %}&page=1"
-    >{{ tab.label }}</a>
+      class="movement-category {{ 'is-active' if raw_materials_page.filters.type == value else '' }}"
+      href="?q={{ raw_materials_page.filters.q|urlencode }}&type={{ value|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page=1"
+      {% if raw_materials_page.filters.type == value %}aria-current="page"{% endif %}
+    >{{ label }}</a>
     {% endfor %}
   </nav>
-  <div class="table-wrap">
-    <table class="responsive-card-table compact-table">
-      <thead><tr><th>Category</th><th>Item</th><th>Available</th><th>Status</th></tr></thead>
-      <tbody>
-      {% for item in raw_items %}
-      <tr>
-        <td data-label="Category">{{ item.category.replace("_", " ")|title }}</td>
-        <td data-label="Item">{{ item.name }}</td>
-        <td data-label="Available">{{ item.available|number }} {{ item.unit }}</td>
-        <td data-label="Status"><span class="status-badge {{ 'active' if item.is_active else 'absent' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4">No raw materials found for this filter.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+
+  <form class="stock-ledger__filters" method="get" role="search" data-async-filter-target="[data-async-filter-results]">
+    <input type="hidden" name="type" value="{{ raw_materials_page.filters.type }}" data-async-filter-sync="raw-material-type" />
+    <label class="stock-search">
+      <span class="sr-only">Search raw materials</span>
+      <i data-lucide="search" aria-hidden="true"></i>
+      <input
+        name="q"
+        value="{{ raw_materials_page.filters.q }}"
+        placeholder="Search material or unit"
+        autocomplete="off"
+      />
+    </label>
+    <label class="stock-sort">
+      <span>Order</span>
+      <select name="sort" aria-label="Sort raw materials">
+        <option value="">Category and name</option>
+        <option value="name_asc" {{ 'selected' if raw_materials_page.filters.sort == 'name_asc' else '' }}>Name A–Z</option>
+        <option value="stock_asc" {{ 'selected' if raw_materials_page.filters.sort == 'stock_asc' else '' }}>Low stock first</option>
+        <option value="stock_desc" {{ 'selected' if raw_materials_page.filters.sort == 'stock_desc' else '' }}>Most stock</option>
+      </select>
+    </label>
+    <a class="stock-clear-button" href="/portal/team-leader/raw-materials" data-async-filter-sync="raw-material-clear" {% if not (raw_materials_page.filters.q or raw_materials_page.filters.type or raw_materials_page.filters.sort) %}hidden{% endif %}>Clear</a>
+  </form>
+
+  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+  <div class="material-list" role="list" aria-label="Raw material stock levels">
+    {% for item in raw_items %}
+      {% set is_empty = item.available <= 0 %}
+      {% set material_state = 'inactive' if not item.is_active else 'empty' if is_empty else 'available' %}
+      {% set category_label = 'Meat' if item.category == 'meat' else 'Other supply' %}
+      {% set material_icon = 'beef' if item.category == 'meat' else 'package' %}
+    <article class="material-row material-row--{{ material_state }}" role="listitem">
+      <span class="material-row__icon" aria-hidden="true"><i data-lucide="{{ material_icon }}"></i></span>
+      <div class="material-row__identity">
+        <strong>{{ item.name }}</strong>
+        <span>{{ category_label }}</span>
+      </div>
+      <div class="material-row__quantity">
+        <span>{{ 'Inactive' if not item.is_active else 'Out of stock' if is_empty else 'Available' }}</span>
+        <strong>{{ item.available|number }} <small>{{ item.unit }}</small></strong>
+      </div>
+      <div class="material-row__level" aria-label="Relative stock level: {{ item.stock_percent }} percent of the highest quantity on this page">
+        <span><i style="--stock-fill: {{ item.stock_percent }}%"></i></span>
+        <small>Relative stock level</small>
+      </div>
+    </article>
+    {% else %}
+    <div class="material-empty">
+      <span><i data-lucide="search-x" aria-hidden="true"></i></span>
+      <strong>No materials found</strong>
+      <p>Try another category or clear your search.</p>
+      <a href="/portal/team-leader/raw-materials">Show all materials</a>
+    </div>
+    {% endfor %}
   </div>
-  <div class="pagination">
-    {% if raw_materials_page.pagination.has_prev %}
-    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page={{ raw_materials_page.pagination.page - 1 }}">Previous</a>
-    {% endif %}
-    <span>Page {{ raw_materials_page.pagination.page }} of {{ raw_materials_page.pagination.total_pages }}</span>
-    {% if raw_materials_page.pagination.has_next %}
-    <a href="/portal/team-leader/raw-materials?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page={{ raw_materials_page.pagination.page + 1 }}">Next</a>
-    {% endif %}
+
+  {% if raw_materials_page.pagination.total_pages > 1 %}
+  <nav class="stock-pagination" aria-label="Raw material pages">
+    <span class="stock-pagination__summary">
+      Page {{ raw_materials_page.pagination.page }} of {{ raw_materials_page.pagination.total_pages }}
+    </span>
+    <div class="stock-pagination__controls">
+      {% if raw_materials_page.pagination.has_prev %}
+      <a class="stock-page stock-page--step" aria-label="Previous page" href="?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page={{ raw_materials_page.pagination.page - 1 }}">
+        <i data-lucide="chevron-left" aria-hidden="true"></i><span>Previous</span>
+      </a>
+      {% endif %}
+      {% for page_number in raw_materials_page.pagination.page_numbers %}
+      <a
+        class="stock-page {{ 'is-current' if page_number == raw_materials_page.pagination.page else '' }}"
+        href="?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page={{ page_number }}"
+        aria-label="Page {{ page_number }}"
+        {% if page_number == raw_materials_page.pagination.page %}aria-current="page"{% endif %}
+      >{{ page_number }}</a>
+      {% endfor %}
+      {% if raw_materials_page.pagination.has_next %}
+      <a class="stock-page stock-page--step" aria-label="Next page" href="?q={{ raw_materials_page.filters.q|urlencode }}&type={{ raw_materials_page.filters.type|urlencode }}&sort={{ raw_materials_page.filters.sort|urlencode }}&page={{ raw_materials_page.pagination.page + 1 }}">
+        <span>Next</span><i data-lucide="chevron-right" aria-hidden="true"></i>
+      </a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
   </div>
 </section>

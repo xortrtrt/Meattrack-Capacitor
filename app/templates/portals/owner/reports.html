@@ -6,7 +6,7 @@
       <span class="hint">Owner-facing reports submitted by team leaders.</span>
     </div>
   </div>
-  <form class="filter-bar owner-filter-bar" method="get">
+  <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
     <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
     <label>Sort
       <select name="sort">
@@ -17,9 +17,9 @@
         <option value="oldest" {{ 'selected' if sales_reports_page.filters.sort == 'oldest' else '' }}>Oldest</option>
       </select>
     </label>
-    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
   </form>
 
+  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
   <div class="table-wrap owner-report-table">
     <table>
       <thead>
@@ -76,6 +76,7 @@
     {% if sales_reports_page.pagination.has_prev %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page - 1 }}">Previous</a>{% endif %}
     <span>Page {{ sales_reports_page.pagination.page }} of {{ sales_reports_page.pagination.total_pages }}</span>
     {% if sales_reports_page.pagination.has_next %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page + 1 }}">Next</a>{% endif %}
+  </div>
   </div>
 </section>
 </div>

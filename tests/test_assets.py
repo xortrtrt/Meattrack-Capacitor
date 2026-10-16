@@ -58,6 +58,16 @@ def test_missing_pages_use_the_branded_404_and_api_errors_stay_json():
     assert api_response.json() == {"detail": "Not Found"}
 
 
+def test_content_security_policy_allows_vendored_ably_runtime_hosts():
+    response = TestClient(main.app).get("/")
+
+    policy = response.headers["content-security-policy"]
+    assert "https://*.ably.io" in policy
+    assert "wss://*.ably.net" in policy
+    assert "https://*.ably-realtime.com" in policy
+    assert "wss://*.ably-realtime.com" in policy
+
+
 def test_vendored_assets_exist_and_receive_immutable_cache_headers():
     client = TestClient(main.app)
     asset_paths = (
@@ -98,7 +108,7 @@ def test_public_javascript_modules_are_split_and_served():
     entrypoint = (PROJECT_ROOT / "app/static/js/public-site.js").read_text(encoding="utf-8")
     assert 'from "./public-navigation.js"' in entrypoint
     assert 'from "./landing-experience.js"' in entrypoint
-    assert 'from "./visitor-chat.js?v=20261002-inquiry-modal-2"' in entrypoint
+    assert 'from "./visitor-chat.js?v=20261016-product-preview-1"' in entrypoint
 
 
 def test_cart_autosave_uses_the_form_action_attribute():
@@ -106,3 +116,30 @@ def test_cart_autosave_uses_the_form_action_attribute():
 
     # A named input called "action" shadows HTMLFormElement.action in browsers.
     assert 'fetch(form.getAttribute("action") || window.location.pathname' in source
+
+
+def test_portal_brand_does_not_link_out_of_the_authenticated_portal():
+    template = (PROJECT_ROOT / "app/templates/portals/base.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert '<div class="brand portal-brand">' in template
+    assert '<a class="brand portal-brand"' not in template
+
+
+def test_portal_sign_out_uses_shared_confirmation_dialog():
+    template = (PROJECT_ROOT / "app/templates/portals/base.html").read_text(
+        encoding="utf-8"
+    )
+    script = (PROJECT_ROOT / "app/static/js/portal.js").read_text(encoding="utf-8")
+    stylesheet = (PROJECT_ROOT / "app/static/css/portal_base.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert "data-logout-form" in template
+    assert "data-logout-modal" in template
+    assert "data-logout-confirm" in template
+    assert "bindSignOutConfirmation" in script
+    assert "HTMLFormElement.prototype.submit.call(form)" in script
+    assert ".portal-logout-button" in stylesheet
+    assert ".logout-confirmation-card" in stylesheet

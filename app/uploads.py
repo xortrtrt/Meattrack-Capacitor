@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import warnings
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
+from PIL import Image, UnidentifiedImageError
 
 
 PAYMENT_PROOF_TYPES = {"image/jpeg", "image/png", "image/webp"}
+PAYMENT_PROOF_FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
+PAYMENT_PROOF_MAX_BYTES = 5 * 1024 * 1024
+PAYMENT_PROOF_MAX_PIXELS = 25_000_000
 PROFILE_IMAGE_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -23,25 +29,45 @@ async def parse_payment_proof_attachments(uploads: list[UploadFile]) -> list[dic
         if not upload.filename:
             continue
         filename = Path(upload.filename).name
-        content = await upload.read()
+        content = await upload.read(PAYMENT_PROOF_MAX_BYTES + 1)
         if not content:
             continue
         if len(attachments) >= 3:
             raise ValueError("Attach up to 3 payment screenshots only.")
-        if len(content) > 5 * 1024 * 1024:
+        if len(content) > PAYMENT_PROOF_MAX_BYTES:
             raise ValueError(f"{filename} is larger than 5 MB.")
-        content_type = upload.content_type or "application/octet-stream"
-        if content_type not in PAYMENT_PROOF_TYPES:
+        declared_type = upload.content_type or "application/octet-stream"
+        if declared_type not in PAYMENT_PROOF_TYPES:
             raise ValueError(f"{filename} must be a JPG, PNG, or WebP screenshot.")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(BytesIO(content)) as image:
+                    detected_type = PAYMENT_PROOF_FORMATS.get(image.format or "")
+                    width, height = image.size
+                    if width <= 0 or height <= 0 or width * height > PAYMENT_PROOF_MAX_PIXELS:
+                        raise Image.DecompressionBombError
+                    image.verify()
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+            raise ValueError(f"{filename} has image dimensions that are too large.")
+        except (UnidentifiedImageError, OSError, ValueError):
+            raise ValueError(f"{filename} is not a valid JPG, PNG, or WebP image.")
+        if detected_type is None or detected_type != declared_type:
+            raise ValueError(f"{filename} does not match its declared image type.")
         attachments.append(
             {
                 "filename": filename,
-                "content_type": content_type,
+                "content_type": detected_type,
                 "content": content,
                 "size_bytes": len(content),
                 "checksum_sha256": hashlib.sha256(content).hexdigest(),
+                "width": width,
+                "height": height,
             }
         )
+    checksums = [str(attachment["checksum_sha256"]) for attachment in attachments]
+    if len(checksums) != len(set(checksums)):
+        raise ValueError("Choose different screenshots; the same receipt image was selected more than once.")
     return attachments
 
 

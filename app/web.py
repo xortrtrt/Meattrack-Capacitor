@@ -9,6 +9,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette import status
 
+from app.business_time import BUSINESS_ZONE
+
 
 BASE_DIR = Path(__file__).resolve().parent
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -66,7 +68,8 @@ def number(value: float | int | None) -> str:
 
 def nice_date(value: date | datetime | str) -> str:
     if isinstance(value, datetime):
-        return value.strftime("%b %d, %Y %I:%M %p")
+        localized = value.astimezone(BUSINESS_ZONE) if value.tzinfo is not None else value
+        return localized.strftime("%b %d, %Y %I:%M %p")
     if isinstance(value, date):
         return value.strftime("%b %d, %Y")
     return str(value)

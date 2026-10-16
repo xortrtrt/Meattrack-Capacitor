@@ -284,14 +284,9 @@
             return;
         }
 
-        const today = new Date();
-        const todayText = [
-            today.getFullYear(),
-            String(today.getMonth() + 1).padStart(2, "0"),
-            String(today.getDate()).padStart(2, "0"),
-        ].join("-");
-        startInput.value ||= todayText;
-        endInput.value ||= todayText;
+        const businessDate = form.dataset.businessDate || "";
+        startInput.value ||= businessDate;
+        endInput.value ||= businessDate;
 
         const money = (value) => `PHP ${value.toLocaleString("en-PH", {
             minimumFractionDigits: 2,
@@ -301,11 +296,18 @@
             minimumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2,
             maximumFractionDigits: 2,
         });
-        const textCell = (value) => {
+        const textCell = (value, label) => {
             const cell = document.createElement("td");
             cell.textContent = value;
+            if (label) {
+                cell.dataset.label = label;
+            }
             return cell;
         };
+
+        const countLabel = (value, singular, plural = `${singular}s`) => (
+            Number(value) === 1 ? singular : plural
+        );
 
         function updateTotals() {
             const start = startInput.value;
@@ -314,7 +316,7 @@
                 salesInput.value = "PHP 0.00";
                 ordersInput.value = "0 orders / 0 packs";
                 if (itemsBody) {
-                    itemsBody.innerHTML = '<tr><td colspan="5">No fulfilled order items in this period.</td></tr>';
+                    itemsBody.innerHTML = '<tr class="report-table-empty"><td class="report-table-empty-cell" colspan="5">No fulfilled order items in this period.</td></tr>';
                 }
                 return;
             }
@@ -327,7 +329,7 @@
             }, 0);
             const packs = included.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
             salesInput.value = money(sales);
-            ordersInput.value = `${orderIds.size} orders / ${quantity(packs)} packs`;
+            ordersInput.value = `${orderIds.size} ${countLabel(orderIds.size, "order")} / ${quantity(packs)} ${countLabel(packs, "pack")}`;
 
             if (!itemsBody) {
                 return;
@@ -337,6 +339,8 @@
                 const row = document.createElement("tr");
                 const cell = textCell("No fulfilled order items in this period.");
                 cell.colSpan = 5;
+                cell.classList.add("report-table-empty-cell");
+                row.classList.add("report-table-empty");
                 row.appendChild(cell);
                 itemsBody.appendChild(row);
                 return;
@@ -344,11 +348,11 @@
 
             included.forEach((record) => {
                 const row = document.createElement("tr");
-                row.appendChild(textCell(`#${record.order_id}`));
-                row.appendChild(textCell(record.customer || "Retail counter"));
-                row.appendChild(textCell(record.product || "Product"));
-                row.appendChild(textCell(`${quantity(record.quantity)} ${record.unit || "pack"}`));
-                row.appendChild(textCell(money(Number(record.total_sales || 0))));
+                row.appendChild(textCell(`#${record.order_id}`, "Order"));
+                row.appendChild(textCell(record.customer || "Retail counter", "Customer"));
+                row.appendChild(textCell(record.product || "Product", "Product"));
+                row.appendChild(textCell(`${quantity(record.quantity)} ${record.unit || "pack"}`, "Quantity"));
+                row.appendChild(textCell(money(Number(record.total_sales || 0)), "Sales"));
                 itemsBody.appendChild(row);
             });
         }

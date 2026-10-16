@@ -1,10 +1,10 @@
             <div class="sales-page sales-review-page sales-inquiries-page">
             <section class="panel sales-review-surface">
                 <div class="panel-heading">
-                    <h2>Assigned reseller inquiries</h2>
-                    <span class="hint">Approvals are handled by the assigned team leader.</span>
+                    <h2>Supervisor inquiry review</h2>
+                    <span class="hint">Reseller inquiry decisions are handled by the assigned sales supervisor.</span>
                 </div>
-                <form class="filter-bar" method="get">
+                <form class="filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
                     <label>Search <input name="q" value="{{ inquiries_page.filters.q }}" placeholder="Name, email, business"></label>
                     <label>Status
                         <select name="status">
@@ -22,8 +22,8 @@
                             <option value="status_asc" {{ 'selected' if inquiries_page.filters.sort == 'status_asc' else '' }}>Status</option>
                         </select>
                     </label>
-                    <button class="button subtle" type="submit"><i data-lucide="search"></i> Filter</button>
                 </form>
+                <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
                 <div class="table-wrap">
                     <table>
                         <thead><tr><th>Business</th><th>Contact</th><th>Message</th><th>Status</th><th>Action</th></tr></thead>
@@ -70,6 +70,7 @@
                     {% if inquiries_page.pagination.has_prev %}<a href="?q={{ inquiries_page.filters.q|urlencode }}&status={{ inquiries_page.filters.status|urlencode }}&sort={{ inquiries_page.filters.sort|urlencode }}&page={{ inquiries_page.pagination.page - 1 }}">Previous</a>{% endif %}
                     <span>Page {{ inquiries_page.pagination.page }} of {{ inquiries_page.pagination.total_pages }}</span>
                     {% if inquiries_page.pagination.has_next %}<a href="?q={{ inquiries_page.filters.q|urlencode }}&status={{ inquiries_page.filters.status|urlencode }}&sort={{ inquiries_page.filters.sort|urlencode }}&page={{ inquiries_page.pagination.page + 1 }}">Next</a>{% endif %}
+                </div>
                 </div>
             </section>
 

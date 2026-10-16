@@ -1,0 +1,90 @@
+<div class="sales-page team-resellers-page">
+  <section class="team-resellers-hero" aria-labelledby="team-resellers-title">
+    <div>
+      <span class="dashboard-kicker">Your sales team</span>
+      <h2 id="team-resellers-title">Reseller accounts</h2>
+      <p>View the businesses currently assigned to you and check their account and ordering activity.</p>
+    </div>
+    <div class="team-resellers-total" aria-label="Total assigned resellers" data-async-filter-sync="team-reseller-total">
+      <strong>{{ team_resellers_page.pagination.total }}</strong>
+      <span>assigned reseller{{ '' if team_resellers_page.pagination.total == 1 else 's' }}</span>
+    </div>
+  </section>
+
+  <section class="panel team-resellers-ledger">
+    <form class="filter-bar team-resellers-filter" method="get" data-async-filter-target="[data-async-filter-results]">
+      <label>Search
+        <input name="q" value="{{ team_resellers_page.filters.q }}" placeholder="Business, contact, email, phone">
+      </label>
+      <label>Status
+        <select name="status">
+          <option value="">All statuses</option>
+          {% for value in ["pending", "active", "suspended", "inactive"] %}
+          <option value="{{ value }}" {{ 'selected' if team_resellers_page.filters.status == value else '' }}>{{ value|title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Sort
+        <select name="sort">
+          <option value="">Newest</option>
+          <option value="oldest" {{ 'selected' if team_resellers_page.filters.sort == 'oldest' else '' }}>Oldest</option>
+          <option value="business_asc" {{ 'selected' if team_resellers_page.filters.sort == 'business_asc' else '' }}>Business A–Z</option>
+          <option value="status_asc" {{ 'selected' if team_resellers_page.filters.sort == 'status_asc' else '' }}>Status</option>
+          <option value="recent_order" {{ 'selected' if team_resellers_page.filters.sort == 'recent_order' else '' }}>Recent order</option>
+        </select>
+      </label>
+    </form>
+
+    <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+    <div class="team-reseller-list">
+      {% for reseller in team_resellers %}
+      <article class="team-reseller-card">
+        <div class="team-reseller-status-rail is-{{ reseller.reseller_status }}" aria-hidden="true"></div>
+        <div class="team-reseller-identity">
+          <span class="team-reseller-avatar" aria-hidden="true">
+            {% if reseller.profile_image_path %}
+            <img
+              src="{{ url_for('static', path=reseller.profile_image_path) }}"
+              alt=""
+              style="--profile-x: {{ reseller.profile_image_position_x|default(50) }}%; --profile-y: {{ reseller.profile_image_position_y|default(50) }}%; --profile-scale: {{ reseller.profile_image_scale|default(1) }};"
+            />
+            {% else %}
+            <i class="profile-picture-placeholder" data-lucide="user-round"></i>
+            {% endif %}
+          </span>
+          <div>
+            <strong>{{ reseller.business_name }}</strong>
+            <span>{{ reseller.contact_person }}</span>
+          </div>
+        </div>
+        <dl class="team-reseller-contact">
+          <div><dt>Email</dt><dd><a href="mailto:{{ reseller.email }}">{{ reseller.email }}</a></dd></div>
+          <div><dt>Phone</dt><dd>{{ reseller.contact_number }}</dd></div>
+          <div><dt>Address</dt><dd>{{ reseller.address or "Not provided" }}</dd></div>
+        </dl>
+        <div class="team-reseller-activity">
+          <span class="status-badge {{ reseller.reseller_status }}">{{ reseller.reseller_status }}</span>
+          <span class="team-reseller-account-state"><i data-lucide="key-round"></i> {{ reseller.account_status }}</span>
+          <strong>{{ reseller.total_orders|number }} order{{ '' if reseller.total_orders == 1 else 's' }}</strong>
+          <small>
+            {% if reseller.last_order_at %}Last order {{ reseller.last_order_at|nice_date }}{% else %}No orders yet{% endif %}
+          </small>
+        </div>
+      </article>
+      {% else %}
+      <div class="team-resellers-empty">
+        <i data-lucide="users"></i>
+        <strong>No reseller accounts found</strong>
+        <span>{% if team_resellers_page.filters.q or team_resellers_page.filters.status %}Try a different search or status filter.{% else %}Resellers assigned to your account will appear here.{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="pagination">
+      {% if team_resellers_page.pagination.has_prev %}<a href="?q={{ team_resellers_page.filters.q|urlencode }}&status={{ team_resellers_page.filters.status|urlencode }}&sort={{ team_resellers_page.filters.sort|urlencode }}&page={{ team_resellers_page.pagination.page - 1 }}">Previous</a>{% endif %}
+      <span>Page {{ team_resellers_page.pagination.page }} of {{ team_resellers_page.pagination.total_pages }}</span>
+      {% if team_resellers_page.pagination.has_next %}<a href="?q={{ team_resellers_page.filters.q|urlencode }}&status={{ team_resellers_page.filters.status|urlencode }}&sort={{ team_resellers_page.filters.sort|urlencode }}&page={{ team_resellers_page.pagination.page + 1 }}">Next</a>{% endif %}
+    </div>
+    </div>
+  </section>
+</div>

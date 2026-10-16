@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Request
 
 from app import live_chat
+from app import reseller_messaging
 from app import repositories as data
+from app.business_time import business_today
 from app.config import LIVE_CHAT_ENABLED
 from app.portals import owner as owner_portal
 from app.portals import shared
@@ -16,14 +19,33 @@ router = APIRouter()
 
 def logs_page(request: Request, page_size: int = 10, inventory_only: bool = False) -> dict:
     filters = shared.portal_filters(request)
+    movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales"} else ""
     if inventory_only:
-        items = data.list_inventory_movements(q=filters["q"], page=filters["page"], page_size=page_size, sort=filters["sort"])
-        total = data.count_inventory_movements(q=filters["q"])
+        items = data.list_inventory_movements(
+            q=filters["q"],
+            category=movement_category,
+            page=filters["page"],
+            page_size=page_size,
+            sort=filters["sort"],
+        )
+        total = data.count_inventory_movements(q=filters["q"], category=movement_category)
     else:
         items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=False, sort=filters["sort"])
         total = data.count_activity_logs(q=filters["q"], inventory_only=False)
-    page = shared.paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
+    page = shared.paged(
+        items,
+        total,
+        filters["page"],
+        page_size,
+        q=filters["q"],
+        type=movement_category if inventory_only else "",
+        sort=filters["sort"],
+    )
     page["inventory_movements"] = inventory_only
+    current_page = page["pagination"]["page"]
+    total_pages = page["pagination"]["total_pages"]
+    first_page = max(1, min(current_page - 2, total_pages - 4))
+    page["pagination"]["page_numbers"] = list(range(first_page, min(total_pages, first_page + 4) + 1))
     return page
 
 
@@ -37,48 +59,104 @@ def finished_inventory_products_page(request: Request, page_size: int = 8) -> di
 
 def raw_materials_inventory_page(request: Request, page_size: int = 10) -> dict:
     filters = shared.portal_filters(request)
-    category = f"raw_material:{filters['type']}" if filters["type"] else "raw_material"
+    material_category = filters["type"] if filters["type"] in data.raw_material_categories else ""
+    category = f"raw_material:{material_category}" if material_category else "raw_material"
     items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_inventory_items(q=filters["q"], category=category)
-    return shared.paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
+    page = shared.paged(
+        items,
+        total,
+        filters["page"],
+        page_size,
+        q=filters["q"],
+        type=material_category,
+        sort=filters["sort"],
+    )
+    current_page = page["pagination"]["page"]
+    total_pages = page["pagination"]["total_pages"]
+    first_page = max(1, min(current_page - 2, total_pages - 4))
+    page["pagination"]["page_numbers"] = list(range(first_page, min(total_pages, first_page + 4) + 1))
+    return page
 
 
 def raw_materials_inventory_context(request: Request) -> dict:
     raw_materials_page = raw_materials_inventory_page(request)
+    items = raw_materials_page["items"]
+    maximum_available = max((float(item.get("available") or 0) for item in items), default=0)
+    raw_items = [
+        {
+            **item,
+            "stock_percent": round((float(item.get("available") or 0) / maximum_available) * 100)
+            if maximum_available
+            else 0,
+        }
+        for item in items
+    ]
     return {
         "raw_materials_page": raw_materials_page,
-        "raw_items": raw_materials_page["items"],
-        "raw_material_tabs": [
-            {"label": "All raw materials", "value": ""},
-            *[
-                {"label": category.replace("_", " ").title(), "value": category}
-                for category in data.raw_material_categories
-            ],
-        ],
+        "raw_items": raw_items,
+        "raw_material_tabs": (
+            ("", "All materials"),
+            ("meat", "Meat"),
+            ("raw_material", "Other supplies"),
+        ),
     }
 
 
 def finished_products_inventory_context(request: Request) -> dict:
     products_page = finished_inventory_products_page(request)
+    finished_products = [
+        product
+        for product in products_page["items"]
+        if str(product.get("category") or "").strip().lower() != "package"
+    ]
+    product_packages = [
+        product
+        for product in products_page["items"]
+        if str(product.get("category") or "").strip().lower() == "package"
+    ]
     return {
         "inventory_items_page": products_page,
         "inventory_products_page": products_page,
-        "finished_products": products_page["items"],
+        "finished_products": finished_products,
+        "finished_product_packages": product_packages,
         "inventory_item_tabs": [
             {"label": "All products", "value": ""},
             *[
                 {"label": category, "value": category}
                 for category in data.product_categories
             ],
+            {"label": "Packages", "value": "Package"},
         ],
     }
 
 
 def inventory_batches_page(request: Request, page_size: int = 10) -> dict:
     filters = shared.portal_filters(request)
-    items = data.list_inventory_batches(q=filters["q"], category=filters["type"], page=filters["page"], page_size=page_size, sort=filters["sort"])
-    total = data.count_inventory_batches(q=filters["q"], category=filters["type"])
-    return shared.paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
+    categories = [*data.product_categories, "Package"]
+    category = filters["type"] if filters["type"] in categories else ""
+    items = data.list_inventory_batches(
+        q=filters["q"],
+        category=category,
+        page=filters["page"],
+        page_size=page_size,
+        sort=filters["sort"],
+    )
+    total = data.count_inventory_batches(q=filters["q"], category=category)
+    page = shared.paged(
+        items,
+        total,
+        filters["page"],
+        page_size,
+        q=filters["q"],
+        type=category,
+        sort=filters["sort"],
+    )
+    current_page = page["pagination"]["page"]
+    total_pages = page["pagination"]["total_pages"]
+    first_page = max(1, min(current_page - 2, total_pages - 4))
+    page["pagination"]["page_numbers"] = list(range(first_page, min(total_pages, first_page + 4) + 1))
+    return page
 
 
 def profile_context(request: Request) -> dict:
@@ -103,7 +181,15 @@ def dashboard_context(request: Request) -> dict:
     return {
         "team_leader_role": leader_role,
         "metrics": data.current_metrics(team_leader_account_id=account_id),
-        "inquiries": data.list_inquiries(limit=4, assigned_team_leader_account_id=account_id),
+        "inquiries": (
+            data.list_inquiries(
+                limit=4,
+                assigned_team_leader_account_id=account_id,
+                include_unassigned=True,
+            )
+            if leader_role == "sales-supervisor"
+            else []
+        ),
         "orders": data.list_orders(order_type="reseller", limit=5, team_leader_account_id=account_id),
     }
 
@@ -135,24 +221,78 @@ def batches_context(request: Request) -> dict:
     return {
         "inventory_batches_page": page,
         "inventory_batches": page["items"],
-        "product_categories": data.product_categories,
+        "batch_categories": (
+            ("", "All batches"),
+            *[(category, category) for category in data.product_categories],
+            ("Package", "Packages"),
+        ),
     }
 
 
 def logs_context(request: Request) -> dict:
     page = logs_page(request, inventory_only=shared.session_team_leader_role(request) == "inventory")
-    return {"activity_logs_page": page, "activity_logs": page["items"]}
+    return {
+        "activity_logs_page": page,
+        "activity_logs": page["items"],
+        "movement_categories": (
+            ("", "All movements"),
+            ("opening", "Opening"),
+            ("receipts", "Receipts"),
+            ("production", "Production"),
+            ("sales", "Sales"),
+        ),
+    }
 
 
 def inquiries_context(request: Request) -> dict:
-    page = shared.inquiries_page(request, assigned_team_leader_account_id=shared.session_account_id(request))
+    page = shared.inquiries_page(
+        request,
+        assigned_team_leader_account_id=shared.session_account_id(request),
+        include_unassigned=True,
+    )
     return {"inquiries_page": page, "inquiries": page["items"]}
+
+
+def resellers_context(request: Request) -> dict:
+    filters = shared.portal_filters(request)
+    status = filters["status"] if filters["status"] in {"pending", "active", "suspended", "inactive"} else ""
+    account_id = shared.session_account_id(request)
+    items = data.list_team_resellers(
+        team_leader_account_id=account_id,
+        q=filters["q"],
+        status=status,
+        page=filters["page"],
+        page_size=10,
+        sort=filters["sort"],
+    )
+    total = data.count_team_resellers(
+        team_leader_account_id=account_id,
+        q=filters["q"],
+        status=status,
+    )
+    page = shared.paged(
+        items,
+        total,
+        filters["page"],
+        10,
+        q=filters["q"],
+        status=status,
+        sort=filters["sort"],
+    )
+    return {"team_resellers_page": page, "team_resellers": page["items"]}
 
 
 def live_chat_context(request: Request) -> dict:
     return {
         "live_chat_workspace": live_chat.workspace(shared.session_account_id(request)),
         "live_chat_enabled": LIVE_CHAT_ENABLED,
+    }
+
+
+def reseller_messages_context(request: Request) -> dict:
+    account_id = shared.session_account_id(request)
+    return {
+        "reseller_message_threads": reseller_messaging.leader_conversations(account_id),
     }
 
 
@@ -165,9 +305,9 @@ def reports_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
     page = shared.reports_page(request, "team_leader", team_leader_account_id=account_id)
     return {
+        "report_default_date": business_today().isoformat(),
         "sales_reports_page": page,
         "sales_reports": page["items"],
-        "reseller_purchase_summary": data.team_reseller_purchase_summary(team_leader_account_id=account_id),
         "team_report_sales": data.team_sales_report_entries(team_leader_account_id=account_id),
         "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=account_id),
     }
@@ -181,13 +321,15 @@ SECTION_LOADERS = {
     ("team-leader", "finished-products"): finished_products_inventory_context,
     ("team-leader", "batches"): batches_context,
     ("team-leader", "logs"): logs_context,
-    ("team-leader", "inquiries"): inquiries_context,
     ("team-leader", "live-chat"): live_chat_context,
+    ("team-leader", "messages"): reseller_messages_context,
+    ("team-leader", "resellers"): resellers_context,
     ("team-leader", "orders"): orders_context,
     ("team-leader", "reports"): reports_context,
     ("team-leader", "profile"): profile_context,
     ("sales-supervisor", "dashboard"): dashboard_context,
     ("sales-supervisor", "live-chat"): live_chat_context,
+    ("sales-supervisor", "messages"): reseller_messages_context,
     ("sales-supervisor", "inquiries"): inquiries_context,
     ("sales-supervisor", "orders"): orders_context,
     ("sales-supervisor", "reports"): reports_context,
@@ -231,6 +373,16 @@ async def team_inventory_products_partial(request: Request):
     if role_guard:
         return role_guard
     products_page = finished_inventory_products_page(request)
+    finished_products = [
+        product
+        for product in products_page["items"]
+        if str(product.get("category") or "").strip().lower() != "package"
+    ]
+    product_packages = [
+        product
+        for product in products_page["items"]
+        if str(product.get("category") or "").strip().lower() == "package"
+    ]
     return shared.templates().TemplateResponse(
         request,
         "portals/team-leader/_inventory_products.html",
@@ -238,13 +390,15 @@ async def team_inventory_products_partial(request: Request):
             "request": request,
             "inventory_items_page": products_page,
             "inventory_products_page": products_page,
-            "finished_products": products_page["items"],
+            "finished_products": finished_products,
+            "finished_product_packages": product_packages,
             "inventory_item_tabs": [
                 {"label": "All products", "value": ""},
                 *[
                     {"label": category, "value": category}
                     for category in data.product_categories
                 ],
+                {"label": "Packages", "value": "Package"},
             ],
         },
     )
@@ -433,7 +587,6 @@ async def team_product_pack_content(
 
 
 @router.post("/portal/sales-supervisor/inquiries/{inquiry_id}/{decision}")
-@router.post("/portal/team-leader/inquiries/{inquiry_id}/{decision}")
 async def team_inquiry_decision(
     request: Request,
     inquiry_id: int,
@@ -444,7 +597,7 @@ async def team_inquiry_decision(
     guard = shared.require_portal_session(request, role_key)
     if guard:
         return guard
-    role_guard = shared.require_team_leader_role(request, "sales")
+    role_guard = shared.require_team_leader_role(request, "sales-supervisor")
     if role_guard:
         return role_guard
     if decision == "approve":
@@ -471,7 +624,12 @@ async def team_inquiry_decision(
 
 @router.post("/portal/sales-supervisor/orders/{order_id}/{decision}")
 @router.post("/portal/team-leader/orders/{order_id}/{decision}")
-async def team_order_decision(request: Request, order_id: int, decision: str):
+async def team_order_decision(
+    request: Request,
+    order_id: int,
+    decision: str,
+    rejection_reason: Annotated[str, Form()] = "",
+):
     role_key = request.session.get("role_key") if request.session.get("role_key") in {"team-leader", "sales-supervisor"} else "team-leader"
     guard = shared.require_portal_session(request, role_key)
     if guard:
@@ -482,7 +640,12 @@ async def team_order_decision(request: Request, order_id: int, decision: str):
     if decision not in {"approve", "reject", "fulfill"}:
         raise HTTPException(status_code=404)
     try:
-        if not data.decide_order(order_id, decision, team_leader_account_id=shared.session_account_id(request)):
+        if not data.decide_order(
+            order_id,
+            decision,
+            team_leader_account_id=shared.session_account_id(request),
+            rejection_reason=rejection_reason,
+        ):
             return shared.redirect_to(shared.safe_portal_path(role_key, "orders", error="Order not found or already finalized."))
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path(role_key, "orders", error=str(exc)))

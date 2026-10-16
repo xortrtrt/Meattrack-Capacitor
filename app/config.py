@@ -12,6 +12,9 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 APP_ENV = os.getenv("APP_ENV", "development")
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "change-this-local-dev-secret")
+RECEIPT_SCAN_TOKEN_TTL_SECONDS = int(os.getenv("RECEIPT_SCAN_TOKEN_TTL_SECONDS", "900"))
+UNPAID_ORDER_TTL_MINUTES = 15
+TESSERACT_CMD = os.getenv("TESSERACT_CMD", "").strip()
 
 
 def env_bool(name: str, default: bool) -> bool:

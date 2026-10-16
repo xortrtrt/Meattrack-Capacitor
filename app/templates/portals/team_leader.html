@@ -17,6 +17,10 @@
   {% include "portals/team-leader/inquiries.html" %}
 {% elif section == "live-chat" %}
   {% include "portals/team-leader/live_chat.html" %}
+{% elif section == "messages" %}
+  {% include "portals/team-leader/reseller_messages.html" %}
+{% elif section == "resellers" %}
+  {% include "portals/team-leader/resellers.html" %}
 {% elif section == "orders" %}
   {% include "portals/team-leader/orders.html" %}
 {% elif section == "reports" %}
@@ -27,5 +31,7 @@
   {% include "portals/team-leader/logs.html" %}
 {% elif section == "profile" %}
   {% include "portals/team-leader/profile.html" %}
+{% elif section == "notifications" %}
+  {% include "portals/notifications.html" %}
 {% endif %}
 {% endblock %}

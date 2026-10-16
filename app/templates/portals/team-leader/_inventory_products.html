@@ -1,7 +1,47 @@
+{% macro product_card(product, is_package=false) -%}
+<article class="inventory-product-card{{ ' inventory-product-card--package' if is_package else '' }}">
+  <div class="inventory-product-image">
+    <img src="{{ product.name|product_image|media_url }}" alt="{{ product.name }}" width="640" height="480" loading="lazy">
+    {% if is_package %}
+    <span class="inventory-package-marker"><i data-lucide="gift"></i> Package</span>
+    {% endif %}
+    <span class="inventory-product-status status-badge {{ 'active' if product.is_active else 'absent' }}">
+      <i data-lucide="{{ 'circle-check' if product.is_active else 'circle-slash' }}"></i>
+      {{ 'Active' if product.is_active else 'Inactive' }}
+    </span>
+  </div>
+  <div class="inventory-product-card-copy">
+    <span class="reseller-product-category">{{ product.category }}</span>
+    <h3>{{ product.name }}</h3>
+    <div class="inventory-product-stats">
+      <div class="inventory-product-stat">
+        <span><i data-lucide="boxes"></i> Available stock</span>
+        <strong>{{ product.available|number }} <small>{{ product.unit }}</small></strong>
+      </div>
+      <div class="inventory-product-stat inventory-product-price">
+        <span><i data-lucide="philippine-peso"></i> Unit price</span>
+        <strong>{{ product.base_price|currency }} <small>/{{ product.unit }}</small></strong>
+      </div>
+    </div>
+    <div class="inventory-product-content">
+      <i data-lucide="{{ 'package-open' if is_package else 'scale' }}"></i>
+      <span>
+        <small>{{ 'Package measurement' if is_package else 'Declared net content' }}</small>
+        {% if product.pack_content_status == "declared" %}
+        <strong>{{ product.pack_size|number }} {{ product.pack_size_unit }} per {{ product.unit }}</strong>
+        {% else %}
+        <strong class="muted">Not configured</strong>
+        {% endif %}
+      </span>
+    </div>
+  </div>
+</article>
+{%- endmacro %}
+
 <section class="inventory-separated-section" data-inventory-products-region>
   <div class="panel-heading">
-    <h3>Finished products</h3>
-    <span class="hint">Sellable products displayed as product cards.</span>
+    <h3>Product catalog</h3>
+    <span class="inventory-product-count"><i data-lucide="package-check"></i> {{ inventory_products_page.pagination.total }} product{{ '' if inventory_products_page.pagination.total == 1 else 's' }}</span>
   </div>
   <nav class="portal-category-tabs" aria-label="Finished product categories">
     {% for tab in inventory_item_tabs %}
@@ -14,29 +54,51 @@
     {% endfor %}
   </nav>
   <div class="inventory-products-status" data-inventory-products-status aria-live="polite"></div>
-  <div class="inventory-product-card-grid">
-    {% for product in finished_products %}
-    <article class="inventory-product-card">
-      <span class="inventory-product-image">
-        <img src="{{ product.name|product_image|media_url }}" alt="{{ product.name }}" loading="lazy">
-      </span>
-      <div class="inventory-product-card-copy">
-        <span class="reseller-product-category">{{ product.category }}</span>
-        <h3>{{ product.name }}</h3>
-        <strong>{{ product.available|number }} {{ product.unit }} available</strong>
-        <small>{{ product.base_price|currency }}/{{ product.unit }}</small>
-        {% if product.pack_content_status == "declared" %}
-        <small>{{ product.pack_size|number }} {{ product.pack_size_unit }} declared net content</small>
-        {% else %}
-        <small class="muted">Net content not configured</small>
-        {% endif %}
-        <span class="status-badge {{ 'active' if product.is_active else 'absent' }}">{{ 'Active' if product.is_active else 'Inactive' }}</span>
+
+  {% if finished_products %}
+  <section class="inventory-product-group" aria-labelledby="standard-products-title">
+    <header class="inventory-product-group-heading">
+      <span class="inventory-product-group-icon"><i data-lucide="package-open"></i></span>
+      <div>
+        <h4 id="standard-products-title">Individual products</h4>
+        <p>Finished goods sold as regular product packs.</p>
       </div>
-    </article>
-    {% else %}
-    <p class="hint">No finished products found for this filter.</p>
-    {% endfor %}
+      <span class="inventory-product-group-count">{{ finished_products|length }}</span>
+    </header>
+    <div class="inventory-product-card-grid">
+      {% for product in finished_products %}
+      {{ product_card(product) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if finished_product_packages %}
+  <section class="inventory-product-group inventory-product-group--packages" aria-labelledby="package-products-title">
+    <header class="inventory-product-group-heading">
+      <span class="inventory-product-group-icon"><i data-lucide="gift"></i></span>
+      <div>
+        <h4 id="package-products-title">Packages</h4>
+        <p>Trial, reseller, and distributor bundles kept separate from regular products.</p>
+      </div>
+      <span class="inventory-product-group-count">{{ finished_product_packages|length }}</span>
+    </header>
+    <div class="inventory-product-card-grid">
+      {% for product in finished_product_packages %}
+      {{ product_card(product, true) }}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if not finished_products and not finished_product_packages %}
+  <div class="inventory-products-empty">
+    <i data-lucide="package-search"></i>
+    <strong>No finished products found</strong>
+    <small>Try a different category or search term.</small>
   </div>
+  {% endif %}
+
   <div class="pagination" data-inventory-products-pagination>
     {% if inventory_products_page.pagination.has_prev %}
     <a

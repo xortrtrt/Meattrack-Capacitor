@@ -101,6 +101,15 @@ def main():
         """, (hash_password(secrets.token_urlsafe(32)),))
         leader_account_id = cur.fetchone()[0]
         activation_links.append(("Sales team leader", create_activation_link(cur, leader_account_id)))
+
+        # Sales supervisor (owns reseller-inquiry review decisions)
+        cur.execute("""
+            INSERT INTO accounts (account_type, reseller_id, name, email, password_hash, team_leader_role, is_active, activation_status)
+            VALUES ('team_leader', NULL, 'Sales Supervisor', 'sales.supervisor@batangaspremium.test', %s, 'sales-supervisor', false, 'pending')
+            RETURNING account_id;
+        """, (hash_password(secrets.token_urlsafe(32)),))
+        supervisor_account_id = cur.fetchone()[0]
+        activation_links.append(("Sales supervisor", create_activation_link(cur, supervisor_account_id)))
         
         # Reseller (Lipa Fresh Mart)
         cur.execute("""

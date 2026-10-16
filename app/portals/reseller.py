@@ -5,8 +5,10 @@ from decimal import Decimal
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from app import repositories as data
+from app import receipt_ocr
 from app.business_time import business_today
 from app.portals import shared
 
@@ -38,8 +40,10 @@ def cart_context(request: Request) -> dict:
 
 def checkout_context(request: Request) -> dict:
     context = cart_summary_context(request)
+    draft = request.session.pop("checkout_error_draft", None) if request.query_params.get("restore") == "1" else None
     placed_order_id = request.query_params.get("placed")
     context["placed_order_id"] = None
+    context["placed_order"] = None
     try:
         clean_placed_order_id = int(placed_order_id) if placed_order_id else None
     except ValueError:
@@ -49,9 +53,11 @@ def checkout_context(request: Request) -> dict:
         confirmation = data.reseller_order_confirmation(account_id, clean_placed_order_id)
         if confirmation:
             context["placed_order_id"] = int(confirmation["order_id"])
+            context["placed_order"] = confirmation
 
     selected_product_ids: list[int] = []
-    for value in request.query_params.getlist("product_id"):
+    selected_values = draft.get("product_ids", []) if isinstance(draft, dict) else request.query_params.getlist("product_id")
+    for value in selected_values:
         try:
             product_id = int(value)
         except (TypeError, ValueError):
@@ -73,6 +79,8 @@ def checkout_context(request: Request) -> dict:
         ).quantize(Decimal("0.01")),
         "checkout_count": sum(item["cart_quantity"] for item in checkout_items),
         "selected_product_ids": selected_product_ids,
+        "checkout_notes": str(draft.get("notes", "")) if isinstance(draft, dict) else "",
+        "checkout_error": str(draft.get("error", "")) if isinstance(draft, dict) else "",
     })
     return context
 
@@ -159,19 +167,44 @@ def order_context(request: Request) -> dict:
 
 
 def history_context(request: Request) -> dict:
+    account_id = shared.session_account_id(request)
+    if account_id is not None:
+        data.expire_unpaid_orders(account_id=account_id)
     history_view = request.query_params.get("view", "all").strip().lower()
-    if history_view not in {"all", "to-pay", "approved", "fulfilled"}:
+    if history_view not in {"all", "to_pay", "pending", "approved", "fulfilled"}:
         history_view = "all"
-    status_override = history_view if history_view in {"approved", "fulfilled"} else None
+    status_override = history_view if history_view in {"to_pay", "pending", "approved", "fulfilled"} else None
     page = shared.orders_page(
         request,
         "reseller",
-        reseller_account_id=shared.session_account_id(request),
+        reseller_account_id=account_id,
         status_override=status_override,
-        without_payment_proof=history_view == "to-pay",
     )
     page["filters"]["view"] = history_view
     return {"orders_page": page, "orders": page["items"]}
+
+
+def inbox_context(request: Request) -> dict:
+    account_id = shared.session_account_id(request)
+    try:
+        open_system_message_id = int(request.query_params.get("system_message", ""))
+    except ValueError:
+        open_system_message_id = None
+    system_messages = data.list_order_system_messages(account_id, limit=20)
+    if open_system_message_id and not any(
+        int(item["order_system_message_id"]) == open_system_message_id
+        for item in system_messages
+    ):
+        linked_message = data.get_order_system_message(account_id, open_system_message_id)
+        if linked_message:
+            system_messages.insert(0, linked_message)
+        else:
+            open_system_message_id = None
+    return {
+        "system_messages": system_messages,
+        "system_message_unread_count": data.unread_order_system_message_count(account_id),
+        "open_system_message_id": open_system_message_id,
+    }
 
 
 SECTION_LOADERS = {
@@ -180,8 +213,22 @@ SECTION_LOADERS = {
     ("reseller", "cart"): cart_context,
     ("reseller", "checkout"): checkout_context,
     ("reseller", "history"): history_context,
+    ("reseller", "inbox"): inbox_context,
     ("reseller", "profile"): profile_context,
 }
+
+
+@router.post("/portal/reseller/system-messages/{system_message_id}/read")
+async def reseller_system_message_read(request: Request, system_message_id: int):
+    guard = shared.require_portal_session(request, "reseller")
+    if guard:
+        return JSONResponse({"ok": False, "error": "Your session expired. Please sign in again."}, status_code=401)
+    if not data.mark_order_system_message_read(
+        shared.session_account_id(request),
+        system_message_id,
+    ):
+        return JSONResponse({"ok": False, "error": "System message not found."}, status_code=404)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/portal/reseller/order")
@@ -252,11 +299,91 @@ async def reseller_cart_checkout(
         )
     selected_product_ids = list(dict.fromkeys(product_id))
     try:
-        order = data.checkout_reseller_cart(account_id, notes.strip(), selected_product_ids)
+        order = data.checkout_reseller_cart(
+            account_id,
+            notes.strip(),
+            selected_product_ids,
+        )
     except ValueError as exc:
         error_section = "checkout" if request.url.path == "/portal/reseller/checkout" else "cart"
+        if error_section == "checkout":
+            request.session["checkout_error_draft"] = {
+                "product_ids": selected_product_ids,
+                "notes": notes.strip(),
+                "error": str(exc),
+            }
+            return shared.redirect_to("/portal/reseller/checkout?restore=1")
         return shared.redirect_to(shared.safe_portal_path("reseller", error_section, error=str(exc)))
     return shared.redirect_to(f"/portal/reseller/checkout?placed={int(order['order_id'])}")
+
+
+@router.post("/portal/reseller/orders/receipt-scan")
+@router.post("/portal/reseller/checkout/receipt-scan")
+async def reseller_receipt_scan(
+    request: Request,
+    payment_proofs: list[UploadFile] = File(default=[]),
+):
+    guard = shared.require_portal_session(request, "reseller")
+    if guard:
+        return JSONResponse({"ok": False, "error": "Your session expired. Please sign in again."}, status_code=401)
+    account_id = shared.session_account_id(request)
+    if account_id is None:
+        return JSONResponse({"ok": False, "error": "Your session expired. Please sign in again."}, status_code=401)
+    try:
+        attachments = await shared.parse_payment_proof_attachments(payment_proofs)
+        if not attachments:
+            raise ValueError("Choose at least one payment receipt screenshot.")
+        scan = await run_in_threadpool(receipt_ocr.scan_payment_proofs, attachments)
+        scan["scan_token"] = receipt_ocr.create_scan_token(account_id, attachments, scan)
+        scan["ok"] = True
+        return JSONResponse(scan)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+
+@router.post("/portal/reseller/orders/{order_id}/payment")
+async def reseller_order_payment(
+    request: Request,
+    order_id: int,
+    payment_proofs: list[UploadFile] = File(default=[]),
+    receipt_scan_token: str = Form(""),
+    transaction_number: str = Form(""),
+    payment_date: str = Form(""),
+    payment_time: str = Form(""),
+    payment_amount: str = Form(""),
+    payment_details_confirmed: str = Form(""),
+):
+    guard = shared.require_portal_session(request, "reseller")
+    if guard:
+        return guard
+    account_id = shared.session_account_id(request)
+    if account_id is None:
+        return shared.redirect_to(shared.safe_portal_path("reseller", "history", error="Your session expired. Please sign in again."))
+    try:
+        attachments = await shared.parse_payment_proof_attachments(payment_proofs)
+        if not attachments:
+            raise ValueError("Attach at least one proof of payment screenshot.")
+        payment_details = receipt_ocr.confirmed_payment_details(
+            account_id,
+            attachments,
+            receipt_scan_token,
+            transaction_number,
+            payment_date,
+            payment_time,
+            payment_amount,
+            payment_details_confirmed == "yes",
+        )
+        data.submit_order_payment(account_id, order_id, attachments, payment_details)
+    except ValueError as exc:
+        return shared.redirect_to(
+            shared.safe_portal_path("reseller", "history", view="to_pay", error=str(exc))
+        )
+    return shared.redirect_to(
+        shared.safe_portal_path(
+            "reseller", "history", view="pending",
+            message=f"Payment for order #{order_id} was submitted for approval.",
+        )
+    )
 
 
 @router.post("/portal/reseller/orders/{order_id}/payment-proof")

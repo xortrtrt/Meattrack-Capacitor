@@ -9,6 +9,7 @@ from app.emailer import send_account_activation, send_inquiry_rejection, send_in
 from app.web_sessions import cleanup_expired_sessions
 from app import live_chat
 from app.repositories import forecasts as repositories
+from app.repositories import orders as order_repositories
 
 
 LOGGER = logging.getLogger("meattrack.worker")
@@ -230,6 +231,7 @@ def process_one_forecast() -> bool:
 
 
 def run_fast_once() -> None:
+    order_repositories.expire_unpaid_orders()
     while process_one_outbox():
         pass
     process_one_forecast()
