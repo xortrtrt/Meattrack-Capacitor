@@ -17,6 +17,15 @@ from app.config import database_dsn
 SCHEMA_FILE = PROJECT_ROOT / "database" / "schema.sql"
 MIGRATIONS_DIR = PROJECT_ROOT / "database" / "migrations"
 
+# Migration 023's conflict target was relaxed so the latest baseline (which uses
+# dedupe_key uniqueness) can safely replay it before migration 024. Databases that
+# already recorded the original immutable payload may keep that checksum.
+COMPATIBLE_MIGRATION_CHECKSUMS = {
+    "023_separate_order_system_messages.sql": {
+        "69789127def7dd552f5991c7dd65d4df13ee59d4a0dba5de73760aa3ab633ca8",
+    },
+}
+
 
 def main() -> None:
     with psycopg2.connect(database_dsn()) as connection:
@@ -50,7 +59,8 @@ def main() -> None:
                 )
                 applied = cursor.fetchone()
                 if applied:
-                    if applied[0] != checksum:
+                    compatible_checksums = COMPATIBLE_MIGRATION_CHECKSUMS.get(migration.name, set())
+                    if applied[0] != checksum and applied[0] not in compatible_checksums:
                         raise RuntimeError(
                             f"Applied migration {migration.name} has a different checksum. "
                             "Never edit a migration after it has run."

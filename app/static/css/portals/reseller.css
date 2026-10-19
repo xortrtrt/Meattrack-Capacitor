@@ -3,6 +3,545 @@
   max-width: 720px;
 }
 
+/* Expandable order ledger */
+.role-reseller .order-ledger {
+  padding: clamp(18px, 2.4vw, 30px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--gold) 5%, transparent), transparent 180px),
+    var(--surface);
+}
+
+.role-reseller .order-ledger-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.role-reseller .order-ledger-heading h2,
+.role-reseller .order-ledger-heading p {
+  margin: 0;
+}
+
+.role-reseller .order-ledger-heading h2 {
+  margin-top: 3px;
+  color: var(--primary);
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  letter-spacing: -0.025em;
+}
+
+.role-reseller .order-ledger-heading p {
+  margin-top: 6px;
+  color: var(--text-light);
+}
+
+.role-reseller .order-ledger-count {
+  display: grid;
+  min-width: 94px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  text-align: right;
+}
+
+.role-reseller .order-ledger-count strong {
+  color: var(--primary);
+  font-size: 1.25rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-reseller .order-ledger-count span {
+  margin-top: 3px;
+  color: var(--text-light);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.role-reseller .history-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(190px, 250px);
+  gap: 12px;
+  margin: 0 0 20px;
+}
+
+.role-reseller .history-search-control,
+.role-reseller .history-sort-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.role-reseller .history-search-control > svg,
+.role-reseller .history-sort-control > svg {
+  position: absolute;
+  left: 14px;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  color: var(--text-light);
+  pointer-events: none;
+}
+
+.role-reseller .history-toolbar input,
+.role-reseller .history-toolbar select {
+  width: 100%;
+  min-height: 48px;
+  padding-left: 42px;
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(13, 12, 11, 0.035);
+}
+
+.role-reseller .order-card-list {
+  display: grid;
+  gap: 14px;
+}
+
+.role-reseller .order-history-card {
+  overflow: clip;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgba(13, 12, 11, 0.045);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.role-reseller .order-history-card:hover {
+  border-color: color-mix(in srgb, var(--gold-deep) 42%, var(--border));
+  box-shadow: 0 10px 28px rgba(13, 12, 11, 0.075);
+}
+
+.role-reseller .order-history-card[open] {
+  border-color: color-mix(in srgb, var(--gold-deep) 52%, var(--border));
+  box-shadow: 0 14px 34px rgba(13, 12, 11, 0.09);
+}
+
+.role-reseller .order-card-summary {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto minmax(110px, auto) 36px;
+  gap: 22px;
+  align-items: center;
+  min-height: 104px;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+  touch-action: manipulation;
+}
+
+.role-reseller .order-card-summary::-webkit-details-marker {
+  display: none;
+}
+
+.role-reseller .order-card-summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--gold) 50%, transparent);
+  outline-offset: -3px;
+}
+
+.role-reseller .order-card-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 10px;
+  min-width: 0;
+}
+
+.role-reseller .order-card-number {
+  flex: 0 0 100%;
+  color: var(--primary);
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.role-reseller .order-card-identity time {
+  color: var(--text-light);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.role-reseller .order-card-identity .status-badge {
+  padding: 5px 9px;
+  font-size: 0.68rem;
+}
+
+.role-reseller .order-card-preview {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.role-reseller .order-card-preview img,
+.role-reseller .order-card-preview > span {
+  width: 50px;
+  height: 50px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.role-reseller .order-card-preview img {
+  object-fit: cover;
+}
+
+.role-reseller .order-card-preview > span {
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.role-reseller .order-card-total {
+  display: grid;
+  justify-items: end;
+  min-width: 110px;
+}
+
+.role-reseller .order-card-total small {
+  color: var(--text-light);
+  font-size: 0.7rem;
+}
+
+.role-reseller .order-card-total strong {
+  margin-top: 3px;
+  color: var(--primary);
+  font-size: 1.06rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-reseller .order-card-chevron {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--text-light);
+  transition: transform 180ms ease, background-color 180ms ease, color 180ms ease;
+}
+
+.role-reseller .order-history-card[open] .order-card-chevron {
+  transform: rotate(180deg);
+  background: var(--primary);
+  color: var(--gold);
+}
+
+.role-reseller .order-card-chevron svg {
+  width: 18px;
+  height: 18px;
+}
+
+.role-reseller .order-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, 390px);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-muted) 52%, var(--surface));
+  animation: order-card-reveal 180ms ease-out;
+}
+
+.role-reseller .order-card-items,
+.role-reseller .order-card-actions {
+  min-width: 0;
+  padding: 22px;
+}
+
+.role-reseller .order-card-items > header,
+.role-reseller .order-card-actions > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.role-reseller .order-card-items h3 {
+  margin: 2px 0 0;
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.role-reseller .order-card-actions {
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.role-reseller .order-card-action-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 10px;
+}
+
+.role-reseller .order-card-action-status .status-countdown {
+  margin: 0;
+  color: var(--text-light);
+  font-size: 0.72rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-reseller .order-product-list {
+  display: grid;
+  gap: 10px;
+}
+
+.role-reseller .order-product-line {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-height: 88px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.role-reseller .order-product-line img {
+  width: 64px;
+  height: 64px;
+  border-radius: 9px;
+  object-fit: cover;
+  background: var(--surface-muted);
+}
+
+.role-reseller .order-product-line > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.role-reseller .order-product-line > div > strong {
+  overflow: hidden;
+  color: var(--primary);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-reseller .order-product-line small {
+  color: var(--text-light);
+  font-size: 0.76rem;
+}
+
+.role-reseller .order-product-line > strong {
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-reseller .order-payment-workspace {
+  display: grid;
+  gap: 12px;
+}
+
+.role-reseller .order-card-actions .receipt-payment-form {
+  width: 100%;
+  min-width: 0;
+  padding: 13px;
+}
+
+.role-reseller .order-card-actions .proof-links {
+  display: grid;
+  gap: 8px;
+}
+
+.role-reseller .order-card-actions .proof-links a {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.role-reseller .order-card-actions .proof-links svg {
+  width: 18px;
+  height: 18px;
+  color: var(--gold-deep);
+}
+
+.role-reseller .order-action-note,
+.role-reseller .order-cancellation-note {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-muted);
+}
+
+.role-reseller .order-cancellation-note {
+  margin-bottom: 12px;
+  border-color: color-mix(in srgb, var(--danger) 24%, var(--border));
+}
+
+.role-reseller .order-action-note > svg,
+.role-reseller .order-cancellation-note > svg {
+  width: 20px;
+  height: 20px;
+  margin: auto;
+  color: var(--gold-deep);
+}
+
+.role-reseller .order-cancellation-note > svg {
+  color: var(--danger);
+}
+
+.role-reseller .order-action-note > span,
+.role-reseller .order-cancellation-note > span {
+  display: grid;
+  gap: 3px;
+}
+
+.role-reseller .order-action-note strong,
+.role-reseller .order-cancellation-note strong {
+  color: var(--primary);
+  font-size: 0.82rem;
+}
+
+.role-reseller .order-action-note small,
+.role-reseller .order-cancellation-note small {
+  color: var(--text-light);
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.role-reseller .order-card-actions .order-cancel-action {
+  margin-top: 12px;
+}
+
+.role-reseller .order-card-actions .order-cancel-trigger {
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+}
+
+.role-reseller .order-ledger-pagination {
+  margin-top: 20px;
+}
+
+@keyframes order-card-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 980px) {
+  .role-reseller .order-card-summary {
+    grid-template-columns: minmax(210px, 1fr) auto minmax(100px, auto) 36px;
+    gap: 14px;
+  }
+
+  .role-reseller .order-card-preview img,
+  .role-reseller .order-card-preview > span {
+    width: 44px;
+    height: 44px;
+  }
+
+  .role-reseller .order-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .role-reseller .order-card-actions {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .role-reseller .order-ledger-heading {
+    align-items: center;
+  }
+
+  .role-reseller .history-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .role-reseller .order-card-summary {
+    grid-template-columns: minmax(0, 1fr) auto 36px;
+    gap: 12px;
+    min-height: 94px;
+    padding: 15px;
+  }
+
+  .role-reseller .order-card-preview {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+
+  .role-reseller .order-card-total {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .role-reseller .order-card-chevron {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .role-reseller .order-card-items,
+  .role-reseller .order-card-actions {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .role-reseller .order-ledger {
+    padding: 16px 12px;
+  }
+
+  .role-reseller .order-ledger-heading p {
+    max-width: 240px;
+    font-size: 0.82rem;
+  }
+
+  .role-reseller .order-ledger-count {
+    min-width: 72px;
+    padding-inline: 10px;
+  }
+
+  .role-reseller .order-card-preview img,
+  .role-reseller .order-card-preview > span {
+    width: 40px;
+    height: 40px;
+  }
+
+  .role-reseller .order-product-line {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .role-reseller .order-product-line img {
+    width: 52px;
+    height: 52px;
+  }
+
+  .role-reseller .order-product-line > strong {
+    grid-column: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-reseller .order-history-card,
+  .role-reseller .order-card-chevron,
+  .role-reseller .order-card-body {
+    animation: none;
+    transition: none;
+  }
+}
+
 /* Cart and checkout: a connected order-desk workflow. */
 .role-reseller .order-flow {
   --order-ink: var(--primary);
@@ -3345,6 +3884,187 @@ body.modal-is-open {
   color: var(--text-light);
 }
 
+.role-reseller .order-cancellation-reason {
+  display: block;
+  max-width: 240px;
+  margin-top: 7px;
+  color: var(--text-light);
+  line-height: 1.4;
+}
+
+.role-reseller .order-cancel-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--error);
+  background: var(--error);
+  color: var(--white);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--error) 22%, transparent);
+  white-space: nowrap;
+}
+
+.role-reseller .order-cancel-action {
+  margin-top: 10px;
+}
+
+.role-reseller .order-cancel-trigger svg {
+  width: 16px;
+  height: 16px;
+}
+
+.role-reseller .order-cancel-trigger:hover,
+.role-reseller .order-cancel-trigger:focus-visible {
+  border-color: color-mix(in srgb, var(--error) 82%, black);
+  background: color-mix(in srgb, var(--error) 82%, black);
+  color: var(--white);
+}
+
+.role-reseller .order-cancel-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.role-reseller .order-cancel-modal[hidden] {
+  display: none;
+}
+
+.role-reseller .order-cancel-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgba(13, 12, 11, 0.58);
+  backdrop-filter: blur(3px);
+}
+
+.role-reseller .order-cancel-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 560px);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(13, 12, 11, 0.26);
+}
+
+.role-reseller .order-cancel-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.role-reseller .order-cancel-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+}
+
+.role-reseller .order-cancel-icon svg {
+  width: 21px;
+  height: 21px;
+}
+
+.role-reseller .order-cancel-header h3,
+.role-reseller .order-cancel-header p {
+  margin: 0;
+}
+
+.role-reseller .order-cancel-header h3 {
+  margin-top: 3px;
+  color: var(--primary);
+  font-size: 1.22rem;
+}
+
+.role-reseller .order-cancel-header p {
+  margin-top: 7px;
+  color: var(--text-light);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.role-reseller .order-cancel-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-muted);
+  color: var(--text-light);
+  cursor: pointer;
+}
+
+.role-reseller .order-cancel-close:hover,
+.role-reseller .order-cancel-close:focus-visible {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+}
+
+.role-reseller .order-cancel-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.role-reseller .order-cancel-card form {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.role-reseller .order-cancel-card label {
+  display: grid;
+  gap: 8px;
+  color: var(--primary);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.role-reseller .order-cancel-card label small {
+  margin-left: 5px;
+  color: var(--text-light);
+  font-weight: 650;
+}
+
+.role-reseller .order-cancel-card select,
+.role-reseller .order-cancel-card textarea {
+  width: 100%;
+  min-height: 44px;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.role-reseller .order-cancel-card textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+
+.role-reseller .order-cancel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.role-reseller .order-cancel-actions .button {
+  min-width: 138px;
+  justify-content: center;
+}
+
 @media (max-width: 560px) {
   .role-reseller .order-history-tabs {
     display: grid;
@@ -3361,5 +4081,40 @@ body.modal-is-open {
   .role-reseller .history-empty-state {
     min-height: 220px;
     padding: 36px 16px;
+  }
+
+  .role-reseller .order-cancel-modal {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .role-reseller .order-cancel-card {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    border-radius: 16px 16px 12px 12px;
+  }
+
+  .role-reseller .order-cancel-header {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 18px 16px 15px;
+  }
+
+  .role-reseller .order-cancel-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .role-reseller .order-cancel-card form {
+    padding: 18px 16px;
+  }
+
+  .role-reseller .order-cancel-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .role-reseller .order-cancel-actions .button {
+    width: 100%;
   }
 }

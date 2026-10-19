@@ -1,179 +1,74 @@
-<section class="panel reseller-history-panel">
-  <div class="panel-heading">
-    <h2>Order history</h2>
-    <span class="hint"
-      >Track payment, approval, and fulfillment in one place</span
-    >
-  </div>
+<section class="panel reseller-history-panel order-ledger">
+  <header class="order-ledger-heading">
+    <div><span class="eyebrow">Purchases</span><h2>Order history</h2><p>Track payment, approval, and fulfillment in one place.</p></div>
+    <div class="order-ledger-count" aria-label="{{ orders_page.pagination.total }} total orders"><strong>{{ orders_page.pagination.total|number }}</strong><span>order{{ '' if orders_page.pagination.total == 1 else 's' }}</span></div>
+  </header>
 
   <nav class="order-history-tabs" aria-label="Order history views" data-async-filter-target="[data-async-filter-results]" data-async-filter-sync="order-history-tabs">
-    <a
-      class="{{ 'active' if orders_page.filters.view == 'all' else '' }}"
-      href="?view=all{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
-      {% if orders_page.filters.view == 'all' %}aria-current="page"{% endif %}
-    ><i data-lucide="list"></i> All orders</a>
-    <a
-      class="{{ 'active' if orders_page.filters.view == 'to_pay' else '' }}"
-      href="?view=to_pay{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
-      {% if orders_page.filters.view == 'to_pay' %}aria-current="page"{% endif %}
-    ><i data-lucide="wallet-cards"></i> To pay</a>
-    <a
-      class="{{ 'active' if orders_page.filters.view == 'pending' else '' }}"
-      href="?view=pending{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
-      {% if orders_page.filters.view == 'pending' %}aria-current="page"{% endif %}
-    ><i data-lucide="clock-3"></i> Pending</a>
-    <a
-      class="{{ 'active' if orders_page.filters.view == 'approved' else '' }}"
-      href="?view=approved{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
-      {% if orders_page.filters.view == 'approved' %}aria-current="page"{% endif %}
-    ><i data-lucide="badge-check"></i> Approved</a>
-    <a
-      class="{{ 'active' if orders_page.filters.view == 'fulfilled' else '' }}"
-      href="?view=fulfilled{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}"
-      {% if orders_page.filters.view == 'fulfilled' %}aria-current="page"{% endif %}
-    ><i data-lucide="package-check"></i> Fulfilled</a>
+    {% set history_tabs = [('all', 'list', 'All orders'), ('to_pay', 'wallet-cards', 'To pay'), ('pending', 'clock-3', 'Pending'), ('approved', 'badge-check', 'Approved'), ('fulfilled', 'package-check', 'Fulfilled'), ('refunded', 'badge-dollar-sign', 'Refunded'), ('cancelled', 'circle-x', 'Cancelled')] %}
+    {% for value, icon, label in history_tabs %}
+    <a class="{{ 'active' if orders_page.filters.view == value else '' }}" href="?view={{ value }}{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}" {% if orders_page.filters.view == value %}aria-current="page"{% endif %}><i data-lucide="{{ icon }}"></i> {{ label }}</a>
+    {% endfor %}
   </nav>
 
-  <form class="filter-bar history-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
+  <form class="history-toolbar" method="get" data-async-filter-target="[data-async-filter-results]">
     <input type="hidden" name="view" value="{{ orders_page.filters.view }}" data-async-filter-sync="order-history-view" />
-    <label>Search <input name="q" value="{{ orders_page.filters.q }}" placeholder="Order or product"></label>
-    <label>Sort
-      <select name="sort">
-        <option value="">Newest</option>
-        <option value="oldest" {{ 'selected' if orders_page.filters.sort == 'oldest' else '' }}>Oldest</option>
-        <option value="total_desc" {{ 'selected' if orders_page.filters.sort == 'total_desc' else '' }}>Total high-low</option>
-        <option value="total_asc" {{ 'selected' if orders_page.filters.sort == 'total_asc' else '' }}>Total low-high</option>
-        <option value="status_asc" {{ 'selected' if orders_page.filters.sort == 'status_asc' else '' }}>Status</option>
-      </select>
-    </label>
+    <label class="history-search-control"><span class="sr-only">Search orders</span><i data-lucide="search" aria-hidden="true"></i><input name="q" value="{{ orders_page.filters.q }}" placeholder="Search by order or product" /></label>
+    <label class="history-sort-control"><span class="sr-only">Sort orders</span><i data-lucide="arrow-up-down" aria-hidden="true"></i><select name="sort" aria-label="Sort orders"><option value="">Newest first</option><option value="oldest" {{ 'selected' if orders_page.filters.sort == 'oldest' else '' }}>Oldest first</option><option value="total_desc" {{ 'selected' if orders_page.filters.sort == 'total_desc' else '' }}>Highest total</option><option value="total_asc" {{ 'selected' if orders_page.filters.sort == 'total_asc' else '' }}>Lowest total</option><option value="status_asc" {{ 'selected' if orders_page.filters.sort == 'status_asc' else '' }}>Status</option></select></label>
   </form>
-  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
-  {% if orders %}
-  <div class="table-wrap">
-    <table class="responsive-card-table order-history-table">
-      <thead>
-        <tr>
-          <th>Order</th>
-          <th>Date</th>
-          <th>Product</th>
-          <th>Status</th>
-          <th>Total</th>
-          <th>Proof of payment</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for order in orders %}
-        <tr id="order-{{ order.order_id }}">
-          <td data-label="Order">#{{ order.order_id }}</td>
-          <td data-label="Date">{{ order.order_date|nice_date }}</td>
-          <td data-label="Product">
-            {% if order["items"] %}
-            <div class="order-items-list">
-              {% set visible_item_count = 3 %}
-              {% for item in order["items"][:visible_item_count] %}
-                <span><strong>{{ item.quantity|number }} packs</strong> {{ item.name }}</span>
-              {% endfor %}
-              {% if order["items"]|length > visible_item_count %}
-              <details class="order-items-overflow">
-                <summary>Show {{ order["items"]|length - visible_item_count }} more product{{ '' if order["items"]|length - visible_item_count == 1 else 's' }}</summary>
-                <div class="order-items-overflow-list">
-                  {% for item in order["items"][visible_item_count:] %}
-                  <span><strong>{{ item.quantity|number }} packs</strong> {{ item.name }}</span>
-                  {% endfor %}
-                </div>
-              </details>
-              {% endif %}
+
+  <div class="order-ledger-results" data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+    {% if orders %}
+    <div class="order-card-list">
+      {% for order in orders %}
+      {% set reseller_status = 'refunded' if order.refund_status == 'completed' else order.status %}
+      <details class="order-history-card" id="order-{{ order.order_id }}" {% if order.status == 'to_pay' or loop.first %}open{% endif %}>
+        <summary class="order-card-summary">
+          <div class="order-card-identity"><span class="order-card-number">Order #{{ order.order_id }}</span><time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time><span class="status-badge {{ reseller_status }}">{{ 'To pay' if reseller_status == 'to_pay' else reseller_status }}</span></div>
+          <div class="order-card-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_image|media_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>
+          <div class="order-card-total"><small>Total</small><strong>{{ order.total_amount|currency }}</strong></div>
+          <span class="order-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span>
+        </summary>
+
+        <div class="order-card-body">
+          <section class="order-card-items" aria-labelledby="order-items-title-{{ order.order_id }}">
+            <header><div><span class="eyebrow">Order contents</span><h3 id="order-items-title-{{ order.order_id }}">{{ order['items']|length }} product{{ '' if order['items']|length == 1 else 's' }}</h3></div></header>
+            <div class="order-product-list">
+              {% for item in order['items'] %}
+              <article class="order-product-line"><img src="{{ item.name|product_image|media_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
+              {% else %}<p class="hint">No items were recorded for this order.</p>{% endfor %}
             </div>
-            {% else %}
-              <span class="hint">No items recorded</span>
-            {% endif %}
-          </td>
-          <td data-label="Status">
-            <span class="status-badge {{ order.status }}"
-              >{{ 'To pay' if order.status == 'to_pay' else order.status }}</span
-            >
-            {% if order.status == 'to_pay' and order.payment_due_at %}
-            <small class="status-countdown" data-payment-deadline="{{ order.payment_due_at.isoformat() }}"><span data-payment-countdown>15:00</span> remaining</small>
-            {% endif %}
-          </td>
-          <td data-label="Total">{{ order.total_amount|currency }}</td>
-          <td data-label="Proof of payment">
-            <div class="payment-proof-cell">
+          </section>
+
+          <aside class="order-card-actions" aria-label="Payment and order actions">
+            <header><span class="eyebrow">Order progress</span><div class="order-card-action-status"><span class="status-badge {{ reseller_status }}">{{ 'To pay' if reseller_status == 'to_pay' else reseller_status }}</span>{% if order.status == 'to_pay' and order.payment_due_at %}<small class="status-countdown" data-payment-deadline="{{ order.payment_due_at.isoformat() }}"><span data-payment-countdown>15:00</span> remaining</small>{% endif %}</div></header>
+
+            {% if order.status == 'cancelled' and order.cancellation_reason %}<div class="order-cancellation-note"><i data-lucide="message-square-text"></i><span><strong>Cancellation reason</strong><small>{{ order.cancellation_reason }}</small></span></div>{% endif %}
+
+            <div class="order-payment-workspace">
               {% if order.status == 'to_pay' %}
                 {% include "portals/reseller/_receipt_payment_form.html" %}
               {% elif order.payment_proofs %}
-                {% if order.payment_transaction_number %}
-                <div class="payment-details-summary">
-                  <strong>{{ order.payment_transaction_number }}</strong>
-                  {% if order.payment_amount is not none %}<span>Amount sent: {{ order.payment_amount|currency }}</span>{% endif %}
-                  <span>{{ order.payment_paid_at|nice_date }}</span>
-                  {% if order.payment_extraction_method == 'manual_corrected' %}<small>Customer corrected</small>{% endif %}
-                </div>
-                {% endif %}
-                <div class="proof-links">
-                  {% for proof in order.payment_proofs %}
-                  <a
-                    href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
-                    data-proof-modal-open
-                    data-proof-url="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
-                    data-proof-title="{{ proof.filename }}"
-                  >
-                    <i data-lucide="image"></i>
-                    {{ proof.filename }}
-                  </a>
-                  {% endfor %}
-                </div>
+                {% if order.payment_transaction_number %}<div class="payment-details-summary"><strong>{{ order.payment_transaction_number }}</strong>{% if order.payment_amount is not none %}<span>Amount sent: {{ order.payment_amount|currency }}</span>{% endif %}<span>{{ order.payment_paid_at|nice_date }}</span>{% if order.payment_extraction_method == 'manual_corrected' %}<small>Customer corrected</small>{% endif %}</div>{% endif %}
+                <div class="proof-links">{% for proof in order.payment_proofs %}<a href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}" data-proof-modal-open data-proof-url="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}" data-proof-title="{{ proof.filename }}"><i data-lucide="image"></i>{{ proof.filename }}</a>{% endfor %}</div>
               {% elif order.status == 'expired' %}
-                <span class="status-badge expired">Payment window expired</span>
+                <div class="order-action-note is-warning"><i data-lucide="timer-off"></i><span><strong>Payment window expired</strong><small>The reserved products were released.</small></span></div>
+              {% elif order.status == 'pending' %}
+                <form class="proof-upload-form" action="/portal/reseller/orders/{{ order.order_id }}/payment-proof" method="post" enctype="multipart/form-data"><label>Upload payment screenshot<input required type="file" name="payment_proofs" accept="image/png,image/jpeg,image/webp" multiple /></label><button class="button subtle" type="submit"><i data-lucide="upload"></i> Send proof</button></form>
               {% else %}
-                <span class="status-badge pending">Required</span>
-              {% endif %}
-              {% if order.status == "pending" and not order.payment_proofs %}
-              <form
-                class="proof-upload-form"
-                action="/portal/reseller/orders/{{ order.order_id }}/payment-proof"
-                method="post"
-                enctype="multipart/form-data"
-              >
-                <label>
-                  Upload screenshot
-                  <input required type="file" name="payment_proofs" accept="image/png,image/jpeg,image/webp" multiple />
-                </label>
-                <button class="button subtle small" type="submit">
-                  <i data-lucide="upload"></i>
-                  Send proof
-                </button>
-              </form>
+                <div class="order-action-note"><i data-lucide="circle-check-big"></i><span><strong>No action needed</strong><small>This order is up to date.</small></span></div>
               {% endif %}
             </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <div class="history-empty-state">
-    <span><i data-lucide="{{ 'wallet-cards' if orders_page.filters.view == 'to_pay' else 'clock-3' if orders_page.filters.view == 'pending' else 'badge-check' if orders_page.filters.view == 'approved' else 'package-check' if orders_page.filters.view == 'fulfilled' else 'clipboard-list' }}"></i></span>
-    <strong>
-      {% if orders_page.filters.view == 'to_pay' %}No orders are waiting for payment.
-      {% elif orders_page.filters.view == 'pending' %}No orders are waiting for approval.
-      {% elif orders_page.filters.view == 'approved' %}No approved orders yet.
-      {% elif orders_page.filters.view == 'fulfilled' %}No fulfilled orders yet.
-      {% else %}No orders match your filters.
-      {% endif %}
-    </strong>
-    <small>{{ 'Try another search or choose a different view.' if orders_page.filters.q else 'New orders will appear here as they move through the process.' }}</small>
-  </div>
-  {% endif %}
-  <div class="pagination">
-    {% if orders_page.pagination.has_prev %}
-    <a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}">Previous</a>
+            {% include "portals/reseller/_order_cancel_action.html" %}
+          </aside>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="history-empty-state"><span><i data-lucide="{{ 'wallet-cards' if orders_page.filters.view == 'to_pay' else 'clock-3' if orders_page.filters.view == 'pending' else 'badge-check' if orders_page.filters.view == 'approved' else 'package-check' if orders_page.filters.view == 'fulfilled' else 'badge-dollar-sign' if orders_page.filters.view == 'refunded' else 'circle-x' if orders_page.filters.view == 'cancelled' else 'clipboard-list' }}"></i></span><strong>{% if orders_page.filters.view == 'to_pay' %}No orders are waiting for payment.{% elif orders_page.filters.view == 'pending' %}No orders are waiting for approval.{% elif orders_page.filters.view == 'approved' %}No approved orders yet.{% elif orders_page.filters.view == 'fulfilled' %}No fulfilled orders yet.{% elif orders_page.filters.view == 'refunded' %}No refunded orders yet.{% elif orders_page.filters.view == 'cancelled' %}No cancelled orders yet.{% else %}No orders match your filters.{% endif %}</strong><small>{{ 'Try another search or choose a different view.' if orders_page.filters.q else 'New orders will appear here as they move through the process.' }}</small></div>
     {% endif %}
-    <span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>
-    {% if orders_page.pagination.has_next %}
-    <a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next</a>
-    {% endif %}
-  </div>
+
+    {% if orders_page.pagination.total_pages > 1 %}<nav class="pagination order-ledger-pagination" aria-label="Order history pages">{% if orders_page.pagination.has_prev %}<a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}"><i data-lucide="chevron-left"></i> Previous</a>{% endif %}<span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>{% if orders_page.pagination.has_next %}<a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next <i data-lucide="chevron-right"></i></a>{% endif %}</nav>{% endif %}
   </div>
 </section>

@@ -24,6 +24,16 @@ class ConfirmedPayment(TypedDict):
     ocr_engine: str
 
 
+RESELLER_ORDER_CANCELLATION_REASONS = (
+    ("ordered_by_mistake", "Ordered by mistake"),
+    ("change_items", "Need to change items or quantities"),
+    ("cannot_pay", "Unable to complete payment"),
+    ("no_longer_needed", "Order is no longer needed"),
+    ("other", "Other reason"),
+)
+_CANCELLATION_REASON_LABELS = dict(RESELLER_ORDER_CANCELLATION_REASONS)
+
+
 def list_orders(
     order_type: str | None = None,
     q: str = "",
@@ -44,7 +54,9 @@ def list_orders(
         params.append(order_type)
     q = q.strip()
     status = status.strip()
-    if status:
+    if status == "refunded":
+        where.append("refund.status = 'completed'")
+    elif status:
         where.append("o.status = %s")
         params.append(status)
     if team_leader_account_id is not None:
@@ -87,13 +99,16 @@ def list_orders(
                o.team_leader_account_id,
                tl.name AS team_leader_name,
                o.status, o.order_date, o.total_amount, o.notes,
+               o.cancellation_reason, o.cancelled_at,
                o.payment_transaction_number, o.payment_paid_at, o.payment_amount,
                o.payment_ocr_confidence, o.payment_extraction_method,
                o.payment_confirmed_at, o.payment_ocr_engine,
-               o.payment_due_at, o.expired_at
+               o.payment_due_at, o.expired_at,
+               refund.status AS refund_status
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = o.team_leader_account_id
+        LEFT JOIN order_refunds refund ON refund.order_id = o.order_id
         {where_sql}
         ORDER BY {order_sql}
         {"LIMIT %s" if limit is not None else ""}
@@ -280,6 +295,110 @@ def expire_unpaid_orders(account_id: int | None = None, limit: int = 100) -> int
         if not cur.fetchone()["locked"]:
             return 0
         return _expire_unpaid_orders_cursor(cur, account_id=account_id, limit=limit)
+
+
+def _normalize_order_cancellation_reason(reason: str, details: str = "") -> str:
+    reason_key = str(reason).strip().lower()
+    label = _CANCELLATION_REASON_LABELS.get(reason_key)
+    if label is None:
+        raise ValueError("Select a cancellation reason.")
+    clean_details = " ".join(str(details).strip().split())
+    if len(clean_details) > 300:
+        raise ValueError("Cancellation details must be 300 characters or fewer.")
+    if reason_key == "other" and len(clean_details) < 5:
+        raise ValueError("Add a short explanation for the cancellation.")
+    return f"{label}: {clean_details}" if clean_details else label
+
+
+def cancel_reseller_order(
+    account_id: int,
+    order_id: int,
+    cancellation_reason: str,
+    cancellation_details: str = "",
+) -> dict:
+    clean_reason = _normalize_order_cancellation_reason(cancellation_reason, cancellation_details)
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT o.order_id, o.status, o.created_by_account_id,
+                   o.team_leader_account_id, o.payment_transaction_number,
+                   o.payment_paid_at, o.payment_amount, o.payment_confirmed_at,
+                   r.business_name,
+                   EXISTS (
+                       SELECT 1 FROM order_payment_proofs opp
+                       WHERE opp.order_id = o.order_id
+                   ) AS has_payment_proof
+            FROM orders o
+            JOIN resellers r ON r.reseller_id = o.reseller_id
+            WHERE o.order_id = %s
+              AND o.order_type = 'reseller'
+              AND o.created_by_account_id = %s
+            FOR UPDATE OF o;
+            """,
+            (order_id, account_id),
+        )
+        order = cur.fetchone()
+        if not order:
+            raise ValueError("Order was not found.")
+        if order["status"] not in {"to_pay", "pending"}:
+            raise ValueError("This order can no longer be cancelled.")
+        payment_amount = Decimal(str(order.get("payment_amount") or 0))
+        payment_exists = any((
+            order.get("has_payment_proof"),
+            order.get("payment_transaction_number"),
+            order.get("payment_paid_at"),
+            order.get("payment_confirmed_at"),
+            payment_amount > 0,
+        ))
+        if payment_exists:
+            raise ValueError(
+                "Orders with a submitted payment cannot be cancelled. Contact your sales leader."
+            )
+
+        cancelled_at = business_now()
+        cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
+        cur.execute(
+            """
+            UPDATE orders
+            SET status = 'cancelled', cancellation_reason = %s, cancelled_at = %s
+            WHERE order_id = %s
+            RETURNING order_id, status, cancellation_reason, cancelled_at;
+            """,
+            (clean_reason, cancelled_at, order_id),
+        )
+        result = dict(cur.fetchone())
+        _add_log_cursor(
+            cur,
+            actor_account_id=account_id,
+            action="cancelled_reseller_order",
+            entity_type="orders",
+            entity_id=order_id,
+        )
+        _create_order_system_message_cursor(
+            cur,
+            reseller_account_id=account_id,
+            order_id=order_id,
+            event_type="cancelled",
+            title="Order cancelled",
+            message=f"You cancelled order #{order_id}. Reason: {clean_reason}",
+            dedupe_key=f"order-cancelled-{order_id}",
+        )
+        _create_notification_cursor(
+            cur,
+            recipient_account_id=order.get("team_leader_account_id"),
+            category="order",
+            severity="info",
+            title="Reseller order cancelled",
+            message=(
+                f"{order['business_name']} cancelled order #{order_id}. "
+                f"Reason: {clean_reason}"
+            ),
+            target_url="/portal/team-leader/orders?status=cancelled",
+            source_type="orders",
+            source_id=order_id,
+            dedupe_key=f"order-cancelled-{order_id}-leader",
+        )
+    return clean_row(result)
 
 
 def submit_order_payment(
@@ -496,13 +615,16 @@ def count_orders(
         SELECT COUNT(*) AS total
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
+        LEFT JOIN order_refunds refund ON refund.order_id = o.order_id
     """
     where = []
     params: list[object] = []
     if order_type:
         where.append("o.order_type = %s")
         params.append(order_type)
-    if status:
+    if status == "refunded":
+        where.append("refund.status = 'completed'")
+    elif status:
         where.append("o.status = %s")
         params.append(status)
     if team_leader_account_id is not None:
@@ -1009,10 +1131,12 @@ def decide_order(
     decision: str,
     team_leader_account_id: int | None = None,
     rejection_reason: str = "",
+    payment_received: bool | None = None,
 ) -> bool:
     if decision not in {"approve", "reject", "fulfill"}:
         return False
     cleaned_rejection_reason = ""
+    refund_record: dict | None = None
 
     with get_transaction_cursor() as cur:
         scope = ""
@@ -1055,13 +1179,67 @@ def decide_order(
             if ord_res["status"] != "pending":
                 return False
             cleaned_rejection_reason = _normalize_order_rejection_reason(rejection_reason)
+            if payment_received is None:
+                raise ValueError("Indicate whether payment was received before rejecting the order.")
+            if payment_received and Decimal(str(ord_res.get("payment_amount") or 0)) <= 0:
+                raise ValueError("A confirmed payment amount is required before creating a refund.")
             cur.execute("""
                 UPDATE orders
                 SET status = 'rejected', approved_by_account_id = COALESCE(approved_by_account_id, %s),
-                    approved_at = COALESCE(approved_at, %s), rejection_reason = %s
+                    approved_at = COALESCE(approved_at, %s), rejection_reason = %s,
+                    rejection_payment_received = %s
                 WHERE order_id = %s;
-            """, (leader_id, business_now(), cleaned_rejection_reason, order_id))
+            """, (leader_id, business_now(), cleaned_rejection_reason, payment_received, order_id))
             cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
+            if payment_received:
+                assigned_supervisor_id = None
+                if leader_id is not None:
+                    cur.execute(
+                        "SELECT team_leader_role FROM accounts WHERE account_id = %s AND is_active = true;",
+                        (leader_id,),
+                    )
+                    actor = cur.fetchone()
+                    if actor and actor.get("team_leader_role") == "sales-supervisor":
+                        assigned_supervisor_id = int(leader_id)
+                if assigned_supervisor_id is None:
+                    cur.execute(
+                        """
+                        WITH supervisors AS (
+                            SELECT a.account_id,
+                                   row_number() OVER (ORDER BY a.name, a.account_id) - 1 AS position,
+                                   count(*) OVER () AS supervisor_count
+                            FROM accounts a
+                            WHERE a.account_type = 'team_leader'
+                              AND a.team_leader_role = 'sales-supervisor'
+                              AND a.is_active = true
+                        ), assignment_count AS (
+                            SELECT COUNT(*)::bigint AS total
+                            FROM inquiries i
+                            JOIN accounts a ON a.account_id = i.assigned_team_leader_account_id
+                            WHERE a.team_leader_role = 'sales-supervisor'
+                        )
+                        SELECT s.account_id
+                        FROM supervisors s CROSS JOIN assignment_count c
+                        WHERE s.position = c.total % s.supervisor_count
+                        LIMIT 1;
+                        """
+                    )
+                    supervisor = cur.fetchone()
+                    assigned_supervisor_id = int(supervisor["account_id"]) if supervisor else None
+                cur.execute(
+                    """
+                    INSERT INTO order_refunds (
+                        order_id, amount, currency, status, requested_by_account_id,
+                        assigned_supervisor_account_id, requested_at, updated_at
+                    ) VALUES (%s, %s, 'PHP', 'pending', %s, %s, %s, %s)
+                    RETURNING order_refund_id, order_id, amount, assigned_supervisor_account_id;
+                    """,
+                    (
+                        order_id, ord_res["payment_amount"], leader_id,
+                        assigned_supervisor_id, business_now(), business_now(),
+                    ),
+                )
+                refund_record = dict(cur.fetchone())
         else:
             if ord_res["status"] != "approved":
                 raise ValueError("Order must be approved before it can be fulfilled.")
@@ -1158,7 +1336,52 @@ def decide_order(
                 source_id=system_message_id,
                 dedupe_key=f"order-{decision}-{order_id}",
             )
+            if decision == "reject" and refund_record is not None:
+                amount = Decimal(str(refund_record["amount"]))
+                refund_message_id = _create_order_system_message_cursor(
+                    cur,
+                    reseller_account_id=int(recipient_account_id),
+                    order_id=order_id,
+                    event_type="refund_pending",
+                    title="Refund pending",
+                    message=f"PHP {amount:,.2f} is awaiting manual refund processing for Order #{order_id}.",
+                    dedupe_key=f"refund-{refund_record['order_refund_id']}-pending",
+                )
+                _create_notification_cursor(
+                    cur,
+                    recipient_account_id=int(recipient_account_id),
+                    category="order",
+                    severity="warning",
+                    title="Refund pending",
+                    message=f"A manual refund of PHP {amount:,.2f} is pending for Order #{order_id}.",
+                    target_url=f"/portal/reseller/inbox?system_message={refund_message_id}#system-message-{refund_message_id}",
+                    source_type="order_system_messages",
+                    source_id=refund_message_id,
+                    dedupe_key=f"refund-{refund_record['order_refund_id']}-pending-reseller",
+                )
+        if decision == "reject" and refund_record is not None:
+            refund_id = int(refund_record["order_refund_id"])
+            supervisor_id = refund_record.get("assigned_supervisor_account_id")
+            recipient_kwargs = (
+                {"recipient_account_id": int(supervisor_id)} if supervisor_id is not None
+                else {"recipient_role": "owner"}
+            )
+            _create_notification_cursor(
+                cur,
+                **recipient_kwargs,
+                category="order",
+                severity="warning",
+                title="Refund pending",
+                message=f"Order #{order_id} needs a manual refund of PHP {Decimal(str(refund_record['amount'])):,.2f}.",
+                target_url=(
+                    f"/portal/sales-supervisor/refunds?refund={refund_id}"
+                    if supervisor_id is not None else f"/portal/owner/refunds?refund={refund_id}"
+                ),
+                source_type="order_refunds",
+                source_id=refund_id,
+                dedupe_key=f"refund-{refund_id}-pending-processor",
+            )
     return True
 
 
-__all__ = ['list_orders', 'add_order_payment_proofs', 'submit_order_payment', 'expire_unpaid_orders', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', 'reseller_order_confirmation', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']
+__all__ = ['RESELLER_ORDER_CANCELLATION_REASONS', 'list_orders', 'add_order_payment_proofs', 'submit_order_payment', 'cancel_reseller_order', 'expire_unpaid_orders', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', 'reseller_order_confirmation', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']

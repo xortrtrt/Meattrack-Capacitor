@@ -1,129 +1,85 @@
-            <div class="sales-page sales-review-page sales-orders-page">
-            <section class="panel sales-review-surface">
-                <div class="panel-heading"><h2>Reseller order review</h2><span class="hint">Compare the confirmed payment details with the receipt before approval.</span></div>
-                <form class="filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
-                    <label>Search <input name="q" value="{{ orders_page.filters.q }}" placeholder="Order, reseller, product"></label>
-                    <label>Status
-                        <select name="status">
-                            <option value="">All</option>
-                            <option value="to_pay" {{ 'selected' if orders_page.filters.status == 'to_pay' else '' }}>To pay</option>
-                            <option value="pending" {{ 'selected' if orders_page.filters.status == 'pending' else '' }}>Pending</option>
-                            <option value="approved" {{ 'selected' if orders_page.filters.status == 'approved' else '' }}>Approved</option>
-                            <option value="fulfilled" {{ 'selected' if orders_page.filters.status == 'fulfilled' else '' }}>Fulfilled</option>
-                            <option value="rejected" {{ 'selected' if orders_page.filters.status == 'rejected' else '' }}>Rejected</option>
-                            <option value="expired" {{ 'selected' if orders_page.filters.status == 'expired' else '' }}>Expired</option>
-                        </select>
-                    </label>
-                    <label>Sort
-                        <select name="sort">
-                            <option value="">Newest</option>
-                            <option value="oldest" {{ 'selected' if orders_page.filters.sort == 'oldest' else '' }}>Oldest</option>
-                            <option value="total_desc" {{ 'selected' if orders_page.filters.sort == 'total_desc' else '' }}>Total high-low</option>
-                            <option value="total_asc" {{ 'selected' if orders_page.filters.sort == 'total_asc' else '' }}>Total low-high</option>
-                            <option value="status_asc" {{ 'selected' if orders_page.filters.sort == 'status_asc' else '' }}>Status</option>
-                        </select>
-                    </label>
-                </form>
-                <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
-                <div class="table-wrap">
-                    <table class="responsive-card-table order-review-table">
-                        <thead><tr><th>Order</th><th>Reseller</th><th>Product</th><th>Status</th><th>Total</th><th>Proof</th><th>Action</th></tr></thead>
-                        <tbody>
-                        {% for order in orders if order.order_type == "reseller" %}
-                            {% set order_locked = order.status in ["fulfilled", "rejected", "cancelled", "expired"] %}
-                            <tr>
-                                <td data-label="Order">#{{ order.order_id }}</td>
-                                <td data-label="Reseller">{{ order.reseller }}</td>
-                                <td data-label="Product">
-                                    {% if order["items"] %}
-                                    <div class="order-review-items">
-                                        {% set visible_item_count = 3 %}
-                                        {% for item in order["items"][:visible_item_count] %}
-                                        <span><strong>{{ item.quantity|number }} packs</strong> {{ item.name }}</span>
-                                        {% endfor %}
-                                        {% if order["items"]|length > visible_item_count %}
-                                        <details class="order-items-overflow">
-                                            <summary>Show {{ order["items"]|length - visible_item_count }} more product{{ '' if order["items"]|length - visible_item_count == 1 else 's' }}</summary>
-                                            <div class="order-items-overflow-list">
-                                                {% for item in order["items"][visible_item_count:] %}
-                                                <span><strong>{{ item.quantity|number }} packs</strong> {{ item.name }}</span>
-                                                {% endfor %}
-                                            </div>
-                                        </details>
-                                        {% endif %}
-                                    </div>
-                                    {% else %}
-                                    No item
-                                    {% endif %}
-                                </td>
-                                <td data-label="Status"><span class="status-badge {{ order.status }}">{{ 'To pay' if order.status == 'to_pay' else order.status }}</span></td>
-                                <td data-label="Total">{{ order.total_amount|currency }}</td>
-                                <td data-label="Proof">
-                                    {% if order.payment_proofs %}
-                                    {% if order.payment_transaction_number %}
-                                    <div class="payment-details-summary">
-                                        <strong>{{ order.payment_transaction_number }}</strong>
-                                        {% if order.payment_amount is not none %}<span>Amount sent: {{ order.payment_amount|currency }}</span>{% endif %}
-                                        <span>{{ order.payment_paid_at|nice_date }}</span>
-                                        {% if order.payment_extraction_method == 'manual_corrected' %}<small>Customer corrected</small>{% endif %}
-                                    </div>
-                                    {% endif %}
-                                    <div class="proof-links">
-                                        {% for proof in order.payment_proofs %}
-                                        <a
-                                            href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
-                                            data-proof-modal-open
-                                            data-proof-url="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}"
-                                            data-proof-title="{{ proof.filename }}"
-                                        >
-                                            <i data-lucide="image"></i>
-                                            {{ proof.filename }}
-                                        </a>
-                                        {% endfor %}
-                                    </div>
-                                    {% else %}
-                                    <span class="status-badge {{ 'to_pay' if order.status == 'to_pay' else 'expired' if order.status == 'expired' else 'pending' }}">{{ 'Awaiting customer' if order.status == 'to_pay' else 'Payment expired' if order.status == 'expired' else 'Missing' }}</span>
-                                    {% endif %}
-                                </td>
-                                <td data-label="Action">
-                                    {% set approval_blocked = order.status != "pending" or not order.payment_proofs %}
-                                    {% set rejection_blocked = order.status != "pending" %}
-                                    <div class="table-actions">
-                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/approve" method="post" data-order-action-form data-order-action="approve" data-order-id="{{ order.order_id }}"><button class="icon-button" title="{{ 'Proof of payment required' if approval_blocked else 'Approve' }}" {% if order_locked or approval_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="check"></i></button></form>
-                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/reject" method="post" data-order-action-form data-order-action="reject" data-order-id="{{ order.order_id }}"><input type="hidden" name="rejection_reason" value="" data-order-rejection-value><button class="icon-button danger" title="{{ 'Only pending orders can be rejected' if rejection_blocked else 'Reject' }}" {% if order_locked or rejection_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="x"></i></button></form>
-                                        <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/fulfill" method="post" data-order-action-form data-order-action="fulfill" data-order-id="{{ order.order_id }}"><button class="icon-button" title="{{ 'Approve order before fulfillment' if order.status != 'approved' else 'Fulfill' }}" {% if order.status != "approved" %}disabled aria-disabled="true"{% endif %}><i data-lucide="package-check"></i></button></form>
-                                    </div>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="pagination">
-                    {% if orders_page.pagination.has_prev %}<a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}">Previous</a>{% endif %}
-                    <span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>
-                    {% if orders_page.pagination.has_next %}<a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next</a>{% endif %}
-                </div>
-                </div>
+<div class="sales-page sales-review-page sales-orders-page">
+  <section class="panel sales-review-surface sales-order-ledger">
+    <header class="sales-order-ledger-heading">
+      <div>
+        <span class="eyebrow">Order desk</span>
+        <h2>Reseller order review</h2>
+        <p>Verify payments, review every product, and move approved orders into fulfillment.</p>
+      </div>
+      <div class="sales-order-ledger-count" aria-label="{{ orders_page.pagination.total }} assigned orders"><strong>{{ orders_page.pagination.total|number }}</strong><span>assigned order{{ '' if orders_page.pagination.total == 1 else 's' }}</span></div>
+    </header>
+
+    <form class="sales-order-toolbar" method="get" data-async-filter-target="[data-async-filter-results]">
+      <label class="sales-order-search"><span class="sr-only">Search reseller orders</span><i data-lucide="search" aria-hidden="true"></i><input name="q" value="{{ orders_page.filters.q }}" placeholder="Search order, reseller, or product" /></label>
+      <label class="sales-order-select"><span class="sr-only">Filter by status</span><i data-lucide="list-filter" aria-hidden="true"></i><select name="status" aria-label="Filter orders by status"><option value="">All statuses</option><option value="to_pay" {{ 'selected' if orders_page.filters.status == 'to_pay' else '' }}>To pay</option><option value="pending" {{ 'selected' if orders_page.filters.status == 'pending' else '' }}>Pending</option><option value="approved" {{ 'selected' if orders_page.filters.status == 'approved' else '' }}>Approved</option><option value="fulfilled" {{ 'selected' if orders_page.filters.status == 'fulfilled' else '' }}>Fulfilled</option><option value="refunded" {{ 'selected' if orders_page.filters.status == 'refunded' else '' }}>Refunded</option><option value="cancelled" {{ 'selected' if orders_page.filters.status == 'cancelled' else '' }}>Cancelled</option><option value="rejected" {{ 'selected' if orders_page.filters.status == 'rejected' else '' }}>Rejected</option><option value="expired" {{ 'selected' if orders_page.filters.status == 'expired' else '' }}>Expired</option></select></label>
+      <label class="sales-order-select"><span class="sr-only">Sort reseller orders</span><i data-lucide="arrow-up-down" aria-hidden="true"></i><select name="sort" aria-label="Sort reseller orders"><option value="">Newest first</option><option value="oldest" {{ 'selected' if orders_page.filters.sort == 'oldest' else '' }}>Oldest first</option><option value="total_desc" {{ 'selected' if orders_page.filters.sort == 'total_desc' else '' }}>Highest total</option><option value="total_asc" {{ 'selected' if orders_page.filters.sort == 'total_asc' else '' }}>Lowest total</option><option value="status_asc" {{ 'selected' if orders_page.filters.sort == 'status_asc' else '' }}>Status</option></select></label>
+    </form>
+
+    <div class="sales-order-results" data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+      {% if orders %}
+      <div class="sales-order-card-list">
+        {% for order in orders if order.order_type == "reseller" %}
+        {% set review_status = 'refunded' if order.refund_status == 'completed' else order.status %}
+        {% set order_locked = order.status in ["fulfilled", "rejected", "cancelled", "expired"] %}
+        {% set approval_blocked = order.status != "pending" or not order.payment_proofs %}
+        {% set rejection_blocked = order.status != "pending" %}
+        <details class="sales-order-card" id="order-{{ order.order_id }}" {% if order.status == 'pending' or loop.first %}open{% endif %}>
+          <summary class="sales-order-card-summary">
+            <div class="sales-order-identity"><span class="sales-order-number">Order #{{ order.order_id }}</span><strong>{{ order.reseller }}</strong>{% if order.order_date is defined and order.order_date %}<time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time>{% endif %}<span class="status-badge {{ review_status }}">{{ 'To pay' if review_status == 'to_pay' else review_status }}</span></div>
+            <div class="sales-order-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_image|media_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>
+            <div class="sales-order-total"><small>Total</small><strong>{{ order.total_amount|currency }}</strong></div>
+            <span class="sales-order-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span>
+          </summary>
+
+          <div class="sales-order-card-body">
+            <section class="sales-order-products" aria-labelledby="sales-order-items-{{ order.order_id }}">
+              <header><div><span class="eyebrow">Order contents</span><h3 id="sales-order-items-{{ order.order_id }}">{{ order['items']|length }} product{{ '' if order['items']|length == 1 else 's' }}</h3></div></header>
+              <div class="sales-order-product-list">
+                {% for item in order['items'] %}
+                <article class="sales-order-product-line"><img src="{{ item.name|product_image|media_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
+                {% else %}<div class="sales-order-empty-products"><i data-lucide="package-open"></i><span>No products were recorded for this order.</span></div>{% endfor %}
+              </div>
             </section>
-            <div class="proof-modal order-action-modal" data-order-action-modal hidden>
-                <button class="proof-modal-backdrop" type="button" aria-label="Cancel order action" data-order-action-close></button>
-                <section class="proof-modal-card order-action-modal-card" role="dialog" aria-modal="true" aria-labelledby="order-action-modal-title" aria-describedby="order-action-modal-description" tabindex="-1">
-                    <span class="order-action-modal-icon" data-order-action-icon aria-hidden="true"><i data-lucide="circle-check"></i></span>
-                    <div class="order-action-modal-copy">
-                        <span class="eyebrow" data-order-action-eyebrow>Confirm action</span>
-                        <h2 id="order-action-modal-title" data-order-action-title>Confirm order action</h2>
-                        <p id="order-action-modal-description" data-order-action-description>Review this action before continuing.</p>
-                    </div>
-                    <div class="order-rejection-field" data-order-rejection-field hidden>
-                        <label for="order-rejection-reason">Reason for rejection</label>
-                        <textarea id="order-rejection-reason" minlength="5" maxlength="400" rows="5" data-order-rejection-reason></textarea>
-                        <small>This note will be saved and sent to the reseller under System messages.</small>
-                    </div>
-                    <div class="order-action-modal-actions">
-                        <button class="button subtle" type="button" data-order-action-close>Cancel</button>
-                        <button class="button primary" type="button" data-order-action-confirm><span>Continue</span></button>
-                    </div>
-                </section>
-            </div>
-            </div>
+
+            <aside class="sales-order-review" aria-label="Payment review and order actions">
+              <header><div><span class="eyebrow">Review station</span><h3>Payment and decision</h3></div><span class="status-badge {{ review_status }}">{{ 'To pay' if review_status == 'to_pay' else review_status }}</span></header>
+              {% if order.status == 'cancelled' and order.cancellation_reason %}<div class="sales-order-review-note is-cancelled"><i data-lucide="message-square-text"></i><span><strong>Cancellation reason</strong><small>{{ order.cancellation_reason }}</small></span></div>{% endif %}
+
+              <div class="sales-order-payment">
+                {% if order.payment_proofs %}
+                  {% if order.payment_transaction_number %}<dl class="sales-order-payment-details"><div><dt>Transaction</dt><dd>{{ order.payment_transaction_number }}</dd></div>{% if order.payment_amount is not none %}<div><dt>Amount sent</dt><dd>{{ order.payment_amount|currency }}</dd></div>{% endif %}{% if order.payment_paid_at %}<div><dt>Paid</dt><dd>{{ order.payment_paid_at|nice_date }}</dd></div>{% endif %}{% if order.payment_extraction_method == 'manual_corrected' %}<div><dt>Entry</dt><dd>Customer corrected</dd></div>{% endif %}</dl>{% endif %}
+                  <div class="sales-order-proof-links">{% for proof in order.payment_proofs %}<a href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}" data-proof-modal-open data-proof-url="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}" data-proof-title="{{ proof.filename }}"><i data-lucide="image"></i><span><strong>View payment receipt</strong><small>{{ proof.filename }}</small></span><i data-lucide="arrow-up-right"></i></a>{% endfor %}</div>
+                {% else %}
+                  <div class="sales-order-review-note is-waiting"><i data-lucide="{{ 'timer-off' if order.status == 'expired' else 'receipt-text' }}"></i><span><strong>{{ 'Payment expired' if order.status == 'expired' else 'No payment receipt' }}</strong><small>{{ 'The payment window closed before a receipt was submitted.' if order.status == 'expired' else 'Approval stays unavailable until the reseller submits proof.' }}</small></span></div>
+                {% endif %}
+              </div>
+
+              <div class="sales-order-decision-grid" aria-label="Order decisions">
+                <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/approve" method="post" data-order-action-form data-order-action="approve" data-order-id="{{ order.order_id }}"><button class="button primary sales-order-decision is-approve" title="{{ 'Proof of payment required' if approval_blocked else 'Approve order' }}" {% if order_locked or approval_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="circle-check"></i><span>Approve</span></button></form>
+                <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/reject" method="post" data-order-action-form data-order-action="reject" data-order-id="{{ order.order_id }}" data-payment-amount="{{ '%.2f'|format(order.payment_amount or 0) }}"><input type="hidden" name="rejection_reason" value="" data-order-rejection-value><input type="hidden" name="payment_received" value="" data-order-payment-received-value><button class="button danger sales-order-decision is-reject" title="{{ 'Only pending orders can be rejected' if rejection_blocked else 'Reject order' }}" {% if order_locked or rejection_blocked %}disabled aria-disabled="true"{% endif %}><i data-lucide="circle-x"></i><span>Reject</span></button></form>
+                <form action="/portal/{{ role_key }}/orders/{{ order.order_id }}/fulfill" method="post" data-order-action-form data-order-action="fulfill" data-order-id="{{ order.order_id }}"><button class="button sales-order-decision is-fulfill" title="{{ 'Approve order before fulfillment' if order.status != 'approved' else 'Mark fulfilled' }}" {% if order.status != "approved" %}disabled aria-disabled="true"{% endif %}><i data-lucide="package-check"></i><span>Mark fulfilled</span></button></form>
+              </div>
+            </aside>
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+      {% else %}<div class="sales-order-empty-state"><span><i data-lucide="clipboard-check"></i></span><strong>No reseller orders match these filters.</strong><small>Try another search or status. New assigned orders will appear here automatically.</small></div>{% endif %}
+
+      {% if orders_page.pagination.total_pages > 1 %}<nav class="pagination sales-order-pagination" aria-label="Reseller order pages">{% if orders_page.pagination.has_prev %}<a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}"><i data-lucide="chevron-left"></i> Previous</a>{% endif %}<span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>{% if orders_page.pagination.has_next %}<a href="?q={{ orders_page.filters.q|urlencode }}&status={{ orders_page.filters.status|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next <i data-lucide="chevron-right"></i></a>{% endif %}</nav>{% endif %}
+    </div>
+  </section>
+
+  <div class="proof-modal order-action-modal" data-order-action-modal hidden>
+    <button class="proof-modal-backdrop" type="button" aria-label="Cancel order action" data-order-action-close></button>
+    <section class="proof-modal-card order-action-modal-card" role="dialog" aria-modal="true" aria-labelledby="order-action-modal-title" aria-describedby="order-action-modal-description" tabindex="-1">
+      <span class="order-action-modal-icon" data-order-action-icon aria-hidden="true"><i data-lucide="circle-check"></i></span>
+      <div class="order-action-modal-copy"><span class="eyebrow" data-order-action-eyebrow>Confirm action</span><h2 id="order-action-modal-title" data-order-action-title>Confirm order action</h2><p id="order-action-modal-description" data-order-action-description>Review this action before continuing.</p></div>
+      <div class="order-rejection-field" data-order-rejection-field hidden>
+        <label for="order-rejection-reason">Reason for rejection</label><textarea id="order-rejection-reason" minlength="5" maxlength="400" rows="5" data-order-rejection-reason></textarea><small>This note will be saved and sent to the reseller under System messages.</small>
+        <fieldset class="order-payment-received" data-order-payment-received-field><legend>Was payment received?</legend><label><input type="radio" name="order-payment-received-choice" value="yes"> Yes, payment was received</label><label><input type="radio" name="order-payment-received-choice" value="no"> No payment was received</label><p data-order-refund-notice hidden><strong>Refund pending:</strong> the confirmed amount of <span data-order-refund-amount>PHP 0.00</span> will be locked and assigned for manual processing.</p><small>This determination is recorded with the rejection and cannot be skipped.</small></fieldset>
+      </div>
+      <div class="order-action-modal-actions"><button class="button subtle" type="button" data-order-action-close>Cancel</button><button class="button primary" type="button" data-order-action-confirm><span>Continue</span></button></div>
+    </section>
+  </div>
+</div>

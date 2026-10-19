@@ -62,7 +62,7 @@ JOIN orders o ON o.order_id = n.source_id
 WHERE n.category = 'order'
   AND n.source_type = 'orders'
   AND lower(n.title) IN ('order approved', 'order rejected', 'order fulfilled')
-ON CONFLICT (reseller_account_id, order_id, event_type) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 UPDATE notifications n
 SET source_type = 'order_system_messages',

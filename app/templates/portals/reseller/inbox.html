@@ -1,137 +1,178 @@
-<section class="reseller-inbox" data-reseller-inbox data-open-system-message="{{ open_system_message_id or '' }}">
+<section class="reseller-inbox" data-reseller-inbox data-open-system-message="{{ open_system_message_id or '' }}" data-open-refund="{{ open_refund_id or '' }}">
   <header class="reseller-inbox-hero">
     <div>
       <span class="eyebrow">Reseller communications</span>
       <h2>Inbox</h2>
-      <p>Keep one ongoing conversation with your assigned sales leader.</p>
+      <p>Messages from your sales leader and order updates, organized in one place.</p>
     </div>
     <div class="reseller-inbox-status" data-reseller-chat-status aria-live="polite">
       <span class="reseller-inbox-status-dot"></span>
-      <span>Loading your conversation…</span>
+      <span>Checking availability…</span>
     </div>
   </header>
 
-  <div class="reseller-inbox-mobile-tabs" role="tablist" aria-label="Inbox sections">
-    <button class="is-active" id="reseller-messages-tab" type="button" role="tab" aria-selected="true" aria-controls="reseller-direct-messages" data-reseller-inbox-tab="messages">
-      <i data-lucide="messages-square"></i><span>Messages</span>
-    </button>
-    <button id="reseller-system-tab" type="button" role="tab" aria-selected="false" aria-controls="reseller-system-messages" data-reseller-inbox-tab="system">
-      <i data-lucide="bell-ring"></i><span>System</span>
-      {% if system_message_unread_count %}<b>{{ system_message_unread_count }}</b>{% endif %}
-    </button>
-  </div>
+  <div class="reseller-inbox-workspace">
+    <nav class="reseller-folder-rail" aria-label="Inbox folders">
+      <div class="reseller-folder-heading">
+        <span class="eyebrow">Mailbox</span>
+        <h3>Folders</h3>
+      </div>
+      <button class="reseller-folder-button is-active" type="button" aria-pressed="true" data-reseller-inbox-tab="messages">
+        <span class="reseller-folder-icon"><i data-lucide="messages-square"></i></span>
+        <span><strong>Sales leader</strong><small>Direct messages</small></span>
+        <i class="reseller-folder-chevron" data-lucide="chevron-right" aria-hidden="true"></i>
+      </button>
+      <button class="reseller-folder-button" type="button" aria-pressed="false" data-reseller-inbox-tab="system">
+        <span class="reseller-folder-icon"><i data-lucide="folder-clock"></i></span>
+        <span><strong>System messages</strong><small>Order updates</small></span>
+        {% if system_message_unread_count %}<b data-system-unread-count>{{ system_message_unread_count }}</b>{% else %}<i class="reseller-folder-chevron" data-lucide="chevron-right" aria-hidden="true"></i>{% endif %}
+      </button>
+    </nav>
 
-  <div class="reseller-inbox-grid">
-    <section class="reseller-chat-card is-mobile-active" id="reseller-direct-messages" role="tabpanel" aria-labelledby="reseller-messages-tab reseller-chat-title" data-reseller-inbox-panel="messages">
-      <header class="reseller-inbox-card-head">
-        <div>
-          <span class="eyebrow">Direct messages</span>
-          <h3 id="reseller-chat-title">Your sales leader</h3>
-        </div>
-        <button class="icon-button" type="button" title="Refresh chat" aria-label="Refresh chat" data-reseller-chat-refresh>
-          <i data-lucide="refresh-cw"></i>
-        </button>
-      </header>
-
-      <div class="reseller-chat-thread" data-reseller-chat-thread>
-        <div class="reseller-chat-context">
-          <span class="reseller-chat-agent-icon"><i data-lucide="user-round"></i></span>
-          <div>
-            <strong data-reseller-chat-agent>Sales leader</strong>
-            <small data-reseller-chat-detail>This conversation stays in your inbox</small>
-          </div>
-          <button class="message-delete-button" type="button" title="Delete conversation" data-reseller-message-delete hidden>
-            <i data-lucide="trash-2"></i><span>Delete</span>
+    <div class="reseller-conversation-browser">
+      <section class="reseller-folder-panel is-active" aria-labelledby="reseller-sales-folder-title" data-reseller-inbox-panel="messages">
+        <header class="reseller-list-head">
+          <div><span class="eyebrow">Direct messages</span><h3 id="reseller-sales-folder-title">Sales leader</h3></div>
+          <button class="icon-button" type="button" title="Refresh conversations" aria-label="Refresh conversations" data-reseller-chat-refresh><i data-lucide="refresh-cw"></i></button>
+        </header>
+        <div class="reseller-conversation-list">
+          <button class="reseller-conversation-row" type="button" aria-expanded="false" aria-controls="reseller-chat-thread" data-reseller-conversation-open>
+            <span class="reseller-conversation-avatar"><i data-lucide="user-round"></i></span>
+            <span class="reseller-conversation-copy">
+              <span><strong data-reseller-chat-agent>Sales leader</strong><time data-reseller-conversation-time></time></span>
+              <small data-reseller-conversation-preview>Select to view your conversation</small>
+            </span>
+            <span class="reseller-conversation-state" aria-hidden="true"><i data-lucide="chevron-right"></i></span>
           </button>
         </div>
+      </section>
+
+      <section class="reseller-folder-panel" aria-labelledby="reseller-system-title" data-reseller-inbox-panel="system" hidden>
+        <header class="reseller-list-head">
+          <div><span class="eyebrow">Order activity</span><h3 id="reseller-system-title">System messages</h3></div>
+          <span class="reseller-system-label"><i data-lucide="shield-check"></i> Order updates</span>
+        </header>
+        <div class="reseller-system-list">
+          {% for conversation in system_conversations %}
+          <article class="reseller-system-entry" {% if loop.index > 5 %}hidden{% endif %}>
+            {% for item in conversation.messages %}<span id="system-message-{{ item.order_system_message_id }}" data-system-message-marker hidden></span>{% endfor %}
+            <button
+              class="reseller-system-message {{ conversation.severity }} {{ 'is-unread' if conversation.unread_count else '' }}"
+              type="button"
+              aria-expanded="false"
+              aria-controls="system-thread-{{ conversation.key }}"
+              data-system-conversation-open
+              data-system-order-key="{{ conversation.key }}"
+              data-refund-id="{{ conversation.refund.order_refund_id if conversation.refund else '' }}"
+              data-system-unread-message-ids="{% for item in conversation.messages if not item.read_at %}{{ item.order_system_message_id }}{{ ',' if not loop.last else '' }}{% endfor %}"
+              aria-label="Open updates for {{ 'order ' ~ conversation.order_id if conversation.order_id else 'this system message' }}"
+            >
+              <span class="reseller-system-icon"><i data-lucide="folder-clock"></i></span>
+              <span class="reseller-system-copy">
+                <span>
+                  <strong>{{ 'Order #' ~ conversation.order_id if conversation.order_id else 'System update' }}</strong>
+                  <time datetime="{{ conversation.latest.created_at }}">{{ conversation.latest.created_at|nice_date }}</time>
+                </span>
+                <small>{{ conversation.latest.title }} · {{ conversation.latest.message }}</small>
+                <em>{{ conversation.messages|length }} update{{ '' if conversation.messages|length == 1 else 's' }} · Open conversation</em>
+              </span>
+              {% if conversation.unread_count %}<b class="reseller-system-count" aria-label="{{ conversation.unread_count }} unread updates">{{ conversation.unread_count }}</b>{% else %}<i class="reseller-system-arrow" data-lucide="chevron-right" aria-hidden="true"></i>{% endif %}
+            </button>
+          </article>
+          {% else %}
+          <div class="reseller-system-empty"><span><i data-lucide="inbox"></i></span><strong>No system messages</strong><p>Order approvals, rejections, and fulfillment updates will appear here.</p></div>
+          {% endfor %}
+        </div>
+        {% if system_conversations|length > 5 %}
+        <button class="reseller-system-older" type="button" data-system-messages-older><i data-lucide="history"></i><span>Show {{ system_conversations|length - 5 }} older order{{ '' if system_conversations|length - 5 == 1 else 's' }}</span></button>
+        {% endif %}
+      </section>
+    </div>
+
+    <section class="reseller-message-stage" aria-label="Message details">
+      <div class="reseller-stage-placeholder" data-reseller-chat-placeholder>
+        <span><i data-lucide="message-square-dashed"></i></span>
+        <h3>Select a conversation</h3>
+        <p>Choose your sales leader from the list to see your messages.</p>
+      </div>
+
+      <div class="reseller-chat-thread" id="reseller-chat-thread" data-reseller-chat-thread hidden>
+        <div class="reseller-chat-context">
+          <button class="reseller-chat-back" type="button" aria-label="Back to conversations" data-reseller-chat-close><i data-lucide="arrow-left"></i></button>
+          <span class="reseller-chat-agent-icon"><i data-lucide="user-round"></i></span>
+          <div><strong data-reseller-chat-agent>Sales leader</strong><small data-reseller-chat-detail>This conversation stays in your inbox</small></div>
+          <button class="message-delete-button" type="button" title="Delete conversation" data-reseller-message-delete hidden><i data-lucide="trash-2"></i><span>Delete</span></button>
+        </div>
         <div class="reseller-chat-messages" role="log" aria-live="polite" aria-label="Messages with your sales leader" data-reseller-chat-messages>
-          <div class="reseller-message-empty" data-reseller-message-empty>
-            <span><i data-lucide="message-circle"></i></span>
-            <strong>Your conversation starts here</strong>
-            <p>Messages between you and your assigned sales leader stay available in this inbox.</p>
-          </div>
+          <div class="reseller-message-empty" data-reseller-message-empty><span><i data-lucide="message-circle"></i></span><strong>Your conversation starts here</strong><p>Messages between you and your assigned sales leader stay available in this inbox.</p></div>
         </div>
         <form class="reseller-chat-composer" data-reseller-chat-form>
           <label class="sr-only" for="reseller-chat-message">Your message</label>
           <textarea id="reseller-chat-message" name="message" maxlength="500" rows="1" placeholder="Message your sales leader…" required disabled></textarea>
-          <button class="button primary" type="submit" disabled data-reseller-chat-send>
-            <span class="sr-only">Send message</span><i data-lucide="send"></i>
-          </button>
+          <button class="button primary" type="submit" disabled data-reseller-chat-send><span class="sr-only">Send message</span><i data-lucide="send"></i></button>
         </form>
       </div>
-    </section>
 
-    <aside class="reseller-system-card" id="reseller-system-messages" role="tabpanel" aria-labelledby="reseller-system-tab reseller-system-title" data-reseller-inbox-panel="system">
-      <header class="reseller-inbox-card-head">
-        <div>
-          <span class="eyebrow">Recent order activity</span>
-          <h3 id="reseller-system-title">System messages</h3>
+      {% for conversation in system_conversations %}
+      <section class="reseller-order-thread {{ 'has-refund' if conversation.refund else '' }}" id="system-thread-{{ conversation.key }}" data-system-conversation-thread data-system-order-key="{{ conversation.key }}" hidden>
+        <header class="reseller-order-thread-head">
+          <button class="reseller-chat-back" type="button" aria-label="Back to system messages" data-system-conversation-close><i data-lucide="arrow-left"></i></button>
+          <span class="reseller-order-folder"><i data-lucide="folder-clock"></i></span>
+          <div>
+            <span class="eyebrow">Order activity</span>
+            <h3>{{ 'Order #' ~ conversation.order_id if conversation.order_id else 'System update' }}</h3>
+            <small>{{ conversation.messages|length }} update{{ '' if conversation.messages|length == 1 else 's' }} in this conversation</small>
+          </div>
+        </header>
+        {% if conversation.refund %}
+        <div class="reseller-order-view-tabs" role="tablist" aria-label="Refund order views" data-refund-order-tabs>
+          <button class="is-active" type="button" role="tab" aria-selected="true" aria-controls="reseller-order-activity-{{ conversation.key }}" data-refund-order-tab="activity"><i data-lucide="history"></i> Activity</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="refund-conversation-{{ conversation.refund.order_refund_id }}" data-refund-order-tab="conversation"><i data-lucide="messages-square"></i> Conversation</button>
         </div>
-        <span class="reseller-system-label"><i data-lucide="shield-check"></i> Order updates</span>
-      </header>
-      <div class="reseller-system-list">
-        {% for item in system_messages %}
-        <article class="reseller-system-entry" id="system-message-{{ item.order_system_message_id }}" {% if loop.index > 5 %}hidden{% endif %}>
-          <button
-            class="reseller-system-message {{ item.severity }} {{ 'is-unread' if not item.read_at else '' }}"
-            type="button"
-            data-system-message-open
-            data-system-message-id="{{ item.order_system_message_id }}"
-            data-system-message-event="{{ item.event_type }}"
-            data-system-message-order="{{ item.order_id or '' }}"
-            aria-haspopup="dialog"
-            aria-label="Open {{ item.title }} details for order {{ item.order_id }}"
-          >
-            <span class="reseller-system-icon"><i data-lucide="{{ 'circle-x' if item.event_type == 'rejected' else ('badge-check' if item.event_type == 'approved' else 'package-check') }}"></i></span>
-            <span class="reseller-system-copy">
-              <span><strong>{{ item.title }}</strong><time datetime="{{ item.created_at }}">{{ item.created_at|nice_date }}</time></span>
-              <small data-system-message-body>{{ item.message }}</small>
-              <span data-system-message-reason hidden>{{ item.rejection_reason or '' }}</span>
-              {% if item.order_id %}<em>Order #{{ item.order_id }} · View details</em>{% endif %}
-            </span>
-            {% if not item.read_at %}<span class="reseller-system-unread" aria-label="Unread system message"></span>{% else %}<i class="reseller-system-arrow" data-lucide="chevron-right" aria-hidden="true"></i>{% endif %}
-          </button>
-        </article>
-        {% else %}
-        <div class="reseller-system-empty">
-          <span><i data-lucide="inbox"></i></span>
-          <strong>No system messages</strong>
-          <p>Order approvals, rejections, and fulfillment updates will appear here.</p>
+        {% endif %}
+        <div class="reseller-order-timeline" id="reseller-order-activity-{{ conversation.key }}" role="tabpanel" aria-label="Updates for {{ 'order ' ~ conversation.order_id if conversation.order_id else 'system message' }}" {% if conversation.refund %}data-refund-order-panel="activity"{% endif %}>
+          {% for item in conversation.messages %}
+          <article class="reseller-order-update {{ item.severity }} {{ 'is-unread' if not item.read_at else '' }}" data-system-timeline-message-id="{{ item.order_system_message_id }}">
+            <span class="reseller-order-update-icon"><i data-lucide="{{ 'circle-x' if item.event_type in ['rejected', 'cancelled'] else 'badge-check' if item.event_type == 'approved' else 'package-check' if item.event_type == 'fulfilled' else 'wallet-cards' if item.event_type == 'refund_pending' else 'loader-circle' if item.event_type == 'refund_processing' else 'circle-check-big' if item.event_type == 'refund_completed' else 'triangle-alert' }}"></i></span>
+            <div>
+              <header><strong>{{ item.title }}</strong><time datetime="{{ item.created_at }}">{{ item.created_at|nice_date }}</time></header>
+              <p>{{ item.message }}</p>
+              {% if item.refund_transaction_reference %}<p><strong>Reference:</strong> {{ item.refund_transaction_reference }}</p>{% endif %}
+              {% if item.refund_proof_id %}<a href="/portal/refund-proofs/{{ item.refund_proof_id }}" target="_blank" rel="noopener"><i data-lucide="image"></i> View refund screenshot</a>{% endif %}
+              {% if item.rejection_reason %}<aside><span><i data-lucide="message-square-warning"></i> Rejection reason</span><p>{{ item.rejection_reason }}</p></aside>{% endif %}
+            </div>
+          </article>
+          {% endfor %}
         </div>
-        {% endfor %}
-      </div>
-      {% if system_messages|length > 5 %}
-      <button class="reseller-system-older" type="button" data-system-messages-older>
-        <i data-lucide="history"></i>
-        <span>Show {{ system_messages|length - 5 }} older message{{ '' if system_messages|length - 5 == 1 else 's' }}</span>
-      </button>
-      {% endif %}
-    </aside>
-  </div>
-
-  <div class="reseller-system-modal" data-system-message-modal hidden>
-    <div class="reseller-system-modal-backdrop" data-system-message-close></div>
-    <section class="reseller-system-dialog" role="dialog" aria-modal="true" aria-labelledby="system-message-dialog-title" aria-describedby="system-message-dialog-body" tabindex="-1">
-      <button class="reseller-system-dialog-close" type="button" aria-label="Close system message" data-system-message-close>
-        <i data-lucide="x"></i>
-      </button>
-      <div class="reseller-system-dialog-mark" data-system-message-dialog-mark>
-        <i data-lucide="package-check"></i>
-      </div>
-      <span class="eyebrow" data-system-message-dialog-eyebrow>Order update</span>
-      <h3 id="system-message-dialog-title" data-system-message-dialog-title>System message</h3>
-      <p class="reseller-system-dialog-meta">
-        <span data-system-message-dialog-order></span>
-        <time data-system-message-dialog-time></time>
-      </p>
-      <p id="system-message-dialog-body" class="reseller-system-dialog-body" data-system-message-dialog-body></p>
-      <div class="reseller-system-dialog-reason" data-system-message-dialog-reason-wrap hidden>
-        <span><i data-lucide="message-square-warning"></i> Rejection reason</span>
-        <p data-system-message-dialog-reason></p>
-      </div>
-      <div class="reseller-system-dialog-actions">
-        <button class="button primary" type="button" data-system-message-close>Close</button>
-      </div>
+        {% if conversation.refund %}
+          <section class="reseller-refund-chat reseller-refund-chat-panel" id="refund-conversation-{{ conversation.refund.order_refund_id }}" role="tabpanel" aria-labelledby="reseller-refund-title-{{ conversation.refund.order_refund_id }}" data-refund-order-panel="conversation" data-refund-conversation data-refund-id="{{ conversation.refund.order_refund_id }}" data-refund-role="reseller" hidden>
+            <header><span><i data-lucide="messages-square"></i></span><div><strong id="reseller-refund-title-{{ conversation.refund.order_refund_id }}">Refund conversation</strong><small>Share where the manual refund should be sent</small></div></header>
+            <div class="reseller-refund-safety"><i data-lucide="shield-alert"></i><p>Share only the account name, account number, and payment provider needed for the refund. Never share a password, PIN, or OTP.</p></div>
+            <div class="reseller-refund-messages" role="log" aria-live="polite" data-refund-message-list>
+              {% for message in conversation.refund.messages %}
+              <article class="{{ 'is-mine' if message.sender_role == 'reseller' else 'is-team' }}" data-refund-message-id="{{ message.order_refund_message_id }}">
+                <small>{{ 'You' if message.sender_role == 'reseller' else message.sender_name ~ ' · ' ~ ('Owner' if message.sender_role == 'owner' else 'Sales supervisor') }}</small>
+                <p>{{ message.message }}</p><time datetime="{{ message.created_at }}">{{ message.created_at|nice_date }}</time>
+              </article>
+              {% else %}
+              <p class="reseller-refund-empty">The owner or assigned supervisor can contact you here if refund details are needed.</p>
+              {% endfor %}
+            </div>
+            {% if conversation.refund.status != 'completed' %}
+            <form class="reseller-refund-composer" action="/portal/reseller/refunds/{{ conversation.refund.order_refund_id }}/messages" method="post" data-refund-message-form data-async-form>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+              <label for="reseller-refund-message-{{ conversation.refund.order_refund_id }}">Reply about this refund</label>
+              <div><textarea id="reseller-refund-message-{{ conversation.refund.order_refund_id }}" name="message" maxlength="1000" rows="3" placeholder="Enter your preferred refund method and account details" required></textarea><button class="button primary" type="submit"><i data-lucide="send"></i> Send reply</button></div>
+              <p class="reseller-refund-status" data-refund-message-status aria-live="polite"></p>
+            </form>
+            {% else %}
+            <p class="reseller-refund-closed"><i data-lucide="circle-check-big"></i> Refund completed. This conversation is read-only.</p>
+            {% endif %}
+          </section>
+        {% endif %}
+        <footer class="reseller-order-thread-foot"><span><i data-lucide="shield-check"></i> Updates are grouped by order to keep its history together.</span></footer>
+      </section>
+      {% endfor %}
     </section>
   </div>
 </section>

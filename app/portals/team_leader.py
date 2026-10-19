@@ -629,6 +629,7 @@ async def team_order_decision(
     order_id: int,
     decision: str,
     rejection_reason: Annotated[str, Form()] = "",
+    payment_received: Annotated[str, Form()] = "",
 ):
     role_key = request.session.get("role_key") if request.session.get("role_key") in {"team-leader", "sales-supervisor"} else "team-leader"
     guard = shared.require_portal_session(request, role_key)
@@ -640,11 +641,17 @@ async def team_order_decision(
     if decision not in {"approve", "reject", "fulfill"}:
         raise HTTPException(status_code=404)
     try:
+        payment_determination = None
+        if decision == "reject":
+            if payment_received not in {"yes", "no"}:
+                raise ValueError("Indicate whether payment was received before rejecting the order.")
+            payment_determination = payment_received == "yes"
         if not data.decide_order(
             order_id,
             decision,
             team_leader_account_id=shared.session_account_id(request),
             rejection_reason=rejection_reason,
+            payment_received=payment_determination,
         ):
             return shared.redirect_to(shared.safe_portal_path(role_key, "orders", error="Order not found or already finalized."))
     except ValueError as exc:

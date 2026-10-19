@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main, repositories, web
+from app import main, repositories, security_controls, web
 from app.portals import owner as owner_portal
 from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
@@ -72,6 +72,10 @@ READ_FUNCTIONS = (
     "list_notification_history",
     "count_notification_history",
     "unread_notification_count",
+    "list_order_refunds",
+    "count_order_refunds",
+    "refund_status_counts",
+    "list_reseller_refund_conversations",
 )
 
 EXPECTED_CALLS = {
@@ -87,6 +91,7 @@ EXPECTED_CALLS = {
     ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
     ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
     ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_forecast_runs", "list_notifications", "unread_notification_count"},
+    ("owner", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "list_notifications", "unread_notification_count"},
     ("owner", "accounts"): {
         "list_accounts",
         "count_accounts",
@@ -98,6 +103,7 @@ EXPECTED_CALLS = {
     ("team-leader", "dashboard"): {"current_metrics", "list_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "resellers"): {"list_team_resellers", "count_team_resellers", "list_notifications", "unread_notification_count"},
     ("sales-supervisor", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
+    ("sales-supervisor", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "list_notifications", "unread_notification_count"},
     ("team-leader", "orders"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "reports"): {
         "list_sales_reports",
@@ -120,7 +126,7 @@ EXPECTED_CALLS = {
     ("reseller", "cart"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "checkout"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "history"): {"list_orders", "count_orders", "reseller_cart_count", "list_notifications", "unread_notification_count"},
-    ("reseller", "inbox"): {"list_order_system_messages", "unread_order_system_message_count", "reseller_cart_count", "list_notifications", "unread_notification_count"},
+    ("reseller", "inbox"): {"list_order_system_messages", "list_reseller_refund_conversations", "unread_order_system_message_count", "reseller_cart_count", "list_notifications", "unread_notification_count"},
     ("reseller", "profile"): {"reseller_cart_count", "list_notifications", "unread_notification_count"},
 }
 
@@ -145,7 +151,12 @@ INVENTORY_EXPECTED_CALLS = {
 def install_read_spies(monkeypatch):
     calls = defaultdict(list)
     for name in READ_FUNCTIONS:
-        result = METRICS if name == "current_metrics" else 0 if name.startswith(("count_", "unread_", "reseller_cart_count")) else []
+        result = (
+            METRICS if name == "current_metrics"
+            else {"pending": 0, "processing": 0, "completed": 0, "failed": 0} if name == "refund_status_counts"
+            else 0 if name.startswith(("count_", "unread_", "reseller_cart_count"))
+            else []
+        )
 
         def fake(*args, _name=name, _result=result, **kwargs):
             calls[_name].append((args, kwargs))
@@ -166,6 +177,175 @@ def test_each_portal_section_loads_only_its_required_data(monkeypatch, role_key,
     assert response.status_code == 200
     actual_calls = {name for name, entries in calls.items() if entries}
     assert actual_calls == EXPECTED_CALLS[(role_key, section)]
+
+
+def test_refund_workspace_renders_order_thread_and_audit_evidence(monkeypatch):
+    refund = {
+        "order_refund_id": 8,
+        "order_id": 28,
+        "amount": 2500.0,
+        "status": "completed",
+        "business_name": "Lipa Fresh Mart",
+        "reseller_name": "Lipa Fresh Mart",
+        "assigned_supervisor_name": "Sales Supervisor",
+        "processor_name": "Finance Owner",
+        "processing_by_account_id": 3,
+        "assigned_supervisor_account_id": 4,
+        "requested_at": datetime.now(timezone.utc),
+        "processing_started_at": datetime.now(timezone.utc),
+        "rejection_reason": "The requested products could not be fulfilled.",
+        "attempts": [{
+            "attempt_number": 1,
+            "status": "completed",
+            "processor_name": "Finance Owner",
+            "refund_method": "Bank transfer",
+            "refund_transaction_number": "ABC123456",
+            "transferred_at": datetime.now(timezone.utc),
+            "completed_at": datetime.now(timezone.utc),
+            "failed_at": None,
+            "started_at": datetime.now(timezone.utc),
+            "proof_id": 14,
+            "failure_reason": None,
+            "internal_note": "Matched to the finance ledger.",
+        }],
+        "messages": [{
+            "order_refund_message_id": 51,
+            "sender_role": "reseller",
+            "sender_name": "Lipa Fresh Mart",
+            "message": "Please return it through GCash to 09171234567.",
+            "created_at": datetime.now(timezone.utc),
+        }],
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(repositories, "list_order_refunds", lambda *args, **kwargs: [refund])
+    monkeypatch.setattr(repositories, "count_order_refunds", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "refund_status_counts", lambda *args, **kwargs: {"pending": 0, "processing": 0, "completed": 1, "failed": 0})
+    monkeypatch.setattr(repositories, "get_order_refund", lambda *args, **kwargs: refund)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/owner/refunds?refund=8&pane=conversation")
+
+    assert response.status_code == 200
+    assert "Order #28" in response.text
+    assert "Refund completed" in response.text
+    assert "Activity" in response.text
+    assert "Conversation" in response.text
+    assert "Refund conversation" in response.text
+    assert "Please return it through GCash to 09171234567." in response.text
+    assert "This conversation is read-only" in response.text
+
+    activity_response = TestClient(main.app).get("/portal/owner/refunds?refund=8&pane=activity")
+    assert "ABC123456" in activity_response.text
+    assert "Matched to the finance ledger." in activity_response.text
+    assert '/portal/refund-proofs/14' in activity_response.text
+    assert 'id="refund-conversation-8"' not in activity_response.text
+
+
+def test_refund_transfer_is_a_separate_workspace_pane(monkeypatch):
+    refund = {
+        "order_refund_id": 8,
+        "order_id": 29,
+        "amount": 500.0,
+        "status": "processing",
+        "business_name": "Xort's store",
+        "reseller_name": "Xort's store",
+        "assigned_supervisor_account_id": 3,
+        "assigned_supervisor_name": "Sales Leader - Pat",
+        "processing_by_account_id": 3,
+        "processor_name": "Sales Leader - Pat",
+        "requested_at": datetime.now(timezone.utc),
+        "processing_started_at": datetime.now(timezone.utc),
+        "rejection_reason": "The payment is not sufficient from the order total amount.",
+        "attempts": [],
+        "messages": [],
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 3)
+    monkeypatch.setattr(repositories, "list_order_refunds", lambda *args, **kwargs: [refund])
+    monkeypatch.setattr(repositories, "count_order_refunds", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(repositories, "refund_status_counts", lambda *args, **kwargs: {"pending": 0, "processing": 1, "completed": 0, "failed": 0})
+    monkeypatch.setattr(repositories, "get_order_refund", lambda *args, **kwargs: refund)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(security_controls, "CSRF_PROTECTION_ENABLED", True)
+
+    client = TestClient(main.app)
+    response = client.get("/portal/owner/refunds?refund=8&pane=transfer")
+
+    assert response.status_code == 200
+    assert "> Activity</a>" in response.text
+    assert "> Conversation</a>" in response.text
+    assert 'class="is-active"' in response.text
+    assert 'id="refund-transfer-title">Record external transfer' in response.text
+    assert "Use this only after the money has actually been sent outside MeatTrack." in response.text
+    assert "refund-failure-disclosure" in response.text
+    assert 'id="refund-conversation-8"' not in response.text
+    token_marker = 'name="csrf_token" value="'
+    csrf_value = response.text.split(token_marker, 1)[1].split('"', 1)[0]
+    assert csrf_value
+    assert response.text.count(f'name="csrf_token" value="{csrf_value}"') == 2
+
+
+@pytest.mark.parametrize("role_key", ["owner", "reseller"])
+def test_refund_message_api_refreshes_and_sends_without_redirect(monkeypatch, role_key):
+    message = {
+        "order_refund_message_id": 12,
+        "order_refund_id": 8,
+        "sender_account_id": 3,
+        "sender_role": role_key,
+        "sender_name": "Message sender",
+        "message": "Please use the confirmed GCash account.",
+        "created_at": datetime.now(timezone.utc),
+    }
+    list_calls = []
+    send_calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 3)
+    monkeypatch.setattr(
+        repositories,
+        "list_order_refund_messages",
+        lambda *args, **kwargs: list_calls.append((args, kwargs)) or [message],
+    )
+    monkeypatch.setattr(
+        repositories,
+        "send_order_refund_message",
+        lambda *args: send_calls.append(args) or message,
+    )
+    client = TestClient(main.app)
+
+    refreshed = client.get(f"/api/portal/{role_key}/refunds/8/messages?after_id=11")
+    sent = client.post(
+        f"/api/portal/{role_key}/refunds/8/messages",
+        json={"message": "Please use the confirmed GCash account."},
+    )
+
+    assert refreshed.status_code == 200
+    assert refreshed.json()["messages"][0]["order_refund_message_id"] == 12
+    assert sent.status_code == 200
+    assert sent.json()["message"]["message"] == "Please use the confirmed GCash account."
+    assert send_calls == [(8, 3, role_key, "Please use the confirmed GCash account.")]
+    assert list_calls[0] == ((8, 3, role_key), {"after_id": 11})
+
+
+@pytest.mark.parametrize("role_key,location", [
+    ("owner", "/portal/owner/refunds?refund=8&pane=conversation"),
+    ("reseller", "/portal/reseller/inbox?refund=8"),
+])
+def test_refund_message_form_fallback_does_not_add_success_toast(monkeypatch, role_key, location):
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 3)
+    monkeypatch.setattr(repositories, "send_order_refund_message", lambda *args: {})
+
+    response = TestClient(main.app).post(
+        f"/portal/{role_key}/refunds/8/messages",
+        data={"message": "Confirmed account details."},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == location
+    assert "message=" not in response.headers["location"]
 
 
 @pytest.mark.parametrize("role_key,section", INVENTORY_EXPECTED_CALLS)
@@ -293,11 +473,65 @@ def test_team_leader_order_review_lists_every_order_item(monkeypatch):
     response = TestClient(main.app).get("/portal/team-leader/orders")
 
     assert response.status_code == 200
-    assert "5 packs</strong> Tocino Ala Eh" in response.text
-    assert "8 packs</strong> Chicken Tocino" in response.text
-    assert "Show 2 more products" in response.text
-    assert "4 packs</strong> Deli Beef" in response.text
-    assert "1 packs</strong> Bacon" in response.text
+    assert "Tocino Ala Eh</strong><small>5 packs" in response.text
+    assert "Chicken Tocino</strong><small>8 packs" in response.text
+    assert "Deli Beef</strong><small>4 packs" in response.text
+    assert "Bacon</strong><small>1 pack" in response.text
+    assert 'class="sales-order-card"' in response.text
+    assert 'class="sales-order-product-line"' in response.text
+    assert "order-review-table" not in response.text
+
+
+def test_sales_leader_orders_filter_and_label_completed_refunds(monkeypatch):
+    order = {
+        "order_id": 30,
+        "order_type": "reseller",
+        "reseller": "Lipa Fresh Mart",
+        "status": "rejected",
+        "refund_status": "completed",
+        "total_amount": Decimal("750.00"),
+        "items": [{"quantity": 2, "name": "Premium Tocino"}],
+        "payment_proofs": [{"order_payment_proof_id": 11, "filename": "receipt.jpg"}],
+        "payment_transaction_number": "REFUND750",
+        "payment_amount": Decimal("750.00"),
+        "payment_paid_at": datetime(2026, 10, 17, 10, 0),
+        "payment_extraction_method": "ocr_confirmed",
+    }
+    list_calls = []
+    count_calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(
+        repositories,
+        "list_orders",
+        lambda **kwargs: list_calls.append(kwargs) or [order],
+    )
+    monkeypatch.setattr(
+        repositories,
+        "count_orders",
+        lambda **kwargs: count_calls.append(kwargs) or 1,
+    )
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/team-leader/orders?status=refunded")
+
+    assert response.status_code == 200
+    assert list_calls[0]["status"] == "refunded"
+    assert list_calls[0]["team_leader_account_id"] == 42
+    assert count_calls[0]["status"] == "refunded"
+    assert '<option value="refunded" selected>Refunded</option>' in response.text
+    assert 'class="status-badge refunded"' in response.text
+    assert ">refunded</span" in response.text
+    assert 'class="status-badge rejected"' not in response.text
+
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(repositories, "current_metrics", lambda **kwargs: METRICS)
+    dashboard_response = TestClient(main.app).get("/portal/team-leader/dashboard")
+
+    assert dashboard_response.status_code == 200
+    assert 'class="status-badge refunded"' in dashboard_response.text
+    assert ">refunded</span" in dashboard_response.text
 
 
 def test_approved_order_review_allows_fulfillment_only(monkeypatch):
@@ -344,6 +578,22 @@ def test_reseller_inbox_renders_order_system_messages(monkeypatch):
     monkeypatch.setattr(repositories, "unread_order_system_message_count", lambda *args, **kwargs: 7)
     monkeypatch.setattr(
         repositories,
+        "list_reseller_refund_conversations",
+        lambda *args, **kwargs: [{
+            "order_refund_id": 8,
+            "order_id": 28,
+            "status": "processing",
+            "messages": [{
+                "order_refund_message_id": 61,
+                "sender_role": "sales-supervisor",
+                "sender_name": "Refund Supervisor",
+                "message": "Please confirm your preferred refund account.",
+                "created_at": datetime(2026, 10, 17, 9, 45, tzinfo=timezone.utc),
+            }],
+        }],
+    )
+    monkeypatch.setattr(
+        repositories,
         "list_order_system_messages",
         lambda *args, **kwargs: calls.append((args, kwargs)) or [
             {
@@ -356,7 +606,18 @@ def test_reseller_inbox_renders_order_system_messages(monkeypatch):
                 "order_id": 28,
                 "read_at": None,
                 "created_at": datetime(2026, 10, 17, 9, 30, tzinfo=timezone.utc),
-            }
+            },
+            {
+                "order_system_message_id": 90,
+                "event_type": "approved",
+                "severity": "info",
+                "title": "Order approved",
+                "message": "Your reseller order #28 was approved.",
+                "rejection_reason": None,
+                "order_id": 28,
+                "read_at": datetime(2026, 10, 17, 9, 0, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 10, 17, 8, 30, tzinfo=timezone.utc),
+            },
         ],
     )
 
@@ -369,14 +630,31 @@ def test_reseller_inbox_renders_order_system_messages(monkeypatch):
     assert "reseller-system-message critical is-unread" in response.text
     assert calls == [((42,), {"limit": 20})]
     assert 'id="system-message-91"' in response.text
-    assert 'data-system-message-id="91"' in response.text
-    assert 'data-system-message-event="rejected"' in response.text
+    assert 'id="system-message-90"' in response.text
+    assert response.text.count("data-system-conversation-open") == 1
+    assert 'data-system-order-key="order-28"' in response.text
+    assert 'id="system-thread-order-28"' in response.text
+    assert "2 updates" in response.text
     assert 'action="/portal/reseller/notifications/9/open"' not in response.text
     assert 'href="/portal/reseller/notifications?type=order"' not in response.text
-    assert 'data-system-message-modal' in response.text
-    assert 'data-system-message-dialog-reason' in response.text
+    assert 'data-system-message-modal' not in response.text
+    assert 'data-system-conversation-thread' in response.text
+    assert "Rejection reason" in response.text
+    assert "Refund conversation" in response.text
+    assert "Please confirm your preferred refund account." in response.text
+    assert 'action="/portal/reseller/refunds/8/messages"' in response.text
+    assert 'data-refund-order-tabs' in response.text
+    assert 'data-refund-order-tab="activity"' in response.text
+    assert 'data-refund-order-tab="conversation"' in response.text
+    assert 'data-refund-order-panel="activity"' in response.text
+    assert 'data-refund-order-panel="conversation"' in response.text
+    assert 'data-refund-conversation data-refund-id="8" data-refund-role="reseller" hidden' in response.text
     assert 'data-reseller-inbox-tab="messages"' in response.text
     assert 'data-reseller-inbox-tab="system"' in response.text
+    assert 'class="reseller-folder-rail"' in response.text
+    assert 'data-reseller-conversation-open' in response.text
+    assert 'aria-expanded="false"' in response.text
+    assert 'data-reseller-chat-thread hidden' in response.text
     assert ">7</b>" in response.text
 
 
@@ -425,6 +703,7 @@ def test_reseller_inbox_deep_link_loads_system_message_outside_recent_window(mon
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(repositories, "unread_order_system_message_count", lambda *args, **kwargs: 1)
     monkeypatch.setattr(repositories, "list_order_system_messages", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "list_reseller_refund_conversations", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         repositories,
         "get_order_system_message",
@@ -436,7 +715,8 @@ def test_reseller_inbox_deep_link_loads_system_message_outside_recent_window(mon
     assert response.status_code == 200
     assert linked_calls == [(42, 91)]
     assert 'data-open-system-message="91"' in response.text
-    assert 'data-system-message-id="91"' in response.text
+    assert 'id="system-message-91"' in response.text
+    assert 'data-system-conversation-open' in response.text
     assert "Order approved" in response.text
 
 
@@ -548,6 +828,25 @@ def test_reseller_order_history_views_apply_server_side_filters(monkeypatch):
     assert response.status_code == 200
     assert calls["list_orders"][0][1]["status"] == "approved"
 
+    calls = install_read_spies(monkeypatch)
+    response = client.get("/portal/reseller/history?view=refunded")
+
+    assert response.status_code == 200
+    assert calls["list_orders"][0][1]["status"] == "refunded"
+    assert calls["count_orders"][0][1]["status"] == "refunded"
+    assert 'href="?view=refunded"' in response.text
+    assert 'aria-current="page"' in response.text
+    assert "No refunded orders yet." in response.text
+
+    calls = install_read_spies(monkeypatch)
+    response = client.get("/portal/reseller/history?view=cancelled")
+
+    assert response.status_code == 200
+    assert calls["list_orders"][0][1]["status"] == "cancelled"
+    assert calls["count_orders"][0][1]["status"] == "cancelled"
+    assert 'href="?view=cancelled"' in response.text
+    assert "No cancelled orders yet." in response.text
+
 
 def test_reseller_history_hides_proof_upload_after_payment_is_submitted(monkeypatch):
     order = {
@@ -584,6 +883,111 @@ def test_reseller_history_hides_proof_upload_after_payment_is_submitted(monkeypa
     assert response.status_code == 200
     assert 'class="proof-upload-form"' in response.text
     assert "Send proof" in response.text
+
+
+def test_reseller_history_labels_completed_refund_as_refunded(monkeypatch):
+    order = {
+        "order_id": 29,
+        "order_type": "reseller",
+        "order_date": datetime(2026, 10, 17, 9, 0),
+        "status": "rejected",
+        "refund_status": "completed",
+        "total_amount": Decimal("500.00"),
+        "items": [{"quantity": 1, "name": "Premium Tocino"}],
+        "payment_proofs": [{"order_payment_proof_id": 10, "filename": "payment.jpg"}],
+        "payment_transaction_number": "ABC123456",
+        "payment_amount": Decimal("500.00"),
+        "payment_paid_at": datetime(2026, 10, 17, 8, 30),
+        "payment_extraction_method": "ocr_confirmed",
+    }
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: None)
+    monkeypatch.setattr(repositories, "list_orders", lambda **kwargs: [order])
+    monkeypatch.setattr(repositories, "count_orders", lambda **kwargs: 1)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+
+    response = TestClient(main.app).get("/portal/reseller/history")
+
+    assert response.status_code == 200
+    assert 'class="status-badge refunded"' in response.text
+    assert ">refunded</span" in response.text
+    assert 'class="status-badge rejected"' not in response.text
+
+
+def test_reseller_can_cancel_only_unpaid_order_with_a_reason(monkeypatch):
+    order = {
+        "order_id": 31,
+        "order_type": "reseller",
+        "order_date": datetime(2026, 10, 17, 10, 30),
+        "status": "pending",
+        "refund_status": None,
+        "cancellation_reason": None,
+        "total_amount": Decimal("425.00"),
+        "items": [{"quantity": 1, "name": "Premium Tocino"}],
+        "payment_proofs": [],
+        "payment_transaction_number": None,
+        "payment_amount": None,
+        "payment_paid_at": None,
+        "payment_extraction_method": None,
+    }
+    cancel_calls = []
+    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(repositories, "list_orders", lambda **kwargs: [order])
+    monkeypatch.setattr(repositories, "count_orders", lambda **kwargs: 1)
+    monkeypatch.setattr(repositories, "reseller_cart_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "expire_unpaid_orders", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(
+        repositories,
+        "cancel_reseller_order",
+        lambda *args: cancel_calls.append(args) or {"status": "cancelled"},
+    )
+    client = TestClient(main.app)
+
+    page = client.get("/portal/reseller/history?view=pending")
+
+    assert page.status_code == 200
+    assert 'action="/portal/reseller/orders/31/cancel"' in page.text
+    assert 'data-order-cancel-modal' in page.text
+    assert 'role="dialog"' in page.text
+    assert 'class="button danger order-cancel-trigger"' in page.text
+    assert 'class="order-cancel-disclosure"' not in page.text
+    assert "order-history-table" not in page.text
+    assert 'class="order-history-card"' in page.text
+    action_panel = page.text.split('class="order-card-actions"', 1)[1].split("</aside>", 1)[0]
+    assert "order-cancel-trigger" in action_panel
+    assert 'name="cancellation_reason"' in page.text
+    assert "Need to change items or quantities" in page.text
+    assert 'name="cancellation_details"' in page.text
+
+    response = client.post(
+        "/portal/reseller/orders/31/cancel",
+        data={
+            "cancellation_reason": "change_items",
+            "cancellation_details": "I need to update the quantity.",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert cancel_calls == [(
+        42,
+        31,
+        "change_items",
+        "I need to update the quantity.",
+    )]
+    assert "view=cancelled" in response.headers["location"]
+
+    order["payment_proofs"] = [{"order_payment_proof_id": 12, "filename": "paid.jpg"}]
+    order["payment_transaction_number"] = "PAYMENT123"
+    paid_page = client.get("/portal/reseller/history?view=pending")
+
+    assert paid_page.status_code == 200
+    assert 'action="/portal/reseller/orders/31/cancel"' not in paid_page.text
 
 
 def test_reseller_checkout_page_renders_cart_manifest(monkeypatch):

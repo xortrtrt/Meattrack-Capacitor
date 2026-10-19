@@ -90,11 +90,12 @@
           <thead><tr><th>Order</th><th>Reseller</th><th>First item</th><th>Status</th><th>Total</th></tr></thead>
           <tbody>
           {% for order in orders %}
+          {% set dashboard_order_status = 'refunded' if order.refund_status == 'completed' else order.status %}
           <tr>
             <td data-label="Order"><strong>#{{ order.order_id }}</strong></td>
             <td data-label="Reseller">{{ order.reseller }}</td>
             <td data-label="First item">{% if order["items"] %}{{ order["items"][0].quantity|number }} packs {{ order["items"][0].name }}{% else %}<span class="muted">No item</span>{% endif %}</td>
-            <td data-label="Status"><span class="status-badge {{ order.status }}">{{ order.status }}</span></td>
+            <td data-label="Status"><span class="status-badge {{ dashboard_order_status }}">{{ dashboard_order_status }}</span></td>
             <td data-label="Total"><strong>{{ order.total_amount|currency }}</strong></td>
           </tr>
           {% else %}

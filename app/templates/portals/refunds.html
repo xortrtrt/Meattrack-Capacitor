@@ -1,0 +1,194 @@
+<section class="refund-workspace" data-refund-workspace>
+  <header class="refund-hero">
+    <div>
+      <span class="eyebrow">Manual payment resolution</span>
+      <h2>Refunds</h2>
+      <p>{{ 'Review every refund case and its audit trail.' if role_key == 'owner' else 'Process refund cases assigned to you.' }}</p>
+    </div>
+    <div class="refund-hero-note"><i data-lucide="shield-check"></i><span><strong>Recorded, not gateway-verified</strong><small>Complete a case only after the transfer is actually sent.</small></span></div>
+  </header>
+
+  <div class="refund-status-strip" aria-label="Refund totals">
+    {% for status in refund_statuses %}
+    <a href="?status={{ status }}" class="refund-status-summary {{ status }} {{ 'is-active' if refunds_page.filters.status == status else '' }}">
+      <span>{{ {'pending':'Refund pending','processing':'Processing refund','completed':'Refund completed','failed':'Refund failed'}[status] }}</span>
+      <strong>{{ refund_counts[status] }}</strong>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="refund-layout">
+    <aside class="refund-case-browser" aria-label="Refund cases">
+      <form class="refund-filters" method="get">
+        <label><span class="sr-only">Search refunds</span><i data-lucide="search"></i><input name="q" value="{{ refunds_page.filters.q }}" placeholder="Order or reseller"></label>
+        <select name="status" aria-label="Refund status">
+          <option value="">All statuses</option>
+          {% for status in refund_statuses %}<option value="{{ status }}" {{ 'selected' if refunds_page.filters.status == status else '' }}>{{ {'pending':'Refund pending','processing':'Processing refund','completed':'Refund completed','failed':'Refund failed'}[status] }}</option>{% endfor %}
+        </select>
+        <button class="icon-button" type="submit" aria-label="Apply filters"><i data-lucide="filter"></i></button>
+      </form>
+
+      <div class="refund-case-list">
+        {% for refund in refunds %}
+        <a class="refund-case {{ refund.status }} {{ 'is-selected' if selected_refund and selected_refund.order_refund_id == refund.order_refund_id else '' }}" href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&refund={{ refund.order_refund_id }}">
+          <span class="refund-case-icon"><i data-lucide="{{ 'clock-3' if refund.status == 'pending' else 'loader-circle' if refund.status == 'processing' else 'circle-check-big' if refund.status == 'completed' else 'triangle-alert' }}"></i></span>
+          <span class="refund-case-copy">
+            <span><strong>Order #{{ refund.order_id }}</strong><em class="refund-badge {{ refund.status }}">{{ 'Refund pending' if refund.status == 'pending' else 'Processing refund' if refund.status == 'processing' else 'Refund completed' if refund.status == 'completed' else 'Refund failed' }}</em></span>
+            <small>{{ refund.business_name or refund.reseller_name or 'Reseller' }}</small>
+            <b>PHP {{ '%.2f'|format(refund.amount) }}</b>
+          </span>
+          <i class="refund-case-arrow" data-lucide="chevron-right"></i>
+        </a>
+        {% else %}
+        <div class="refund-empty"><i data-lucide="badge-dollar-sign"></i><strong>No refund cases</strong><p>Cases matching these filters will appear here.</p></div>
+        {% endfor %}
+      </div>
+      {% if refunds_page.pagination.total_pages > 1 %}
+      <nav class="pagination" aria-label="Refund pages">
+        {% if refunds_page.pagination.has_prev %}<a href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&page={{ refunds_page.pagination.page - 1 }}">Previous</a>{% endif %}
+        <span>Page {{ refunds_page.pagination.page }} of {{ refunds_page.pagination.total_pages }}</span>
+        {% if refunds_page.pagination.has_next %}<a href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&page={{ refunds_page.pagination.page + 1 }}">Next</a>{% endif %}
+      </nav>
+      {% endif %}
+    </aside>
+
+    <main class="refund-thread" data-refund-thread aria-live="polite">
+      {% if selected_refund %}
+      <header class="refund-thread-head">
+        <div>
+          <span class="eyebrow">Order-linked refund thread</span>
+          <h3>Order #{{ selected_refund.order_id }}</h3>
+          <p>{{ selected_refund.business_name or selected_refund.reseller_name or 'Reseller' }}</p>
+        </div>
+        <span class="refund-badge large {{ selected_refund.status }}">{{ 'Refund pending' if selected_refund.status == 'pending' else 'Processing refund' if selected_refund.status == 'processing' else 'Refund completed' if selected_refund.status == 'completed' else 'Refund failed' }}</span>
+      </header>
+
+      <section class="refund-facts" aria-label="Refund details">
+        <div><small>Locked refund amount</small><strong>PHP {{ '%.2f'|format(selected_refund.amount) }}</strong><span>Full confirmed payment</span></div>
+        <div><small>Assigned supervisor</small><strong>{{ selected_refund.assigned_supervisor_name or ('Unassigned — available to claim' if role_key == 'sales-supervisor' else 'Owner action required') }}</strong><span>{{ 'First active supervisor may claim this case' if not selected_refund.assigned_supervisor_name and role_key == 'sales-supervisor' else 'No active supervisor at assignment' if not selected_refund.assigned_supervisor_name else 'Automatic assignment' }}</span></div>
+        <div><small>Current processor</small><strong>{{ selected_refund.processor_name or 'Not claimed' }}</strong><span>{{ selected_refund.processing_started_at|nice_date if selected_refund.processing_started_at else 'Waiting to start' }}</span></div>
+      </section>
+
+      <nav class="refund-pane-tabs" aria-label="Refund case views">
+        <a class="{{ 'is-active' if refund_pane == 'activity' else '' }}" data-refund-pane-link data-async-filter-target="[data-refund-thread]" href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&refund={{ selected_refund.order_refund_id }}&pane=activity"><i data-lucide="history"></i> Activity</a>
+        <a class="{{ 'is-active' if refund_pane == 'conversation' else '' }}" data-refund-pane-link data-async-filter-target="[data-refund-thread]" href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&refund={{ selected_refund.order_refund_id }}&pane=conversation"><i data-lucide="messages-square"></i> Conversation</a>
+        {% if selected_refund.status == 'processing' and selected_refund.processing_by_account_id == refund_viewer_account_id %}
+        <a class="{{ 'is-active' if refund_pane == 'transfer' else '' }}" data-refund-pane-link data-async-filter-target="[data-refund-thread]" href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&refund={{ selected_refund.order_refund_id }}&pane=transfer"><i data-lucide="wallet-cards"></i> Record external transfer</a>
+        {% endif %}
+      </nav>
+
+      {% if refund_pane == 'activity' %}
+      <section class="refund-timeline" aria-label="Refund audit history">
+        <article class="refund-event rejection"><span><i data-lucide="circle-x"></i></span><div><header><strong>Order rejected</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>{{ selected_refund.rejection_reason }}</p></div></article>
+        <article class="refund-event pending"><span><i data-lucide="wallet-cards"></i></span><div><header><strong>Payment received confirmed</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>PHP {{ '%.2f'|format(selected_refund.amount) }} was locked as the full manual refund amount.</p></div></article>
+        {% for attempt in selected_refund.attempts %}
+        <article class="refund-event {{ attempt.status }}">
+          <span><i data-lucide="{{ 'loader-circle' if attempt.status == 'processing' else 'circle-check-big' if attempt.status == 'completed' else 'triangle-alert' }}"></i></span>
+          <div>
+            <header><strong>Attempt {{ attempt.attempt_number }} · {{ 'Processing refund' if attempt.status == 'processing' else 'Refund completed' if attempt.status == 'completed' else 'Refund failed' }}</strong><time>{{ (attempt.completed_at or attempt.failed_at or attempt.started_at)|nice_date }}</time></header>
+            <p>Handled by {{ attempt.processor_name or 'Authorized user' }}{% if attempt.refund_method %} through {{ attempt.refund_method }}{% endif %}.</p>
+            {% if attempt.refund_transaction_number %}<dl><div><dt>Reference</dt><dd>{{ attempt.refund_transaction_number }}</dd></div><div><dt>Transferred</dt><dd>{{ attempt.transferred_at|nice_date }}</dd></div></dl>{% endif %}
+            {% if attempt.proof_id %}<a class="refund-proof-link" href="/portal/refund-proofs/{{ attempt.proof_id }}" target="_blank" rel="noopener"><i data-lucide="image"></i> View refund screenshot</a>{% endif %}
+            {% if attempt.failure_reason %}<aside><strong>Internal failure reason</strong><p>{{ attempt.failure_reason }}</p></aside>{% endif %}
+            {% if attempt.internal_note %}<aside><strong>Internal note</strong><p>{{ attempt.internal_note }}</p></aside>{% endif %}
+          </div>
+        </article>
+        {% endfor %}
+      </section>
+
+      <section class="refund-actions" aria-label="Refund actions">
+        {% if selected_refund.status == 'pending' %}
+        <form action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/start" method="post" data-refund-confirm="Start processing this refund? The case will be claimed by you.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <div><strong>Ready to process?</strong><p>Claim the case before sending money outside MeatTrack.</p></div><button class="button primary" type="submit"><i data-lucide="play"></i> Start processing</button>
+        </form>
+        {% elif selected_refund.status == 'failed' %}
+        <form action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/retry" method="post" data-refund-confirm="Start a new refund attempt? The failed attempt will remain in the audit history.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <div><strong>Retry this refund</strong><p>A new attempt will be created; prior evidence remains unchanged.</p></div><button class="button primary" type="submit"><i data-lucide="rotate-ccw"></i> Retry refund</button>
+        </form>
+        {% elif selected_refund.status == 'processing' and selected_refund.processing_by_account_id == refund_viewer_account_id %}
+        <div class="refund-transfer-callout">
+          <span><i data-lucide="wallet-cards"></i></span>
+          <div><strong>Ready to record the transfer?</strong><p>Open the transfer tab after you have the reseller's refund details.</p></div>
+          <a class="button primary" data-refund-pane-link data-async-filter-target="[data-refund-thread]" href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&refund={{ selected_refund.order_refund_id }}&pane=transfer">Record transfer</a>
+        </div>
+        {% elif selected_refund.status == 'processing' and role_key == 'owner' %}
+        <form action="/portal/owner/refunds/{{ selected_refund.order_refund_id }}/take-over" method="post" data-refund-confirm="Take over this refund from {{ selected_refund.processor_name or 'the current processor' }}? Their open attempt will be closed and preserved.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <div><strong>Processing appears abandoned?</strong><p>Owners can explicitly take over and create a new attempt.</p></div><button class="button danger" type="submit"><i data-lucide="user-round-check"></i> Take over</button>
+        </form>
+        {% elif selected_refund.status == 'processing' %}
+        <div class="refund-action-wait"><i data-lucide="lock-keyhole"></i><div><strong>Claimed by {{ selected_refund.processor_name }}</strong><p>Only the current processor may complete or fail this attempt.</p></div></div>
+        {% else %}
+        <div class="refund-action-done"><i data-lucide="shield-check"></i><div><strong>Refund completed</strong><p>This case is terminal. Its amount and evidence cannot be changed.</p></div></div>
+        {% endif %}
+      </section>
+      {% elif refund_pane == 'conversation' %}
+      <section class="refund-conversation refund-conversation-pane" id="refund-conversation-{{ selected_refund.order_refund_id }}" aria-labelledby="refund-conversation-title" data-refund-conversation data-refund-id="{{ selected_refund.order_refund_id }}" data-refund-role="{{ role_key }}">
+        <header>
+          <div><span class="eyebrow">Refund conversation</span><h4 id="refund-conversation-title">Confirm where to send the refund</h4></div>
+          <span class="refund-conversation-privacy"><i data-lucide="lock-keyhole"></i> Order participants only</span>
+        </header>
+        <div class="refund-conversation-safety"><i data-lucide="shield-alert"></i><p>Ask only for the account name, account number, and payment provider needed for the transfer. Never request a password, PIN, or OTP.</p></div>
+        <div class="refund-message-list" role="log" aria-live="polite" aria-label="Refund messages with reseller" data-refund-message-list>
+          {% for item in selected_refund.messages %}
+          <article class="refund-message {{ 'from-reseller' if item.sender_role == 'reseller' else 'from-team' }}" data-refund-message-id="{{ item.order_refund_message_id }}">
+            <small>{{ item.sender_name }} · {{ 'Reseller' if item.sender_role == 'reseller' else 'Owner' if item.sender_role == 'owner' else 'Sales supervisor' }}</small>
+            <p>{{ item.message }}</p>
+            <time datetime="{{ item.created_at }}">{{ item.created_at|nice_date }}</time>
+          </article>
+          {% else %}
+          <div class="refund-message-empty"><i data-lucide="messages-square"></i><p>No messages yet. Ask the reseller to confirm their preferred refund destination.</p></div>
+          {% endfor %}
+        </div>
+        {% if selected_refund.status != 'completed' and (role_key == 'owner' or selected_refund.assigned_supervisor_account_id == refund_viewer_account_id) %}
+        <form class="refund-message-composer" action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/messages" method="post" data-refund-message-form data-async-form>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <label for="refund-message">Message to reseller</label>
+          <div><textarea id="refund-message" name="message" maxlength="1000" rows="3" placeholder="Example: Please confirm your GCash account name and mobile number for this refund." required></textarea><button class="button primary" type="submit"><i data-lucide="send"></i> Send</button></div>
+          <p class="refund-message-status" data-refund-message-status aria-live="polite"></p>
+        </form>
+        {% elif selected_refund.status == 'completed' %}
+        <p class="refund-conversation-closed"><i data-lucide="circle-check-big"></i> Refund completed. This conversation is read-only.</p>
+        {% else %}
+        <p class="refund-conversation-closed"><i data-lucide="user-round-check"></i> Claim this case before messaging the reseller.</p>
+        {% endif %}
+      </section>
+      {% else %}
+
+      <section class="refund-transfer-workspace" aria-labelledby="refund-transfer-title">
+        <header class="refund-transfer-head">
+          <span><i data-lucide="wallet-cards"></i></span>
+          <div><span class="eyebrow">Manual finance action</span><h4 id="refund-transfer-title">Record external transfer</h4><p>Use this only after the money has actually been sent outside MeatTrack.</p></div>
+          <strong>PHP {{ '%.2f'|format(selected_refund.amount) }}</strong>
+        </header>
+        <form class="refund-complete-form" action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/complete" method="post" enctype="multipart/form-data" data-refund-confirm="Confirm that the external transfer was actually sent? This will mark the refund completed and notify the reseller.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <div class="refund-form-grid">
+            <label>Refund method<input name="refund_method" minlength="2" maxlength="100" placeholder="e.g. GCash, bank transfer" required></label>
+            <label>Transaction reference<input name="transaction_reference" maxlength="100" autocomplete="off" required></label>
+            <label>Transfer date and time<input name="transferred_at" type="datetime-local" required></label>
+            <label>Refund screenshot <small>Optional · JPG, PNG, WebP · max 5 MB</small><input name="proof" type="file" accept="image/jpeg,image/png,image/webp"></label>
+          </div>
+          <label>Internal note <small>Optional; never shown to the reseller</small><textarea name="internal_note" maxlength="1000" rows="3"></textarea></label>
+          <button class="button primary" type="submit"><i data-lucide="badge-check"></i> Confirm refund completed</button>
+        </form>
+        <details class="refund-failure-disclosure">
+          <summary><span><i data-lucide="triangle-alert"></i><strong>Transfer did not succeed?</strong></span><i data-lucide="chevron-down"></i></summary>
+          <form class="refund-fail-form" action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/fail" method="post" data-refund-confirm="Mark this transfer attempt as failed? You can retry afterward without changing this attempt.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+            <p>Record why the external transfer failed. This information stays internal.</p>
+            <label>Failure reason<textarea name="failure_reason" minlength="5" maxlength="500" rows="3" required></textarea></label>
+            <button class="button danger" type="submit"><i data-lucide="triangle-alert"></i> Mark attempt failed</button>
+          </form>
+        </details>
+      </section>
+      {% endif %}
+      {% else %}
+      <div class="refund-thread-placeholder"><span><i data-lucide="mouse-pointer-click"></i></span><h3>Select a refund case</h3><p>Choose an order from the list to open its complete refund thread.</p></div>
+      {% endif %}
+    </main>
+  </div>
+</section>
+

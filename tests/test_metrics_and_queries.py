@@ -133,6 +133,33 @@ def test_order_type_filters_headers_and_items(monkeypatch):
     assert orders[0]["payment_proofs"][0]["filename"] == "proof.png"
 
 
+def test_refunded_order_filter_uses_completed_refund_status(monkeypatch):
+    list_calls = []
+    count_calls = []
+    monkeypatch.setattr(
+        order_repository,
+        "fetch_all",
+        lambda query, params=None: list_calls.append((query, params)) or [],
+    )
+    monkeypatch.setattr(
+        order_repository,
+        "fetch_one",
+        lambda query, params=None: count_calls.append((query, params)) or {"total": 0},
+    )
+
+    repositories.list_orders(order_type="reseller", status="refunded")
+    repositories.count_orders(order_type="reseller", status="refunded")
+
+    assert "LEFT JOIN order_refunds refund ON refund.order_id = o.order_id" in list_calls[0][0]
+    assert "refund.status = 'completed'" in list_calls[0][0]
+    assert "o.status = %s" not in list_calls[0][0]
+    assert list_calls[0][1] == ("reseller",)
+    assert "LEFT JOIN order_refunds refund ON refund.order_id = o.order_id" in count_calls[0][0]
+    assert "refund.status = 'completed'" in count_calls[0][0]
+    assert "o.status = %s" not in count_calls[0][0]
+    assert count_calls[0][1] == ("reseller",)
+
+
 def test_report_source_and_limit_are_parameterized(monkeypatch):
     calls = []
     patch_repository_read(
@@ -361,6 +388,9 @@ def test_schema_tracks_reseller_team_leader_assignment():
     assert "payment_transaction_number text" in schema
     assert "payment_paid_at timestamptz" in schema
     assert "payment_amount numeric(12,2)" in schema
+    assert "cancellation_reason text" in schema
+    assert "cancelled_at timestamptz" in schema
+    assert "orders_cancellation_reason_check" in schema
     assert "orders_payment_amount_check" in schema
     assert "orders_payment_transaction_normalized_check" in schema
     assert "CREATE CONSTRAINT TRIGGER trg_require_reseller_order_payment" in schema

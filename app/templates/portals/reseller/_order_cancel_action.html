@@ -1,0 +1,21 @@
+{% set can_cancel = order.status in ['to_pay', 'pending'] and not order.payment_proofs and not order.payment_transaction_number and not order.payment_paid_at and not order.payment_amount %}
+{% if can_cancel %}
+<div class="order-cancel-action" data-order-cancel-action>
+  <button class="button danger order-cancel-trigger" type="button" aria-haspopup="dialog" aria-controls="order-cancel-modal-{{ order.order_id }}" data-order-cancel-open><i data-lucide="circle-x"></i> Cancel order</button>
+  <div class="order-cancel-modal" id="order-cancel-modal-{{ order.order_id }}" data-order-cancel-modal hidden>
+    <button class="order-cancel-backdrop" type="button" aria-label="Keep order" data-order-cancel-close></button>
+    <section class="order-cancel-card" role="dialog" aria-modal="true" aria-labelledby="order-cancel-title-{{ order.order_id }}" aria-describedby="order-cancel-description-{{ order.order_id }}" tabindex="-1">
+      <header class="order-cancel-header">
+        <span class="order-cancel-icon" aria-hidden="true"><i data-lucide="shopping-bag-x"></i></span>
+        <div><span class="eyebrow">Unpaid order</span><h3 id="order-cancel-title-{{ order.order_id }}">Cancel order #{{ order.order_id }}?</h3><p id="order-cancel-description-{{ order.order_id }}">This releases the reserved products. You cannot undo this action.</p></div>
+        <button class="order-cancel-close" type="button" aria-label="Close cancellation form" data-order-cancel-close><i data-lucide="x"></i></button>
+      </header>
+      <form action="/portal/reseller/orders/{{ order.order_id }}/cancel" method="post">
+        <label><span>Why are you cancelling?</span><select name="cancellation_reason" required data-order-cancel-reason><option value="">Select a reason</option>{% for value, label in cancellation_reasons %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
+        <label><span>Additional details <small data-order-cancel-detail-hint>Optional</small></span><textarea name="cancellation_details" maxlength="300" rows="4" placeholder="Add any helpful details" data-order-cancel-details></textarea></label>
+        <footer class="order-cancel-actions"><button class="button subtle" type="button" data-order-cancel-close>Keep order</button><button class="button danger" type="submit">Confirm cancellation</button></footer>
+      </form>
+    </section>
+  </div>
+</div>
+{% endif %}

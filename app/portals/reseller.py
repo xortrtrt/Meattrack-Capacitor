@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
+from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -171,9 +172,17 @@ def history_context(request: Request) -> dict:
     if account_id is not None:
         data.expire_unpaid_orders(account_id=account_id)
     history_view = request.query_params.get("view", "all").strip().lower()
-    if history_view not in {"all", "to_pay", "pending", "approved", "fulfilled"}:
+    if history_view not in {
+        "all", "to_pay", "pending", "approved", "fulfilled", "refunded", "cancelled",
+    }:
         history_view = "all"
-    status_override = history_view if history_view in {"to_pay", "pending", "approved", "fulfilled"} else None
+    status_override = (
+        history_view
+        if history_view in {
+            "to_pay", "pending", "approved", "fulfilled", "refunded", "cancelled",
+        }
+        else None
+    )
     page = shared.orders_page(
         request,
         "reseller",
@@ -181,7 +190,51 @@ def history_context(request: Request) -> dict:
         status_override=status_override,
     )
     page["filters"]["view"] = history_view
-    return {"orders_page": page, "orders": page["items"]}
+    return {
+        "orders_page": page,
+        "orders": page["items"],
+        "cancellation_reasons": data.RESELLER_ORDER_CANCELLATION_REASONS,
+    }
+
+
+def _group_order_system_messages(
+    system_messages: list[dict],
+    refund_conversations: list[dict] | None = None,
+) -> list[dict]:
+    refunds_by_order = {
+        int(item["order_id"]): item
+        for item in (refund_conversations or [])
+    }
+    conversations: dict[str, dict] = {}
+    for item in system_messages:
+        message_id = int(item["order_system_message_id"])
+        order_id = item.get("order_id")
+        key = f"order-{order_id}" if order_id is not None else f"message-{message_id}"
+        conversation = conversations.setdefault(
+            key,
+            {
+                "key": key,
+                "order_id": order_id,
+                "latest": item,
+                "messages": [],
+                "unread_count": 0,
+                "severity": item.get("severity", "info"),
+                "refund": refunds_by_order.get(int(order_id)) if order_id is not None else None,
+            },
+        )
+        conversation["messages"].append(item)
+        if not item.get("read_at"):
+            conversation["unread_count"] += 1
+        if item.get("severity") == "critical":
+            conversation["severity"] = "critical"
+        if item["created_at"] > conversation["latest"]["created_at"]:
+            conversation["latest"] = item
+
+    grouped = list(conversations.values())
+    for conversation in grouped:
+        conversation["messages"].sort(key=lambda item: item["created_at"])
+    grouped.sort(key=lambda conversation: conversation["latest"]["created_at"], reverse=True)
+    return grouped
 
 
 def inbox_context(request: Request) -> dict:
@@ -190,7 +243,27 @@ def inbox_context(request: Request) -> dict:
         open_system_message_id = int(request.query_params.get("system_message", ""))
     except ValueError:
         open_system_message_id = None
+    try:
+        open_refund_id = int(request.query_params.get("refund", ""))
+    except ValueError:
+        open_refund_id = None
+    refund_conversations = data.list_reseller_refund_conversations(account_id)
+    if open_refund_id and not any(
+        int(item["order_refund_id"]) == open_refund_id
+        for item in refund_conversations
+    ):
+        open_refund_id = None
     system_messages = data.list_order_system_messages(account_id, limit=20)
+    if open_refund_id:
+        opened_refund = next(
+            item for item in refund_conversations
+            if int(item["order_refund_id"]) == open_refund_id
+        )
+        order_id = int(opened_refund["order_id"])
+        if not any(int(item["order_id"]) == order_id for item in system_messages):
+            linked_order_message = data.get_latest_order_system_message(account_id, order_id)
+            if linked_order_message:
+                system_messages.insert(0, linked_order_message)
     if open_system_message_id and not any(
         int(item["order_system_message_id"]) == open_system_message_id
         for item in system_messages
@@ -202,8 +275,10 @@ def inbox_context(request: Request) -> dict:
             open_system_message_id = None
     return {
         "system_messages": system_messages,
+        "system_conversations": _group_order_system_messages(system_messages, refund_conversations),
         "system_message_unread_count": data.unread_order_system_message_count(account_id),
         "open_system_message_id": open_system_message_id,
+        "open_refund_id": open_refund_id,
     }
 
 
@@ -382,6 +457,44 @@ async def reseller_order_payment(
         shared.safe_portal_path(
             "reseller", "history", view="pending",
             message=f"Payment for order #{order_id} was submitted for approval.",
+        )
+    )
+
+
+@router.post("/portal/reseller/orders/{order_id}/cancel")
+def reseller_cancel_order(
+    request: Request,
+    order_id: int,
+    cancellation_reason: Annotated[str, Form()] = "",
+    cancellation_details: Annotated[str, Form()] = "",
+):
+    guard = shared.require_portal_session(request, "reseller")
+    if guard:
+        return guard
+    account_id = shared.session_account_id(request)
+    if account_id is None:
+        return shared.redirect_to(
+            shared.safe_portal_path(
+                "reseller", "history", error="Your session expired. Please sign in again."
+            )
+        )
+    try:
+        data.cancel_reseller_order(
+            account_id,
+            order_id,
+            cancellation_reason,
+            cancellation_details,
+        )
+    except ValueError as exc:
+        return shared.redirect_to(
+            shared.safe_portal_path("reseller", "history", view="to_pay", error=str(exc))
+        )
+    return shared.redirect_to(
+        shared.safe_portal_path(
+            "reseller",
+            "history",
+            view="cancelled",
+            message=f"Order #{order_id} was cancelled.",
         )
     )
 

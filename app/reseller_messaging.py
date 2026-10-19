@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
+from typing import overload
 
 from app.database import clean_row, get_transaction_cursor
 
@@ -24,6 +25,14 @@ def normalize_message(value: str) -> str:
     if CONTROL_CHARACTERS_RE.search(cleaned):
         raise ResellerMessagingError("The message contains unsupported control characters.")
     return cleaned
+
+
+@overload
+def _serialize(row: dict) -> dict: ...
+
+
+@overload
+def _serialize(row: None) -> None: ...
 
 
 def _serialize(row: dict | None) -> dict | None:

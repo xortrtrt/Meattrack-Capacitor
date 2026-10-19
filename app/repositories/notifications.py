@@ -93,20 +93,28 @@ def _create_order_system_message_cursor(
     title: str,
     message: str,
     rejection_reason: str | None = None,
+    dedupe_key: str | None = None,
+    order_refund_attempt_id: int | None = None,
 ) -> int:
-    if event_type not in {"approved", "rejected", "fulfilled"}:
+    if event_type not in {
+        "approved", "rejected", "fulfilled", "cancelled", "refund_pending",
+        "refund_processing", "refund_completed", "refund_failed",
+    }:
         raise ValueError("Unsupported order system message type.")
+    message_key = dedupe_key or f"order-{order_id}-{event_type}"
     cur.execute(
         """
         INSERT INTO order_system_messages (
-            reseller_account_id, order_id, event_type, title, message, rejection_reason
+            reseller_account_id, order_id, event_type, title, message, rejection_reason,
+            dedupe_key, order_refund_attempt_id
         )
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (reseller_account_id, order_id, event_type)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (dedupe_key)
         DO UPDATE SET
             title = EXCLUDED.title,
             message = EXCLUDED.message,
-            rejection_reason = EXCLUDED.rejection_reason
+            rejection_reason = EXCLUDED.rejection_reason,
+            order_refund_attempt_id = EXCLUDED.order_refund_attempt_id
         RETURNING order_system_message_id;
         """,
         (
@@ -116,6 +124,8 @@ def _create_order_system_message_cursor(
             title,
             message,
             rejection_reason,
+            message_key,
+            order_refund_attempt_id,
         ),
     )
     return int(cur.fetchone()["order_system_message_id"])
@@ -140,10 +150,17 @@ def list_order_system_messages(account_id: int | None, limit: int = 20) -> list[
     return clean_row(fetch_all(
         """
         SELECT osm.order_system_message_id, osm.event_type,
-               CASE WHEN osm.event_type = 'rejected' THEN 'critical' ELSE 'info' END AS severity,
+               CASE WHEN osm.event_type IN ('rejected', 'refund_failed') THEN 'critical'
+                    WHEN osm.event_type = 'refund_pending' THEN 'warning' ELSE 'info' END AS severity,
                osm.title, osm.message, osm.rejection_reason, osm.order_id,
+               ora.refund_transaction_number AS refund_transaction_reference,
+               orp.order_refund_proof_id AS refund_proof_id,
                osm.read_at, osm.created_at
         FROM order_system_messages osm
+        LEFT JOIN order_refund_attempts ora
+          ON ora.order_refund_attempt_id = osm.order_refund_attempt_id
+        LEFT JOIN order_refund_proofs orp
+          ON orp.order_refund_attempt_id = ora.order_refund_attempt_id
         WHERE osm.reseller_account_id = %s
         ORDER BY osm.created_at DESC, osm.order_system_message_id DESC
         LIMIT %s;
@@ -156,14 +173,44 @@ def get_order_system_message(account_id: int | None, system_message_id: int) -> 
     return clean_row(fetch_one(
         """
         SELECT osm.order_system_message_id, osm.event_type,
-               CASE WHEN osm.event_type = 'rejected' THEN 'critical' ELSE 'info' END AS severity,
+               CASE WHEN osm.event_type IN ('rejected', 'refund_failed') THEN 'critical'
+                    WHEN osm.event_type = 'refund_pending' THEN 'warning' ELSE 'info' END AS severity,
                osm.title, osm.message, osm.rejection_reason, osm.order_id,
+               ora.refund_transaction_number AS refund_transaction_reference,
+               orp.order_refund_proof_id AS refund_proof_id,
                osm.read_at, osm.created_at
         FROM order_system_messages osm
+        LEFT JOIN order_refund_attempts ora
+          ON ora.order_refund_attempt_id = osm.order_refund_attempt_id
+        LEFT JOIN order_refund_proofs orp
+          ON orp.order_refund_attempt_id = ora.order_refund_attempt_id
         WHERE osm.reseller_account_id = %s
           AND osm.order_system_message_id = %s;
         """,
         (account_id, system_message_id),
+    ))
+
+
+def get_latest_order_system_message(account_id: int | None, order_id: int) -> dict | None:
+    return clean_row(fetch_one(
+        """
+        SELECT osm.order_system_message_id, osm.event_type,
+               CASE WHEN osm.event_type IN ('rejected', 'refund_failed') THEN 'critical'
+                    WHEN osm.event_type = 'refund_pending' THEN 'warning' ELSE 'info' END AS severity,
+               osm.title, osm.message, osm.rejection_reason, osm.order_id,
+               ora.refund_transaction_number AS refund_transaction_reference,
+               orp.order_refund_proof_id AS refund_proof_id,
+               osm.read_at, osm.created_at
+        FROM order_system_messages osm
+        LEFT JOIN order_refund_attempts ora
+          ON ora.order_refund_attempt_id = osm.order_refund_attempt_id
+        LEFT JOIN order_refund_proofs orp
+          ON orp.order_refund_attempt_id = ora.order_refund_attempt_id
+        WHERE osm.reseller_account_id = %s AND osm.order_id = %s
+        ORDER BY osm.created_at DESC, osm.order_system_message_id DESC
+        LIMIT 1;
+        """,
+        (account_id, order_id),
     ))
 
 
@@ -293,4 +340,4 @@ def mark_notifications_read(role_key: str, account_id: int | None = None) -> Non
     )
 
 
-__all__ = ['_notification_recipient_ids', '_create_notification_cursor', '_create_order_system_message_cursor', 'create_notification', 'list_notifications', 'list_order_system_messages', 'get_order_system_message', 'unread_order_system_message_count', 'mark_order_system_message_read', 'mark_notification_read', 'list_notification_history', 'count_notification_history', 'unread_notification_count', 'mark_notifications_read']
+__all__ = ['_notification_recipient_ids', '_create_notification_cursor', '_create_order_system_message_cursor', 'create_notification', 'list_notifications', 'list_order_system_messages', 'get_order_system_message', 'get_latest_order_system_message', 'unread_order_system_message_count', 'mark_order_system_message_read', 'mark_notification_read', 'list_notification_history', 'count_notification_history', 'unread_notification_count', 'mark_notifications_read']

@@ -1612,6 +1612,7 @@ select:disabled {
 
 .status-badge.approved,
 .status-badge.fulfilled,
+.status-badge.refunded,
 .status-badge.active,
 .status-badge.present {
   background: #dff0df;

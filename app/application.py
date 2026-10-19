@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app import web
 from app.config import APP_ENV, AUTH_RATE_LIMIT_ENABLED, CSRF_PROTECTION_ENABLED
 from app.portals import owner as owner_portal
+from app.portals import refunds as refunds_portal
 from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
 from app.portals import team_leader as team_leader_portal
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
             **owner_portal.SECTION_LOADERS,
             **team_leader_portal.SECTION_LOADERS,
             **reseller_portal.SECTION_LOADERS,
+            **refunds_portal.SECTION_LOADERS,
             **{
                 (role_key, "notifications"): shared_portal.notifications_context
                 for role_key in ("owner", "team-leader", "sales-supervisor", "reseller")
@@ -109,6 +111,7 @@ def create_app() -> FastAPI:
         owner_portal.router,
         team_leader_portal.router,
         reseller_portal.router,
+        refunds_portal.router,
         shared_portal.router,
     ):
         application.include_router(portal_router)

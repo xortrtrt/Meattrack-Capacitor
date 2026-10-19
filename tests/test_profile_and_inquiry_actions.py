@@ -724,6 +724,112 @@ def test_team_order_route_returns_error_when_proof_missing(monkeypatch):
     assert "Proof+of+payment+is+required" in response.headers["location"]
 
 
+def test_cancel_reseller_order_releases_unpaid_reservation_and_records_reason(monkeypatch):
+    queries = []
+    order = {
+        "order_id": 31,
+        "status": "to_pay",
+        "created_by_account_id": 7,
+        "team_leader_account_id": 4,
+        "payment_transaction_number": None,
+        "payment_paid_at": None,
+        "payment_amount": None,
+        "payment_confirmed_at": None,
+        "business_name": "Lipa Fresh Mart",
+        "has_payment_proof": False,
+    }
+
+    class Cursor:
+        result = None
+
+        def execute(self, query, params=None):
+            queries.append((query, params))
+            if "AS has_payment_proof" in query:
+                self.result = order
+            elif "RETURNING order_id, status, cancellation_reason" in query:
+                self.result = {
+                    "order_id": 31,
+                    "status": "cancelled",
+                    "cancellation_reason": "Need to change items or quantities: Use three packs instead.",
+                    "cancelled_at": None,
+                }
+
+        def fetchone(self):
+            return self.result
+
+    @contextmanager
+    def fake_transaction():
+        yield Cursor()
+
+    logs = []
+    messages = []
+    notifications = []
+    monkeypatch.setattr(order_repository, "get_transaction_cursor", fake_transaction)
+    monkeypatch.setattr(
+        order_repository,
+        "_add_log_cursor",
+        lambda *args, **kwargs: logs.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        order_repository,
+        "_create_order_system_message_cursor",
+        lambda *args, **kwargs: messages.append((args, kwargs)) or 1,
+    )
+    monkeypatch.setattr(
+        order_repository,
+        "_create_notification_cursor",
+        lambda *args, **kwargs: notifications.append((args, kwargs)),
+    )
+
+    result = repositories.cancel_reseller_order(
+        7,
+        31,
+        "change_items",
+        "Use three packs instead.",
+    )
+
+    assert result["status"] == "cancelled"
+    assert any("DELETE FROM order_stock_reservations" in query for query, _ in queries)
+    assert any("SET status = 'cancelled'" in query for query, _ in queries)
+    assert logs[0][1]["action"] == "cancelled_reseller_order"
+    assert messages[0][1]["event_type"] == "cancelled"
+    assert notifications[0][1]["recipient_account_id"] == 4
+
+
+def test_cancel_reseller_order_rejects_any_payment_evidence(monkeypatch):
+    class Cursor:
+        def execute(self, query, params=None):
+            self.query = query
+
+        def fetchone(self):
+            return {
+                "order_id": 31,
+                "status": "pending",
+                "created_by_account_id": 7,
+                "team_leader_account_id": 4,
+                "payment_transaction_number": None,
+                "payment_paid_at": None,
+                "payment_amount": None,
+                "payment_confirmed_at": None,
+                "business_name": "Lipa Fresh Mart",
+                "has_payment_proof": True,
+            }
+
+    @contextmanager
+    def fake_transaction():
+        yield Cursor()
+
+    monkeypatch.setattr(order_repository, "get_transaction_cursor", fake_transaction)
+
+    with pytest.raises(ValueError, match="submitted payment cannot be cancelled"):
+        repositories.cancel_reseller_order(7, 31, "ordered_by_mistake")
+
+
+def test_cancel_reseller_order_requires_details_for_other_reason(monkeypatch):
+    with pytest.raises(ValueError, match="short explanation"):
+        repositories.cancel_reseller_order(7, 31, "other", "")
+
+
 def test_team_order_rejection_passes_required_reason(monkeypatch):
     calls = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
@@ -737,7 +843,7 @@ def test_team_order_rejection_passes_required_reason(monkeypatch):
 
     response = TestClient(main.app).post(
         "/portal/team-leader/orders/7/reject",
-        data={"rejection_reason": "The uploaded payment receipt is unreadable."},
+        data={"rejection_reason": "The uploaded payment receipt is unreadable.", "payment_received": "no"},
         follow_redirects=False,
     )
 
@@ -747,6 +853,7 @@ def test_team_order_rejection_passes_required_reason(monkeypatch):
         {
             "team_leader_account_id": 4,
             "rejection_reason": "The uploaded payment receipt is unreadable.",
+                "payment_received": False,
         },
     )]
 

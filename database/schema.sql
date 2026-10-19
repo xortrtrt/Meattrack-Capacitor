@@ -165,6 +165,9 @@ CREATE TABLE orders (
     total_amount numeric(12,2) NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
     notes text,
     rejection_reason text,
+    rejection_payment_received boolean,
+    cancellation_reason text,
+    cancelled_at timestamptz,
     payment_transaction_number text,
     payment_transaction_key text,
     payment_paid_at timestamptz,
@@ -177,6 +180,13 @@ CREATE TABLE orders (
     expired_at timestamptz,
     CONSTRAINT orders_rejection_reason_check CHECK (
         rejection_reason IS NULL OR char_length(btrim(rejection_reason)) BETWEEN 5 AND 400
+    ),
+    CONSTRAINT orders_rejection_payment_received_check CHECK (
+        rejection_payment_received IS NULL OR status = 'rejected'
+    ),
+    CONSTRAINT orders_cancellation_reason_check CHECK (
+        (status = 'cancelled' AND char_length(btrim(cancellation_reason)) BETWEEN 5 AND 400)
+        OR (status <> 'cancelled' AND cancellation_reason IS NULL AND cancelled_at IS NULL)
     ),
     CONSTRAINT orders_payment_transaction_number_check
         CHECK (payment_transaction_number IS NULL OR btrim(payment_transaction_number) <> ''),
@@ -250,6 +260,74 @@ CREATE TABLE order_payment_proofs (
     CHECK (filename !~ '[\\/]'),
     CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp')),
     CHECK (length(checksum_sha256) = 64)
+);
+
+CREATE TABLE order_refunds (
+    order_refund_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id bigint NOT NULL UNIQUE REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    amount numeric(12,2) NOT NULL CHECK (amount > 0 AND amount NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)),
+    currency char(3) NOT NULL DEFAULT 'PHP' CHECK (currency = 'PHP'),
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    requested_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    assigned_supervisor_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    processing_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    requested_at timestamptz NOT NULL DEFAULT now(),
+    processing_started_at timestamptz,
+    completed_at timestamptz,
+    failed_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (status <> 'processing' OR (processing_by_account_id IS NOT NULL AND processing_started_at IS NOT NULL)),
+    CHECK (status <> 'completed' OR (completed_at IS NOT NULL AND failed_at IS NULL)),
+    CHECK (status <> 'failed' OR (failed_at IS NOT NULL AND completed_at IS NULL))
+);
+
+CREATE TABLE order_refund_attempts (
+    order_refund_attempt_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_refund_id bigint NOT NULL REFERENCES order_refunds(order_refund_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    attempt_number integer NOT NULL CHECK (attempt_number > 0),
+    status text NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'completed', 'failed')),
+    processor_account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    refund_method text,
+    refund_transaction_number text,
+    refund_transaction_key text,
+    transferred_at timestamptz,
+    internal_note text CHECK (internal_note IS NULL OR char_length(btrim(internal_note)) <= 1000),
+    failure_reason text CHECK (failure_reason IS NULL OR char_length(btrim(failure_reason)) BETWEEN 5 AND 500),
+    started_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    failed_at timestamptz,
+    UNIQUE (order_refund_id, attempt_number),
+    CHECK (refund_method IS NULL OR char_length(btrim(refund_method)) BETWEEN 2 AND 100),
+    CHECK (refund_transaction_number IS NULL OR btrim(refund_transaction_number) <> ''),
+    CHECK (refund_transaction_key IS NULL OR refund_transaction_key ~ '^[A-Z0-9]{6,64}$'),
+    CHECK (refund_transaction_key IS NULL OR (refund_transaction_number IS NOT NULL AND refund_transaction_key = upper(regexp_replace(refund_transaction_number, '[^A-Za-z0-9]', '', 'g')))),
+    CHECK (status <> 'completed' OR (refund_method IS NOT NULL AND refund_transaction_number IS NOT NULL AND refund_transaction_key IS NOT NULL AND transferred_at IS NOT NULL AND completed_at IS NOT NULL AND failure_reason IS NULL)),
+    CHECK (status <> 'failed' OR (failure_reason IS NOT NULL AND failed_at IS NOT NULL AND refund_method IS NULL AND refund_transaction_number IS NULL AND refund_transaction_key IS NULL AND transferred_at IS NULL AND completed_at IS NULL)),
+    CHECK (status <> 'processing' OR (refund_method IS NULL AND refund_transaction_number IS NULL AND refund_transaction_key IS NULL AND transferred_at IS NULL AND failure_reason IS NULL AND completed_at IS NULL AND failed_at IS NULL))
+);
+
+CREATE TABLE order_refund_proofs (
+    order_refund_proof_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_refund_attempt_id bigint NOT NULL UNIQUE REFERENCES order_refund_attempts(order_refund_attempt_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    uploaded_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    filename text NOT NULL,
+    content_type text NOT NULL,
+    content bytea NOT NULL,
+    size_bytes integer NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 5242880),
+    checksum_sha256 char(64) NOT NULL CHECK (length(checksum_sha256) = 64),
+    uploaded_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(filename) <> ''),
+    CHECK (filename !~ '[\\/]'),
+    CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp'))
+);
+
+CREATE TABLE order_refund_messages (
+    order_refund_message_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_refund_id bigint NOT NULL REFERENCES order_refunds(order_refund_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    sender_account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    sender_role text NOT NULL CHECK (sender_role IN ('owner', 'sales-supervisor', 'reseller')),
+    message text NOT NULL CHECK (char_length(btrim(message)) BETWEEN 1 AND 1000),
+    created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE reseller_cart_items (
@@ -441,13 +519,14 @@ CREATE TABLE order_system_messages (
     order_system_message_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     reseller_account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
     order_id bigint NOT NULL REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE CASCADE,
-    event_type text NOT NULL CHECK (event_type IN ('approved', 'rejected', 'fulfilled')),
+    event_type text NOT NULL CHECK (event_type IN ('approved', 'rejected', 'fulfilled', 'cancelled', 'refund_pending', 'refund_processing', 'refund_completed', 'refund_failed')),
     title text NOT NULL CHECK (btrim(title) <> ''),
     message text NOT NULL CHECK (btrim(message) <> ''),
     rejection_reason text,
+    dedupe_key text NOT NULL UNIQUE,
+    order_refund_attempt_id bigint REFERENCES order_refund_attempts(order_refund_attempt_id) ON UPDATE CASCADE ON DELETE SET NULL,
     read_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (reseller_account_id, order_id, event_type),
     CHECK (
         (event_type = 'rejected' AND char_length(btrim(rejection_reason)) BETWEEN 5 AND 400)
         OR (event_type <> 'rejected' AND rejection_reason IS NULL)
@@ -714,6 +793,61 @@ END $$;
 CREATE TRIGGER trg_enforce_order_status_transition
 BEFORE UPDATE OF status ON orders FOR EACH ROW EXECUTE FUNCTION enforce_order_status_transition();
 
+CREATE OR REPLACE FUNCTION enforce_order_refund_status_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.status = OLD.status THEN RETURN NEW; END IF;
+    IF OLD.status = 'completed' THEN RAISE EXCEPTION 'Completed refunds are terminal.'; END IF;
+    IF OLD.status = 'pending' AND NEW.status = 'processing' THEN RETURN NEW; END IF;
+    IF OLD.status = 'processing' AND NEW.status IN ('completed', 'failed') THEN RETURN NEW; END IF;
+    IF OLD.status = 'failed' AND NEW.status = 'processing' THEN RETURN NEW; END IF;
+    RAISE EXCEPTION 'Invalid refund status transition: % -> %.', OLD.status, NEW.status;
+END $$;
+CREATE TRIGGER trg_enforce_order_refund_status_transition
+BEFORE UPDATE OF status ON order_refunds FOR EACH ROW EXECUTE FUNCTION enforce_order_refund_status_transition();
+
+CREATE OR REPLACE FUNCTION protect_order_refund_audit_fields()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.order_id IS DISTINCT FROM OLD.order_id
+       OR NEW.amount IS DISTINCT FROM OLD.amount
+       OR NEW.currency IS DISTINCT FROM OLD.currency
+       OR NEW.requested_by_account_id IS DISTINCT FROM OLD.requested_by_account_id
+       OR NEW.requested_at IS DISTINCT FROM OLD.requested_at THEN
+        RAISE EXCEPTION 'Locked refund request fields cannot be changed.';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER trg_protect_order_refund_audit_fields
+BEFORE UPDATE ON order_refunds FOR EACH ROW EXECUTE FUNCTION protect_order_refund_audit_fields();
+
+CREATE OR REPLACE FUNCTION protect_finished_refund_attempt()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.status IN ('completed', 'failed') THEN
+        RAISE EXCEPTION 'Completed and failed refund attempts are append-only.';
+    END IF;
+    IF NEW.order_refund_id IS DISTINCT FROM OLD.order_refund_id
+       OR NEW.attempt_number IS DISTINCT FROM OLD.attempt_number
+       OR NEW.processor_account_id IS DISTINCT FROM OLD.processor_account_id
+       OR NEW.started_at IS DISTINCT FROM OLD.started_at THEN
+        RAISE EXCEPTION 'Refund attempt identity fields cannot be changed.';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER trg_protect_finished_refund_attempt
+BEFORE UPDATE ON order_refund_attempts FOR EACH ROW EXECUTE FUNCTION protect_finished_refund_attempt();
+
+CREATE OR REPLACE FUNCTION protect_order_refund_message()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'Refund conversation messages are append-only.';
+END $$;
+
+CREATE TRIGGER trg_protect_order_refund_message
+BEFORE UPDATE OR DELETE ON order_refund_messages
+FOR EACH ROW EXECUTE FUNCTION protect_order_refund_message();
+
 CREATE OR REPLACE FUNCTION enforce_order_team_leader_snapshot()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -850,6 +984,11 @@ CREATE UNIQUE INDEX ux_orders_reseller_payment_transaction
     WHERE order_type = 'reseller' AND payment_transaction_key IS NOT NULL;
 CREATE INDEX ix_order_payment_proofs_order ON order_payment_proofs (order_id, uploaded_at DESC);
 CREATE INDEX ix_order_payment_proofs_checksum ON order_payment_proofs (checksum_sha256, order_id);
+CREATE UNIQUE INDEX ux_order_refund_attempt_transaction ON order_refund_attempts (refund_transaction_key) WHERE refund_transaction_key IS NOT NULL;
+CREATE INDEX ix_order_refunds_status_requested ON order_refunds (status, requested_at, order_refund_id);
+CREATE INDEX ix_order_refunds_supervisor_status ON order_refunds (assigned_supervisor_account_id, status, requested_at);
+CREATE INDEX ix_order_refund_attempts_refund ON order_refund_attempts (order_refund_id, attempt_number);
+CREATE INDEX ix_order_refund_messages_refund_created ON order_refund_messages (order_refund_id, created_at, order_refund_message_id);
 CREATE INDEX ix_order_stock_reservations_product ON order_stock_reservations (product_id, order_id);
 CREATE INDEX ix_resellers_team_leader ON resellers (team_leader_account_id);
 CREATE INDEX ix_reseller_cart_items_account_updated ON reseller_cart_items (account_id, updated_at DESC);

@@ -216,6 +216,7 @@
             ".order-history-tabs a",
             ".stock-clear-button",
             "form[data-auto-filter] a.button",
+            "[data-refund-pane-link]",
             "[data-async-filter-results] .pagination a",
             "[data-async-filter-results] .stock-pagination a",
         ].join(", ");
@@ -284,6 +285,12 @@
                 if (pushState) window.history.pushState({}, "", url);
                 window.lucide?.createIcons();
                 bindRefreshedContent();
+                if (contentSelector === "[data-refund-thread]") {
+                    replacement.querySelector(".refund-pane-tabs .is-active")?.focus({ preventScroll: true });
+                    if (replacement.querySelector("[data-refund-conversation]")) {
+                        document.dispatchEvent(new CustomEvent("refund:conversation-visible"));
+                    }
+                }
             } catch (error) {
                 if (error.name === "AbortError") return;
                 window.location.assign(url);
@@ -726,7 +733,10 @@
         const cancelButton = modal?.querySelector("[data-order-action-close]:not(.proof-modal-backdrop)");
         const rejectionField = modal?.querySelector("[data-order-rejection-field]");
         const rejectionReason = modal?.querySelector("[data-order-rejection-reason]");
-        if (!modal || !dialog || !icon || !eyebrow || !title || !description || !confirmButton || !rejectionField || !rejectionReason) {
+        const paymentChoices = Array.from(modal?.querySelectorAll("[name='order-payment-received-choice']") || []);
+        const refundNotice = modal?.querySelector("[data-order-refund-notice]");
+        const refundAmount = modal?.querySelector("[data-order-refund-amount]");
+        if (!modal || !dialog || !icon || !eyebrow || !title || !description || !confirmButton || !rejectionField || !rejectionReason || !refundNotice || !refundAmount) {
             return;
         }
 
@@ -771,6 +781,11 @@
             document.body.classList.remove("modal-is-open");
             rejectionReason.value = "";
             rejectionReason.setCustomValidity("");
+            paymentChoices.forEach((choice) => {
+                choice.checked = false;
+                choice.setCustomValidity("");
+            });
+            refundNotice.hidden = true;
             activeForm = null;
             returnFocus?.focus();
             returnFocus = null;
@@ -789,6 +804,14 @@
             rejectionReason.required = Boolean(action.requiresReason);
             rejectionReason.value = "";
             rejectionReason.setCustomValidity("");
+            paymentChoices.forEach((choice) => {
+                choice.checked = false;
+                choice.required = Boolean(action.requiresReason);
+                choice.setCustomValidity("");
+            });
+            const paymentAmount = Number(form.dataset.paymentAmount || 0);
+            refundAmount.textContent = `PHP ${paymentAmount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            refundNotice.hidden = true;
             confirmButton.classList.toggle("danger", Boolean(action.destructive));
             confirmButton.classList.toggle("primary", !action.destructive);
             confirmButton.querySelector("span").textContent = action.confirm;
@@ -810,6 +833,13 @@
             button.addEventListener("click", closeModal);
         });
 
+        paymentChoices.forEach((choice) => {
+            choice.addEventListener("change", () => {
+                refundNotice.hidden = choice.value !== "yes" || !choice.checked;
+                paymentChoices.forEach((item) => item.setCustomValidity(""));
+            });
+        });
+
         confirmButton.addEventListener("click", () => {
             if (!activeForm || isSubmitting) return;
             if (activeForm.dataset.orderAction === "reject") {
@@ -823,8 +853,16 @@
                 );
                 if (!rejectionReason.reportValidity()) return;
                 const target = activeForm.querySelector("[data-order-rejection-value]");
-                if (!target) return;
+                const paymentTarget = activeForm.querySelector("[data-order-payment-received-value]");
+                const selectedPayment = paymentChoices.find((choice) => choice.checked);
+                if (!selectedPayment) {
+                    paymentChoices[0]?.setCustomValidity("Choose whether payment was received.");
+                    paymentChoices[0]?.reportValidity();
+                    return;
+                }
+                if (!target || !paymentTarget) return;
                 target.value = cleanedReason;
+                paymentTarget.value = selectedPayment.value;
             }
             isSubmitting = true;
             confirmButton.disabled = true;
@@ -1592,6 +1630,76 @@
         document.querySelectorAll("[data-receipt-checkout]").forEach(bindReceiptCheckoutForm);
     }
 
+    function bindOrderCancellationModals() {
+        document.querySelectorAll("[data-order-cancel-action]").forEach((action) => {
+            const openButton = action.querySelector("[data-order-cancel-open]");
+            const modal = action.querySelector("[data-order-cancel-modal]");
+            const dialog = modal?.querySelector("[role='dialog']");
+            const form = modal?.querySelector("form");
+            const reason = modal?.querySelector("[data-order-cancel-reason]");
+            const details = modal?.querySelector("[data-order-cancel-details]");
+            const detailHint = modal?.querySelector("[data-order-cancel-detail-hint]");
+            if (!openButton || !modal || !dialog || !form || !reason || !details) return;
+
+            let lastFocused = null;
+
+            const updateDetailRequirement = () => {
+                const isOther = reason.value === "other";
+                details.required = isOther;
+                if (detailHint) detailHint.textContent = isOther ? "Required" : "Optional";
+            };
+
+            const openModal = () => {
+                lastFocused = document.activeElement;
+                updateDetailRequirement();
+                modal.hidden = false;
+                document.body.classList.add("modal-is-open");
+                window.requestAnimationFrame(() => dialog.focus());
+            };
+
+            const closeModal = () => {
+                modal.hidden = true;
+                document.body.classList.remove("modal-is-open");
+                if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
+            };
+
+            openButton.addEventListener("click", openModal);
+            modal.querySelectorAll("[data-order-cancel-close]").forEach((button) => {
+                button.addEventListener("click", closeModal);
+            });
+            reason.addEventListener("change", updateDetailRequirement);
+            dialog.addEventListener("keydown", (event) => {
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    closeModal();
+                    return;
+                }
+                if (event.key !== "Tab") return;
+                const focusable = Array.from(dialog.querySelectorAll(
+                    "button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex='-1'])",
+                ));
+                if (!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+            form.addEventListener("submit", () => {
+                updateDetailRequirement();
+                const submitButton = form.querySelector("button[type='submit']");
+                if (form.checkValidity() && submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.textContent = "Cancelling…";
+                }
+            });
+        });
+    }
+
     bindQuantitySteppers();
     bindProductSearch();
     bindProductModal();
@@ -1603,4 +1711,5 @@
     bindRecipeRows();
     bindReceiptCheckout();
     bindPaymentCountdowns();
+    bindOrderCancellationModals();
 })();

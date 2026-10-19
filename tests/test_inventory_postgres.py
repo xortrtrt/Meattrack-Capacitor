@@ -269,6 +269,7 @@ def test_legacy_unpaid_pending_reseller_order_can_be_rejected(strict_inventory_d
         "reject",
         team_leader_account_id=leader_id,
         rejection_reason="The submitted receipt could not be verified.",
+        payment_received=False,
     )
 
     with psycopg2.connect(strict_inventory_database) as connection:
@@ -312,6 +313,7 @@ def test_order_decisions_create_reseller_system_messages(strict_inventory_databa
         "reject",
         team_leader_account_id=leader_id,
         rejection_reason="The payment reference does not match the uploaded receipt.",
+        payment_received=False,
     )
     assert repositories.decide_order(order_ids[2], "approve", team_leader_account_id=leader_id)
     assert repositories.decide_order(order_ids[2], "fulfill", team_leader_account_id=leader_id)
@@ -390,6 +392,334 @@ def test_pending_order_rejection_requires_explanation(strict_inventory_database)
             assert cursor.fetchone() == ("pending", None)
             cursor.execute("SELECT COUNT(*) FROM order_system_messages WHERE order_id = %s;", (order_ids[0],))
             assert cursor.fetchone()[0] == 0
+
+
+@pytest.mark.postgres
+def test_paid_rejection_atomically_creates_one_assigned_refund(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="pending"
+    )
+    order_id = order_ids[0]
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash, team_leader_role)
+                VALUES ('team_leader', 'Refund Supervisor', 'refund-supervisor@test.local', 'hash', 'sales-supervisor')
+                RETURNING account_id;
+                """
+            )
+            supervisor_id = cursor.fetchone()[0]
+
+    assert repositories.decide_order(
+        order_id,
+        "reject",
+        team_leader_account_id=leader_id,
+        rejection_reason="The order cannot be approved after payment review.",
+        payment_received=True,
+    )
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT status, rejection_payment_received FROM orders WHERE order_id = %s;",
+                (order_id,),
+            )
+            assert cursor.fetchone() == ("rejected", True)
+            cursor.execute(
+                """
+                SELECT amount, currency, status, requested_by_account_id, assigned_supervisor_account_id
+                FROM order_refunds WHERE order_id = %s;
+                """,
+                (order_id,),
+            )
+            assert cursor.fetchone() == (Decimal("500.00"), "PHP", "pending", leader_id, supervisor_id)
+            cursor.execute(
+                "SELECT event_type FROM order_system_messages WHERE order_id = %s ORDER BY order_system_message_id;",
+                (order_id,),
+            )
+            assert [row[0] for row in cursor.fetchall()] == ["rejected", "refund_pending"]
+            cursor.execute("SELECT COUNT(*) FROM order_refunds WHERE order_id = %s;", (order_id,))
+            assert cursor.fetchone()[0] == 1
+
+
+@pytest.mark.postgres
+def test_manual_refund_retry_history_completion_and_proof_access(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="pending"
+    )
+    order_id = order_ids[0]
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash, team_leader_role)
+                VALUES ('team_leader', 'Refund Supervisor', 'refund-flow@test.local', 'hash', 'sales-supervisor')
+                RETURNING account_id;
+                """
+            )
+            supervisor_id = cursor.fetchone()[0]
+            cursor.execute("SELECT created_by_account_id FROM orders WHERE order_id = %s;", (order_id,))
+            reseller_account_id = cursor.fetchone()[0]
+
+    repositories.decide_order(
+        order_id,
+        "reject",
+        team_leader_account_id=leader_id,
+        rejection_reason="Payment was received but the order must be rejected.",
+        payment_received=True,
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT order_refund_id FROM order_refunds WHERE order_id = %s;", (order_id,))
+            refund_id = cursor.fetchone()[0]
+
+    repositories.start_order_refund(refund_id, supervisor_id, "sales-supervisor")
+    repositories.fail_order_refund(
+        refund_id, supervisor_id, "sales-supervisor", "The external wallet transfer was declined."
+    )
+    repositories.start_order_refund(refund_id, supervisor_id, "sales-supervisor")
+    proof_content = b"validated-refund-proof"
+    repositories.complete_order_refund(
+        refund_id,
+        supervisor_id,
+        "sales-supervisor",
+        refund_method="GCash",
+        transaction_reference="ABC-123-456",
+        transferred_at=datetime.now(timezone.utc),
+        internal_note="Confirmed against the finance ledger.",
+        proof={
+            "filename": "refund.png",
+            "content_type": "image/png",
+            "content": proof_content,
+            "size_bytes": len(proof_content),
+            "checksum_sha256": hashlib.sha256(proof_content).hexdigest(),
+        },
+    )
+
+    refund = repositories.get_order_refund(refund_id, "sales-supervisor", supervisor_id)
+    assert refund["status"] == "completed"
+    assert [(attempt["attempt_number"], attempt["status"]) for attempt in refund["attempts"]] == [
+        (1, "failed"),
+        (2, "completed"),
+    ]
+    assert refund["attempts"][1]["refund_transaction_key"] == "ABC123456"
+    proof_id = refund["attempts"][1]["proof_id"]
+    assert bytes(repositories.get_order_refund_proof(proof_id, "reseller", reseller_account_id)["content"]) == proof_content
+    assert repositories.get_order_refund_proof(proof_id, "reseller", reseller_account_id + 9999) is None
+    system_messages = repositories.list_order_system_messages(reseller_account_id)
+    completed_message = next(message for message in system_messages if message["event_type"] == "refund_completed")
+    assert completed_message["refund_transaction_reference"] == "ABC-123-456"
+    assert completed_message["refund_proof_id"] == proof_id
+    assert repositories.get_order_system_message(
+        reseller_account_id, completed_message["order_system_message_id"]
+    )["refund_transaction_reference"] == "ABC-123-456"
+    with pytest.raises(ValueError, match="Completed refunds"):
+        repositories.start_order_refund(refund_id, supervisor_id, "sales-supervisor")
+
+
+@pytest.mark.postgres
+def test_unrelated_supervisor_cannot_claim_assigned_refund(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="pending"
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash, team_leader_role)
+                VALUES
+                    ('team_leader', 'Assigned Supervisor', 'assigned-refund@test.local', 'hash', 'sales-supervisor'),
+                    ('team_leader', 'Unrelated Supervisor', 'unrelated-refund@test.local', 'hash', 'sales-supervisor')
+                RETURNING account_id;
+                """
+            )
+            supervisor_ids = [row[0] for row in cursor.fetchall()]
+    repositories.decide_order(
+        order_ids[0],
+        "reject",
+        team_leader_account_id=leader_id,
+        rejection_reason="Payment was received but fulfillment is not possible.",
+        payment_received=True,
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT order_refund_id, assigned_supervisor_account_id FROM order_refunds WHERE order_id = %s;",
+                (order_ids[0],),
+            )
+            refund_id, assigned_id = cursor.fetchone()
+    unrelated_id = next(account_id for account_id in supervisor_ids if account_id != assigned_id)
+    with pytest.raises(ValueError, match="not authorized"):
+        repositories.start_order_refund(refund_id, unrelated_id, "sales-supervisor")
+
+
+@pytest.mark.postgres
+def test_refund_conversation_is_order_scoped_authorized_and_append_only(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="pending"
+    )
+    order_id = order_ids[0]
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash, team_leader_role)
+                VALUES
+                    ('team_leader', 'Conversation Supervisor', 'refund-chat-supervisor@test.local', 'hash', 'sales-supervisor'),
+                    ('team_leader', 'Other Supervisor', 'refund-chat-other@test.local', 'hash', 'sales-supervisor')
+                RETURNING account_id;
+                """
+            )
+            supervisor_ids = [row[0] for row in cursor.fetchall()]
+            cursor.execute("SELECT created_by_account_id FROM orders WHERE order_id = %s;", (order_id,))
+            reseller_id = cursor.fetchone()[0]
+
+    repositories.decide_order(
+        order_id, "reject", team_leader_account_id=leader_id,
+        rejection_reason="Payment was received but the order cannot be fulfilled.", payment_received=True,
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT order_refund_id, assigned_supervisor_account_id FROM order_refunds WHERE order_id = %s;",
+                (order_id,),
+            )
+            refund_id, assigned_id = cursor.fetchone()
+    unrelated_id = next(account_id for account_id in supervisor_ids if account_id != assigned_id)
+
+    first = repositories.send_order_refund_message(
+        refund_id, assigned_id, "sales-supervisor",
+        "Please confirm your GCash account name and mobile number.",
+    )
+    second = repositories.send_order_refund_message(
+        refund_id, reseller_id, "reseller",
+        "Please send it to Juan Dela Cruz at 09171234567 via GCash.",
+    )
+    assert first["order_id"] == order_id
+    assert second["order_refund_id"] == refund_id
+
+    conversation = repositories.list_reseller_refund_conversations(reseller_id)
+    assert [item["order_refund_id"] for item in conversation] == [refund_id]
+    assert [item["sender_role"] for item in conversation[0]["messages"]] == ["sales-supervisor", "reseller"]
+    internal = repositories.get_order_refund(refund_id, "sales-supervisor", assigned_id)
+    assert [item["message"] for item in internal["messages"]] == [
+        "Please confirm your GCash account name and mobile number.",
+        "Please send it to Juan Dela Cruz at 09171234567 via GCash.",
+    ]
+
+    with pytest.raises(ValueError, match="not authorized"):
+        repositories.send_order_refund_message(refund_id, unrelated_id, "sales-supervisor", "Unauthorized")
+    with pytest.raises(ValueError, match="not authorized"):
+        repositories.send_order_refund_message(refund_id, reseller_id + 9999, "reseller", "Unauthorized")
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            with pytest.raises(psycopg2.Error, match="append-only"):
+                cursor.execute(
+                    "UPDATE order_refund_messages SET message = 'changed' WHERE order_refund_message_id = %s;",
+                    (first["order_refund_message_id"],),
+                )
+
+
+@pytest.mark.postgres
+def test_refund_claim_is_single_winner_under_concurrency(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="pending"
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash, team_leader_role)
+                VALUES ('team_leader', 'Claim Supervisor', 'claim-supervisor@test.local', 'hash', 'sales-supervisor')
+                RETURNING account_id;
+                """
+            )
+            supervisor_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash)
+                VALUES ('owner', 'Refund Owner', 'refund-owner@test.local', 'hash')
+                RETURNING account_id;
+                """
+            )
+            owner_id = cursor.fetchone()[0]
+    repositories.decide_order(
+        order_ids[0], "reject", team_leader_account_id=leader_id,
+        rejection_reason="The paid order cannot proceed to fulfillment.", payment_received=True,
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT order_refund_id FROM order_refunds WHERE order_id = %s;", (order_ids[0],))
+            refund_id = cursor.fetchone()[0]
+
+    def claim(actor_id, role_key):
+        try:
+            return ("claimed", repositories.start_order_refund(refund_id, actor_id, role_key))
+        except ValueError as exc:
+            return ("denied", str(exc))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(lambda args: claim(*args), [(supervisor_id, "sales-supervisor"), (owner_id, "owner")]))
+
+    assert [outcome[0] for outcome in outcomes].count("claimed") == 1
+    assert [outcome[0] for outcome in outcomes].count("denied") == 1
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM order_refund_attempts WHERE order_refund_id = %s;", (refund_id,))
+            assert cursor.fetchone()[0] == 1
+            cursor.execute(
+                "SELECT COUNT(*) FROM order_system_messages WHERE order_id = %s AND event_type = 'refund_processing';",
+                (order_ids[0],),
+            )
+            assert cursor.fetchone()[0] == 1
+
+
+@pytest.mark.postgres
+def test_supervisor_can_view_and_claim_refund_left_unassigned(strict_inventory_database):
+    leader_id, _, _, order_ids = _seed_fulfillment(
+        strict_inventory_database, batch_quantities=[5], order_quantities=[1], order_status="pending"
+    )
+    repositories.decide_order(
+        order_ids[0], "reject", team_leader_account_id=leader_id,
+        rejection_reason="Payment was received before the order was rejected.", payment_received=True,
+    )
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT order_refund_id, assigned_supervisor_account_id FROM order_refunds WHERE order_id = %s;",
+                (order_ids[0],),
+            )
+            refund_id, assigned_id = cursor.fetchone()
+            assert assigned_id is None
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash, team_leader_role)
+                VALUES ('team_leader', 'Later Supervisor', 'later-supervisor@test.local', 'hash', 'sales-supervisor')
+                RETURNING account_id;
+                """
+            )
+            supervisor_id = cursor.fetchone()[0]
+
+    visible = repositories.list_order_refunds("sales-supervisor", supervisor_id)
+    assert [item["order_refund_id"] for item in visible] == [refund_id]
+    assert repositories.get_order_refund(refund_id, "sales-supervisor", supervisor_id) is not None
+
+    repositories.start_order_refund(refund_id, supervisor_id, "sales-supervisor")
+
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT assigned_supervisor_account_id, processing_by_account_id, status FROM order_refunds WHERE order_refund_id = %s;",
+                (refund_id,),
+            )
+            assert cursor.fetchone() == (supervisor_id, supervisor_id, "processing")
+            cursor.execute(
+                "SELECT COUNT(*) FROM order_system_messages WHERE order_id = %s AND event_type = 'refund_processing';",
+                (order_ids[0],),
+            )
+            assert cursor.fetchone()[0] == 1
 
 
 @pytest.mark.postgres

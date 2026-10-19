@@ -1,7 +1,7 @@
 (function () {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
     if (csrfToken) {
-        document.querySelectorAll('form[method="post" i]').forEach((form) => {
+        const ensureCsrfToken = (form) => {
             if (!form.querySelector('input[name="csrf_token"]')) {
                 const input = document.createElement("input");
                 input.type = "hidden";
@@ -9,7 +9,14 @@
                 input.value = csrfToken;
                 form.appendChild(input);
             }
-        });
+        };
+        document.querySelectorAll('form[method="post" i]').forEach(ensureCsrfToken);
+        document.addEventListener("submit", (event) => {
+            const form = event.target;
+            if (form instanceof HTMLFormElement && form.method.toLowerCase() === "post") {
+                ensureCsrfToken(form);
+            }
+        }, true);
         const nativeFetch = window.fetch.bind(window);
         window.fetch = function (input, init = {}) {
             const url = typeof input === "string" ? input : input.url;
