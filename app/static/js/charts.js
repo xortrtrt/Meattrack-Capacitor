@@ -279,7 +279,10 @@
         const endInput = form.querySelector('input[name="period_end"]');
         const salesInput = form.querySelector("[data-report-total-sales]");
         const ordersInput = form.querySelector("[data-report-total-orders]");
-        const itemsBody = document.querySelector("[data-report-order-items]");
+        const itemsContainer = document.querySelector("[data-report-order-items]");
+        const orderCount = document.querySelector("[data-report-order-count]");
+        const loadMoreButton = document.querySelector("[data-report-order-more]");
+        const loadMoreLabel = loadMoreButton?.querySelector("[data-report-order-more-label]");
         if (!startInput || !endInput || !salesInput || !ordersInput) {
             return;
         }
@@ -296,18 +299,57 @@
             minimumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2,
             maximumFractionDigits: 2,
         });
-        const textCell = (value, label) => {
-            const cell = document.createElement("td");
-            cell.textContent = value;
-            if (label) {
-                cell.dataset.label = label;
+        const element = (tagName, className, text) => {
+            const node = document.createElement(tagName);
+            if (className) {
+                node.className = className;
             }
-            return cell;
+            if (text !== undefined) {
+                node.textContent = text;
+            }
+            return node;
         };
 
         const countLabel = (value, singular, plural = `${singular}s`) => (
             Number(value) === 1 ? singular : plural
         );
+        const orderPageSize = 5;
+        let visibleOrderLimit = orderPageSize;
+
+        const updateVisibleOrders = () => {
+            if (!itemsContainer || !loadMoreButton || !loadMoreLabel) {
+                return;
+            }
+            const cards = Array.from(itemsContainer.querySelectorAll(".report-order-card"));
+            cards.forEach((card, index) => {
+                card.hidden = index >= visibleOrderLimit;
+            });
+            const visibleCount = Math.min(visibleOrderLimit, cards.length);
+            const remaining = cards.length - visibleCount;
+            loadMoreButton.hidden = remaining === 0;
+            if (remaining > 0) {
+                const nextCount = Math.min(orderPageSize, remaining);
+                loadMoreLabel.textContent = `Show ${nextCount} more ${countLabel(nextCount, "order")}`;
+                loadMoreButton.setAttribute(
+                    "aria-label",
+                    `Showing ${visibleCount} of ${cards.length} orders. Show ${nextCount} more.`,
+                );
+            }
+        };
+
+        const showEmptyItems = () => {
+            if (!itemsContainer) {
+                return;
+            }
+            visibleOrderLimit = orderPageSize;
+            if (loadMoreButton) {
+                loadMoreButton.hidden = true;
+            }
+            const empty = element("div", "report-order-empty");
+            empty.innerHTML = '<i data-lucide="package-open" aria-hidden="true"></i><span>No fulfilled order items in this period.</span>';
+            itemsContainer.replaceChildren(empty);
+            window.lucide?.createIcons();
+        };
 
         function updateTotals() {
             const start = startInput.value;
@@ -315,9 +357,10 @@
             if (!start || !end || end < start) {
                 salesInput.value = "PHP 0.00";
                 ordersInput.value = "0 orders / 0 packs";
-                if (itemsBody) {
-                    itemsBody.innerHTML = '<tr class="report-table-empty"><td class="report-table-empty-cell" colspan="5">No fulfilled order items in this period.</td></tr>';
+                if (orderCount) {
+                    orderCount.textContent = "0 orders";
                 }
+                showEmptyItems();
                 return;
             }
 
@@ -330,33 +373,116 @@
             const packs = included.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
             salesInput.value = money(sales);
             ordersInput.value = `${orderIds.size} ${countLabel(orderIds.size, "order")} / ${quantity(packs)} ${countLabel(packs, "pack")}`;
+            if (orderCount) {
+                orderCount.textContent = `${orderIds.size} ${countLabel(orderIds.size, "order")}`;
+            }
 
-            if (!itemsBody) {
+            if (!itemsContainer) {
                 return;
             }
-            itemsBody.replaceChildren();
+            visibleOrderLimit = orderPageSize;
+            itemsContainer.replaceChildren();
             if (included.length === 0) {
-                const row = document.createElement("tr");
-                const cell = textCell("No fulfilled order items in this period.");
-                cell.colSpan = 5;
-                cell.classList.add("report-table-empty-cell");
-                row.classList.add("report-table-empty");
-                row.appendChild(cell);
-                itemsBody.appendChild(row);
+                showEmptyItems();
                 return;
             }
 
+            const groupedOrders = new Map();
             included.forEach((record) => {
-                const row = document.createElement("tr");
-                row.appendChild(textCell(`#${record.order_id}`, "Order"));
-                row.appendChild(textCell(record.customer || "Retail counter", "Customer"));
-                row.appendChild(textCell(record.product || "Product", "Product"));
-                row.appendChild(textCell(`${quantity(record.quantity)} ${record.unit || "pack"}`, "Quantity"));
-                row.appendChild(textCell(money(Number(record.total_sales || 0)), "Sales"));
-                itemsBody.appendChild(row);
+                const orderKey = String(record.order_id);
+                if (!groupedOrders.has(orderKey)) {
+                    groupedOrders.set(orderKey, {
+                        orderId: record.order_id,
+                        customer: record.customer || "Retail counter",
+                        items: [],
+                        total: 0,
+                    });
+                }
+                const order = groupedOrders.get(orderKey);
+                order.items.push(record);
+                order.total += Number(record.total_sales || 0);
             });
+
+            groupedOrders.forEach((order) => {
+                const card = element("details", "report-order-card");
+                const summary = element("summary", "report-order-card-summary");
+
+                const identity = element("div", "report-order-identity");
+                identity.append(
+                    element("span", "report-order-number", `Order #${order.orderId}`),
+                    element("strong", "report-order-customer", order.customer),
+                    element(
+                        "small",
+                        "report-order-product-count",
+                        `${order.items.length} ${countLabel(order.items.length, "product")}`,
+                    ),
+                );
+
+                const preview = element("div", "report-order-preview");
+                preview.setAttribute(
+                    "aria-label",
+                    `${order.items.length} ${countLabel(order.items.length, "product")} in order ${order.orderId}`,
+                );
+                order.items.slice(0, 3).forEach((record) => {
+                    const image = document.createElement("img");
+                    image.src = record.product_image_url || "/static/img/hero-meat-counter.png";
+                    image.alt = "";
+                    image.loading = "lazy";
+                    image.width = 44;
+                    image.height = 44;
+                    preview.appendChild(image);
+                });
+                if (order.items.length > 3) {
+                    preview.appendChild(element("span", "report-order-preview-more", `+${order.items.length - 3}`));
+                }
+
+                const total = element("div", "report-order-total");
+                total.append(element("small", "", "Order total"), element("strong", "", money(order.total)));
+
+                const chevron = element("span", "report-order-chevron");
+                chevron.setAttribute("aria-hidden", "true");
+                chevron.innerHTML = '<i data-lucide="chevron-down"></i>';
+                summary.append(identity, preview, total, chevron);
+
+                const body = element("div", "report-order-card-body");
+                const productList = element("div", "report-order-product-list");
+                order.items.forEach((record) => {
+                    const line = element("article", "report-order-product-line");
+                    const image = document.createElement("img");
+                    image.src = record.product_image_url || "/static/img/hero-meat-counter.png";
+                    image.alt = record.product || "Product";
+                    image.loading = "lazy";
+                    image.width = 64;
+                    image.height = 64;
+
+                    const copy = element("div", "report-order-product-copy");
+                    copy.append(
+                        element("strong", "", record.product || "Product"),
+                        element("small", "", `${quantity(record.quantity)} ${record.unit || "pack"}`),
+                    );
+
+                    const lineTotal = element("div", "report-order-line-total");
+                    lineTotal.append(
+                        element("small", "", "Sales"),
+                        element("strong", "", money(Number(record.total_sales || 0))),
+                    );
+                    line.append(image, copy, lineTotal);
+                    productList.appendChild(line);
+                });
+                body.appendChild(productList);
+                card.append(summary, body);
+                itemsContainer.appendChild(card);
+            });
+            updateVisibleOrders();
+            window.lucide?.createIcons();
         }
 
+        loadMoreButton?.addEventListener("click", () => {
+            const firstHiddenCard = itemsContainer?.querySelector(".report-order-card[hidden]");
+            visibleOrderLimit += orderPageSize;
+            updateVisibleOrders();
+            firstHiddenCard?.querySelector("summary")?.focus();
+        });
         startInput.addEventListener("change", updateTotals);
         endInput.addEventListener("change", updateTotals);
         updateTotals();

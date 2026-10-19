@@ -65,6 +65,20 @@ def _seed_sales_leader(scoped_dsn: str, suffix: str) -> int:
             return int(cursor.fetchone()[0])
 
 
+def _seed_sales_supervisor(scoped_dsn: str, suffix: str) -> int:
+    with psycopg2.connect(scoped_dsn) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO accounts (account_type, name, email, password_hash, team_leader_role)
+                VALUES ('team_leader', %s, %s, 'not-used-for-login', 'sales-supervisor')
+                RETURNING account_id;
+                """,
+                (f"Sales Supervisor {suffix}", f"supervisor-{suffix}@test.local"),
+            )
+            return int(cursor.fetchone()[0])
+
+
 @pytest.mark.postgres
 def test_anonymous_handoff_creates_no_account_reseller_or_inquiry(live_chat_database):
     before = {}
@@ -235,8 +249,9 @@ def test_transfer_to_second_leader_preserves_visitor_conversation(live_chat_data
 
 
 @pytest.mark.postgres
-def test_requested_inquiry_form_creates_one_inquiry_for_handling_leader(live_chat_database):
+def test_requested_inquiry_form_creates_one_inquiry_for_sales_supervisor(live_chat_database):
     leader = _seed_sales_leader(live_chat_database, "inquiry-form")
+    supervisor = _seed_sales_supervisor(live_chat_database, "inquiry-form")
     live_chat.set_presence(leader, "available")
     conversation = live_chat.create_conversation("Qualified Prospect", "requested")
     conversation_id = conversation["conversation_id"]
@@ -258,7 +273,7 @@ def test_requested_inquiry_form_creates_one_inquiry_for_handling_leader(live_cha
     assert requested["system_message"]["content"] == "The sales team leader shared a reseller inquiry form."
     assert repeated["system_message"] is None
     assert inquiry["status"] == "assigned"
-    assert inquiry["assigned_team_leader_account_id"] == leader
+    assert inquiry["assigned_team_leader_account_id"] == supervisor
     assert live_chat.get_conversation(conversation_id)["status"] == "active"
     with pytest.raises(ValueError, match="already has a reseller inquiry"):
         repositories.add_inquiry(

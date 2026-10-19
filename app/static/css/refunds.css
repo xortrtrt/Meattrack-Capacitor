@@ -143,3 +143,226 @@ section.refund-conversation-pane { margin: 1.3rem 1.4rem 1.5rem; }
 .refund-message-status { min-height: 1rem; margin: 0; color: #9b493f; font-size: .68rem; font-weight: 750; }
 .refund-conversation-closed { display: flex; align-items: center; gap: .4rem; margin: .75rem 0 0; color: #607168; font-size: .72rem; font-weight: 750; }
 @media (max-width: 620px) { .refund-pane-tabs { display: grid; padding: .75rem .75rem 0; } .refund-pane-tabs a { justify-content: center; } section.refund-conversation { margin: .25rem 0 0 2.75rem; padding: .8rem; } section.refund-conversation-pane { margin: .75rem; } .refund-conversation > header { align-items: flex-start; flex-direction: column; } .refund-message { width: 90%; } .refund-message-composer > div { align-items: stretch; flex-direction: column; } .refund-message-composer .button { justify-content: center; } section.refund-transfer-workspace { margin: .75rem; padding: .9rem; } .refund-transfer-head { grid-template-columns: auto minmax(0, 1fr); } .refund-transfer-head > strong { grid-column: 2; } }
+
+/* Sales supervisors share the regular sales desk's black, cream, and gold theme. */
+.role-sales-supervisor .refund-workspace {
+  --refund-ink: #171511;
+  --refund-muted: #6c6458;
+  --refund-line: rgba(72, 57, 24, 0.14);
+  --refund-paper: #fffdfa;
+  --refund-wash: #f7f2e7;
+  --refund-gold: #d7b621;
+  --refund-gold-deep: #aa8616;
+  color: var(--refund-ink);
+}
+
+.role-sales-supervisor .refund-hero {
+  padding: 28px;
+  border: 1px solid var(--refund-line);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(215, 182, 33, 0.075), transparent 190px),
+    var(--refund-paper);
+  color: var(--refund-ink);
+  box-shadow: 0 20px 48px rgba(37, 28, 12, 0.12);
+}
+
+.role-sales-supervisor .refund-hero h2 {
+  color: var(--refund-ink);
+  letter-spacing: -0.035em;
+}
+
+.role-sales-supervisor .refund-hero p,
+.role-sales-supervisor .refund-hero small {
+  color: var(--refund-muted);
+}
+
+.role-sales-supervisor .refund-hero .eyebrow,
+.role-sales-supervisor .refund-hero-note > i {
+  color: var(--refund-gold-deep);
+}
+
+.role-sales-supervisor .refund-hero-note {
+  border-color: var(--refund-line);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 7px 22px rgba(37, 28, 12, 0.05);
+}
+
+.role-sales-supervisor .refund-status-summary {
+  border-color: var(--refund-line);
+  background: var(--refund-paper);
+  box-shadow: 0 7px 22px rgba(37, 28, 12, 0.04);
+}
+
+.role-sales-supervisor .refund-status-summary:hover,
+.role-sales-supervisor .refund-status-summary:focus-visible,
+.role-sales-supervisor .refund-status-summary.is-active {
+  border-color: rgba(170, 134, 22, 0.48);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(215, 182, 33, 0.13);
+}
+
+.role-sales-supervisor .refund-layout {
+  border-color: var(--refund-line);
+  border-radius: 14px;
+  background: var(--refund-paper);
+  box-shadow: 0 20px 48px rgba(37, 28, 12, 0.1);
+}
+
+.role-sales-supervisor .refund-case-browser {
+  border-color: var(--refund-line);
+  background: var(--refund-wash);
+}
+
+.role-sales-supervisor .refund-filters {
+  gap: 10px;
+  padding: 15px;
+  border-color: var(--refund-line);
+}
+
+.role-sales-supervisor .refund-filters label i {
+  left: 13px;
+  color: var(--refund-muted);
+}
+
+.role-sales-supervisor .refund-filters input,
+.role-sales-supervisor .refund-filters select,
+.role-sales-supervisor .refund-filters button {
+  min-height: 44px;
+  border: 1px solid rgba(72, 57, 24, 0.19);
+  border-radius: 9px;
+  background-color: #fff;
+  color: var(--refund-ink);
+  box-shadow: 0 4px 12px rgba(37, 28, 12, 0.035);
+}
+
+.role-sales-supervisor .refund-filters input {
+  padding-left: 40px;
+}
+
+.role-sales-supervisor .refund-filters select {
+  width: 100%;
+  padding-inline: 12px 38px;
+}
+
+.role-sales-supervisor .refund-filters button {
+  width: 44px;
+  padding: 0;
+}
+
+.role-sales-supervisor .refund-case {
+  border-color: var(--refund-line);
+}
+
+.role-sales-supervisor .refund-case:hover,
+.role-sales-supervisor .refund-case.is-selected {
+  background: #fff;
+  box-shadow: inset 3px 0 var(--refund-gold);
+}
+
+.role-sales-supervisor .refund-case-icon,
+.role-sales-supervisor .refund-empty > i,
+.role-sales-supervisor .refund-thread-placeholder > span,
+.role-sales-supervisor .refund-transfer-callout > span {
+  color: var(--refund-gold-deep);
+  background: #fff5c8;
+}
+
+.role-sales-supervisor .refund-case-copy small,
+.role-sales-supervisor .refund-empty,
+.role-sales-supervisor .refund-thread-placeholder,
+.role-sales-supervisor .refund-thread-head p,
+.role-sales-supervisor .refund-facts small,
+.role-sales-supervisor .refund-facts span,
+.role-sales-supervisor .refund-event time,
+.role-sales-supervisor .refund-event p,
+.role-sales-supervisor .refund-actions p,
+.role-sales-supervisor .refund-transfer-callout p {
+  color: var(--refund-muted);
+}
+
+.role-sales-supervisor .refund-thread {
+  background: var(--refund-paper);
+}
+
+.role-sales-supervisor .refund-thread-head,
+.role-sales-supervisor .refund-facts,
+.role-sales-supervisor .refund-pane-tabs a,
+.role-sales-supervisor .refund-event > div,
+.role-sales-supervisor .refund-actions > form,
+.role-sales-supervisor .refund-action-wait,
+.role-sales-supervisor .refund-action-done,
+.role-sales-supervisor .refund-transfer-callout,
+.role-sales-supervisor .refund-complete-form,
+.role-sales-supervisor section.refund-transfer-workspace,
+.role-sales-supervisor section.refund-conversation {
+  border-color: var(--refund-line);
+}
+
+.role-sales-supervisor .refund-facts,
+.role-sales-supervisor .refund-pane-tabs a,
+.role-sales-supervisor .refund-actions > form,
+.role-sales-supervisor .refund-action-wait,
+.role-sales-supervisor .refund-action-done,
+.role-sales-supervisor .refund-transfer-callout,
+.role-sales-supervisor .refund-complete-form,
+.role-sales-supervisor section.refund-transfer-workspace,
+.role-sales-supervisor section.refund-conversation {
+  background: var(--refund-wash);
+}
+
+.role-sales-supervisor .refund-facts > div,
+.role-sales-supervisor .refund-event > div,
+.role-sales-supervisor .refund-message {
+  border-color: var(--refund-line);
+  background: var(--refund-paper);
+}
+
+.role-sales-supervisor .refund-pane-tabs a:hover {
+  border-color: rgba(170, 134, 22, 0.48);
+  background: #fff;
+}
+
+.role-sales-supervisor .refund-pane-tabs a:focus-visible {
+  outline-color: rgba(215, 182, 33, 0.28);
+}
+
+.role-sales-supervisor .refund-pane-tabs a.is-active {
+  border-color: var(--refund-ink);
+  background: var(--refund-ink);
+  color: var(--refund-gold);
+}
+
+.role-sales-supervisor .refund-timeline::before {
+  background: rgba(215, 182, 33, 0.24);
+}
+
+.role-sales-supervisor .refund-event > span,
+.role-sales-supervisor .refund-conversation-node {
+  color: var(--refund-gold-deep);
+  background: #fff5c8;
+}
+
+.role-sales-supervisor .refund-proof-link,
+.role-sales-supervisor .refund-complete-form header > span,
+.role-sales-supervisor .refund-transfer-head > strong {
+  color: var(--refund-gold-deep);
+}
+
+.role-sales-supervisor .refund-transfer-head > span {
+  background: var(--refund-ink);
+  color: var(--refund-gold);
+}
+
+.role-sales-supervisor .refund-complete-form input:focus,
+.role-sales-supervisor .refund-complete-form textarea:focus,
+.role-sales-supervisor .refund-fail-form textarea:focus,
+.role-sales-supervisor .refund-message-composer textarea:focus {
+  border-color: var(--refund-gold-deep);
+  outline-color: rgba(215, 182, 33, 0.22);
+}
+
+.role-sales-supervisor .refund-message.from-team {
+  border-color: rgba(170, 134, 22, 0.24);
+  background: #fff5c8;
+}

@@ -420,7 +420,11 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "request": request,
         "role_key": role_key,
         "portal_css_key": "team-leader" if role_key == "sales-supervisor" else role_key,
-        "portal_body_roles": "role-team-leader role-sales-supervisor" if role_key == "sales-supervisor" else f"role-{role_key}",
+        "portal_body_roles": (
+            "role-team-leader role-sales-supervisor leader-role-sales"
+            if role_key == "sales-supervisor"
+            else f"role-{role_key}"
+        ),
         "can_create_owner_account": role_key == "owner",
         "can_manage_team_leader_roles": role_key == "owner",
         "show_reseller_team_assignments": role_key == "sales-supervisor",

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 from urllib.parse import urljoin
 
 import pytest
 from playwright.sync_api import Page, expect, sync_playwright
+
+from app.business_time import business_today
 
 
 BASE_URL = os.getenv("E2E_BASE_URL")
@@ -31,6 +34,162 @@ def page() -> Page:
         yield page
         context.close()
         browser.close()
+
+
+def test_supervisor_report_defaults_to_current_month_and_remains_editable(page: Page) -> None:
+    today = business_today()
+
+    page.goto(f"{BASE_URL}/login", wait_until="networkidle")
+    page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
+    page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
+    page.locator('input[name="consent"]').check()
+    page.get_by_role("button", name="Sign In").click()
+    page.wait_for_url("**/portal/sales-supervisor/dashboard")
+
+    response = page.goto(f"{BASE_URL}/portal/sales-supervisor/reports", wait_until="networkidle")
+    assert response is not None and response.ok
+
+    start_input = page.locator('input[name="period_start"]')
+    end_input = page.locator('input[name="period_end"]')
+    expect(start_input).to_have_value(today.replace(day=1).isoformat())
+    expect(end_input).to_have_value(today.isoformat())
+    expect(start_input).to_be_editable()
+    expect(end_input).to_be_editable()
+
+    start_input.fill(today.isoformat())
+    expect(start_input).to_have_value(today.isoformat())
+
+
+def test_supervisor_reseller_orders_start_collapsed_and_open_on_request(page: Page) -> None:
+    page.goto(f"{BASE_URL}/login", wait_until="networkidle")
+    page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
+    page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
+    page.locator('input[name="consent"]').check()
+    page.get_by_role("button", name="Sign In").click()
+    page.wait_for_url("**/portal/sales-supervisor/dashboard")
+
+    def add_order_when_account_is_empty(route) -> None:
+        response = route.fetch()
+        body = response.text()
+        if 'class="sales-order-card"' not in body:
+            order_card = """
+            <div class="sales-order-card-list">
+              <details class="sales-order-card" id="order-99030">
+                <summary class="sales-order-card-summary">
+                  <span class="sales-order-number">Order #99030</span>
+                  <span class="sales-order-chevron" aria-hidden="true"></span>
+                </summary>
+                <div class="sales-order-card-body">Order details</div>
+              </details>
+            </div>
+            """
+            body = re.sub(
+                r'<div class="sales-order-empty-state">.*?</div>',
+                order_card,
+                body,
+                count=1,
+                flags=re.DOTALL,
+            )
+        route.fulfill(response=response, body=body)
+
+    page.route("**/portal/sales-supervisor/orders", add_order_when_account_is_empty)
+    response = page.goto(f"{BASE_URL}/portal/sales-supervisor/orders", wait_until="networkidle")
+    assert response is not None and response.ok
+
+    first_order = page.locator(".sales-order-card").first
+    expect(first_order).to_be_attached()
+    expect(first_order).not_to_have_attribute("open", "")
+    first_order.locator("summary").click()
+    expect(first_order).to_have_attribute("open", "")
+
+
+def test_supervisor_report_groups_products_into_compact_order_cards(page: Page) -> None:
+    today = business_today().isoformat()
+    report_items = [
+        {
+            "sale_date": today,
+            "order_id": 99031,
+            "customer": "E2E Reseller",
+            "product": product,
+            "quantity": quantity,
+            "unit": "pack",
+            "total_sales": total,
+            "product_image_url": image_url,
+        }
+        for product, quantity, total, image_url in (
+            ("Beef Longganisa", 2, 150, "/static/img/beef_longganisa.jpg"),
+            ("Chicken Rebusado", 1, 85, "/static/img/chicken_rebusado.jpg"),
+            ("Chicken Tocino", 3, 210, "/static/img/chicken_tocino.jpg"),
+            ("Pork Rebusado", 3, 270, "/static/img/pork_rebusado.jpg"),
+            ("Tocino Ala Eh", 2, 140, "/static/img/tocino_ala_eh.jpg"),
+            ("Trial Package", 2, 2798, "/static/img/trial_package.jpg"),
+        )
+    ]
+    report_items.extend(
+        {
+            "sale_date": today,
+            "order_id": order_id,
+            "customer": f"E2E Reseller {order_id}",
+            "product": "Bacon Smoked",
+            "quantity": 1,
+            "unit": "pack",
+            "total_sales": 125,
+            "product_image_url": "/static/img/bacon_smoked.jpg",
+        }
+        for order_id in range(99032, 99038)
+    )
+
+    page.goto(f"{BASE_URL}/login", wait_until="networkidle")
+    page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
+    page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
+    page.locator('input[name="consent"]').check()
+    page.get_by_role("button", name="Sign In").click()
+    page.wait_for_url("**/portal/sales-supervisor/dashboard")
+
+    def replace_report_items(route) -> None:
+        response = route.fetch()
+        body = re.sub(
+            r'(<script type="application/json" id="team-report-sales-data">).*?(</script>)',
+            lambda match: f"{match.group(1)}{json.dumps(report_items)}{match.group(2)}",
+            response.text(),
+            flags=re.DOTALL,
+        )
+        route.fulfill(response=response, body=body)
+
+    page.route("**/portal/sales-supervisor/reports", replace_report_items)
+    response = page.goto(f"{BASE_URL}/portal/sales-supervisor/reports", wait_until="networkidle")
+    assert response is not None and response.ok
+
+    cards = page.locator(".report-order-card")
+    visible_cards = page.locator(".report-order-card:visible")
+    expect(cards).to_have_count(7)
+    expect(visible_cards).to_have_count(5)
+    expect(cards.first.locator("summary")).to_contain_text("Order #99031")
+    expect(cards.first.locator("summary")).to_contain_text("6 products")
+    expect(cards.first.locator(".report-order-preview img")).to_have_count(3)
+    expect(cards.first).not_to_have_attribute("open", "")
+
+    cards.first.locator("summary").click()
+    expect(cards.first).to_have_attribute("open", "")
+    expect(cards.first.locator(".report-order-product-line")).to_have_count(6)
+    expect(cards.first.locator(".report-order-product-line").first).to_contain_text("Beef Longganisa")
+    expect(page.locator(".report-items-table")).to_have_count(0)
+
+    load_more = page.locator("[data-report-order-more]")
+    expect(load_more).to_be_visible()
+    expect(load_more).to_contain_text("Show 2 more orders")
+    load_more.click()
+    expect(visible_cards).to_have_count(7)
+    expect(load_more).to_be_hidden()
+    expect(page.locator(".report-order-card summary").nth(5)).to_be_focused()
+
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.reload(wait_until="networkidle")
+    expect(page.locator(".report-order-card:visible")).to_have_count(5)
+    expect(page.locator("[data-report-order-more]")).to_be_visible()
+    page.locator(".report-order-card summary").first.click()
+    report_items = page.locator(".report-order-items")
+    assert report_items.evaluate("element => element.scrollWidth <= element.clientWidth")
 
 
 def test_public_and_supervisor_profile_smoke(page: Page) -> None:

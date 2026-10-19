@@ -2,8 +2,8 @@
             <section class="content-grid two sales-report-builder">
                 <article class="panel sales-report-compose">
                     <h2>Submit team sales report</h2>
-                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post" data-team-report-form data-business-date="{{ report_default_date }}">
-                        <div class="form-grid"><label>Start <input required type="date" name="period_start" value="{{ report_default_date }}"></label><label>End <input required type="date" name="period_end" value="{{ report_default_date }}"></label></div>
+                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post" data-team-report-form data-business-date="{{ report_default_end_date }}">
+                        <div class="form-grid"><label>Start <input required type="date" name="period_start" value="{{ report_default_start_date }}"></label><label>End <input required type="date" name="period_end" value="{{ report_default_end_date }}"></label></div>
                         <div class="form-grid" data-team-report-totals>
                             <label>Total sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
                             <label>Total orders <input readonly type="text" data-report-total-orders value="0"></label>
@@ -12,16 +12,17 @@
                         <button class="button primary" type="submit">Submit report</button>
                     </form>
                     <div class="report-order-items">
-                        <h3>Included order items</h3>
-                        <div class="table-wrap">
-                            <table class="compact-table responsive-card-table report-items-table">
-                                <caption class="sr-only">Fulfilled order items included in this report</caption>
-                                <thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Quantity</th><th>Sales</th></tr></thead>
-                                <tbody data-report-order-items>
-                                    <tr class="report-table-empty"><td class="report-table-empty-cell" colspan="5">No fulfilled order items in this period.</td></tr>
-                                </tbody>
-                            </table>
+                        <header class="report-order-items-heading">
+                            <div><span class="eyebrow">Order contents</span><h3>Included order items</h3></div>
+                            <span class="report-order-count" data-report-order-count>0 orders</span>
+                        </header>
+                        <div class="report-order-manifest" id="report-order-manifest" data-report-order-items aria-live="polite">
+                            <div class="report-order-empty"><i data-lucide="package-open" aria-hidden="true"></i><span>No fulfilled order items in this period.</span></div>
                         </div>
+                        <button class="report-order-more" type="button" data-report-order-more aria-controls="report-order-manifest" hidden>
+                            <span data-report-order-more-label>Show more orders</span>
+                            <i data-lucide="chevrons-down" aria-hidden="true"></i>
+                        </button>
                     </div>
                     <script type="application/json" id="team-report-sales-data">{{ team_report_sales|tojson }}</script>
 

@@ -23,7 +23,7 @@
         {% set order_locked = order.status in ["fulfilled", "rejected", "cancelled", "expired"] %}
         {% set approval_blocked = order.status != "pending" or not order.payment_proofs %}
         {% set rejection_blocked = order.status != "pending" %}
-        <details class="sales-order-card" id="order-{{ order.order_id }}" {% if order.status == 'pending' or loop.first %}open{% endif %}>
+        <details class="sales-order-card" id="order-{{ order.order_id }}">
           <summary class="sales-order-card-summary">
             <div class="sales-order-identity"><span class="sales-order-number">Order #{{ order.order_id }}</span><strong>{{ order.reseller }}</strong>{% if order.order_date is defined and order.order_date %}<time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time>{% endif %}<span class="status-badge {{ review_status }}">{{ 'To pay' if review_status == 'to_pay' else review_status }}</span></div>
             <div class="sales-order-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_image|media_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>

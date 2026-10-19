@@ -14,13 +14,13 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261017-sales-order-ledger-1"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261019-report-order-cards-2"
     />
     {% if (role_key == "reseller" and section == "inbox") or (role_key in ["team-leader", "sales-supervisor"] and section == "messages") %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/reseller_inbox.css') }}?v=20261017-live-refund-chat-5" />
     {% endif %}
     {% if section == "refunds" %}
-    <link rel="stylesheet" href="{{ url_for('static', path='css/refunds.css') }}?v=20261017-live-refund-chat-8" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/refunds.css') }}?v=20261019-supervisor-theme-1" />
     {% endif %}
   </head>
   <body class="portal-body {{ portal_body_roles|default('role-' ~ role_key) }} section-{{ section }}{% if role_key in ['team-leader', 'sales-supervisor'] %} leader-role-{{ role.team_leader_role }}{% endif %}">
@@ -343,7 +343,7 @@
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261002-async-forms-1"></script>
     <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261017-order-cancel-modal-1"></script>
     <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
-    <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261019-report-order-cards-2"></script>
     {% if (role_key in ["owner", "sales-supervisor"] and section == "refunds") or (role_key == "reseller" and section == "inbox") %}
     <script src="{{ url_for('static', path='js/refunds.js') }}?v=20261017-live-refund-chat-3" defer></script>
     {% endif %}

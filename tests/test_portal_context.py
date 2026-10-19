@@ -478,6 +478,8 @@ def test_team_leader_order_review_lists_every_order_item(monkeypatch):
     assert "Deli Beef</strong><small>4 packs" in response.text
     assert "Bacon</strong><small>1 pack" in response.text
     assert 'class="sales-order-card"' in response.text
+    assert '<details class="sales-order-card" id="order-26">' in response.text
+    assert 'id="order-26" open' not in response.text
     assert 'class="sales-order-product-line"' in response.text
     assert "order-review-table" not in response.text
 
@@ -1677,7 +1679,21 @@ def test_team_leader_reports_render_business_date_products_pagination_and_mobile
             }
         ],
     )
-    monkeypatch.setattr(repositories, "team_sales_report_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        repositories,
+        "team_sales_report_entries",
+        lambda *args, **kwargs: [
+            {
+                "sale_date": "2026-10-17",
+                "order_id": 31,
+                "customer": "Xort's store",
+                "product": "Beef Longganisa",
+                "quantity": 2,
+                "unit": "pack",
+                "total_sales": 150,
+            }
+        ],
+    )
     monkeypatch.setattr(
         repositories,
         "team_rejected_order_entries",
@@ -1697,7 +1713,8 @@ def test_team_leader_reports_render_business_date_products_pagination_and_mobile
 
     assert response.status_code == 200
     assert 'data-business-date="2026-10-17"' in response.text
-    assert response.text.count('value="2026-10-17"') == 2
+    assert 'name="period_start" value="2026-10-01"' in response.text
+    assert 'name="period_end" value="2026-10-17"' in response.text
     assert "Assigned reseller purchase summary" not in response.text
     assert 'class="rejected-order-card"' in response.text
     assert "1 pack Bacon" in response.text
@@ -1707,8 +1724,10 @@ def test_team_leader_reports_render_business_date_products_pagination_and_mobile
     assert "PHP 910.00 - 1 order" in response.text
     assert "Page 1 of 2" in response.text
     assert "page=2" in response.text
-    assert response.text.count("responsive-card-table") == 1
-    assert "compact-table responsive-card-table report-items-table" in response.text
+    assert 'class="report-order-manifest" id="report-order-manifest" data-report-order-items' in response.text
+    assert 'data-report-order-more aria-controls="report-order-manifest"' in response.text
+    assert '"product_image_url": "/static/img/beef_longganisa.jpg"' in response.text
+    assert "report-items-table" not in response.text
 
 
 def test_team_leader_reports_render_search_empty_state(monkeypatch):
@@ -2068,6 +2087,17 @@ def test_sales_team_leader_pages_use_workflow_specific_layouts():
     assert "@media (max-width: 860px)" in css
 
 
+def test_sales_supervisor_workflows_share_the_sales_desk_theme():
+    base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
+    refund_css = open("app/static/css/refunds.css", encoding="utf-8").read()
+
+    assert "20261019-supervisor-theme-1" in base_template
+    assert ".role-sales-supervisor .refund-workspace" in refund_css
+    assert ".role-sales-supervisor .refund-hero" in refund_css
+    assert ".role-sales-supervisor .refund-filters input" in refund_css
+    assert ".role-sales-supervisor .refund-pane-tabs a.is-active" in refund_css
+
+
 def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
     client = TestClient(main.app)
     list_calls = []
@@ -2131,7 +2161,7 @@ def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
     assert "inquiries" not in sales_nav
     assert "inquiries" in supervisor_nav
     assert response.status_code == 200
-    assert "role-team-leader role-sales-supervisor" in response.text
+    assert "role-team-leader role-sales-supervisor leader-role-sales" in response.text
     assert 'css/portals/team-leader.css' in response.text
     assert 'action="/portal/sales-supervisor/accounts"' in response.text
     assert '<option value="owner">Owner</option>' not in response.text

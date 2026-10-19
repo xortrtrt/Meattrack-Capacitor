@@ -12,6 +12,7 @@ from app.business_time import business_today
 from app.config import LIVE_CHAT_ENABLED
 from app.portals import owner as owner_portal
 from app.portals import shared
+from app.web import media_url, product_image
 
 
 router = APIRouter()
@@ -304,11 +305,20 @@ def orders_context(request: Request) -> dict:
 def reports_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
     page = shared.reports_page(request, "team_leader", team_leader_account_id=account_id)
+    report_end_date = business_today()
+    report_sales = [
+        {
+            **entry,
+            "product_image_url": media_url(product_image(str(entry.get("product") or ""))),
+        }
+        for entry in data.team_sales_report_entries(team_leader_account_id=account_id)
+    ]
     return {
-        "report_default_date": business_today().isoformat(),
+        "report_default_start_date": report_end_date.replace(day=1).isoformat(),
+        "report_default_end_date": report_end_date.isoformat(),
         "sales_reports_page": page,
         "sales_reports": page["items"],
-        "team_report_sales": data.team_sales_report_entries(team_leader_account_id=account_id),
+        "team_report_sales": report_sales,
         "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=account_id),
     }
 
