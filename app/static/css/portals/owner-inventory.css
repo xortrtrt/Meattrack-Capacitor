@@ -1,0 +1,83 @@
+/* Quiet stock workspaces: one header, practical summaries, and clear ledgers. */
+.role-owner .owner-stock-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.role-owner .owner-stock-summary > div { display: grid; gap: 5px; padding: 20px 24px; border-right: 1px solid var(--border); }
+.role-owner .owner-stock-summary > div:last-child { border-right: 0; }
+.role-owner .owner-stock-summary span { color: var(--text-light); font-size: 0.8125rem; }
+.role-owner .owner-stock-summary strong { color: var(--text); font-size: 1.75rem; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.role-owner .owner-stock-summary small { color: var(--text-light); font-size: 0.75rem; }
+.role-owner .owner-stock-navigation { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 20px 24px; border-top: 1px solid var(--border); background: var(--surface-muted); }
+.role-owner .owner-stock-navigation a { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.role-owner .owner-stock-navigation a > svg { flex-shrink: 0; width: 20px; height: 20px; color: var(--gold-deep); }
+.role-owner .owner-stock-navigation a > svg:last-child { width: 16px; margin-left: auto; }
+.role-owner .owner-stock-navigation span { display: grid; gap: 4px; }
+.role-owner .owner-stock-navigation strong { font-size: 0.875rem; }
+.role-owner .owner-stock-navigation small { color: var(--text-light); font-size: 0.75rem; }
+.role-owner .owner-stock-navigation a:hover { border-color: var(--gold-deep); }
+.role-owner .owner-stock-navigation a:focus-visible { outline: 3px solid var(--gold-deep); outline-offset: 2px; }
+.role-owner .owner-stock-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr); align-items: start; gap: 20px; }
+.role-owner :is(.owner-inventory-page, .owner-batches-page, .owner-movements-page) .panel-heading h2 { font-size: 1.5rem; letter-spacing: -0.025em; }
+.role-owner .owner-stock-layout .panel-heading { padding: 20px 24px; }
+.role-owner .owner-stock-layout .panel-heading h2 { font-size: 1.125rem; }
+.role-owner .owner-inventory-table { border: 0; border-radius: 0; }
+.role-owner .owner-inventory-table table { width: 100%; }
+.role-owner .owner-inventory-table th { padding: 14px 20px; background: var(--surface-muted); color: var(--text-light); font-size: 0.6875rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.role-owner .owner-inventory-table td { padding: 16px 20px; vertical-align: top; font-size: 0.875rem; }
+.role-owner .owner-inventory-table td > strong { display: block; font-weight: 600; }
+.role-owner .owner-inventory-table td > small { display: block; margin-top: 5px; color: var(--text-light); font-size: 0.75rem; line-height: 1.5; }
+.role-owner .owner-inventory-table tbody tr:hover { background: var(--surface-muted); }
+.role-owner .owner-stock-number { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.role-owner .owner-material-snapshot { padding: 0 24px; }
+.role-owner .owner-material-snapshot > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+.role-owner .owner-material-snapshot > div:last-child { border-bottom: 0; }
+.role-owner .owner-material-snapshot span { display: grid; gap: 4px; }
+.role-owner .owner-material-snapshot small { color: var(--text-light); font-size: 0.75rem; }
+.role-owner .owner-stock-panel-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 16px 24px; border-top: 1px solid var(--border); background: var(--surface-muted); color: var(--text); font-size: 0.8125rem; font-weight: 600; }
+.role-owner .owner-stock-panel-link svg { width: 16px; height: 16px; color: var(--gold-deep); }
+.role-owner .owner-inventory-caption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--border); color: var(--text-light); font-size: 0.75rem; }
+.role-owner .owner-inventory-caption > span { display: flex; align-items: center; gap: 8px; }
+.role-owner .owner-inventory-caption svg { width: 16px; height: 16px; color: var(--gold-deep); }
+.role-owner .owner-stock-legend { display: flex; flex-wrap: wrap; gap: 16px; }
+.role-owner .owner-stock-in { color: var(--success); font-weight: 600; }
+.role-owner .owner-stock-out,
+.role-owner .owner-inventory-table .owner-stock-expired { color: var(--error); font-weight: 600; }
+.role-owner .owner-movement-label { font-weight: 600; }
+.role-owner .owner-movement-note { max-width: 240px; overflow-wrap: anywhere; }
+.role-owner .owner-batch-progress { display: block; width: 120px; height: 5px; margin-top: 10px; overflow: hidden; border: 0; border-radius: 6px; background: var(--surface-muted); accent-color: var(--gold-deep); }
+.role-owner .owner-batch-progress::-webkit-progress-bar { background: var(--surface-muted); }
+.role-owner .owner-batch-progress::-webkit-progress-value { background: var(--gold-deep); border-radius: 6px; }
+.role-owner .owner-batch-progress::-moz-progress-bar { background: var(--gold-deep); }
+.role-owner .owner-inventory-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 16px 24px; border-top: 1px solid var(--border); background: var(--surface-muted); }
+.role-owner .owner-inventory-pagination > div { display: flex; gap: 8px; }
+.role-owner .owner-movements-page .owner-inventory-table table { min-width: 1000px; }
+.role-owner .owner-batches-page .owner-inventory-table table { min-width: 850px; }
+
+/* Product photos sit inside each card with the same inset as its form. */
+.role-owner .owner-products-page .owner-product-card-grid { display: grid; gap: 20px; padding: 24px; background: transparent; }
+.role-owner .owner-products-page .owner-product-card { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.role-owner .owner-products-page .owner-product-image { display: grid; place-items: center; aspect-ratio: 4 / 3; min-height: 0; margin: 16px 16px 0; padding: 16px; border-radius: 8px; background: var(--surface-muted); }
+.role-owner .owner-products-page .owner-product-image::after { display: none; }
+.role-owner .owner-products-page .owner-product-image img { width: 100%; height: 100%; max-height: 220px; object-fit: contain; border-radius: 6px; }
+.role-owner .owner-products-page .owner-product-copy { min-height: 0; padding: 18px 20px 8px; gap: 8px; }
+.role-owner .owner-products-page .owner-product-copy h3 { font-size: 1rem; line-height: 1.5; }
+.role-owner .owner-products-page .owner-price-form { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 12px 20px 20px; }
+.role-owner .owner-products-page .owner-price-form label { color: var(--text-light); font-size: 0.8125rem; font-weight: 600; }
+.role-owner .owner-products-page .owner-price-form .button { width: 100%; }
+
+@media (max-width: 1180px) {
+  .role-owner .owner-stock-layout { grid-template-columns: minmax(0, 1fr); }
+  .role-owner .owner-products-page .owner-product-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .role-owner .owner-stock-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-owner .owner-stock-summary > div { border-bottom: 1px solid var(--border); padding: 18px 16px; }
+  .role-owner .owner-stock-summary > div:nth-child(even) { border-right: 0; }
+  .role-owner .owner-stock-summary > div:nth-last-child(-n+2) { border-bottom: 0; }
+  .role-owner .owner-stock-navigation { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+}
+@media (max-width: 680px) {
+  .role-owner .owner-products-page .owner-product-card-grid { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 16px; }
+  .role-owner .owner-inventory-caption,
+  .role-owner .owner-inventory-pagination { padding: 14px 16px; }
+  .role-owner .owner-stock-layout .panel-heading { padding: 20px 16px; }
+  .role-owner .owner-material-snapshot { padding-inline: 16px; }
+}

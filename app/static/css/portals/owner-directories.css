@@ -1,0 +1,81 @@
+/* Owner directories reuse the portal palette and keep detail behind dialogs. */
+.role-owner .owner-directory-page .panel-heading { gap: 20px; }
+.role-owner .owner-directory-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 0; padding: 20px 24px; border-block: 1px solid var(--border); background: var(--surface-muted); }
+.role-owner .owner-directory-filters label { flex: 1 1 170px; min-width: 0; display: grid; gap: 6px; font-size: .8125rem; color: var(--text-light); font-weight: 600; }
+.role-owner .owner-directory-filters label:first-child { flex-grow: 2; }
+.role-owner .owner-directory-filters :is(input, select) { width: 100%; min-width: 0; min-height: 44px; }
+.role-owner .owner-directory-filter-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.role-owner .owner-directory-filter-actions .button { min-height: 44px; }
+.role-owner .owner-directory-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 16px 24px; border-top: 1px solid var(--border); background: var(--surface-muted); }
+.role-owner .owner-directory-pagination > div { display: flex; gap: 8px; }
+.role-owner .owner-directory-pagination a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 14px; }
+.role-owner .owner-directory-empty { margin: 0; padding: 36px 24px; color: var(--text-light); text-align: center; }
+.role-owner .owner-report-list, .role-owner .owner-user-list { display: grid; }
+.role-owner .owner-report-summary { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.4fr) minmax(140px, .8fr) 70px 24px; align-items: center; gap: 20px; width: 100%; padding: 22px 24px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--surface); color: var(--text); text-align: left; font: inherit; cursor: pointer; transition: background-color 150ms ease; }
+.role-owner .owner-report-summary:hover { background: var(--surface-muted); }
+.role-owner .owner-report-summary:focus-visible { outline: 3px solid var(--gold-deep); outline-offset: -3px; }
+.role-owner .owner-report-summary > span { display: grid; gap: 6px; font-size: .875rem; }
+.role-owner .owner-report-summary small { color: var(--text-light); font-size: .8125rem; }
+.role-owner .owner-report-summary strong { font-variant-numeric: tabular-nums; }
+.role-owner .owner-report-summary > svg { width: 20px; height: 20px; color: var(--gold-deep); }
+.role-owner .owner-user-row.owner-account-card { display: grid; grid-template-columns: minmax(230px, 1.5fr) minmax(130px, .7fr) minmax(140px, .7fr) auto; gap: 20px; align-items: center; padding: 22px 24px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--surface); box-shadow: none; }
+.role-owner .owner-user-identity { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 12px; }
+.role-owner .owner-user-avatar { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-muted); color: var(--gold-deep); }
+.role-owner .owner-user-avatar svg { width: 22px; height: 22px; }
+.role-owner .owner-user-identity strong, .role-owner .owner-user-identity small { display: block; overflow-wrap: anywhere; }
+.role-owner .owner-user-identity small { margin-top: 4px; color: var(--text-light); font-size: .8125rem; }
+.role-owner .owner-user-state { display: grid; justify-items: start; gap: 6px; }
+.role-owner .owner-user-state small { font-size: .75rem; color: var(--text-light); }
+.role-owner .owner-user-row > .button { min-height: 44px; }
+.role-owner .owner-detail-modal { width: min(880px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 64px); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(13, 12, 11, .28); }
+.role-owner .owner-detail-modal[open] { display: flex; flex-direction: column; animation: owner-detail-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
+.role-owner .owner-detail-modal::backdrop { background: rgba(13, 12, 11, .64); animation: owner-detail-fade-in 200ms ease-out both; }
+.role-owner .owner-detail-modal.is-closing { animation: owner-detail-out 160ms ease-in both; }
+.role-owner .owner-detail-modal.is-closing::backdrop { animation: owner-detail-fade-out 160ms ease-in both; }
+.role-owner .owner-detail-modal-heading { display: flex; flex: 0 0 auto; align-items: start; justify-content: space-between; gap: 20px; padding: 24px; border-bottom: 3px solid var(--gold); background: var(--primary); color: var(--surface); }
+.role-owner .owner-detail-modal-heading h2 { margin: 6px 0; color: inherit; font-size: 1.375rem; overflow-wrap: anywhere; }
+.role-owner .owner-detail-modal-heading p { margin: 0; color: inherit; opacity: .8; overflow-wrap: anywhere; }
+.role-owner .owner-detail-modal-heading .eyebrow { color: var(--gold); }
+.role-owner .owner-detail-modal-heading .icon-button { flex-shrink: 0; min-width: 44px; min-height: 44px; border-color: var(--gold-deep); background: transparent; color: var(--gold); }
+.role-owner .owner-detail-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 24px; }
+.role-owner .owner-detail-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin: 0; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted); }
+.role-owner .owner-detail-facts dt { font-size: .8125rem; color: var(--text-light); }
+.role-owner .owner-detail-facts dd { margin: 6px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.role-owner .owner-detail-section { margin-top: 24px; }
+.role-owner .owner-detail-section h3 { margin: 0 0 12px; font-size: 1rem; }
+.role-owner .owner-report-notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+.role-owner .owner-detail-modal .table-wrap { max-width: 100%; overflow-x: auto; }
+.role-owner .owner-detail-modal th, .role-owner .owner-detail-modal td { padding: 14px; font-size: .875rem; }
+.role-owner .owner-admin-actions { display: grid; gap: 16px; }
+.role-owner .owner-admin-actions > details { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.role-owner .owner-admin-actions summary { padding: 16px; min-height: 48px; background: var(--surface-muted); cursor: pointer; font-weight: 600; }
+.role-owner .owner-admin-actions form, .role-owner .owner-detail-modal .owner-account-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin: 0; padding: 20px; border-top: 1px solid var(--border); background: var(--surface); }
+.role-owner .owner-detail-modal .owner-account-form { padding: 0; border: 0; }
+.role-owner .owner-admin-actions label, .role-owner .owner-detail-modal .owner-account-form label { display: grid; gap: 6px; font-size: .875rem; }
+.role-owner .owner-admin-actions :is(input, select), .role-owner .owner-detail-modal .owner-account-form :is(input, select) { min-height: 44px; width: 100%; min-width: 0; }
+.role-owner .owner-admin-actions .button { min-height: 44px; justify-self: start; }
+@keyframes owner-detail-in { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes owner-detail-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(10px) scale(.98); } }
+@keyframes owner-detail-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes owner-detail-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@media (max-width: 1180px) {
+  .role-owner .owner-user-row.owner-account-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .role-owner .owner-report-summary { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 24px; }
+  .role-owner .owner-report-summary > svg { grid-column: 3; grid-row: 1 / span 2; }
+}
+@media (max-width: 680px) {
+  .role-owner .owner-directory-page .panel-heading { flex-direction: column; align-items: start; }
+  .role-owner .owner-directory-filters, .role-owner .owner-directory-pagination { padding: 16px; }
+  .role-owner .owner-directory-filters label { flex-basis: 100%; }
+  .role-owner .owner-user-row.owner-account-card { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 20px 16px; }
+  .role-owner .owner-user-row > .button { justify-self: start; }
+  .role-owner .owner-report-summary { padding: 20px 16px; gap: 16px; }
+  .role-owner .owner-report-summary > span:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+  .role-owner .owner-detail-modal { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 12px; }
+  .role-owner .owner-detail-modal-heading, .role-owner .owner-detail-modal-body { padding: 16px; }
+  .role-owner .owner-detail-facts { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .role-owner .owner-detail-modal[open], .role-owner .owner-detail-modal::backdrop { animation: none; }
+  .role-owner .owner-report-summary { transition: none; }
+}

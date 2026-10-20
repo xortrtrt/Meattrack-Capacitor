@@ -1,4 +1,4 @@
-<section class="refund-workspace" data-refund-workspace>
+<section class="refund-workspace {{ 'refund-theme-business' if role_key in ['owner', 'sales-supervisor'] else '' }}" data-refund-workspace>
   <header class="refund-hero">
     <div>
       <span class="eyebrow">Manual payment resolution</span>
@@ -116,6 +116,7 @@
         {% elif selected_refund.status == 'processing' and role_key == 'owner' %}
         <form action="/portal/owner/refunds/{{ selected_refund.order_refund_id }}/take-over" method="post" data-refund-confirm="Take over this refund from {{ selected_refund.processor_name or 'the current processor' }}? Their open attempt will be closed and preserved.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <label>Reason for takeover<input required minlength="5" maxlength="500" name="reason"></label>
           <div><strong>Processing appears abandoned?</strong><p>Owners can explicitly take over and create a new attempt.</p></div><button class="button danger" type="submit"><i data-lucide="user-round-check"></i> Take over</button>
         </form>
         {% elif selected_refund.status == 'processing' %}

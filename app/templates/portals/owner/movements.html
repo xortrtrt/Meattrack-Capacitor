@@ -1,0 +1,33 @@
+{% set movement_labels = {'opening_balance': 'Opening balance', 'raw_receipt': 'Material receipt', 'direct_finished_receipt': 'Finished-stock receipt', 'production_consumption': 'Materials used', 'production_output': 'Production output', 'sale_fulfillment': 'Order fulfillment', 'owner_correction': 'Owner correction'} %}
+<div class="owner-page owner-superuser-page owner-movements-page">
+  <section class="panel owner-workspace-surface">
+    <header class="panel-heading"><div><span class="eyebrow">Inventory ledger</span><h2>Stock movement history</h2><p class="hint">Follow each stock change, the quantity added or removed, and the resulting balance.</p></div><form action="/portal/owner/exports/movements.csv" method="post"><button class="button subtle"><i data-lucide="download" aria-hidden="true"></i> Export CSV</button></form></header>
+    <form class="filter-bar" method="get">
+      <label>Search movements<input name="q" value="{{ movements_page.filters.q }}" placeholder="Product, material, or movement type"></label>
+      <label>Movement type<select name="type"><option value="">All movements</option>{% for value, label in [('opening', 'Opening balances'), ('receipts', 'Stock receipts'), ('production', 'Production'), ('sales', 'Order fulfillment'), ('corrections', 'Owner corrections')] %}<option value="{{ value }}" {{ 'selected' if movements_page.filters.type == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <label>Sort<select name="sort">{% for value, label in [('newest', 'Newest first'), ('oldest', 'Oldest first'), ('actor_asc', 'Recorded by A–Z'), ('action_asc', 'Movement type')] %}<option value="{{ value }}" {{ 'selected' if movements_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <button class="button primary">Find movements</button><a class="button subtle" href="/portal/owner/movements">Clear filters</a>
+    </form>
+    <div class="owner-inventory-caption"><span><i data-lucide="history" aria-hidden="true"></i> Existing ledger entries cannot be edited.</span><div class="owner-stock-legend"><span class="owner-stock-in">+ Stock added</span><span class="owner-stock-out">− Stock removed</span></div></div>
+    <div class="table-wrap owner-inventory-table"><table><thead><tr><th>Date & reference</th><th>Item</th><th>Movement</th><th>Quantity change</th><th>Balance after</th><th>Recorded by</th></tr></thead><tbody>
+      {% for movement in movements %}
+      <tr>
+        <td>{{ movement.created_at|nice_date }}<small>Movement #{{ movement.movement_id }}</small></td>
+        <td><strong>{{ movement.entity }}</strong>{% if movement.batch_code %}<small>Batch {{ movement.batch_code }}</small>{% endif %}</td>
+        <td><span class="owner-movement-label">{{ movement_labels.get(movement.action, movement.action.replace('_', ' ')|title) }}</span>{% if movement.note %}<small class="owner-movement-note">{{ movement.note }}</small>{% endif %}</td>
+        <td class="owner-stock-number {{ 'owner-stock-in' if movement.quantity_delta > 0 else 'owner-stock-out' if movement.quantity_delta < 0 else '' }}">{{ '+' if movement.quantity_delta > 0 else '' }}{{ movement.quantity_delta|number }} {{ movement.unit }}</td>
+        <td class="owner-stock-number"><strong>{{ movement.balance_after|number }} {{ movement.unit }}</strong>{% if movement.balance_before is defined %}<small>Before: {{ movement.balance_before|number }} {{ movement.unit }}</small>{% endif %}</td>
+        <td>{{ movement.actor_name or 'System' }}</td>
+      </tr>
+      {% else %}<tr><td colspan="6">No stock movements match your filters.</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% set inventory_page = movements_page %}{% include "portals/owner/_inventory_pagination.html" %}
+  </section>
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Owner override</span><h2>Record a stock correction</h2><p class="hint">Corrections create a new compensating movement and preserve the original record.</p></div></div>
+    <details class="owner-override"><summary>Record owner correction</summary>
+      <p class="hint">Use a positive quantity to add stock or a negative quantity to remove stock. Finished products require a batch and whole packs.</p>
+      <form action="/portal/owner/inventory/corrections" method="post"><label>Item<select required name="item_id"><option value="">Choose item</option>{% for item in inventory_items %}<option value="{{ item.item_id or item.raw_material_id or item.product_id }}">{{ item.name }} · {{ item.item_type.replace('_',' ') if item.item_type else item.category }}</option>{% endfor %}</select></label><label>Finished-product batch (if applicable)<select name="batch_id"><option value="">Not applicable for raw materials</option>{% for batch in inventory_batches %}<option value="{{ batch.batch_id }}">{{ batch.batch_code }} · {{ batch.item_name }}</option>{% endfor %}</select></label><label>Quantity change<input required type="number" step="0.001" name="quantity_delta" placeholder="e.g. 5 or -2" max="999999999.999" min="-999999999.999"></label><label>Reason<textarea required minlength="5" maxlength="500" name="reason"></textarea></label><button class="button primary">Record correction</button></form>
+    </details>
+  </section>
+</div>

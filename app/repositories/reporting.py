@@ -81,6 +81,7 @@ def list_sales_reports(
                p.name,
                sri.quantity_sold,
                sri.unit,
+               sri.unit_price,
                sri.line_total
         FROM sales_report_items sri
         JOIN inventory_items p ON p.item_id = sri.product_id
@@ -161,7 +162,16 @@ def count_sales_reports(
     return int(row["total"])
 
 
-def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10, inventory_only: bool = False, sort: str = "") -> list[dict]:
+def _activity_log_filters(
+    q: str,
+    inventory_only: bool,
+    actor_role: str,
+    module: str,
+    action: str,
+    outcome: str,
+    date_from: str,
+    date_to: str,
+) -> tuple[list[str], list[object]]:
     where = []
     params: list[object] = []
     q = q.strip()
@@ -172,6 +182,43 @@ def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10
         where.append("(COALESCE(a.name, 'MEATTRACK') ILIKE %s OR al.action ILIKE %s OR al.entity_type ILIKE %s)")
         search = f"%{q}%"
         params.extend([search, search, search])
+    if actor_role.strip():
+        where.append("al.actor_role = %s")
+        params.append(actor_role.strip())
+    if module.strip():
+        where.append("al.entity_type = %s")
+        params.append(module.strip())
+    if action.strip():
+        where.append("al.action = %s")
+        params.append(action.strip())
+    if outcome in {"success", "failure"}:
+        where.append("al.outcome = %s")
+        params.append(outcome)
+    if date_from.strip():
+        where.append("al.created_at >= %s::date")
+        params.append(date_from.strip())
+    if date_to.strip():
+        where.append("al.created_at < %s::date + interval '1 day'")
+        params.append(date_to.strip())
+    return where, params
+
+
+def list_activity_logs(
+    q: str = "",
+    page: int | None = None,
+    page_size: int = 10,
+    inventory_only: bool = False,
+    sort: str = "",
+    actor_role: str = "",
+    module: str = "",
+    action: str = "",
+    outcome: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> list[dict]:
+    where, params = _activity_log_filters(
+        q, inventory_only, actor_role, module, action, outcome, date_from, date_to
+    )
     where_sql = " WHERE " + " AND ".join(where) if where else ""
     paging_sql = ""
     if page is not None:
@@ -182,6 +229,12 @@ def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10
         SELECT al.activity_log_id,
                COALESCE(a.name, 'MEATTRACK') AS actor,
                al.action,
+               al.actor_role,
+               al.reason,
+               al.outcome,
+               al.before_state,
+               al.after_state,
+               al.request_id,
                (CASE
                     WHEN al.entity_type = 'orders' THEN 'Order #' || al.entity_id
                     WHEN al.entity_type = 'products' THEN (SELECT name FROM inventory_items WHERE item_id = al.entity_id)
@@ -199,22 +252,24 @@ def list_activity_logs(q: str = "", page: int | None = None, page_size: int = 10
     """.format(where_sql=where_sql, order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
 
 
-def count_activity_logs(q: str = "", inventory_only: bool = False) -> int:
+def count_activity_logs(
+    q: str = "",
+    inventory_only: bool = False,
+    actor_role: str = "",
+    module: str = "",
+    action: str = "",
+    outcome: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> int:
     query = """
         SELECT COUNT(*) AS total
         FROM activity_logs al
         LEFT JOIN accounts a ON a.account_id = al.account_id
     """
-    where = []
-    params: list[object] = []
-    q = q.strip()
-    if inventory_only:
-        where.append("al.action = ANY(%s)")
-        params.append(list(INVENTORY_LOG_ACTIONS))
-    if q:
-        where.append("(COALESCE(a.name, 'MEATTRACK') ILIKE %s OR al.action ILIKE %s OR al.entity_type ILIKE %s)")
-        search = f"%{q}%"
-        params.extend([search, search, search])
+    where, params = _activity_log_filters(
+        q, inventory_only, actor_role, module, action, outcome, date_from, date_to
+    )
     if where:
         query += " WHERE " + " AND ".join(where)
     row = fetch_one(query + ";", tuple(params) or None)
@@ -461,6 +516,9 @@ def add_sales_report(
     notes: str,
     account_id: int | None = None,
 ) -> dict:
+    clean_total_sales = parse_money(total_sales, "Report total")
+    if not 0 <= total_orders <= 2147483647:
+        raise ValueError("Report order count is outside the supported range.")
     if account_id is not None:
         acc = fetch_one("SELECT account_id, name FROM accounts WHERE account_id = %s LIMIT 1;", (account_id,))
     else:
@@ -482,7 +540,7 @@ def add_sales_report(
             INSERT INTO sales_reports (report_source, submitted_by_account_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING sales_report_id, report_source, period_start, period_end, total_sales, total_orders, notes;
-        """, (source, acc_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes))
+        """, (source, acc_id, reseller_id, department_id, period_start, period_end, clean_total_sales, total_orders, notes))
         rep = cur.fetchone()
         _add_log_cursor(cur, actor_account_id=acc_id, action="submitted_sales_report", entity_type="sales_reports", entity_id=rep["sales_report_id"])
     return clean_row(rep)
@@ -597,6 +655,7 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
         if clean_quantity > remaining:
             raise ValueError(f"{reportable[clean_product_id]['name']} can only report up to {display_decimal(remaining)} {reportable[clean_product_id]['unit']}.")
         clean_quantities[clean_product_id] = clean_quantities.get(clean_product_id, Decimal("0")) + clean_quantity
+        measurements.parse_whole_packs(clean_quantities[clean_product_id], "Sold quantity")
 
     if not clean_quantities:
         raise ValueError("Report at least one sold product quantity.")
@@ -608,7 +667,11 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
         product = reportable[product_id]
         unit_price = Decimal(str(product["unit_price"])).quantize(Decimal("0.01"))
         total_sales += (unit_price * quantity).quantize(Decimal("0.01"))
+        measurements.require_capacity(unit_price * quantity, "Report line total", scale=2)
+        measurements.require_capacity(total_sales, "Report total", scale=2)
         total_units += quantity
+        if total_units > 2147483647:
+            raise ValueError("Report quantity is outside the supported range.")
         lines.append((product_id, quantity, product["unit"], unit_price))
 
     with get_transaction_cursor() as cur:

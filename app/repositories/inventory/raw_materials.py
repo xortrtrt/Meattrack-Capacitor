@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from app.inventory_measurements import require_capacity
 
 from .._shared import (
     _add_log_cursor,
@@ -96,6 +97,8 @@ def add_raw_inventory_quantity(
         item = cur.fetchone()
         if item is None:
             raise ValueError("Choose a valid raw inventory item.")
+
+        require_capacity(Decimal(item["quantity_available"]) + amount, "Resulting material stock")
 
         cur.execute("""
             UPDATE inventory_items

@@ -161,6 +161,46 @@ def list_reseller_assignments() -> list[dict]:
     """))
 
 
+def _owner_reseller_filters(q: str, status: str, leader: str) -> tuple[str, list[object]]:
+    where = []
+    params: list[object] = []
+    if q.strip():
+        where.append("(r.business_name ILIKE %s OR r.contact_person ILIKE %s OR r.email ILIKE %s)")
+        params.extend([f"%{q.strip()}%"] * 3)
+    if status:
+        where.append("r.reseller_status = %s")
+        params.append(status)
+    if leader == "unassigned":
+        where.append("r.team_leader_account_id IS NULL")
+    elif leader:
+        where.append("r.team_leader_account_id = %s")
+        params.append(int(leader))
+    return (" WHERE " + " AND ".join(where) if where else ""), params
+
+
+def list_owner_resellers(
+    q: str = "", status: str = "", leader: str = "", sort: str = "business_asc",
+    page: int = 1, page_size: int = 10,
+) -> list[dict]:
+    where_sql, params = _owner_reseller_filters(q, status, leader)
+    sorts = {key: TEAM_RESELLER_SORTS[key] for key in ("business_asc", "status_asc", "newest", "oldest")}
+    sorts["status_asc"] += ", r.reseller_id ASC"
+    order_sql = safe_sort_sql(sort, sorts, sorts["business_asc"])
+    params.extend([max(1, min(page_size, 50)), (max(1, page) - 1) * max(1, min(page_size, 50))])
+    return clean_row(fetch_all("""
+        SELECT r.reseller_id, r.business_name, r.contact_person, r.email,
+               r.reseller_status, r.team_leader_account_id, tl.name AS team_leader_name
+        FROM resellers r
+        LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
+    """ + where_sql + f" ORDER BY {order_sql} LIMIT %s OFFSET %s;", tuple(params)))
+
+
+def count_owner_resellers(q: str = "", status: str = "", leader: str = "") -> int:
+    where_sql, params = _owner_reseller_filters(q, status, leader)
+    row = fetch_one("SELECT COUNT(*) AS total FROM resellers r" + where_sql + ";", tuple(params))
+    return int(row["total"])
+
+
 def list_team_resellers(
     team_leader_account_id: int,
     q: str = "",
@@ -276,11 +316,24 @@ def update_team_leader_account_role(account_id: int, team_leader_role: str, acto
             raise ValueError("Only team leader accounts can change team leader roles.")
         if team_leader_role == "inventory":
             cur.execute(
-                "SELECT 1 FROM resellers WHERE team_leader_account_id = %s LIMIT 1;",
-                (account_id,),
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM resellers WHERE team_leader_account_id = %s
+                        AND reseller_status = 'active') AS resellers,
+                    (SELECT COUNT(*) FROM inquiries WHERE assigned_team_leader_account_id = %s
+                        AND status IN ('pending','assigned','contacted')) AS inquiries,
+                    (SELECT COUNT(*) FROM orders WHERE team_leader_account_id = %s
+                        AND status IN ('to_pay','pending','approved')) AS orders,
+                    (SELECT COUNT(*) FROM order_refunds WHERE assigned_supervisor_account_id = %s
+                        AND status IN ('pending','processing','failed')) AS refunds,
+                    (SELECT COUNT(*) FROM chat_conversations WHERE assigned_team_leader_account_id = %s
+                        AND status IN ('queued','active','awaiting_contact','follow_up')) AS conversations;
+                """,
+                (account_id, account_id, account_id, account_id, account_id),
             )
-            if cur.fetchone():
-                raise ValueError("Reassign this leader's resellers before changing the role to inventory.")
+            workload = dict(cur.fetchone())
+            if any(int(value) for value in workload.values()):
+                raise ValueError("Transfer this leader's active work before changing the role to inventory.")
         cur.execute(
             """
             UPDATE accounts
@@ -732,7 +785,9 @@ def record_user_consent(account_id: int, policy_version: str, consent_source: st
     )
 
 
-def _create_activation_token_cursor(cur, account_id: int) -> str:
+def _create_activation_token_cursor(cur, account_id: int, purpose: str = "activation") -> str:
+    if purpose not in {"activation", "password_reset"}:
+        raise ValueError("Invalid account token purpose.")
     raw_token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
     cur.execute(
@@ -741,10 +796,10 @@ def _create_activation_token_cursor(cur, account_id: int) -> str:
     )
     cur.execute(
         """
-        INSERT INTO account_activation_tokens (account_id, token_hash, expires_at)
-        VALUES (%s, %s, now() + interval '24 hours');
+        INSERT INTO account_activation_tokens (account_id, token_hash, purpose, expires_at)
+        VALUES (%s, %s, %s, now() + interval '24 hours');
         """,
-        (account_id, token_hash),
+        (account_id, token_hash, purpose),
     )
     return raw_token
 
@@ -819,7 +874,13 @@ def require_reseller_team_leader(account_id: int) -> dict:
     return profile
 
 
-def add_account(account_type: str, name: str, email: str, team_leader_role: str | None = None) -> dict:
+def add_account(
+    account_type: str,
+    name: str,
+    email: str,
+    team_leader_role: str | None = None,
+    actor_account_id: int | None = None,
+) -> dict:
     reseller_id = None
     cleaned_name = " ".join(name.strip().split())
     cleaned_email = email.strip().lower()
@@ -842,9 +903,11 @@ def add_account(account_type: str, name: str, email: str, team_leader_role: str 
         """, (account_type, reseller_id, cleaned_name, cleaned_email, hash_password(secrets.token_urlsafe(32)), team_leader_role))
         account = cur.fetchone()
         activation_token = _create_activation_token_cursor(cur, account["account_id"])
-        cur.execute("SELECT account_id FROM accounts WHERE account_type = 'owner' AND is_active = true ORDER BY account_id LIMIT 1;")
-        owner = cur.fetchone()
-        _add_log_cursor(cur, actor_account_id=owner["account_id"] if owner else None, action="created_account", entity_type="accounts", entity_id=account["account_id"])
+        if actor_account_id is None:
+            cur.execute("SELECT account_id FROM accounts WHERE account_type = 'owner' AND is_active = true ORDER BY account_id LIMIT 1;")
+            owner = cur.fetchone()
+            actor_account_id = owner["account_id"] if owner else None
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="created_account", entity_type="accounts", entity_id=account["account_id"])
         _enqueue_outbox_cursor(
             cur, "account_activation",
             {"to_email": account["email"], "name": account["name"],
@@ -866,11 +929,15 @@ def activate_account(raw_token: str, new_password: str) -> dict:
     with get_transaction_cursor() as cur:
         cur.execute(
             """
-            SELECT t.activation_token_id, a.account_id, a.account_type, a.team_leader_role, a.name, a.email
+            SELECT t.activation_token_id, t.purpose, a.account_id, a.account_type,
+                   a.team_leader_role, a.name, a.email
             FROM account_activation_tokens t
             JOIN accounts a ON a.account_id = t.account_id
             WHERE t.token_hash = %s AND t.consumed_at IS NULL AND t.expires_at >= now()
-              AND a.activation_status = 'pending'
+              AND (
+                  (t.purpose = 'activation' AND a.activation_status = 'pending')
+                  OR (t.purpose = 'password_reset' AND a.is_active = true)
+              )
             FOR UPDATE OF t, a;
             """,
             (token_hash,),
@@ -878,13 +945,24 @@ def activate_account(raw_token: str, new_password: str) -> dict:
         account = cur.fetchone()
         if not account:
             raise ValueError("Activation link is invalid or expired.")
-        cur.execute(
-            """
-            UPDATE accounts SET password_hash = %s, is_active = true,
-                activation_status = 'active', activated_at = now() WHERE account_id = %s;
-            """,
-            (hash_password(password), account["account_id"]),
-        )
+        if account["purpose"] == "activation":
+            cur.execute(
+                """
+                UPDATE accounts SET password_hash = %s, is_active = true,
+                    activation_status = 'active', activated_at = now() WHERE account_id = %s;
+                """,
+                (hash_password(password), account["account_id"]),
+            )
+        else:
+            cur.execute(
+                "UPDATE accounts SET password_hash = %s WHERE account_id = %s;",
+                (hash_password(password), account["account_id"]),
+            )
+            cur.execute("DELETE FROM web_sessions WHERE account_id = %s;", (account["account_id"],))
+            cur.execute(
+                "UPDATE owner_step_up_challenges SET consumed_at = now() WHERE account_id = %s AND consumed_at IS NULL;",
+                (account["account_id"],),
+            )
         cur.execute(
             """
             UPDATE resellers SET reseller_status = 'active'
@@ -894,10 +972,43 @@ def activate_account(raw_token: str, new_password: str) -> dict:
             (account["account_id"],),
         )
         cur.execute("UPDATE account_activation_tokens SET consumed_at = now() WHERE activation_token_id = %s;", (account["activation_token_id"],))
-        _add_log_cursor(cur, actor_account_id=account["account_id"], action="activated_account", entity_type="accounts", entity_id=account["account_id"])
+        action = "activated_account" if account["purpose"] == "activation" else "reset_account_password"
+        _add_log_cursor(cur, actor_account_id=account["account_id"], action=action, entity_type="accounts", entity_id=account["account_id"])
     clean = clean_row(account)
     clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
     return clean
+
+
+def queue_forced_password_reset(account_id: int, actor_account_id: int) -> None:
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            SELECT account_id, name, email FROM accounts
+            WHERE account_id = %s AND is_active = true FOR UPDATE;
+            """,
+            (account_id,),
+        )
+        account = cur.fetchone()
+        if not account:
+            raise ValueError("Active account was not found.")
+        token = _create_activation_token_cursor(cur, account_id, "password_reset")
+        _enqueue_outbox_cursor(
+            cur,
+            "account_password_reset",
+            {
+                "to_email": account["email"],
+                "name": account["name"],
+                "reset_path": f"/activate?token={token}",
+            },
+            f"account-password-reset-{account_id}-{hashlib.sha256(token.encode()).hexdigest()[:12]}",
+        )
+        _add_log_cursor(
+            cur,
+            actor_account_id=actor_account_id,
+            action="queued_forced_password_reset",
+            entity_type="accounts",
+            entity_id=account_id,
+        )
 
 
 def resend_activation(account_id: int, actor_account_id: int, account_types: tuple[str, ...] | None = None) -> None:
@@ -921,4 +1032,4 @@ def resend_activation(account_id: int, actor_account_id: int, account_types: tup
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="resent_activation", entity_type="accounts", entity_id=account_id)
 
 
-__all__ = ['list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'next_sales_supervisor', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'list_team_resellers', 'count_team_resellers', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'resend_activation']
+__all__ = ['list_owner_resellers', 'count_owner_resellers', 'list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'next_sales_supervisor', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'list_team_resellers', 'count_team_resellers', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'queue_forced_password_reset', 'resend_activation']

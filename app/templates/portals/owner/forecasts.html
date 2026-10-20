@@ -6,36 +6,37 @@
         <h2>Demand forecast run</h2>
         <span class="hint">Models are backtested against continuous daily sales-leader demand history.</span>
       </div>
+      <form action="/portal/owner/exports/forecasts.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form>
     </div>
     <form class="form-panel bare owner-forecast-form" action="/portal/owner/forecasts" method="post" data-forecast-horizon-form>
       <label>Run name <input required minlength="3" maxlength="80" name="model_name" value="Demand forecast"></label>
       <div class="owner-horizon-picker" role="radiogroup" aria-label="Forecast horizon">
         <label>
-          <input type="radio" name="forecast_horizon_choice" value="7" checked data-forecast-horizon-choice>
+          <input type="radio" name="forecast_horizon_choice" value="7" {{ 'checked' if forecast_default_horizon == 7 else '' }} data-forecast-horizon-choice>
           <span><strong>7 days</strong><small>Short-term production</small></span>
         </label>
         <label>
-          <input type="radio" name="forecast_horizon_choice" value="14" data-forecast-horizon-choice>
+          <input type="radio" name="forecast_horizon_choice" value="14" {{ 'checked' if forecast_default_horizon == 14 else '' }} data-forecast-horizon-choice>
           <span><strong>14 days</strong><small>Two-week planning</small></span>
         </label>
         <label>
-          <input type="radio" name="forecast_horizon_choice" value="30" data-forecast-horizon-choice>
+          <input type="radio" name="forecast_horizon_choice" value="30" {{ 'checked' if forecast_default_horizon == 30 else '' }} data-forecast-horizon-choice>
           <span><strong>30 days</strong><small>Monthly demand</small></span>
         </label>
         <label>
-          <input type="radio" name="forecast_horizon_choice" value="60" data-forecast-horizon-choice>
+          <input type="radio" name="forecast_horizon_choice" value="60" {{ 'checked' if forecast_default_horizon == 60 else '' }} data-forecast-horizon-choice>
           <span><strong>60 days</strong><small>Seasonal planning</small></span>
         </label>
         <label>
-          <input type="radio" name="forecast_horizon_choice" value="custom" data-forecast-horizon-choice>
+          <input type="radio" name="forecast_horizon_choice" value="custom" {{ 'checked' if forecast_default_horizon not in [7, 14, 30, 60] else '' }} data-forecast-horizon-choice>
           <span><strong>Custom</strong><small>Choose exact days</small></span>
         </label>
       </div>
-      <label class="owner-custom-horizon" data-forecast-custom-horizon hidden>
+      <label class="owner-custom-horizon" data-forecast-custom-horizon {{ 'hidden' if forecast_default_horizon in [7, 14, 30, 60] else '' }}>
         Custom forecast horizon days
-        <input type="number" min="1" max="365" value="7" data-forecast-horizon-custom>
+        <input type="number" min="1" max="365" value="{{ forecast_default_horizon }}" data-forecast-horizon-custom>
       </label>
-      <input type="hidden" name="forecast_horizon_days" value="7" data-forecast-horizon-value>
+      <input type="hidden" name="forecast_horizon_days" value="{{ forecast_default_horizon }}" data-forecast-horizon-value>
       <button class="button primary" type="submit"><i data-lucide="play"></i> Run forecast</button>
     </form>
   </article>
@@ -60,6 +61,17 @@
       <p data-forecast-progress>{{ latest_forecast_run.processed_products }} of {{ latest_forecast_run.total_products }} products processed.</p>
       {% endif %}
       <p>{{ latest_forecast_run.notes or "No run notes recorded." }}</p>
+      {% if latest_forecast_run.status == 'failed' %}
+      <form action="/portal/owner/forecasts/runs/{{ latest_forecast_run.forecast_run_id }}/retry" method="post">
+        <label>Reason for retry<input required minlength="5" maxlength="500" name="reason"></label>
+        <button class="button subtle" type="submit">Retry as a new linked run</button>
+      </form>
+      {% elif latest_forecast_run.status in ('queued', 'running') %}
+      <form action="/portal/owner/forecasts/runs/{{ latest_forecast_run.forecast_run_id }}/cancel" method="post">
+        <label>Reason for cancellation<input required minlength="5" maxlength="500" name="reason"></label>
+        <button class="button danger" type="submit">Cancel run</button>
+      </form>
+      {% endif %}
     </div>
     {% else %}
     <p class="hint">No forecast run has been completed yet.</p>

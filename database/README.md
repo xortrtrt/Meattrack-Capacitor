@@ -29,7 +29,14 @@ For disposable local demo data only:
 ```
 
 The seed utility drops and recreates the `public` schema. Never run it against a
-database whose records must be preserved.
+database whose records must be preserved. It includes 730 days of deterministic
+fulfilled reseller orders so the owner forecast has enough history to evaluate
+Prophet and the baseline models.
+
+To add or refresh only forecast demo sales in an existing local development
+database, see `docs/forecast_dummy_sales.md`. The standalone loader refuses
+production and remote databases and only replaces orders tagged with its own
+dummy-data marker.
 
 ## Back up and restore
 

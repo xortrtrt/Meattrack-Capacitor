@@ -1405,10 +1405,35 @@ def test_assigned_sales_leader_cannot_be_changed_to_inventory(strict_inventory_d
         order_quantities=[],
     )
 
-    with pytest.raises(ValueError, match="Reassign this leader's resellers"):
+    with pytest.raises(ValueError, match="Transfer this leader's active work"):
         repositories.update_team_leader_account_role(leader_id, "inventory")
 
     with psycopg2.connect(strict_inventory_database) as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT team_leader_role FROM accounts WHERE account_id = %s;", (leader_id,))
             assert cursor.fetchone()[0] == "sales"
+
+
+@pytest.mark.postgres
+def test_owner_reseller_directory_filters_counts_and_pages(strict_inventory_database):
+    leader_id, _, _, _ = _seed_fulfillment(strict_inventory_database, batch_quantities=[], order_quantities=[])
+    with psycopg2.connect(strict_inventory_database) as connection:
+        with connection.cursor() as cursor:
+            for index in range(25):
+                cursor.execute("""
+                    INSERT INTO resellers (business_name, contact_person, email, contact_number, reseller_status, team_leader_account_id)
+                    VALUES (%s, %s, %s, '09170000000', %s, %s);
+                """, (f"Directory {index:02d}", f"Contact {index:02d}", f"directory{index}@test.local", "active" if index < 20 else "suspended", leader_id if index < 15 else None))
+    first = repositories.list_owner_resellers(q="Directory", page=1)
+    second = repositories.list_owner_resellers(q="Directory", page=2)
+    third = repositories.list_owner_resellers(q="Directory", page=3)
+    assert [len(first), len(second), len(third)] == [10, 10, 5]
+    assert len({row["reseller_id"] for row in first + second + third}) == 25
+    assert repositories.count_owner_resellers(q="Directory") == 25
+    assert repositories.count_owner_resellers(q="Directory", status="active", leader=str(leader_id)) == 15
+    unassigned = repositories.list_owner_resellers(q="Directory", status="suspended", leader="unassigned")
+    assert len(unassigned) == repositories.count_owner_resellers(q="Directory", status="suspended", leader="unassigned") == 5
+    assert all(row["team_leader_account_id"] is None for row in unassigned)
+    assert repositories.list_owner_resellers(q="directory24@test.local")[0]["business_name"] == "Directory 24"
+    assert repositories.list_owner_resellers(q="Contact 23")[0]["business_name"] == "Directory 23"
+    assert repositories.count_owner_resellers(q="__not_found__") == 0

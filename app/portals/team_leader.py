@@ -22,6 +22,8 @@ def logs_page(request: Request, page_size: int = 10, inventory_only: bool = Fals
     filters = shared.portal_filters(request)
     movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales"} else ""
     if inventory_only:
+        total = data.count_inventory_movements(q=filters["q"], category=movement_category)
+        filters["page"] = shared.clamp_page(total, filters["page"], page_size)
         items = data.list_inventory_movements(
             q=filters["q"],
             category=movement_category,
@@ -29,10 +31,10 @@ def logs_page(request: Request, page_size: int = 10, inventory_only: bool = Fals
             page_size=page_size,
             sort=filters["sort"],
         )
-        total = data.count_inventory_movements(q=filters["q"], category=movement_category)
     else:
-        items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=False, sort=filters["sort"])
         total = data.count_activity_logs(q=filters["q"], inventory_only=False)
+        filters["page"] = shared.clamp_page(total, filters["page"], page_size)
+        items = data.list_activity_logs(q=filters["q"], page=filters["page"], page_size=page_size, inventory_only=False, sort=filters["sort"])
     page = shared.paged(
         items,
         total,
@@ -53,8 +55,9 @@ def logs_page(request: Request, page_size: int = 10, inventory_only: bool = Fals
 def finished_inventory_products_page(request: Request, page_size: int = 8) -> dict:
     filters = shared.portal_filters(request)
     category = f"finished_product:{filters['type']}" if filters["type"] else "finished_product"
-    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_inventory_items(q=filters["q"], category=category)
+    filters["page"] = shared.clamp_page(total, filters["page"], page_size)
+    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size, sort=filters["sort"])
     return shared.paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
@@ -62,8 +65,9 @@ def raw_materials_inventory_page(request: Request, page_size: int = 10) -> dict:
     filters = shared.portal_filters(request)
     material_category = filters["type"] if filters["type"] in data.raw_material_categories else ""
     category = f"raw_material:{material_category}" if material_category else "raw_material"
-    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size, sort=filters["sort"])
     total = data.count_inventory_items(q=filters["q"], category=category)
+    filters["page"] = shared.clamp_page(total, filters["page"], page_size)
+    items = data.list_inventory_items(q=filters["q"], category=category, page=filters["page"], page_size=page_size, sort=filters["sort"])
     page = shared.paged(
         items,
         total,
@@ -136,6 +140,8 @@ def inventory_batches_page(request: Request, page_size: int = 10) -> dict:
     filters = shared.portal_filters(request)
     categories = [*data.product_categories, "Package"]
     category = filters["type"] if filters["type"] in categories else ""
+    total = data.count_inventory_batches(q=filters["q"], category=category)
+    filters["page"] = shared.clamp_page(total, filters["page"], page_size)
     items = data.list_inventory_batches(
         q=filters["q"],
         category=category,
@@ -143,7 +149,6 @@ def inventory_batches_page(request: Request, page_size: int = 10) -> dict:
         page_size=page_size,
         sort=filters["sort"],
     )
-    total = data.count_inventory_batches(q=filters["q"], category=category)
     page = shared.paged(
         items,
         total,
@@ -258,6 +263,12 @@ def resellers_context(request: Request) -> dict:
     filters = shared.portal_filters(request)
     status = filters["status"] if filters["status"] in {"pending", "active", "suspended", "inactive"} else ""
     account_id = shared.session_account_id(request)
+    total = data.count_team_resellers(
+        team_leader_account_id=account_id,
+        q=filters["q"],
+        status=status,
+    )
+    filters["page"] = shared.clamp_page(total, filters["page"], 10)
     items = data.list_team_resellers(
         team_leader_account_id=account_id,
         q=filters["q"],
@@ -265,11 +276,6 @@ def resellers_context(request: Request) -> dict:
         page=filters["page"],
         page_size=10,
         sort=filters["sort"],
-    )
-    total = data.count_team_resellers(
-        team_leader_account_id=account_id,
-        q=filters["q"],
-        status=status,
     )
     page = shared.paged(
         items,
@@ -718,7 +724,13 @@ async def supervisor_account(
         if account_type != "team_leader":
             raise ValueError("Sales supervisors can create team leader accounts only.")
         email = shared.require_email(email)
-        data.add_account("team_leader", name, email, team_leader_role=team_leader_role)
+        data.add_account(
+            "team_leader",
+            name,
+            email,
+            team_leader_role=team_leader_role,
+            actor_account_id=shared.session_account_id(request),
+        )
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("sales-supervisor", "accounts", error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path("sales-supervisor", "accounts", message="Account created. A single-use activation email was queued."))

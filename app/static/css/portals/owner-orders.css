@@ -1,0 +1,741 @@
+/* Sales order review ledger */
+.role-owner .owner-order-ledger {
+  --review-ink: #171511;
+  --review-muted: #6c6458;
+  --review-line: rgba(72, 57, 24, 0.14);
+  --review-wash: #f7f2e7;
+  --review-paper: #fffdfa;
+  --review-gold: #d7b621;
+  padding: 0;
+  background:
+    linear-gradient(180deg, rgba(215, 182, 33, 0.075), transparent 190px),
+    var(--review-paper);
+}
+
+.role-owner .owner-order-ledger-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+  border-bottom: 1px solid var(--review-line);
+}
+
+.role-owner .owner-order-ledger-heading h2,
+.role-owner .owner-order-ledger-heading p {
+  margin: 0;
+}
+
+.role-owner .owner-order-ledger-heading h2 {
+  margin-top: 4px;
+  color: var(--review-ink);
+  font-size: clamp(1.45rem, 2.5vw, 1.9rem);
+  letter-spacing: -0.035em;
+}
+
+.role-owner .owner-order-ledger-heading p {
+  max-width: 610px;
+  margin-top: 7px;
+  color: var(--review-muted);
+  line-height: 1.5;
+}
+
+.role-owner .owner-order-ledger-count {
+  display: grid;
+  min-width: 128px;
+  padding: 11px 14px;
+  border: 1px solid var(--review-line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  text-align: right;
+}
+
+.role-owner .owner-order-ledger-count strong {
+  color: var(--review-ink);
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.role-owner .owner-order-ledger-count span {
+  margin-top: 4px;
+  color: var(--review-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.role-owner .owner-order-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(170px, 0.34fr) minmax(170px, 0.34fr);
+  gap: 10px;
+  padding: 15px 28px;
+  border-bottom: 1px solid var(--review-line);
+  background: var(--review-wash);
+}
+
+.role-owner .owner-order-search,
+.role-owner .owner-order-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.role-owner .owner-order-search > svg,
+.role-owner .owner-order-select > svg {
+  position: absolute;
+  left: 13px;
+  z-index: 1;
+  width: 17px;
+  height: 17px;
+  color: var(--review-muted);
+  pointer-events: none;
+}
+
+.role-owner .owner-orders-page .owner-order-toolbar input,
+.role-owner .owner-orders-page .owner-order-toolbar select {
+  width: 100%;
+  min-height: 44px;
+  padding-left: 40px;
+  border: 1px solid rgba(72, 57, 24, 0.19);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--review-ink);
+  font: inherit;
+  font-size: 0.84rem;
+  box-shadow: 0 4px 12px rgba(37, 28, 12, 0.035);
+}
+
+.role-owner .owner-order-results {
+  padding: 22px 28px 28px;
+}
+
+.role-owner .owner-order-card-list {
+  display: grid;
+  gap: 14px;
+}
+
+.role-owner .owner-order-card {
+  overflow: clip;
+  border: 1px solid var(--review-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(37, 28, 12, 0.05);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.role-owner .owner-order-card:hover,
+.role-owner .owner-order-card[open] {
+  border-color: rgba(170, 134, 22, 0.42);
+  box-shadow: 0 13px 32px rgba(37, 28, 12, 0.09);
+}
+
+.role-owner .owner-order-card-summary {
+  display: grid;
+  grid-template-columns: minmax(245px, 1fr) auto minmax(115px, auto) 38px;
+  gap: 22px;
+  align-items: center;
+  min-height: 106px;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+  touch-action: manipulation;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+
+.role-owner .owner-order-card-summary::-webkit-details-marker {
+  display: none;
+}
+
+.role-owner .owner-order-card-summary:focus-visible {
+  outline: 3px solid rgba(215, 182, 33, 0.38);
+  outline-offset: -3px;
+}
+
+.role-owner .owner-order-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 9px;
+  min-width: 0;
+}
+
+.role-owner .owner-order-number {
+  flex: 0 0 100%;
+  color: var(--review-ink);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.role-owner .owner-order-identity > strong {
+  overflow: hidden;
+  max-width: 330px;
+  color: var(--review-ink);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-owner .owner-order-identity time {
+  color: var(--review-muted);
+  font-size: 0.75rem;
+}
+
+.role-owner .owner-order-identity .status-badge {
+  padding: 5px 9px;
+  font-size: 0.66rem;
+}
+
+.role-owner .owner-order-preview {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.role-owner .owner-order-preview img,
+.role-owner .owner-order-preview > span {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--review-line);
+  border-radius: 9px;
+  background: var(--review-wash);
+}
+
+.role-owner .owner-order-preview img {
+  object-fit: cover;
+}
+
+.role-owner .owner-order-preview > span {
+  display: grid;
+  place-items: center;
+  color: var(--review-ink);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.role-owner .owner-order-total {
+  display: grid;
+  justify-items: end;
+  min-width: 115px;
+}
+
+.role-owner .owner-order-total small {
+  color: var(--review-muted);
+  font-size: 0.67rem;
+}
+
+.role-owner .owner-order-total strong {
+  margin-top: 3px;
+  color: var(--review-ink);
+  font-size: 1.08rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-owner .owner-order-chevron {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--review-muted);
+  transition: transform 180ms ease, background-color 180ms ease, color 180ms ease;
+}
+
+.role-owner .owner-order-card[open] .owner-order-chevron {
+  transform: rotate(180deg);
+  background: var(--review-ink);
+  color: var(--review-gold);
+}
+
+.role-owner .owner-order-chevron svg {
+  width: 18px;
+  height: 18px;
+}
+
+.role-owner .owner-order-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(350px, 410px);
+  border-top: 1px solid var(--review-line);
+  background: color-mix(in srgb, var(--review-wash) 58%, #fff);
+  animation: owner-order-reveal 180ms ease-out;
+}
+
+.role-owner .owner-order-products,
+.role-owner .owner-order-review {
+  min-width: 0;
+  padding: 22px;
+}
+
+.role-owner .owner-order-products > header,
+.role-owner .owner-order-review > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.role-owner .owner-order-products h3,
+.role-owner .owner-order-review h3 {
+  margin: 3px 0 0;
+  color: var(--review-ink);
+  font-size: 1rem;
+}
+
+.role-owner .owner-order-review {
+  border-left: 1px solid var(--review-line);
+  background: var(--review-paper);
+}
+
+.role-owner .owner-order-product-list,
+.role-owner .owner-order-payment,
+.role-owner .owner-order-proof-links {
+  display: grid;
+  gap: 10px;
+}
+
+.role-owner .owner-order-product-line {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) auto;
+  gap: 13px;
+  align-items: center;
+  min-height: 86px;
+  padding: 11px 13px;
+  border: 1px solid var(--review-line);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.role-owner .owner-order-product-line img {
+  width: 62px;
+  height: 62px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--review-wash);
+}
+
+.role-owner .owner-order-product-line > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.role-owner .owner-order-product-line > div > strong {
+  overflow: hidden;
+  color: var(--review-ink);
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-owner .owner-order-product-line small {
+  color: var(--review-muted);
+  font-size: 0.74rem;
+}
+
+.role-owner .owner-order-product-line > strong {
+  color: var(--review-ink);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-owner .owner-order-payment-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--review-line);
+  border-radius: 11px;
+  background: var(--review-line);
+}
+
+.role-owner .owner-order-payment-details > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 12px;
+  background: #fff;
+}
+
+.role-owner .owner-order-payment-details dt {
+  color: var(--review-muted);
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.role-owner .owner-order-payment-details dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--review-ink);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-owner .owner-order-proof-links {
+  margin-top: 10px;
+}
+
+.role-owner .owner-order-proof-links a {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  padding: 9px 12px;
+  border: 1px solid rgba(170, 134, 22, 0.28);
+  border-radius: 11px;
+  background: rgba(215, 182, 33, 0.08);
+  color: var(--review-ink);
+}
+
+.role-owner .owner-order-proof-links a > svg:first-child {
+  width: 36px;
+  height: 36px;
+  padding: 9px;
+  border-radius: 9px;
+  background: #fff;
+  color: #9b7612;
+}
+
+.role-owner .owner-order-proof-links a > svg:last-child {
+  width: 17px;
+  height: 17px;
+  color: var(--review-muted);
+}
+
+.role-owner .owner-order-proof-links a span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.role-owner .owner-order-proof-links a strong {
+  font-size: 0.78rem;
+}
+
+.role-owner .owner-order-proof-links a small {
+  overflow: hidden;
+  color: var(--review-muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role-owner .owner-order-review-note,
+.role-owner .owner-order-empty-products {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--review-line);
+  border-radius: 11px;
+  background: var(--review-wash);
+}
+
+.role-owner .owner-order-review-note.is-cancelled {
+  margin-bottom: 10px;
+  border-color: color-mix(in srgb, var(--error) 25%, var(--review-line));
+}
+
+.role-owner .owner-order-review-note > svg,
+.role-owner .owner-order-empty-products > svg {
+  width: 20px;
+  height: 20px;
+  margin: auto;
+  color: #9b7612;
+}
+
+.role-owner .owner-order-review-note > span {
+  display: grid;
+  gap: 3px;
+}
+
+.role-owner .owner-order-review-note strong {
+  color: var(--review-ink);
+  font-size: 0.79rem;
+}
+
+.role-owner .owner-order-review-note small,
+.role-owner .owner-order-empty-products span {
+  color: var(--review-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.role-owner .owner-order-decision-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--review-line);
+}
+
+.role-owner .owner-order-decision-grid form:last-child {
+  grid-column: 1 / -1;
+}
+
+.role-owner .owner-order-decision {
+  justify-content: center;
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid var(--review-line);
+  border-radius: 9px;
+  font-size: 0.78rem;
+}
+
+.role-owner .owner-order-decision.is-fulfill {
+  background: var(--review-ink);
+  color: #fff;
+}
+
+.role-owner .owner-order-decision svg {
+  width: 16px;
+  height: 16px;
+}
+
+.role-owner .owner-order-empty-state {
+  display: grid;
+  justify-items: center;
+  min-height: 280px;
+  place-content: center;
+  padding: 42px 20px;
+  text-align: center;
+}
+
+.role-owner .owner-order-empty-state > span {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 14px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(215, 182, 33, 0.13);
+  color: #9b7612;
+}
+
+.role-owner .owner-order-empty-state strong {
+  color: var(--review-ink);
+}
+
+.role-owner .owner-order-empty-state small {
+  max-width: 430px;
+  margin-top: 6px;
+  color: var(--review-muted);
+  line-height: 1.45;
+}
+
+.role-owner .owner-order-ledger .owner-order-pagination {
+  margin: 20px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--review-line);
+  background: transparent;
+}
+
+@keyframes owner-order-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1040px) {
+  .role-owner .owner-order-toolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .role-owner .owner-order-search {
+    grid-column: 1 / -1;
+  }
+
+  .role-owner .owner-order-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-order-review {
+    border-top: 1px solid var(--review-line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .role-owner .owner-order-ledger-heading {
+    padding: 20px 16px;
+  }
+
+  .role-owner .owner-order-toolbar {
+    grid-template-columns: 1fr;
+    padding: 14px 16px;
+  }
+
+  .role-owner .owner-order-search {
+    grid-column: auto;
+  }
+
+  .role-owner .owner-order-results {
+    padding: 16px;
+  }
+
+  .role-owner .owner-order-card-summary {
+    grid-template-columns: minmax(0, 1fr) auto 38px;
+    gap: 11px;
+    padding: 15px;
+  }
+
+  .role-owner .owner-order-preview {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+  }
+
+  .role-owner .owner-order-total {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .role-owner .owner-order-chevron {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .role-owner .owner-order-products,
+  .role-owner .owner-order-review {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .role-owner .owner-order-ledger-heading {
+    align-items: center;
+  }
+
+  .role-owner .owner-order-ledger-heading p {
+    font-size: 0.8rem;
+  }
+
+  .role-owner .owner-order-ledger-count {
+    min-width: 82px;
+    padding-inline: 9px;
+  }
+
+  .role-owner .owner-order-ledger-count span {
+    max-width: 70px;
+  }
+
+  .role-owner .owner-order-product-line {
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .role-owner .owner-order-product-line img {
+    width: 52px;
+    height: 52px;
+  }
+
+  .role-owner .owner-order-product-line > strong {
+    grid-column: 2;
+  }
+
+  .role-owner .owner-order-payment-details,
+  .role-owner .owner-order-decision-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .role-owner .owner-order-decision-grid form:last-child {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-owner .owner-order-card,
+  .role-owner .owner-order-chevron,
+  .role-owner .owner-order-card-body {
+    animation: none;
+    transition: none;
+  }
+}
+
+
+.role-owner .owner-order-review .owner-override { margin-top: 20px; }
+.role-owner .owner-order-review .owner-override > form { display: grid; gap: 14px; padding: 16px; }
+.role-owner .owner-order-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--review-line); }
+.role-owner .owner-order-footer > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.role-owner .owner-order-footer .owner-order-pagination { margin: 0; padding: 0; border: 0; background: transparent; }
+@media (min-width: 721px) and (max-width: 1100px) {
+  .role-owner .owner-order-card-summary { grid-template-columns: minmax(0, 1fr) auto 38px; }
+  .role-owner .owner-order-preview { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; }
+  .role-owner .owner-order-total { grid-column: 2; grid-row: 1; }
+  .role-owner .owner-order-chevron { grid-column: 3; grid-row: 1; }
+}
+@media (max-width: 680px) { .role-owner .owner-order-ledger-heading { flex-wrap: wrap; } .role-owner .owner-order-ledger-count { min-width: 100px; } }
+
+.role-owner .owner-order-modal {
+  width: min(1120px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 64px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 80px rgba(13, 12, 11, 0.28);
+}
+.role-owner .owner-order-modal[open] { display: flex; flex-direction: column; animation: owner-order-modal-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.role-owner .owner-order-modal::backdrop { background: rgba(13, 12, 11, 0.64); animation: owner-order-backdrop-in 200ms ease-out both; }
+.role-owner .owner-order-modal.is-closing { animation: owner-order-modal-out 160ms ease-in both; }
+.role-owner .owner-order-modal.is-closing::backdrop { animation: owner-order-backdrop-out 160ms ease-in both; }
+.role-owner .owner-order-modal-heading {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 24px;
+  border-bottom: 3px solid var(--gold);
+  background: var(--primary);
+  color: var(--owner-hero-text);
+}
+.role-owner .owner-order-modal-heading h2 { margin: 6px 0; color: inherit; font-size: 1.375rem; line-height: 1.25; }
+.role-owner .owner-order-modal-heading p { margin: 0; color: var(--owner-hero-muted); font-size: 0.875rem; line-height: 1.5; }
+.role-owner .owner-order-modal-heading .eyebrow { color: var(--gold); }
+.role-owner .owner-order-modal-heading .icon-button { flex-shrink: 0; min-width: 44px; min-height: 44px; border-color: var(--gold-deep); background: transparent; color: var(--gold); }
+.role-owner .owner-order-modal > .owner-order-card-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-top: 0; animation: none; align-items: start; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); }
+.role-owner .owner-order-modal .owner-order-products { padding: 24px; }
+.role-owner .owner-order-modal .owner-order-products > header { margin-bottom: 16px; }
+.role-owner .owner-order-modal .owner-order-product-line { grid-template-columns: 52px minmax(0, 1fr) auto; min-height: 76px; padding: 10px 12px; gap: 12px; }
+.role-owner .owner-order-modal .owner-order-product-line img { width: 52px; height: 52px; }
+.role-owner .owner-order-modal .owner-order-review { position: sticky; top: 24px; display: grid; gap: 16px; margin: 24px 24px 24px 0; padding: 20px; border: 1px solid var(--review-line); border-radius: 12px; }
+.role-owner .owner-order-modal .owner-order-review > :is(header, p),
+.role-owner .owner-order-modal .owner-order-proof-links,
+.role-owner .owner-order-modal .owner-override { margin: 0; }
+@keyframes owner-order-modal-in { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes owner-order-modal-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(10px) scale(0.98); } }
+@keyframes owner-order-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes owner-order-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+@media (max-width: 1040px) {
+  .role-owner .owner-order-modal > .owner-order-card-body { grid-template-columns: minmax(0, 1fr); }
+  .role-owner .owner-order-modal .owner-order-review { position: static; margin: 0 24px 24px; }
+}
+@media (max-width: 680px) {
+  .role-owner .owner-order-modal { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 12px; }
+  .role-owner .owner-order-modal-heading { padding: 16px; }
+  .role-owner .owner-order-modal .owner-order-products { padding: 16px; }
+  .role-owner .owner-order-modal .owner-order-review { margin: 0 16px 16px; padding: 16px; }
+  .role-owner .owner-order-modal .owner-order-product-line { grid-template-columns: 48px minmax(0, 1fr); gap: 8px 12px; }
+  .role-owner .owner-order-modal .owner-order-product-line img { width: 48px; height: 48px; grid-row: span 2; }
+  .role-owner .owner-order-modal .owner-order-product-line > strong { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .role-owner .owner-order-modal[open],
+  .role-owner .owner-order-modal::backdrop { animation: none; }
+}

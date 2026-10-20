@@ -1,0 +1,25 @@
+/* Shared account directory and assignment primitives; no role permission changes. */
+.section-accounts .owner-account-card-list, .section-accounts .owner-assignment-list { display: grid; gap: 12px; padding: 20px; }
+.section-accounts .owner-account-card-list > .owner-account-card,
+.section-accounts .owner-assignment-card { display: grid; gap: 16px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); min-width: 0; }
+.section-accounts .owner-account-main { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.section-accounts .owner-account-identity, .section-accounts .owner-assignment-person, .section-accounts .owner-assignment-current { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.section-accounts .owner-account-identity small, .section-accounts .owner-assignment-person small { color: var(--text-light); font-size: .8125rem; }
+.section-accounts .owner-account-badges, .section-accounts .owner-account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.section-accounts .inline-assignment-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; margin: 0; }
+.section-accounts .inline-assignment-form label { display: grid; gap: 6px; min-width: 0; font-size: .875rem; color: var(--text-light); font-weight: 600; }
+.section-accounts .inline-assignment-form :is(input, select) { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--surface); color: var(--text); font: inherit; }
+.section-accounts .inline-assignment-form :is(input, select):focus-visible { outline: 3px solid var(--gold-deep); outline-offset: 2px; }
+.section-accounts .inline-assignment-form .button, .section-accounts .owner-account-actions .button { min-height: 44px; }
+.role-sales-supervisor.section-accounts .owner-account-layout { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(0, 1.5fr); gap: 20px; align-items: start; }
+.role-sales-supervisor.section-accounts .owner-page { display: grid; gap: 20px; }
+.role-sales-supervisor.section-accounts .owner-account-form { display: grid; gap: 16px; padding: 20px; }
+.role-sales-supervisor.section-accounts .owner-account-form label { display: grid; gap: 6px; }
+.role-sales-supervisor.section-accounts .owner-account-form :is(input, select) { min-height: 44px; }
+.role-sales-supervisor.section-accounts .owner-chip { display: inline-flex; width: fit-content; padding: 5px 8px; border-radius: 6px; background: var(--surface-muted); color: var(--gold-deep); font-size: .75rem; font-weight: 600; }
+@media (max-width: 1050px) { .role-sales-supervisor.section-accounts .owner-account-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 680px) {
+  .section-accounts .owner-account-card-list, .section-accounts .owner-assignment-list { padding: 16px; }
+  .section-accounts .inline-assignment-form { grid-template-columns: minmax(0, 1fr); }
+  .section-accounts .owner-account-card-list > .owner-account-card, .section-accounts .owner-assignment-card { padding: 16px; }
+}

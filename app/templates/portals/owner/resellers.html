@@ -1,0 +1,29 @@
+<div class="owner-page owner-superuser-page owner-resellers-page">
+  <section class="owner-resellers-hero" aria-labelledby="owner-resellers-title">
+    <div><span class="eyebrow">Reseller oversight</span><h2 id="owner-resellers-title">Reseller accounts</h2><p>Review reseller businesses and manage their assigned sales leaders.</p></div>
+    <div class="owner-resellers-total"><strong>{{ resellers_page.pagination.total }}</strong><span>matching resellers</span></div>
+  </section>
+  <section class="panel owner-resellers-ledger">
+    <header class="owner-resellers-toolbar"><div><strong>Reseller directory</strong><p class="hint">Each reseller reports to one sales team leader. Assignment changes require verification and an audit reason.</p></div><form action="/portal/owner/exports/resellers.csv" method="post"><button class="button subtle" type="submit"><i data-lucide="download" aria-hidden="true"></i> Export CSV</button></form></header>
+    <form class="filter-bar owner-directory-filters" method="get">
+      <label>Search resellers<input name="q" value="{{ resellers_page.filters.q }}" placeholder="Business, contact, or email"></label>
+      <label>Status<select name="status"><option value="">All statuses</option>{% for value in ['pending', 'active', 'suspended', 'inactive'] %}<option value="{{ value }}" {{ 'selected' if resellers_page.filters.status == value else '' }}>{{ value|title }}</option>{% endfor %}</select></label>
+      <label>Assigned leader<select name="leader"><option value="">All leaders</option><option value="unassigned" {{ 'selected' if resellers_page.filters.leader == 'unassigned' else '' }}>Unassigned</option>{% for leader in team_leaders %}<option value="{{ leader.account_id }}" {{ 'selected' if resellers_page.filters.leader == leader.account_id|string else '' }}>{{ leader.name }}</option>{% endfor %}</select></label>
+      <label>Sort<select name="sort">{% for value, label in [('business_asc', 'Business A–Z'), ('status_asc', 'Status'), ('newest', 'Newest'), ('oldest', 'Oldest')] %}<option value="{{ value }}" {{ 'selected' if resellers_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <div class="owner-directory-filter-actions"><button class="button primary" type="submit">Find resellers</button><a class="button subtle" href="/portal/owner/resellers">Clear filters</a></div>
+    </form>
+    <div class="owner-reseller-list">
+      {% for reseller in reseller_assignments %}
+      <article class="owner-reseller-card">
+        <div class="owner-reseller-status-rail is-{{ reseller.reseller_status }}" aria-hidden="true"></div>
+        <div class="owner-reseller-identity"><span class="owner-reseller-avatar" aria-hidden="true"><i data-lucide="user-round"></i></span><div><strong>{{ reseller.business_name }}</strong><span>{{ reseller.contact_person }}</span></div></div>
+        <dl class="owner-reseller-contact"><div><dt>Email</dt><dd><a href="mailto:{{ reseller.email }}">{{ reseller.email }}</a></dd></div><div><dt>Assigned sales leader</dt><dd>{{ reseller.team_leader_name or 'Unassigned' }}</dd></div></dl>
+        <div class="owner-reseller-access"><span class="status-badge {{ reseller.reseller_status }}">{{ reseller.reseller_status|title }}</span><details class="owner-reseller-assignment"><summary>Change assignment</summary><form action="/portal/owner/resellers/{{ reseller.reseller_id }}/team-leader" method="post"><input type="hidden" name="return_section" value="resellers"><label>Sales leader<select required name="team_leader_account_id"><option value="">Choose sales leader</option>{% for leader in team_leaders %}<option value="{{ leader.account_id }}" {{ 'selected' if leader.account_id == reseller.team_leader_account_id else '' }}>{{ leader.name }}</option>{% endfor %}</select></label><label>Reason for reassignment<input required minlength="5" maxlength="500" name="reason" placeholder="Explain the transfer"></label><button class="button primary" type="submit">Save assignment</button></form></details></div>
+      </article>
+      {% else %}
+      <div class="owner-resellers-empty"><i data-lucide="users" aria-hidden="true"></i><strong>No reseller accounts found</strong><span>Try a different search or clear your filters.</span></div>
+      {% endfor %}
+    </div>
+    {% with directory_page=resellers_page %}{% include 'portals/owner/_directory_pagination.html' %}{% endwith %}
+  </section>
+</div>

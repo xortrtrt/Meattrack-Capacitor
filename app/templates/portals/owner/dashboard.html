@@ -66,6 +66,12 @@
   </div>
 </section>
 
+<section class="owner-command-grid" aria-label="Owner action queue">
+  {% for key, value in operations_summary.items() %}
+  <a href="/portal/owner/operations"><span>{{ key.replace('_', ' ') }}</span><strong>{{ value }}</strong></a>
+  {% endfor %}
+</section>
+
 <section class="owner-dashboard-grid">
   <article class="panel owner-sales-panel">
     <div class="panel-heading">

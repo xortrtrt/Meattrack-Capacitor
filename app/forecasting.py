@@ -99,6 +99,9 @@ def build_daily_series(history_rows: list[dict], start_date: date, end_date: dat
     quantities: dict[pd.Timestamp, float] = {}
     for row in history_rows:
         day = pd.Timestamp(row["sale_date"])
+        if day.tzinfo is not None:
+            day = day.tz_localize(None)
+        day = day.normalize()
         quantities[day] = quantities.get(day, 0.0) + float(row["quantity"])
     frame = pd.DataFrame({"ds": index})
     frame["y"] = frame["ds"].map(quantities).fillna(0.0).astype(float)

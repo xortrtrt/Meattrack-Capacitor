@@ -59,14 +59,38 @@ portal_nav = {
     ],
     "owner": [
         ("dashboard", "Dashboard", "layout-dashboard"),
+        ("operations", "Operations", "activity"),
+        ("inquiries", "Inquiries", "user-check"),
+        ("orders", "Orders", "clipboard-check"),
+        ("conversations", "Conversations", "messages-square"),
+        ("inventory", "Inventory", "boxes"),
+        ("materials", "Materials", "beef"),
+        ("batches", "Batches", "package-check"),
+        ("movements", "Movements", "arrow-left-right"),
+        ("alerts", "Alerts", "triangle-alert"),
         ("products", "Products & Prices", "tags"),
         ("reports", "Reports", "bar-chart-3"),
         ("forecasts", "Forecasts", "line-chart"),
         ("refunds", "Refunds", "badge-dollar-sign"),
-        ("accounts", "Accounts", "shield-check"),
+        ("accounts", "Users & Access", "shield-check"),
+        ("resellers", "Resellers", "users"),
+        ("audit", "Audit Logs", "scroll-text"),
+        ("security", "Security", "shield-alert"),
+        ("settings", "Settings", "settings"),
         ("profile", "Profile", "user-cog"),
     ],
 }
+
+
+owner_nav_groups = (
+    ("Overview", ("dashboard", "operations")),
+    ("Sales operations", ("inquiries", "orders", "conversations", "refunds")),
+    ("Inventory", ("inventory", "materials", "batches", "movements", "alerts", "products")),
+    ("People", ("accounts", "resellers")),
+    ("Intelligence", ("reports", "forecasts")),
+    ("Governance", ("audit", "security", "settings")),
+    ("Account", ("profile",)),
+)
 
 
 # Workflow pages that are valid portal destinations without appearing in navigation.
@@ -133,4 +157,4 @@ def default_section_for(role_key: str, team_leader_role: str | None = None) -> s
     return nav[0][0] if nav else roles[role_key]["default_section"]
 
 
-__all__ = ['default_section_for', 'portal_nav', 'portal_nav_for', 'portal_secondary_sections', 'roles', 'team_leader_nav_by_role', 'team_leader_role_labels']
+__all__ = ['default_section_for', 'owner_nav_groups', 'portal_nav', 'portal_nav_for', 'portal_secondary_sections', 'roles', 'team_leader_nav_by_role', 'team_leader_role_labels']

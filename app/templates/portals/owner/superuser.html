@@ -1,0 +1,174 @@
+<div class="owner-page owner-superuser-page">
+  {% if section == "operations" %}
+  <section class="owner-command-hero">
+    <div>
+      <span class="eyebrow">Command center</span>
+      <h2>Operations requiring attention</h2>
+      <p>Business-wide queues and exceptions. Assigned staff remain responsible until an owner records an override.</p>
+    </div>
+    <a class="button subtle" href="/portal/owner/audit"><i data-lucide="scroll-text"></i> Review audit trail</a>
+  </section>
+  <section class="owner-command-grid" aria-label="Operations summary">
+    {% for key, value in operations_summary.items() %}
+    <article><span>{{ key.replace('_', ' ') }}</span><strong>{{ value }}</strong></article>
+    {% endfor %}
+  </section>
+  <section class="owner-oversight-grid">
+    <article class="panel"><div class="panel-heading"><h2>Recent orders</h2><a href="/portal/owner/orders">View all</a></div>
+      <div class="owner-compact-list">{% for item in recent_orders %}<a href="/portal/owner/orders?q={{ item.order_id }}"><strong>Order #{{ item.order_id }}</strong><span>{{ item.reseller }} · {{ item.status }}</span><b>{{ item.total_amount|currency }}</b></a>{% else %}<p class="hint">No orders yet.</p>{% endfor %}</div>
+    </article>
+    <article class="panel"><div class="panel-heading"><h2>Recent inquiries</h2><a href="/portal/owner/inquiries">View all</a></div>
+      <div class="owner-compact-list">{% for item in recent_inquiries %}<a href="/portal/owner/inquiries?q={{ item.email|urlencode }}"><strong>{{ item.business_name }}</strong><span>{{ item.assigned_to or 'Unassigned' }}</span><b>{{ item.status }}</b></a>{% else %}<p class="hint">No inquiries yet.</p>{% endfor %}</div>
+    </article>
+  </section>
+  <section class="panel owner-workspace-surface"><div class="panel-heading"><h2>Team workload</h2><a href="/portal/owner/accounts">Manage access</a></div><div class="table-wrap"><table><thead><tr><th>Team leader</th><th>Role</th><th>Resellers</th><th>Inquiries</th><th>Orders</th><th>Refunds</th><th>Chats</th></tr></thead><tbody>{% for item in team_workload %}<tr><td>{{ item.name }}</td><td>{{ item.team_leader_role.replace('_',' ') }}</td><td>{{ item.active_resellers }}</td><td>{{ item.open_inquiries }}</td><td>{{ item.open_orders }}</td><td>{{ item.open_refunds }}</td><td>{{ item.open_conversations }}</td></tr>{% else %}<tr><td colspan="7">No team leaders found.</td></tr>{% endfor %}</tbody></table></div></section>
+  <section class="panel owner-workspace-surface"><div class="panel-heading"><h2>Recent high-risk owner actions</h2><a href="/portal/owner/audit">Open audit</a></div><div class="timeline">{% for item in recent_owner_actions %}<article><span>{{ item.created_at|nice_date }}</span><strong>{{ item.actor }}</strong><p>{{ item.action.replace('_',' ') }} · {{ item.outcome }}</p>{% if item.reason %}<small>{{ item.reason }}</small>{% endif %}</article>{% else %}<p class="hint">No elevated actions recorded.</p>{% endfor %}</div></section>
+
+  {% elif section == "inquiries" %}
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Global queue</span><h2>Reseller inquiries</h2></div></div>
+    <form class="filter-bar" method="get"><label>Search<input name="q" value="{{ inquiries_page.filters.q }}" placeholder="Business, applicant, or email"></label><label>Status<select name="status"><option value="">All statuses</option>{% for value in ['pending', 'assigned', 'contacted', 'approved', 'rejected'] %}<option value="{{ value }}" {{ 'selected' if inquiries_page.filters.status == value else '' }}>{{ value|title }}</option>{% endfor %}</select></label><button class="button subtle">Filter inquiries</button></form>
+    <div class="owner-record-grid">
+      {% for item in inquiries %}
+      <article class="owner-record-card">
+        <span class="status-badge {{ item.status }}">{{ item.status }}</span>
+        <h3>{{ item.business_name }}</h3>
+        <p>{{ item.name }} · {{ item.email }} · {{ item.contact_number }}</p>
+        <small>Assigned to {{ item.assigned_to or 'Nobody' }}</small>
+        {% if item.message %}<p>{{ item.message }}</p>{% endif %}
+        {% if item.status in ['pending','assigned','contacted'] %}
+        <details class="owner-override"><summary>Owner decision</summary>
+          <form action="/portal/owner/inquiries/{{ item.inquiry_id }}/approve" method="post">
+            <label>Override reason<input required minlength="5" maxlength="500" name="reason"></label>
+            <button class="button primary">Approve</button>
+          </form>
+          <form action="/portal/owner/inquiries/{{ item.inquiry_id }}/reject" method="post">
+            <label>Override reason<input required minlength="5" maxlength="500" name="reason"></label>
+            <label>Reason sent to applicant<textarea required minlength="5" maxlength="1000" name="rejection_reason"></textarea></label>
+            <button class="button danger">Reject</button>
+          </form>
+        </details>
+        {% endif %}
+      </article>
+      {% else %}<p class="hint">No inquiries match this filter.</p>{% endfor %}
+    </div>
+  </section>
+
+
+  {% elif section == "conversations" %}
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Customer support oversight</span><h2>Conversations</h2><p class="hint">Find a conversation, review its assignment, or open an audited transcript.</p></div></div>
+    {% if conversations_page is defined %}
+    <nav class="owner-status-tabs" aria-label="Conversation status">
+      {% for value, label in [('', 'All conversations'), ('open', 'Open'), ('closed', 'Closed'), ('cancelled', 'Cancelled')] %}
+      <a class="{{ 'is-active' if conversations_page.filters.status == value else '' }}" href="{{ request.url.include_query_params(status=value, page=1) }}" {% if conversations_page.filters.status == value %}aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <form class="filter-bar" method="get">
+      <input type="hidden" name="status" value="{{ conversations_page.filters.status }}">
+      <label>Search conversations<input name="q" value="{{ conversations_page.filters.q }}" placeholder="Name, contact, or team leader"></label>
+      <label>Assigned team leader<select name="leader"><option value="">All team leaders</option>{% for leader in team_leaders %}<option value="{{ leader.account_id }}" {{ 'selected' if conversations_page.filters.leader == leader.account_id|string else '' }}>{{ leader.name }}</option>{% endfor %}</select></label>
+      <button class="button primary">Find conversations</button><a class="button subtle" href="/portal/owner/conversations">Clear filters</a>
+    </form>
+    <div class="owner-list-toolbar"><span>{{ conversations_page.pagination.total }} conversations · Page {{ conversations_page.pagination.page }} of {{ conversations_page.pagination.total_pages }}</span><a href="/portal/owner/audit?module=chat_conversations">Review access history</a></div>
+    {% endif %}
+    <div class="owner-record-grid">
+      {% for item in conversation_metadata %}
+      <article class="owner-record-card">
+        <span class="status-badge {{ item.status }}">{{ item.status.replace('_', ' ') }}</span>
+        <h3>{{ item.display_name }}</h3>
+        <p>{{ item.contact_value or 'No contact details provided' }}</p>
+        <small>{{ item.message_count }} messages · {{ item.assigned_team_leader_name or 'Unassigned' }}</small>
+        <small>Updated {{ item.updated_at|nice_date }}</small>
+        <button class="button subtle" type="button" data-owner-conversation-open="conversation-dialog-{{ item.conversation_id }}" aria-haspopup="dialog" aria-controls="conversation-dialog-{{ item.conversation_id }}">View conversation <i data-lucide="arrow-up-right" aria-hidden="true"></i></button>
+        {% include "portals/owner/conversation_modal.html" %}
+      </article>
+      {% else %}<p class="hint">No conversations match your filters. Try another name or status.</p>{% endfor %}
+    </div>
+  </section>
+
+
+  {% elif section == "materials" %}
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Inventory</span><h2>Raw materials</h2><p class="hint">Review available stock and record a receipt for the selected material.</p></div></div>
+    <form class="filter-bar" method="get"><label>Search materials<input name="q" value="{{ materials_page.filters.q }}" placeholder="Material name or category"></label><button class="button primary">Find materials</button><a class="button subtle" href="/portal/owner/materials">Clear filters</a></form>
+    <div class="owner-material-list">
+      {% for item in materials %}
+      <article class="owner-material-row">
+        <div class="owner-material-identity"><span class="owner-chip">{{ item.category.replace('_', ' ') }}</span><h3>{{ item.name }}</h3><span class="hint">Available stock</span><strong>{{ item.available|number }} {{ item.unit }}</strong></div>
+        <details class="owner-override"><summary>Record receipt · {{ item.name }}</summary>
+          <form action="/portal/owner/materials/{{ item.item_id }}/receipt" method="post">
+            <label>Quantity received ({{ item.unit }})<input required type="number" min="0.001" step="0.001" name="quantity" placeholder="0.000" max="999999999.999"></label>
+            <label>Reason for receipt<input required minlength="5" maxlength="500" name="reason" placeholder="e.g. Delivery received and checked"></label>
+            <button class="button primary">Record receipt</button>
+          </form>
+        </details>
+      </article>
+      {% else %}<p class="hint">No materials match your search.</p>{% endfor %}
+    </div>
+  </section>
+
+
+  {% elif section == "alerts" %}
+  <section class="panel owner-workspace-surface"><div class="panel-heading"><div><span class="eyebrow">Exceptions</span><h2>Inventory alerts</h2></div></div><div class="owner-record-grid">{% for item in alerts %}<article class="owner-record-card"><span class="status-badge {{ item.severity }}">{{ item.severity }} · {{ item.status }}</span><h3>{{ item.subject }}</h3><p>{{ item.message }}</p>{% if item.status != 'resolved' %}<form action="/portal/owner/alerts/{{ item.alert_id }}/status" method="post"><label>Reason<input required minlength="5" maxlength="500" name="reason"></label><div class="owner-inline-actions"><button class="button subtle" name="status" value="acknowledged">Acknowledge</button><button class="button danger" name="status" value="resolved">Resolve</button></div></form>{% endif %}</article>{% else %}<p class="hint">No alerts recorded.</p>{% endfor %}</div></section>
+
+  {% elif section == "resellers" %}
+  <section class="panel owner-workspace-surface"><div class="panel-heading"><div><span class="eyebrow">People</span><h2>Reseller assignments</h2></div><form action="/portal/owner/exports/resellers.csv" method="post"><button class="button subtle">Export CSV</button></form></div><div class="owner-record-grid">{% for item in reseller_assignments %}<article class="owner-record-card"><span class="status-badge active">{{ item.reseller_status }}</span><h3>{{ item.business_name }}</h3><p>{{ item.contact_person }} · {{ item.email }}</p><form action="/portal/owner/resellers/{{ item.reseller_id }}/team-leader" method="post"><input type="hidden" name="return_section" value="resellers"><label>Sales leader<select name="team_leader_account_id">{% for leader in team_leaders %}<option value="{{ leader.account_id }}" {{ 'selected' if leader.account_id == item.team_leader_account_id else '' }}>{{ leader.name }}</option>{% endfor %}</select></label><label>Reason<input required minlength="5" maxlength="500" name="reason"></label><button class="button subtle">Save assignment</button></form></article>{% else %}<p class="hint">No reseller records.</p>{% endfor %}</div></section>
+
+  {% elif section == "audit" %}
+  <section class="panel owner-workspace-surface"><div class="panel-heading"><div><span class="eyebrow">Governance</span><h2>Audit trail</h2></div><form action="/portal/owner/exports/audit.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form></div><form class="filter-bar" method="get"><label>Search<input name="q" value="{{ activity_logs_page.filters.q }}" placeholder="Actor, action, or entity"></label><label>Actor role<input name="actor_role" value="{{ audit_filters.actor_role }}"></label><label>Module<input name="module" value="{{ audit_filters.module }}"></label><label>Action<input name="action" value="{{ audit_filters.action }}"></label><label>Outcome<select name="outcome"><option value="">All</option><option value="success" {{ 'selected' if audit_filters.outcome == 'success' else '' }}>Success</option><option value="failure" {{ 'selected' if audit_filters.outcome == 'failure' else '' }}>Failure</option></select></label><label>From<input type="date" name="date_from" value="{{ audit_filters.date_from }}"></label><label>To<input type="date" name="date_to" value="{{ audit_filters.date_to }}"></label><button class="button subtle">Filter</button></form><div class="timeline">{% for item in activity_logs %}<article><span>{{ item.created_at|nice_date }}</span><strong>{{ item.actor }}{% if item.actor_role %} · {{ item.actor_role }}{% endif %}</strong><p>{{ item.action.replace('_',' ') }} · {{ item.entity }} · {{ item.outcome }}</p>{% if item.reason %}<small>Reason: {{ item.reason }}</small>{% endif %}</article>{% else %}<p class="hint">No audit events found.</p>{% endfor %}</div></section>
+
+  {% elif section == "security" %}
+  <section class="owner-command-hero"><div><span class="eyebrow">Owner verification</span><h2>{{ 'Sensitive actions unlocked' if owner_step_up_active else 'Unlock sensitive actions' }}</h2><p>{{ 'Your elevated window expires automatically.' if owner_step_up_active else 'Email verification protects account, override, inventory, and settings changes.' }}</p></div>{% if not owner_step_up_active %}<form action="/portal/owner/security/step-up/request" method="post"><button class="button primary" type="submit"><i data-lucide="key-round"></i> Send verification code</button></form>{% endif %}</section>
+  {% if owner_step_up_pending %}<section class="panel owner-step-up-panel"><h2>Enter verification code</h2><form action="/portal/owner/security/step-up/confirm" method="post"><label>6-digit code<input required name="otp_code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"></label><button class="button primary">Verify owner</button></form></section>{% endif %}
+  <section class="owner-oversight-grid"><article class="panel"><div class="panel-heading"><h2>Active sessions</h2></div><div class="owner-compact-list">{% for item in active_sessions %}<div><strong>{{ item.name }}</strong><span>{{ item.session_count }} session(s) · {{ item.last_activity|nice_date }}</span><form action="/portal/owner/accounts/{{ item.account_id }}/sessions/revoke" method="post"><input type="hidden" name="reason" value="Owner security review"><button class="button subtle">Revoke</button></form></div>{% else %}<p class="hint">No active portal sessions.</p>{% endfor %}</div></article><article class="panel"><div class="panel-heading"><div><h2>Authentication events</h2><p class="hint">Latest 10 events</p></div></div><div class="owner-compact-list">{% for item in security_events %}<div><strong>{{ item.event_type.replace('_',' ') }}</strong><span>{{ item.created_at|nice_date }}</span><b>{{ 'Succeeded' if item.succeeded else 'Blocked' }}</b></div>{% else %}<p class="hint">No security events.</p>{% endfor %}</div></article></section>
+  <section class="panel owner-workspace-surface"><div class="panel-heading"><h2>Elevated owner actions</h2></div><div class="timeline">{% for item in owner_security_events %}<article><span>{{ item.created_at|nice_date }}</span><strong>{{ item.action.replace('_',' ') }}</strong><p>{{ item.entity }} · {{ item.outcome }}</p>{% if item.reason %}<small>{{ item.reason }}</small>{% endif %}</article>{% else %}<p class="hint">No elevated owner actions recorded.</p>{% endfor %}</div>{% if owner_actions_page is defined %}{% with directory_page=owner_actions_page, page_parameter='actions_page', pagination_label='Elevated owner action pages' %}{% include 'portals/owner/_directory_pagination.html' %}{% endwith %}{% endif %}</section>
+
+
+  {% elif section == "settings" %}
+  <section class="panel owner-settings-panel">
+    <div class="panel-heading"><div><span class="eyebrow">Business controls</span><h2>Operational defaults</h2><p class="hint">Manage payment timing, stock warnings, and public contact details.</p></div></div>
+    <form class="form-panel bare owner-settings-form" action="/portal/owner/settings" method="post">
+      <fieldset class="owner-settings-group">
+        <legend><i data-lucide="sliders-horizontal" aria-hidden="true"></i> Orders & planning</legend>
+        <p class="hint">Defaults used for new orders and forecast runs.</p>
+        <div class="owner-form-grid">
+          <label>Payment window (minutes)<input required type="number" min="1" max="1440" name="order_payment_window_minutes" value="{{ business_settings['order.payment_window_minutes'] }}"></label>
+          <label>Default forecast horizon (days)<input required type="number" min="1" max="365" name="forecast_default_horizon_days" value="{{ business_settings['forecast.default_horizon_days'] }}"></label>
+        </div>
+      </fieldset>
+      <fieldset class="owner-settings-group">
+        <legend><i data-lucide="package-search" aria-hidden="true"></i> Inventory & alerts</legend>
+        <p class="hint">Choose when expiring stock needs attention.</p>
+        <div class="owner-form-grid">
+          <label>Near-expiry warning (days)<input required type="number" min="0" max="90" name="near_expiry_days" value="{{ business_settings['inventory.near_expiry_days'] }}"></label>
+          <label>Critical expiry (days)<input required type="number" min="0" max="90" name="critical_expiry_days" value="{{ business_settings['inventory.critical_expiry_days'] }}"></label>
+          <label class="owner-checkbox owner-field-wide"><input type="checkbox" name="owner_critical_alerts" value="true" {{ 'checked' if business_settings['notifications.owner_critical_alerts'] else '' }}> Notify owners about critical alerts</label>
+        </div>
+      </fieldset>
+      <fieldset class="owner-settings-group">
+        <legend><i data-lucide="store" aria-hidden="true"></i> Business contact</legend>
+        <p class="hint">Public details customers can use to reach the business.</p>
+        <div class="owner-form-grid">
+          <label>Email<input type="email" name="contact_email" autocomplete="email" value="{{ business_settings['business.contact_email'] }}"></label>
+          <label>Phone<input type="tel" name="contact_phone" autocomplete="tel" value="{{ business_settings['business.contact_phone'] }}"></label>
+          <label class="owner-field-wide">Business hours<input name="business_hours" placeholder="e.g. Monday–Saturday, 8:00 AM–5:00 PM" value="{{ business_settings['business.hours'] }}"></label>
+          <label class="owner-field-wide">Address<textarea name="contact_address" autocomplete="street-address">{{ business_settings['business.contact_address'] }}</textarea></label>
+        </div>
+      </fieldset>
+      <div class="owner-form-footer">
+        <label>Reason for change<textarea required minlength="5" maxlength="500" name="reason" placeholder="Explain what is changing and why"></textarea></label>
+        <div class="owner-form-submit"><span class="hint"><i data-lucide="shield-check" aria-hidden="true"></i> Changes require owner verification and are recorded in the audit trail.</span><button class="button primary" type="submit"><i data-lucide="save" aria-hidden="true"></i> Save business settings</button></div>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+  {% set workspace_page = {'inquiries': inquiries_page, 'orders': orders_page, 'conversations': conversations_page, 'materials': materials_page, 'batches': batches_page, 'movements': movements_page, 'audit': activity_logs_page}.get(section) %}
+  {% if workspace_page and workspace_page.pagination is defined %}
+  <nav class="pagination owner-workspace-pagination" aria-label="{{ section_title }} pages">
+    {% if workspace_page.pagination.has_prev %}<a class="button subtle" href="{{ request.url.include_query_params(page=workspace_page.pagination.page - 1) }}">Previous</a>{% endif %}
+    <span>Page {{ workspace_page.pagination.page }} of {{ workspace_page.pagination.total_pages }} · {{ workspace_page.pagination.total }} records</span>
+    {% if workspace_page.pagination.has_next %}<a class="button subtle" href="{{ request.url.include_query_params(page=workspace_page.pagination.page + 1) }}">Next</a>{% endif %}
+  </nav>
+  {% endif %}
+</div>

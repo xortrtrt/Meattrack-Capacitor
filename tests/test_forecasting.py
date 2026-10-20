@@ -25,6 +25,22 @@ def test_build_daily_series_fills_missing_days_with_zero():
     assert frame["y"].tolist() == [3.0, 0.0, 5.0, 0.0]
 
 
+def test_build_daily_series_matches_timezone_aware_sale_dates_to_local_days():
+    start = date(2026, 1, 1)
+    frame = forecasting.build_daily_series(
+        [
+            {
+                "sale_date": pd.Timestamp("2026-01-01T00:00:00+08:00"),
+                "quantity": 7,
+            }
+        ],
+        start,
+        start + timedelta(days=1),
+    )
+
+    assert frame["y"].tolist() == [7.0, 0.0]
+
+
 def test_insufficient_history_starts_tomorrow_and_covers_full_horizon():
     today = date(2026, 9, 28)
     result = forecasting.forecast_product(

@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import web
+from app.audit_context import begin_audit_context, end_audit_context
 from app.config import APP_ENV, AUTH_RATE_LIMIT_ENABLED, CSRF_PROTECTION_ENABLED
 from app.portals import owner as owner_portal
 from app.portals import refunds as refunds_portal
@@ -49,7 +50,11 @@ def create_app() -> FastAPI:
 
     @application.middleware("http")
     async def security_headers(request: Request, call_next):
-        response = await call_next(request)
+        audit_tokens = begin_audit_context(request)
+        try:
+            response = await call_next(request)
+        finally:
+            end_audit_context(audit_tokens)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("X-Frame-Options", "DENY")

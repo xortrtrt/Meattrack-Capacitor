@@ -562,6 +562,7 @@ CREATE TABLE account_activation_tokens (
     activation_token_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
     token_hash char(64) NOT NULL UNIQUE CHECK (length(token_hash) = 64),
+    purpose text NOT NULL DEFAULT 'activation' CHECK (purpose IN ('activation', 'password_reset')),
     expires_at timestamptz NOT NULL,
     consumed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now()
@@ -588,7 +589,8 @@ CREATE TABLE inventory_movements (
     order_id bigint REFERENCES orders(order_id) ON UPDATE CASCADE ON DELETE RESTRICT,
     movement_type text NOT NULL CHECK (movement_type IN (
         'opening_balance', 'raw_receipt', 'production_consumption',
-        'production_output', 'direct_finished_receipt', 'sale_fulfillment'
+        'production_output', 'direct_finished_receipt', 'sale_fulfillment',
+        'owner_correction'
     )),
     quantity_delta numeric(12,3) NOT NULL,
     unit text NOT NULL,
@@ -1139,5 +1141,72 @@ CREATE INDEX ix_reseller_messages_unread ON reseller_messages (conversation_id, 
 CREATE INDEX ix_chat_service_ratings_leader_created ON chat_service_ratings (team_leader_account_id, created_at DESC);
 CREATE INDEX ix_team_leader_presence_available ON team_leader_presence (availability, heartbeat_at DESC);
 CREATE INDEX ix_rate_limit_buckets_expiry ON rate_limit_buckets (expires_at);
+
+ALTER TABLE activity_logs
+    ADD COLUMN actor_role text,
+    ADD COLUMN reason text,
+    ADD COLUMN before_state jsonb,
+    ADD COLUMN after_state jsonb,
+    ADD COLUMN outcome text NOT NULL DEFAULT 'success' CHECK (outcome IN ('success', 'failure')),
+    ADD COLUMN request_id text,
+    ADD COLUMN source_key text;
+
+CREATE TABLE owner_step_up_challenges (
+    owner_step_up_challenge_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    otp_hash text NOT NULL CHECK (btrim(otp_hash) <> ''),
+    action_scope text NOT NULL DEFAULT 'owner.sensitive' CHECK (btrim(action_scope) <> ''),
+    attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_owner_step_up_pending ON owner_step_up_challenges (account_id, created_at DESC)
+    WHERE consumed_at IS NULL;
+
+CREATE TABLE business_settings (
+    setting_key text PRIMARY KEY CHECK (btrim(setting_key) <> ''),
+    setting_value jsonb NOT NULL,
+    updated_by_account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+INSERT INTO business_settings (setting_key, setting_value) VALUES
+    ('order.payment_window_minutes', '15'::jsonb),
+    ('inventory.near_expiry_days', '7'::jsonb),
+    ('inventory.critical_expiry_days', '2'::jsonb),
+    ('forecast.default_horizon_days', '7'::jsonb),
+    ('notifications.owner_critical_alerts', 'true'::jsonb),
+    ('business.contact_email', '""'::jsonb),
+    ('business.contact_phone', '""'::jsonb),
+    ('business.contact_address', '""'::jsonb),
+    ('business.hours', '""'::jsonb);
+
+CREATE TABLE system_status_reports (
+    component text PRIMARY KEY CHECK (btrim(component) <> ''),
+    status text NOT NULL CHECK (status IN ('ok', 'warning', 'error', 'unknown')),
+    detail text,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
+    checked_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE forecast_runs
+    DROP CONSTRAINT forecast_runs_status_check,
+    ADD CONSTRAINT forecast_runs_status_check
+        CHECK (status IN ('queued', 'running', 'completed', 'completed_with_warnings', 'failed', 'cancelling', 'cancelled')),
+    ADD COLUMN retry_of_forecast_run_id bigint REFERENCES forecast_runs(forecast_run_id) ON UPDATE CASCADE ON DELETE SET NULL,
+    ADD COLUMN cancel_requested_at timestamptz;
+
+CREATE INDEX ix_accounts_type_active ON accounts (account_type, is_active, account_id);
+CREATE INDEX ix_inquiries_owner_queue ON inquiries (status, created_at DESC);
+CREATE INDEX ix_orders_owner_queue ON orders (status, order_date DESC);
+CREATE INDEX ix_activity_logs_governance ON activity_logs (outcome, created_at DESC);
+CREATE INDEX ix_activity_logs_actor_role ON activity_logs (actor_role, created_at DESC);
+CREATE INDEX ix_activity_logs_entity_action ON activity_logs (entity_type, action, created_at DESC);
+CREATE INDEX ix_resellers_owner_assignment ON resellers (team_leader_account_id, reseller_status);
+CREATE INDEX ix_chat_conversations_owner_status ON chat_conversations (status, updated_at DESC);
+CREATE UNIQUE INDEX ux_forecast_runs_single_retry
+    ON forecast_runs (retry_of_forecast_run_id) WHERE retry_of_forecast_run_id IS NOT NULL;
 
 COMMIT;

@@ -5,7 +5,12 @@ import time
 
 from app.config import APP_BASE_URL
 from app.database import get_transaction_cursor
-from app.emailer import send_account_activation, send_inquiry_rejection, send_inquiry_status_update
+from app.emailer import (
+    send_account_activation,
+    send_account_password_reset,
+    send_inquiry_rejection,
+    send_inquiry_status_update,
+)
 from app.web_sessions import cleanup_expired_sessions
 from app import live_chat
 from app.repositories import forecasts as repositories
@@ -38,8 +43,12 @@ def enqueue_due_inquiry_followups() -> int:
 
 def scan_batch_expiry() -> int:
     from app.repositories.notifications import _create_notification_cursor
+    from app.repositories.superuser import business_setting
 
     changed = 0
+    near_expiry_days = int(business_setting("inventory.near_expiry_days"))
+    critical_expiry_days = int(business_setting("inventory.critical_expiry_days"))
+    notify_owners = bool(business_setting("notifications.owner_critical_alerts"))
     with get_transaction_cursor() as cur:
         cur.execute("SELECT pg_try_advisory_xact_lock(hashtext('meattrack-expiry-scan')) AS locked;")
         if not cur.fetchone()["locked"]:
@@ -89,6 +98,13 @@ def scan_batch_expiry() -> int:
                 target_url="/portal/team-leader/batches", source_type="inventory_batches",
                 source_id=batch["batch_id"], dedupe_key=f"batch-expired-{batch['batch_id']}",
             )
+            if notify_owners:
+                _create_notification_cursor(
+                    cur, recipient_role="owner", category="inventory", severity="critical",
+                    title="Expired batch requires action", message=message,
+                    target_url="/portal/owner/alerts", source_type="inventory_batches",
+                    source_id=batch["batch_id"], dedupe_key=f"owner-batch-expired-{batch['batch_id']}",
+                )
         cur.execute(
             """
             SELECT b.batch_id, b.batch_code, b.expiry_date, b.quantity_available, i.item_id, i.name,
@@ -96,14 +112,14 @@ def scan_batch_expiry() -> int:
             FROM inventory_batches b
             JOIN inventory_items i ON i.item_id = b.item_id
             WHERE b.quality_status = 'approved' AND b.quantity_available > 0
-              AND b.expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7
+              AND b.expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + %s
             ORDER BY b.expiry_date, b.batch_id
             FOR UPDATE OF b;
             """
-        )
+        , (near_expiry_days,))
         for batch in cur.fetchall():
             days = int(batch["days_left"])
-            severity = "critical" if days <= 2 else "warning"
+            severity = "critical" if days <= critical_expiry_days else "warning"
             cur.execute(
                 """
                 INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message)
@@ -122,6 +138,14 @@ def scan_batch_expiry() -> int:
                 target_url="/portal/team-leader/batches", source_type="inventory_batches",
                 source_id=batch["batch_id"], dedupe_key=f"batch-expiry-{batch['batch_id']}-{severity}",
             )
+            if notify_owners and severity == "critical":
+                _create_notification_cursor(
+                    cur, recipient_role="owner", category="inventory", severity="critical",
+                    title="Critical batch expiry warning",
+                    message=f"{batch['name']} batch {batch['batch_code']} expires in {days} day(s).",
+                    target_url="/portal/owner/alerts", source_type="inventory_batches",
+                    source_id=batch["batch_id"], dedupe_key=f"owner-batch-expiry-{batch['batch_id']}-{severity}",
+                )
     return changed
 
 
@@ -151,6 +175,11 @@ def _deliver(row: dict) -> tuple[bool, str]:
         return send_account_activation(
             to_email=payload["to_email"], name=payload["name"], account_label=payload["account_label"],
             activation_url=APP_BASE_URL + payload["activation_path"],
+        )
+    if row["event_type"] == "account_password_reset":
+        return send_account_password_reset(
+            to_email=payload["to_email"], name=payload["name"],
+            reset_url=APP_BASE_URL + payload["reset_path"],
         )
     if row["event_type"] == "inquiry_followup":
         return send_inquiry_status_update(
@@ -239,12 +268,16 @@ def run_fast_once() -> None:
 
 
 def run_maintenance_once() -> None:
+    from app.repositories.superuser import report_system_status
+
     enqueue_due_inquiry_followups()
     scan_batch_expiry()
     cleanup_expired_sessions()
     cleanup_ephemeral_security_data()
+    report_system_status("retention_job", "ok", "Expired sessions and security records were cleaned up.")
     live_chat.maintenance()
     repositories.recover_stale_forecast_runs()
+    report_system_status("worker", "ok", "Background worker maintenance completed.")
 
 
 def run_once() -> None:

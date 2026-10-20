@@ -1,0 +1,30 @@
+<div class="owner-page owner-superuser-page owner-batches-page">
+  <section class="panel owner-workspace-surface">
+    <header class="panel-heading"><div><span class="eyebrow">Stock traceability</span><h2>Inventory batches</h2><p class="hint">Track where finished stock came from, how much remains, and when it expires.</p></div><a class="button subtle" href="/portal/owner/movements"><i data-lucide="arrow-left-right" aria-hidden="true"></i> Movement history</a></header>
+    <form class="filter-bar" method="get">
+      <label>Search batches<input name="q" value="{{ batches_page.filters.q }}" placeholder="Batch code, product, or source"></label>
+      <label>Category<select name="type"><option value="">All categories</option>{% for category in ['Chicken', 'Pork', 'Beef'] %}<option value="{{ category }}" {{ 'selected' if batches_page.filters.type == category else '' }}>{{ category }}</option>{% endfor %}</select></label>
+      <label>Sort<select name="sort">{% for value, label in [('newest', 'Newest first'), ('expiry_asc', 'Expiring first'), ('available_desc', 'Most stock remaining'), ('product_asc', 'Product A–Z')] %}<option value="{{ value }}" {{ 'selected' if batches_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <button class="button primary">Find batches</button><a class="button subtle" href="/portal/owner/batches">Clear filters</a>
+    </form>
+    <div class="owner-inventory-caption"><span><i data-lucide="layers" aria-hidden="true"></i> Each row represents one finished-product batch.</span><span>Availability and quality are shown separately.</span></div>
+    <div class="table-wrap owner-inventory-table"><table><thead><tr><th>Batch & source</th><th>Product</th><th>Stock remaining</th><th>Expiry date</th><th>Quality</th></tr></thead><tbody>
+      {% for batch in batches %}
+      <tr>
+        <td><strong>{{ batch.batch_code }}</strong><small>{{ batch.source_type.replace('_', ' ')|title }} · {{ batch.received_date|nice_date }}</small></td>
+        <td><strong>{{ batch.item_name }}</strong><small>{{ batch.category }}</small></td>
+        <td><strong class="owner-stock-number">{{ batch.quantity_available|number }} {{ batch.unit }}</strong><small>of {{ batch.quantity_received|number }} {{ batch.unit }} received</small>{% if batch.quantity_received > 0 %}<progress class="owner-batch-progress" value="{{ batch.quantity_available }}" max="{{ batch.quantity_received }}" aria-label="Stock remaining for {{ batch.batch_code }}"></progress>{% endif %}</td>
+        <td><strong>{{ batch.expiry_date|nice_date }}</strong>{% if batch.days_until_expiry is not none %}<small class="{{ 'owner-stock-expired' if batch.days_until_expiry < 0 else '' }}">{{ 'Expired ' ~ (0 - batch.days_until_expiry) ~ ' days ago' if batch.days_until_expiry < 0 else 'Expires today' if batch.days_until_expiry == 0 else 'In ' ~ batch.days_until_expiry ~ ' days' }}</small>{% else %}<small>No expiry recorded</small>{% endif %}</td>
+        <td><span class="status-badge {{ 'active' if batch.quality_status == 'approved' else 'warning' }}">{{ batch.quality_status.replace('_', ' ')|title }}</span></td>
+      </tr>
+      {% else %}<tr><td colspan="5">No batches match your filters. Try another product or batch code.</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% set inventory_page = batches_page %}{% include "portals/owner/_inventory_pagination.html" %}
+  </section>
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Owner override</span><h2>Direct finished-stock receipt</h2><p class="hint">Use for finished stock received directly. This creates a batch and a matching ledger movement.</p></div></div>
+    <details class="owner-override"><summary>Record a direct receipt</summary>
+      <form action="/portal/owner/batches/receipt" method="post"><label>Finished product<select required name="product_id"><option value="">Choose product</option>{% for product in finished_products %}<option value="{{ product.item_id }}">{{ product.name }}</option>{% endfor %}</select></label><label>Batch code<input required minlength="4" name="batch_code" placeholder="Unique batch reference"></label><label>Quantity (whole packs)<input required type="number" min="1" step="1" name="quantity" max="999999999"></label><label>Expiry date<input required type="date" name="expiry_date"></label><label>Reason<textarea required minlength="5" maxlength="500" name="reason"></textarea></label><button class="button primary">Record receipt</button></form>
+    </details>
+  </section>
+</div>

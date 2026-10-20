@@ -1,0 +1,9 @@
+{% if directory_page.pagination is defined %}
+<nav class="pagination owner-directory-pagination" aria-label="{{ pagination_label|default(section_title ~ ' pages') }}">
+  <span>{{ directory_page.pagination.total|number }} records · Page {{ directory_page.pagination.page }} of {{ directory_page.pagination.total_pages }}</span>
+  <div>
+    {% if directory_page.pagination.has_prev %}<a href="{{ request.url.include_query_params(**{page_parameter|default('page'): directory_page.pagination.page - 1}) }}">Previous</a>{% endif %}
+    {% if directory_page.pagination.has_next %}<a href="{{ request.url.include_query_params(**{page_parameter|default('page'): directory_page.pagination.page + 1}) }}">Next</a>{% endif %}
+  </div>
+</nav>
+{% endif %}

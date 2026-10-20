@@ -45,10 +45,7 @@ def checkout_context(request: Request) -> dict:
     placed_order_id = request.query_params.get("placed")
     context["placed_order_id"] = None
     context["placed_order"] = None
-    try:
-        clean_placed_order_id = int(placed_order_id) if placed_order_id else None
-    except ValueError:
-        clean_placed_order_id = None
+    clean_placed_order_id = shared.optional_positive_id(placed_order_id)
     account_id = shared.session_account_id(request)
     if clean_placed_order_id is not None and account_id is not None:
         confirmation = data.reseller_order_confirmation(account_id, clean_placed_order_id)
@@ -239,14 +236,8 @@ def _group_order_system_messages(
 
 def inbox_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
-    try:
-        open_system_message_id = int(request.query_params.get("system_message", ""))
-    except ValueError:
-        open_system_message_id = None
-    try:
-        open_refund_id = int(request.query_params.get("refund", ""))
-    except ValueError:
-        open_refund_id = None
+    open_system_message_id = shared.optional_positive_id(request.query_params.get("system_message"))
+    open_refund_id = shared.optional_positive_id(request.query_params.get("refund"))
     refund_conversations = data.list_reseller_refund_conversations(account_id)
     if open_refund_id and not any(
         int(item["order_refund_id"]) == open_refund_id

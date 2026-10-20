@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app import repositories as data
 from app.business_time import BUSINESS_ZONE
+from app.capabilities import require_capability
 from app.portals import shared
 
 
@@ -25,6 +26,11 @@ def _allowed_role(request: Request, role_key: str) -> tuple[int, object | None]:
     guard = shared.require_portal_session(request, role_key)
     if guard:
         return 0, guard
+    require_capability(
+        request,
+        "refunds.manage_all" if role_key == "owner" else "refunds.manage_assigned",
+        role_key,
+    )
     if role_key == "sales-supervisor":
         role_guard = shared.require_team_leader_role(request, "sales-supervisor")
         if role_guard:
@@ -54,15 +60,17 @@ def refunds_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
     filters = shared.portal_filters(request)
     status = filters["status"] if filters["status"] in data.REFUND_STATUSES else ""
+    total = data.count_order_refunds(role_key, account_id, status=status, q=filters["q"])
+    filters["page"] = shared.clamp_page(total, filters["page"], 12)
     items = data.list_order_refunds(
         role_key, account_id, status=status, q=filters["q"], page=filters["page"], page_size=12,
     )
-    total = data.count_order_refunds(role_key, account_id, status=status, q=filters["q"])
     selected = None
     refund_value = request.query_params.get("refund", "")
     if refund_value:
         try:
-            selected = data.get_order_refund(int(refund_value), role_key, account_id)
+            refund_id = shared.optional_positive_id(refund_value)
+            selected = data.get_order_refund(refund_id, role_key, account_id) if refund_id else None
         except ValueError:
             selected = None
     pane = request.query_params.get("pane", "activity").strip().lower()
@@ -126,14 +134,30 @@ async def retry_refund(request: Request, role_key: str, refund_id: int):
 
 
 @router.post("/portal/{role_key}/refunds/{refund_id}/take-over")
-async def take_over_refund(request: Request, role_key: str, refund_id: int):
+async def take_over_refund(request: Request, role_key: str, refund_id: int, reason: str = Form(...)):
     account_id, guard = _allowed_role(request, role_key)
     if guard:
         return guard
     if role_key != "owner":
         raise HTTPException(status_code=404)
+    from app.portals.owner import require_owner_step_up
+
+    step_up = require_owner_step_up(request, "refunds")
+    if step_up:
+        return step_up
     try:
+        clean_reason = " ".join(reason.strip().split())
+        if len(clean_reason) < 5:
+            raise ValueError("Enter a reason for taking over this refund.")
         data.take_over_order_refund(refund_id, account_id)
+        data.record_owner_audit(
+            account_id,
+            "took_over_refund",
+            "order_refunds",
+            refund_id,
+            reason=clean_reason,
+            after_state={"processing_by_account_id": account_id},
+        )
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc))
     return _refund_redirect(role_key, refund_id, message="You are now processing this refund.")

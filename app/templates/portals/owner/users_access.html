@@ -1,0 +1,114 @@
+<div class="owner-page owner-accounts-page owner-directory-page">
+  <section class="panel owner-workspace-surface">
+    <header class="panel-heading"><div><span class="eyebrow">People & access</span><h2>Users & access</h2><p class="hint">Review identities and manage portal access without leaving the directory.</p></div><div class="owner-directory-filter-actions"><form action="/portal/owner/exports/accounts.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form><button class="button primary" type="button" data-owner-modal-open="owner-create-account" aria-haspopup="dialog">Create account</button></div></header>
+    <form class="filter-bar owner-directory-filters" method="get">
+      <label>Search accounts<input name="q" value="{{ accounts_page.filters.q }}" placeholder="Name or email"></label>
+      <label>Account type<select name="type"><option value="">All types</option>{% for option in accounts_page.type_options %}<option value="{{ option.value }}" {{ 'selected' if accounts_page.filters.type == option.value else '' }}>{{ option.label }}</option>{% endfor %}</select></label>
+      <label>Sort<select name="sort">{% for value, label in [('', 'Default'), ('name_asc', 'Name A–Z'), ('type_asc', 'Account type'), ('status_asc', 'Status'), ('newest', 'Newest')] %}<option value="{{ value }}" {{ 'selected' if accounts_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <div class="owner-directory-filter-actions"><button class="button primary" type="submit">Find accounts</button><a class="button subtle" href="/portal/owner/accounts">Clear filters</a></div>
+    </form>
+    <div class="owner-user-list">
+      {% for account in accounts %}
+      <article class="owner-user-row owner-account-card">
+        <div class="owner-user-identity"><span class="owner-user-avatar" aria-hidden="true"><i data-lucide="user-round"></i></span><div><strong>{{ account.name }}</strong><small>{{ account.email }}</small></div></div>
+        <div><span class="owner-chip">{% if account.account_type == 'team_leader' %}{{ {'sales': 'Sales leader', 'sales-supervisor': 'Sales supervisor', 'inventory': 'Inventory leader'}.get(account.team_leader_role, 'Team leader') }}{% else %}{{ account.account_type.replace('_', ' ')|title }}{% endif %}</span></div>
+        <div class="owner-user-state"><span class="status-badge {{ 'active' if account.status == 'active' else 'inactive' }}">{{ account.status|title }}</span><small>Activation: {{ account.activation_status|default('unknown')|replace('_', ' ') }}</small></div>
+        <button class="button subtle" type="button" data-owner-modal-open="owner-account-{{ account.account_id }}" aria-controls="owner-account-{{ account.account_id }}" aria-haspopup="dialog">Manage account<span class="sr-only">: {{ account.name }}</span></button>
+      </article>
+      <dialog class="owner-detail-modal" id="owner-account-{{ account.account_id }}" data-owner-modal aria-labelledby="owner-account-title-{{ account.account_id }}">
+        <header class="owner-detail-modal-heading"><div><span class="eyebrow">Account administration</span><h2 id="owner-account-title-{{ account.account_id }}">{{ account.name }}</h2><p>{{ account.email }}</p></div><button class="icon-button" type="button" data-owner-modal-close aria-label="Close account details" autofocus><i data-lucide="x" aria-hidden="true"></i></button></header>
+        <div class="owner-detail-modal-body"><p class="hint">Sensitive changes require Owner verification. Existing access and work-transfer safeguards still apply.</p>
+        <div class="owner-admin-actions">
+        {% if can_manage_team_leader_roles and account.account_type == "team_leader" %}
+        <details class="owner-account-admin">
+          <summary>Change team role</summary>
+          <form class="owner-account-role-form" action="/portal/owner/accounts/{{ account.account_id }}/role" method="post">
+          <label for="account-role-{{ account.account_id }}">Team leader role
+          <select id="account-role-{{ account.account_id }}" name="team_leader_role" required>
+            <option value="sales" {{ 'selected' if account.team_leader_role == 'sales' else '' }}>Sales leader</option>
+            <option value="sales-supervisor" {{ 'selected' if account.team_leader_role == 'sales-supervisor' else '' }}>Sales supervisor</option>
+            <option value="inventory" {{ 'selected' if account.team_leader_role == 'inventory' else '' }}>Inventory leader</option>
+          </select></label>
+          <label>Reason for role change<input required minlength="5" maxlength="500" name="reason" placeholder="Explain the access change"></label>
+          <button class="button subtle" type="submit">Update role</button>
+        </form>
+        </details>
+        {% endif %}
+        {% if account.activation_status == "pending" %}
+        <form class="owner-account-activation-form" action="/portal/{{ role_key }}/accounts/{{ account.account_id }}/activation" method="post">
+          <button class="button subtle" type="submit">Resend activation</button>
+        </form>
+        {% endif %}
+        {% if role_key == "owner" and account.activation_status == "active" %}
+        <details class="owner-account-admin">
+          <summary>Security actions</summary>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/password-reset" method="post">
+            <label>Reason<input required minlength="5" maxlength="500" name="reason"></label>
+            <button class="button subtle" type="submit">Send password-reset email</button>
+          </form>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/status" method="post">
+            <input type="hidden" name="active" value="{{ 'false' if account.status == 'active' else 'true' }}">
+            <label>Reason
+              <input required minlength="5" maxlength="500" name="reason" placeholder="Required for the audit trail">
+            </label>
+            <button class="button {{ 'danger' if account.status == 'active' else 'subtle' }}" type="submit">
+              {{ 'Deactivate' if account.status == 'active' else 'Reactivate' }}
+            </button>
+          </form>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/sessions/revoke" method="post">
+            <input type="hidden" name="reason" value="Owner account security action">
+            <button class="button subtle" type="submit">Revoke sessions</button>
+          </form>
+        </details>
+        {% endif %}
+        {% if role_key == "owner" and account.account_type == "team_leader" %}
+        <details class="owner-account-admin">
+          <summary>Transfer active work</summary>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/transfer" method="post">
+            <label>Destination sales leader
+              <select required name="destination_account_id">
+                <option value="">Choose destination</option>
+                {% for leader in team_leaders if leader.account_id != account.account_id %}
+                <option value="{{ leader.account_id }}">{{ leader.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Reason<input required minlength="5" maxlength="500" name="reason"></label>
+            <button class="button danger" type="submit">Transfer active work</button>
+          </form>
+        </details>
+        {% endif %}
+        </div>
+        </div>
+      </dialog>
+      {% else %}<p class="owner-directory-empty">No accounts found. Try another search or clear your filters.</p>{% endfor %}
+    </div>
+    {% with directory_page=accounts_page %}{% include 'portals/owner/_directory_pagination.html' %}{% endwith %}
+  </section>
+  <dialog class="owner-detail-modal" id="owner-create-account" data-owner-modal aria-labelledby="owner-create-account-title">
+    <header class="owner-detail-modal-heading"><div><span class="eyebrow">New portal identity</span><h2 id="owner-create-account-title">Create account</h2><p>Create an Owner or team leader account.</p></div><button class="icon-button" type="button" data-owner-modal-close aria-label="Close create account" autofocus><i data-lucide="x" aria-hidden="true"></i></button></header>
+    <div class="owner-detail-modal-body">
+    <form class="form-panel bare owner-account-form" action="{{ accounts_form_action|default('/portal/owner/accounts') }}" method="post">
+      <label>Account type
+        <select name="account_type">
+          {% if can_create_owner_account %}
+          <option value="owner">Owner</option>
+          {% endif %}
+          <option value="team_leader">Team leader</option>
+        </select>
+      </label>
+      <label>Name <input required name="name"></label>
+      <label>Email <input required type="email" name="email"></label>
+      <label>Team leader role
+        <select name="team_leader_role">
+          <option value="sales">Sales team leader</option>
+          <option value="sales-supervisor">Sales supervisor</option>
+          <option value="inventory">Inventory team leader</option>
+        </select>
+      </label>
+      <button class="button primary" type="submit"><i data-lucide="user-plus"></i> Create account</button>
+      <p class="hint">Reseller accounts are created only after a sales team leader approves a chatbot inquiry.</p>
+    </form>
+    </div>
+  </dialog>
+</div>

@@ -8,6 +8,16 @@ STOCK_UNITS = ("kg", "g", "ml")
 CONTENT_UNITS = ("g", "kg", "ml")
 RECIPE_UNITS = ("g", "kg", "ml")
 FINISHED_UNIT = "pack"
+MAX_MONEY = Decimal("9999999999.99")
+MAX_STOCK = Decimal("999999999.999")
+MAX_PACKS = Decimal("999999999")
+
+
+def require_capacity(value: Decimal, label: str, *, scale: int = 3) -> Decimal:
+    maximum = MAX_MONEY if scale == 2 else MAX_STOCK
+    if not value.is_finite() or abs(value) > maximum:
+        raise ValueError(f"{label} must not exceed {maximum}.")
+    return value
 
 UNIT_ALIASES = {
     "kilogram": "kg",
@@ -83,7 +93,11 @@ def parse_decimal_exact(
         raise ValueError(f"{label} must be greater than zero.")
     if nonnegative and parsed < 0:
         raise ValueError(f"{label} cannot be negative.")
-    return parsed.quantize(Decimal(1).scaleb(-scale))
+    require_capacity(parsed, label, scale=scale)
+    try:
+        return parsed.quantize(Decimal(1).scaleb(-scale))
+    except InvalidOperation as exc:
+        raise ValueError(f"{label} is outside the supported range.") from exc
 
 
 def parse_whole_packs(value: object, label: str = "Quantity") -> Decimal:
@@ -94,6 +108,8 @@ def parse_whole_packs(value: object, label: str = "Quantity") -> Decimal:
             raise ValueError(f"{label} must be a whole number of packs.") from exc
         if not parsed_value.is_finite() or parsed_value <= 0 or parsed_value != parsed_value.to_integral_value():
             raise ValueError(f"{label} must be a whole number of packs.")
+        if parsed_value > MAX_PACKS:
+            raise ValueError(f"{label} must not exceed {MAX_PACKS} packs.")
         return parsed_value.quantize(Decimal("0.001"))
     raw = str(value).strip()
     if not _WHOLE_PACK_PATTERN.fullmatch(raw):
@@ -101,6 +117,8 @@ def parse_whole_packs(value: object, label: str = "Quantity") -> Decimal:
     parsed = Decimal(raw)
     if parsed <= 0:
         raise ValueError(f"{label} must be greater than zero.")
+    if parsed > MAX_PACKS:
+        raise ValueError(f"{label} must not exceed {MAX_PACKS} packs.")
     return parsed.quantize(Decimal("0.001"))
 
 
@@ -118,6 +136,7 @@ def convert_quantity(quantity: Decimal, from_unit: object, to_unit: object, item
             raise ValueError(f"{item_name} uses {to_key}. {from_key} cannot be converted to {to_key}.")
         converted = (quantity * from_factor) / to_factor
 
+    require_capacity(converted, f"{item_name} quantity")
     quantum = Decimal("0.001")
     if converted != converted.quantize(quantum):
         raise ValueError(f"{item_name} amount cannot be represented precisely in {to_key} stock units.")

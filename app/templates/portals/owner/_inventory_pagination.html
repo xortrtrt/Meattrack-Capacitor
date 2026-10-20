@@ -1,0 +1,6 @@
+{% if inventory_page.pagination is defined %}
+<nav class="pagination owner-inventory-pagination" aria-label="{{ section_title }} pages">
+  <span>{{ inventory_page.pagination.total|number }} records · Page {{ inventory_page.pagination.page }} of {{ inventory_page.pagination.total_pages }}</span>
+  <div>{% if inventory_page.pagination.has_prev %}<a href="{{ request.url.include_query_params(page=inventory_page.pagination.page - 1) }}">Previous</a>{% endif %}{% if inventory_page.pagination.has_next %}<a href="{{ request.url.include_query_params(page=inventory_page.pagination.page + 1) }}">Next</a>{% endif %}</div>
+</nav>
+{% endif %}

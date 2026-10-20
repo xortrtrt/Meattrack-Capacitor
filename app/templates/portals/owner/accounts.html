@@ -6,7 +6,7 @@
         <h2>Account lifecycle</h2>
         <span class="hint">
           {% if can_create_owner_account %}
-          Create owner and team leader accounts only.
+          Create internal accounts and administer every portal identity.
           {% else %}
           Create and manage team leader accounts.
           {% endif %}
@@ -39,9 +39,10 @@
   <article class="panel owner-account-list">
     <div class="panel-heading">
       <div>
-        <h2>Active accounts</h2>
+        <h2>{{ 'Users & access' if can_create_owner_account else 'Active accounts' }}</h2>
         <span class="hint">Search and review portal access.</span>
       </div>
+      {% if can_create_owner_account %}<form action="/portal/owner/exports/accounts.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form>{% endif %}
     </div>
     <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
       <label>Search <input name="q" value="{{ accounts_page.filters.q }}" placeholder="Name or email"></label>
@@ -85,20 +86,63 @@
         </div>
         <div class="owner-account-actions">
         {% if can_manage_team_leader_roles and account.account_type == "team_leader" %}
-        <form class="owner-account-role-form" action="/portal/owner/accounts/{{ account.account_id }}/role" method="post">
-          <label class="sr-only" for="account-role-{{ account.account_id }}">Team leader role</label>
+        <details class="owner-account-admin">
+          <summary>Change team role</summary>
+          <form class="owner-account-role-form" action="/portal/owner/accounts/{{ account.account_id }}/role" method="post">
+          <label for="account-role-{{ account.account_id }}">Team leader role
           <select id="account-role-{{ account.account_id }}" name="team_leader_role" required>
             <option value="sales" {{ 'selected' if account.team_leader_role == 'sales' else '' }}>Sales leader</option>
             <option value="sales-supervisor" {{ 'selected' if account.team_leader_role == 'sales-supervisor' else '' }}>Sales supervisor</option>
             <option value="inventory" {{ 'selected' if account.team_leader_role == 'inventory' else '' }}>Inventory leader</option>
-          </select>
+          </select></label>
+          <label>Reason for role change<input required minlength="5" maxlength="500" name="reason" placeholder="Explain the access change"></label>
           <button class="button subtle" type="submit">Update role</button>
         </form>
+        </details>
         {% endif %}
         {% if account.activation_status == "pending" %}
         <form class="owner-account-activation-form" action="/portal/{{ role_key }}/accounts/{{ account.account_id }}/activation" method="post">
           <button class="button subtle" type="submit">Resend activation</button>
         </form>
+        {% endif %}
+        {% if role_key == "owner" and account.activation_status == "active" %}
+        <details class="owner-account-admin">
+          <summary>Security actions</summary>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/password-reset" method="post">
+            <label>Reason<input required minlength="5" maxlength="500" name="reason"></label>
+            <button class="button subtle" type="submit">Send password-reset email</button>
+          </form>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/status" method="post">
+            <input type="hidden" name="active" value="{{ 'false' if account.status == 'active' else 'true' }}">
+            <label>Reason
+              <input required minlength="5" maxlength="500" name="reason" placeholder="Required for the audit trail">
+            </label>
+            <button class="button {{ 'danger' if account.status == 'active' else 'subtle' }}" type="submit">
+              {{ 'Deactivate' if account.status == 'active' else 'Reactivate' }}
+            </button>
+          </form>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/sessions/revoke" method="post">
+            <input type="hidden" name="reason" value="Owner account security action">
+            <button class="button subtle" type="submit">Revoke sessions</button>
+          </form>
+        </details>
+        {% endif %}
+        {% if role_key == "owner" and account.account_type == "team_leader" %}
+        <details class="owner-account-admin">
+          <summary>Transfer active work</summary>
+          <form action="/portal/owner/accounts/{{ account.account_id }}/transfer" method="post">
+            <label>Destination sales leader
+              <select required name="destination_account_id">
+                <option value="">Choose destination</option>
+                {% for leader in team_leaders if leader.account_id != account.account_id %}
+                <option value="{{ leader.account_id }}">{{ leader.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Reason<input required minlength="5" maxlength="500" name="reason"></label>
+            <button class="button danger" type="submit">Transfer active work</button>
+          </form>
+        </details>
         {% endif %}
         </div>
       </article>
@@ -115,7 +159,7 @@
   </article>
 </section>
 
-{% if show_reseller_team_assignments %}
+{% if show_reseller_team_assignments and role_key != "owner" %}
 <section class="panel owner-assignments-panel">
   <div class="panel-heading">
     <div>
@@ -136,11 +180,12 @@
         <strong>{{ reseller.team_leader_name or "Unassigned" }}</strong>
       </div>
       <form class="inline-assignment-form" action="/portal/{{ role_key }}/resellers/{{ reseller.reseller_id }}/team-leader" method="post">
-        <select name="team_leader_account_id" required>
+        <label>Assign sales leader<select name="team_leader_account_id" required>
           {% for leader in team_leaders %}
           <option value="{{ leader.account_id }}" {{ 'selected' if reseller.team_leader_account_id == leader.account_id else '' }}>{{ leader.name }}</option>
           {% endfor %}
-        </select>
+        </select></label>
+        {% if role_key == "owner" %}<label>Reason for reassignment<input required minlength="5" maxlength="500" name="reason" placeholder="Explain the transfer"></label>{% endif %}
         <button class="button subtle" type="submit">Save</button>
       </form>
     </article>

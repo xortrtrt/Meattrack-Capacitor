@@ -17,6 +17,7 @@ MOVEMENT_CATEGORY_TYPES = {
     "receipts": ("raw_receipt", "direct_finished_receipt"),
     "production": ("production_consumption", "production_output"),
     "sales": ("sale_fulfillment",),
+    "corrections": ("owner_correction",),
 }
 
 
@@ -356,9 +357,11 @@ def list_inventory_movements(
                im.quantity_delta,
                im.unit,
                im.balance_after,
+               im.balance_before, im.actor_name, im.note, ib.batch_code,
                im.created_at
         FROM inventory_movements im
         JOIN inventory_items ii ON ii.item_id = im.item_id
+        LEFT JOIN inventory_batches ib ON ib.batch_id = im.affected_batch_id
         {where_sql}
         ORDER BY {order_sql}
         {paging_sql};

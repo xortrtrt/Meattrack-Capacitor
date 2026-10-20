@@ -11,6 +11,7 @@ from app import portal_config
 from app import portal_dependencies
 from app import uploads as uploads_module
 from app import web
+from app.capabilities import portal_section_capability, require_capability
 from app.emailer import send_password_change_otp as deliver_password_change_otp
 
 
@@ -115,13 +116,29 @@ def positive_int(value: str | None, default: int = 1, maximum: int = 50) -> int:
     return max(1, min(parsed, maximum))
 
 
+def optional_positive_id(value: str | None) -> int | None:
+    raw = (value or "").strip()
+    if not raw or not raw.isascii() or not raw.isdecimal() or len(raw) > 19:
+        return None
+    parsed = int(raw)
+    return parsed if 0 < parsed <= 9223372036854775807 else None
+
+
+def requested_page(value: str | None) -> int:
+    return optional_positive_id(value) or 1
+
+
+def clamp_page(total: int, page: int, page_size: int) -> int:
+    return data.pagination_meta(total, page, page_size)["page"]
+
+
 def portal_filters(request: Request) -> dict:
     return {
         "q": request.query_params.get("q", "").strip(),
         "status": request.query_params.get("status", "").strip(),
         "type": request.query_params.get("type", "").strip(),
         "sort": request.query_params.get("sort", "").strip(),
-        "page": positive_int(request.query_params.get("page")),
+        "page": requested_page(request.query_params.get("page")),
     }
 
 
@@ -142,6 +159,8 @@ def paged(items: list[dict], total: int, page: int, page_size: int = 10, **filte
 
 def product_page(request: Request, page_size: int = 12, active_only: bool = False) -> dict:
     filters = portal_filters(request)
+    total = data.count_products(q=filters["q"], category=filters["type"], active_only=active_only)
+    filters["page"] = clamp_page(total, filters["page"], page_size)
     items = data.list_products(
         q=filters["q"],
         category=filters["type"],
@@ -150,7 +169,6 @@ def product_page(request: Request, page_size: int = 12, active_only: bool = Fals
         sort=filters["sort"],
         active_only=active_only,
     )
-    total = data.count_products(q=filters["q"], category=filters["type"], active_only=active_only)
     return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
 
@@ -181,8 +199,10 @@ def orders_page(
         "team_leader_account_id": team_leader_account_id,
         "reseller_account_id": reseller_account_id,
     }
-    items = data.list_orders(**list_kwargs)
     total = data.count_orders(**count_kwargs)
+    filters["page"] = clamp_page(total, filters["page"], page_size)
+    list_kwargs["page"] = filters["page"]
+    items = data.list_orders(**list_kwargs)
     return paged(
         items,
         total,
@@ -202,6 +222,13 @@ def reports_page(
     reseller_account_id: int | None = None,
 ) -> dict:
     filters = portal_filters(request)
+    total = data.count_sales_reports(
+        report_source=report_source,
+        q=filters["q"],
+        team_leader_account_id=team_leader_account_id,
+        reseller_account_id=reseller_account_id,
+    )
+    filters["page"] = clamp_page(total, filters["page"], page_size)
     items = data.list_sales_reports(
         report_source=report_source,
         q=filters["q"],
@@ -210,12 +237,6 @@ def reports_page(
         page=filters["page"],
         page_size=page_size,
         sort=filters["sort"],
-    )
-    total = data.count_sales_reports(
-        report_source=report_source,
-        q=filters["q"],
-        team_leader_account_id=team_leader_account_id,
-        reseller_account_id=reseller_account_id,
     )
     return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
 
@@ -227,6 +248,13 @@ def inquiries_page(
     include_unassigned: bool = False,
 ) -> dict:
     filters = portal_filters(request)
+    total = data.count_inquiries(
+        q=filters["q"],
+        status=filters["status"],
+        assigned_team_leader_account_id=assigned_team_leader_account_id,
+        include_unassigned=include_unassigned,
+    )
+    filters["page"] = clamp_page(total, filters["page"], page_size)
     items = data.list_inquiries(
         q=filters["q"],
         status=filters["status"],
@@ -235,12 +263,6 @@ def inquiries_page(
         page=filters["page"],
         page_size=page_size,
         sort=filters["sort"],
-    )
-    total = data.count_inquiries(
-        q=filters["q"],
-        status=filters["status"],
-        assigned_team_leader_account_id=assigned_team_leader_account_id,
-        include_unassigned=include_unassigned,
     )
     return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"], sort=filters["sort"])
 
@@ -253,7 +275,8 @@ def notifications_context(request: Request, page_size: int = 15) -> dict:
     requested_category = request.query_params.get("type", "").strip().lower()
     category_values = {value for value, _label in NOTIFICATION_CATEGORIES}
     category = requested_category if requested_category in category_values else ""
-    page_number = positive_int(request.query_params.get("page"))
+    total = data.count_notification_history(account_id, status=status, category=category)
+    page_number = clamp_page(total, requested_page(request.query_params.get("page")), page_size)
     items = normalize_notification_targets(
         data.list_notification_history(
             account_id,
@@ -265,7 +288,6 @@ def notifications_context(request: Request, page_size: int = 15) -> dict:
         role_key,
         session_team_leader_role(request),
     )
-    total = data.count_notification_history(account_id, status=status, category=category)
     return {
         "notifications_page": paged(
             items,
@@ -414,6 +436,16 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
     secondary_section = portal_config.portal_secondary_sections.get(role_key, {}).get(section)
     if section not in nav_sections and secondary_section is None:
         raise HTTPException(status_code=404)
+    capability_role = (
+        f"team-leader:{session_team_leader_role(request) or 'sales'}"
+        if role_key == "team-leader"
+        else role_key
+    )
+    require_capability(
+        request,
+        portal_section_capability(request, capability_role, section),
+        capability_role,
+    )
     section_title = nav_sections[section][1] if section in nav_sections else secondary_section[0]
 
     context = {
@@ -427,10 +459,18 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         ),
         "can_create_owner_account": role_key == "owner",
         "can_manage_team_leader_roles": role_key == "owner",
-        "show_reseller_team_assignments": role_key == "sales-supervisor",
+        "show_reseller_team_assignments": role_key in {"owner", "sales-supervisor"},
         "accounts_form_action": f"/portal/{role_key}/accounts",
         "role": portal_role_for_request(role_key, request),
         "nav": nav,
+        "nav_groups": (
+            [
+                {"label": label, "items": [item for item in nav if item[0] in slugs]}
+                for label, slugs in portal_config.owner_nav_groups
+            ]
+            if role_key == "owner"
+            else []
+        ),
         "section": section,
         "section_title": section_title,
         "message": message,
@@ -444,6 +484,9 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "unread_notifications": data.unread_notification_count(role_key, request.session.get("account_id")),
     }
     context.update(portal_section_context(role_key, section, request))
+    if role_key == "owner":
+        from app import owner_recovery
+        context["owner_resume"] = owner_recovery.consume(request)
     return templates().TemplateResponse(
         request,
         PORTAL_TEMPLATES[role_key],

@@ -1,0 +1,53 @@
+/* Match the sales leader reseller directory while retaining Owner controls. */
+.role-owner .owner-resellers-page { display: grid; gap: 16px; }
+.role-owner .owner-resellers-hero { display: flex; align-items: end; justify-content: space-between; gap: 28px; min-height: 164px; padding: 28px 30px; border: 1px solid var(--border); border-radius: 14px; background: var(--primary); color: var(--surface); }
+.role-owner .owner-resellers-hero h2 { margin: 5px 0 7px; color: var(--surface); font-size: clamp(1.75rem, 3vw, 2.45rem); letter-spacing: -0.045em; }
+.role-owner .owner-resellers-hero .eyebrow { color: var(--gold); }
+.role-owner .owner-resellers-hero p { max-width: 650px; margin: 0; color: var(--surface); opacity: .8; }
+.role-owner .owner-resellers-total { display: grid; min-width: 150px; padding-left: 24px; border-left: 1px solid var(--gold-deep); }
+.role-owner .owner-resellers-total strong { color: var(--gold); font-size: 2.45rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.role-owner .owner-resellers-total span { margin-top: 8px; font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.role-owner .owner-resellers-ledger { padding: 0; overflow: hidden; }
+.role-owner .owner-resellers-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
+.role-owner .owner-resellers-toolbar p { margin: 5px 0 0; max-width: 650px; }
+.role-owner .owner-resellers-toolbar > form { flex-shrink: 0; }
+.role-owner .owner-reseller-card { position: relative; display: grid; grid-template-columns: minmax(190px, .9fr) minmax(220px, 1.2fr) minmax(190px, .8fr); gap: 24px; align-items: start; min-height: 126px; padding: 24px 24px 24px 29px; border-bottom: 1px solid var(--border); background: var(--surface); transition: background-color 150ms ease; }
+.role-owner .owner-reseller-card:last-child { border-bottom: 0; }
+.role-owner .owner-reseller-card:hover { background: var(--surface-muted); }
+.role-owner .owner-reseller-status-rail { position: absolute; inset: 17px auto 17px 0; width: 4px; border-radius: 0 999px 999px 0; background: var(--text-light); }
+.role-owner .owner-reseller-status-rail.is-active { background: var(--success); }
+.role-owner .owner-reseller-status-rail.is-pending { background: var(--gold-deep); }
+.role-owner .owner-reseller-status-rail:is(.is-suspended, .is-inactive) { background: var(--error); }
+.role-owner .owner-reseller-identity { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 13px; align-items: center; }
+.role-owner .owner-reseller-avatar { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-muted); color: var(--gold-deep); }
+.role-owner .owner-reseller-avatar svg { width: 22px; height: 22px; }
+.role-owner .owner-reseller-identity strong, .role-owner .owner-reseller-identity div > span { display: block; overflow-wrap: anywhere; }
+.role-owner .owner-reseller-identity strong { font-size: .98rem; }
+.role-owner .owner-reseller-identity div > span { margin-top: 4px; color: var(--text-light); font-size: .8125rem; }
+.role-owner .owner-reseller-contact { display: grid; gap: 14px; margin: 0; min-width: 0; }
+.role-owner .owner-reseller-contact dt { margin-bottom: 4px; color: var(--text-light); font-size: .75rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.role-owner .owner-reseller-contact dd { margin: 0; overflow-wrap: anywhere; font-size: .875rem; }
+.role-owner .owner-reseller-contact a { color: inherit; }
+.role-owner .owner-reseller-access { display: grid; justify-items: start; gap: 12px; min-width: 0; }
+.role-owner .owner-reseller-assignment { width: 100%; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.role-owner .owner-reseller-assignment summary { min-height: 44px; padding: 12px; cursor: pointer; font-size: .8125rem; font-weight: 600; background: var(--surface-muted); }
+.role-owner .owner-reseller-assignment form { display: grid; gap: 14px; padding: 14px; border-top: 1px solid var(--border); }
+.role-owner .owner-reseller-assignment label { display: grid; gap: 6px; font-size: .8125rem; }
+.role-owner .owner-reseller-assignment :is(input, select) { width: 100%; min-width: 0; min-height: 44px; }
+.role-owner .owner-reseller-assignment .button { width: 100%; min-height: 44px; }
+.role-owner .owner-reseller-assignment summary:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: -3px; }
+.role-owner .owner-resellers-empty { display: grid; justify-items: center; gap: 8px; padding: 54px 24px; color: var(--text-light); text-align: center; }
+.role-owner .owner-resellers-empty svg { width: 30px; height: 30px; color: var(--gold-deep); }
+.role-owner .owner-resellers-empty strong { color: var(--text); }
+@media (max-width: 1100px) {
+  .role-owner .owner-reseller-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .role-owner .owner-reseller-access { grid-column: 1 / -1; grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+}
+@media (max-width: 720px) {
+  .role-owner .owner-resellers-hero { align-items: start; flex-direction: column; min-height: 0; padding: 24px 20px; }
+  .role-owner .owner-resellers-total { min-width: 0; padding: 16px 0 0; border-top: 1px solid var(--gold-deep); border-left: 0; }
+  .role-owner .owner-resellers-toolbar { align-items: start; flex-direction: column; padding: 20px; }
+  .role-owner .owner-reseller-card { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 20px 20px 20px 25px; }
+  .role-owner .owner-reseller-access { grid-column: auto; grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .role-owner .owner-reseller-card { transition: none; } }

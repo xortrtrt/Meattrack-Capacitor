@@ -40,8 +40,11 @@
       </div>
       <form class="owner-price-form" action="/portal/owner/products" method="post">
         <input type="hidden" name="product_id" value="{{ product.product_id }}">
-        <label>Price per {{ product.unit }}
-          <input type="number" step="1" min="0" name="base_price" value="{{ product.base_price }}">
+        <label>Price per {{ product.unit }} (PHP)
+          <input required type="number" inputmode="decimal" step="0.01" min="0" name="base_price" value="{{ '%.2f'|format(product.base_price) }}" max="9999999999.99">
+        </label>
+        <label>Reason
+          <input required minlength="5" maxlength="500" name="reason" placeholder="Why is this price changing?">
         </label>
         <button class="button primary" type="submit"><i data-lucide="save"></i> Save</button>
       </form>

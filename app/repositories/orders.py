@@ -5,12 +5,11 @@ from typing import TypedDict
 
 import psycopg2
 
-from app.config import UNPAID_ORDER_TTL_MINUTES
-
 from ._shared import *
 from .accounts import reseller_account_profile
 from .inventory import _apply_fefo_allocations, _inventory_actor_name, _plan_fefo_allocations
 from .notifications import _create_notification_cursor, _create_order_system_message_cursor
+from .superuser import business_setting
 
 
 class ConfirmedPayment(TypedDict):
@@ -795,6 +794,7 @@ def add_reseller_cart_item(account_id: int, product_id: int, quantity: object) -
         """, (account_id, product_id))
         existing = cur.fetchone()
         requested_quantity = clean_quantity + (Decimal(existing["quantity"]) if existing else Decimal("0"))
+        measurements.parse_whole_packs(requested_quantity)
         _require_reseller_quantity_available(product, requested_quantity)
         cur.execute("""
             INSERT INTO reseller_cart_items (account_id, product_id, quantity)
@@ -874,6 +874,7 @@ def create_order_from_items(
             raise ValueError("Unknown product")
         clean_quantity = measurements.parse_whole_packs(quantity)
         quantities[clean_product_id] = quantities.get(clean_product_id, Decimal("0")) + clean_quantity
+        measurements.parse_whole_packs(quantities[clean_product_id])
 
     order_type = "reseller" if role == "reseller" else "walk_in"
     reseller_id = None
@@ -886,7 +887,8 @@ def create_order_from_items(
     if role == "reseller":
         if account_id is None:
             raise ValueError("Your session expired. Please sign in again.")
-        payment_due_at = business_now() + timedelta(minutes=UNPAID_ORDER_TTL_MINUTES)
+        payment_window_minutes = int(business_setting("order.payment_window_minutes"))
+        payment_due_at = business_now() + timedelta(minutes=payment_window_minutes)
     elif account_id is not None:
         account = fetch_one("SELECT name FROM accounts WHERE account_id = %s LIMIT 1;", (account_id,))
         if account:
@@ -1015,7 +1017,9 @@ def create_order_from_items(
             if role == "reseller":
                 _require_reseller_quantity_available(product, quantity)
             line_total = (product["base_price"] * quantity).quantize(Decimal("0.01"))
+            measurements.require_capacity(line_total, "Order line total", scale=2)
             total += line_total
+            measurements.require_capacity(total, "Order total", scale=2)
             lines.append((product_id, quantity, product["unit"], product["base_price"]))
 
         cur.execute("""
@@ -1130,6 +1134,7 @@ def decide_order(
     order_id: int,
     decision: str,
     team_leader_account_id: int | None = None,
+    actor_account_id: int | None = None,
     rejection_reason: str = "",
     payment_received: bool | None = None,
 ) -> bool:
@@ -1157,7 +1162,7 @@ def decide_order(
             return False
         ord_res = dict(order_row)
 
-        leader_id = team_leader_account_id
+        leader_id = actor_account_id or team_leader_account_id
         if leader_id is None:
             cur.execute("SELECT account_id FROM accounts WHERE account_type = 'team_leader' ORDER BY account_id LIMIT 1;")
             leader = cur.fetchone()

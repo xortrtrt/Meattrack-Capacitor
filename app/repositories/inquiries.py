@@ -152,7 +152,11 @@ def mark_inquiry_followup_sent(inquiry_id: int) -> None:
     )
 
 
-def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id: int | None = None) -> dict | None:
+def add_reseller_from_inquiry(
+    inquiry_id: int,
+    approving_team_leader_account_id: int | None = None,
+    decision_actor_account_id: int | None = None,
+) -> dict | None:
     with get_transaction_cursor() as cur:
         cur.execute("SELECT * FROM inquiries WHERE inquiry_id = %s FOR UPDATE;", (inquiry_id,))
         inq = cur.fetchone()
@@ -204,17 +208,18 @@ def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id:
         if cur.fetchone():
             raise ValueError("This inquiry already has a reseller account.")
 
+        decision_actor_id = decision_actor_account_id or leader_id
         cur.execute("""
             UPDATE inquiries
             SET status = 'approved', assigned_team_leader_account_id = %s, reviewed_by_account_id = %s, reviewed_at = %s
             WHERE inquiry_id = %s;
-        """, (leader_id, leader_id, business_now(), inquiry_id))
+        """, (leader_id, decision_actor_id, business_now(), inquiry_id))
 
         cur.execute("""
             INSERT INTO resellers (inquiry_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, approved_at)
             VALUES (%s, %s, %s, %s, %s, 'Pending onboarding details', 'pending', %s, %s, %s)
             RETURNING reseller_id, business_name, contact_person, email, contact_number, address, reseller_status, team_leader_account_id, approved_by_account_id, created_at;
-        """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, leader_id, business_now()))
+        """, (inquiry_id, inq["business_name"], inq["name"], inq["email"], inq["contact_number"], leader_id, decision_actor_id, business_now()))
         res = cur.fetchone()
 
         cur.execute("""
@@ -229,7 +234,7 @@ def add_reseller_from_inquiry(inquiry_id: int, approving_team_leader_account_id:
 
         activation_token = _create_activation_token_cursor(cur, account["account_id"])
         _add_log_cursor(
-            cur, actor_account_id=leader_id, action="approved_reseller_inquiry",
+            cur, actor_account_id=decision_actor_id, action="approved_reseller_inquiry",
             entity_type="inquiries", entity_id=inquiry_id,
         )
         _create_notification_cursor(
@@ -258,6 +263,7 @@ def reject_inquiry(
     inquiry_id: int,
     rejection_reason: str,
     reviewing_team_leader_account_id: int | None = None,
+    decision_actor_account_id: int | None = None,
 ) -> bool:
     cleaned_reason = "\n".join(line.strip() for line in str(rejection_reason).strip().splitlines() if line.strip())
     if not 5 <= len(cleaned_reason) <= 1000:
@@ -273,14 +279,15 @@ def reject_inquiry(
             raise ValueError(f"Inquiry is already {inq['status']} and cannot be reviewed again.")
         if reviewing_team_leader_account_id is not None and inq["assigned_team_leader_account_id"] not in {None, reviewing_team_leader_account_id}:
             return False
-        reviewer_id = reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"]
+        reviewer_id = decision_actor_account_id or reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"]
+        assigned_id = reviewing_team_leader_account_id or inq["assigned_team_leader_account_id"]
         cur.execute(
             """
             UPDATE inquiries SET status = 'rejected', rejection_reason = %s,
                 assigned_team_leader_account_id = %s,
                 reviewed_by_account_id = %s, reviewed_at = %s WHERE inquiry_id = %s;
             """,
-            (cleaned_reason, reviewer_id, reviewer_id, business_now(), inquiry_id),
+            (cleaned_reason, assigned_id, reviewer_id, business_now(), inquiry_id),
         )
         _add_log_cursor(cur, actor_account_id=reviewer_id, action="rejected_reseller_inquiry", entity_type="inquiries", entity_id=inquiry_id)
         _enqueue_outbox_cursor(

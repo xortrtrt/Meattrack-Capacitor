@@ -136,7 +136,10 @@ def product_sales_history(product_ids: list[int], start_date: date, end_date: da
         return {}
     rows = clean_row(fetch_all("""
         SELECT oi.product_id,
-               COALESCE(timezone(%s, o.fulfilled_at)::date, o.order_date) AS sale_date,
+               COALESCE(
+                   timezone(%s, o.fulfilled_at)::date,
+                   timezone(%s, o.order_date)::date
+               ) AS sale_date,
                COALESCE(SUM(oi.quantity), 0) AS quantity
         FROM orders o
         JOIN order_items oi ON oi.order_id = o.order_id
@@ -153,10 +156,20 @@ def product_sales_history(product_ids: list[int], start_date: date, end_date: da
           )
           AND p.item_type = 'finished_product'
           AND oi.product_id = ANY(%s)
-          AND COALESCE(timezone(%s, o.fulfilled_at)::date, o.order_date) BETWEEN %s AND %s
-        GROUP BY oi.product_id, COALESCE(timezone(%s, o.fulfilled_at)::date, o.order_date)
+          AND COALESCE(
+              timezone(%s, o.fulfilled_at)::date,
+              timezone(%s, o.order_date)::date
+          ) BETWEEN %s AND %s
+        GROUP BY oi.product_id, COALESCE(
+            timezone(%s, o.fulfilled_at)::date,
+            timezone(%s, o.order_date)::date
+        )
         ORDER BY oi.product_id, sale_date;
-    """, (BUSINESS_TIMEZONE, product_ids, BUSINESS_TIMEZONE, start_date, end_date, BUSINESS_TIMEZONE)))
+    """, (
+        BUSINESS_TIMEZONE, BUSINESS_TIMEZONE, product_ids,
+        BUSINESS_TIMEZONE, BUSINESS_TIMEZONE, start_date, end_date,
+        BUSINESS_TIMEZONE, BUSINESS_TIMEZONE,
+    )))
     grouped: dict[int, list[dict]] = {product_id: [] for product_id in product_ids}
     for row in rows:
         grouped.setdefault(row["product_id"], []).append(row)
@@ -241,6 +254,14 @@ def queue_forecast(model_name: str, forecast_horizon_days: int, requesting_accou
 
 def recover_stale_forecast_runs() -> int:
     with get_transaction_cursor() as cur:
+        cur.execute(
+            """
+            UPDATE forecast_runs
+            SET status = 'cancelled', completed_at = now(), locked_at = NULL,
+                notes = COALESCE(notes, 'Cancelled by an owner.')
+            WHERE status = 'cancelling' AND locked_at < now() - interval '30 minutes';
+            """
+        )
         cur.execute(
             """
             UPDATE forecast_runs
@@ -335,6 +356,17 @@ def process_forecast_run(run: dict) -> dict:
 
     outputs: list[tuple[dict, dict]] = []
     for index, product in enumerate(products, start=1):
+        cancellation = fetch_one("SELECT status FROM forecast_runs WHERE forecast_run_id = %s;", (run_id,))
+        if cancellation and cancellation["status"] == "cancelling":
+            execute_write(
+                """
+                UPDATE forecast_runs SET status = 'cancelled', completed_at = now(), locked_at = NULL,
+                    notes = 'Cancelled by an owner between product forecasts.'
+                WHERE forecast_run_id = %s AND status = 'cancelling';
+                """,
+                (run_id,),
+            )
+            return {"forecast_run_id": run_id, "status": "cancelled", "warnings": 0}
         created_date = product["product_created_date"]
         history_start = max(input_start, created_date) if created_date else input_start
         try:
@@ -383,6 +415,18 @@ def process_forecast_run(run: dict) -> dict:
         notes += f". {warning_count} product(s) require review."
 
     with get_transaction_cursor() as cur:
+        cur.execute("SELECT status FROM forecast_runs WHERE forecast_run_id = %s FOR UPDATE;", (run_id,))
+        current = cur.fetchone()
+        if current and current["status"] == "cancelling":
+            cur.execute(
+                """
+                UPDATE forecast_runs SET status = 'cancelled', completed_at = now(), locked_at = NULL,
+                    notes = 'Cancelled by an owner after product processing.'
+                WHERE forecast_run_id = %s;
+                """,
+                (run_id,),
+            )
+            return {"forecast_run_id": run_id, "status": "cancelled", "warnings": 0}
         cur.execute("DELETE FROM forecast_results WHERE forecast_run_id = %s;", (run_id,))
         cur.execute("DELETE FROM forecast_product_summaries WHERE forecast_run_id = %s;", (run_id,))
         for product, output in outputs:
@@ -488,10 +532,16 @@ def forecast_run_status(forecast_run_id: int, owner_account_id: int) -> dict | N
                    WHEN status = 'running' THEN 'Forecast is running.'
                    WHEN status = 'completed' THEN 'Forecast completed.'
                    WHEN status = 'completed_with_warnings' THEN 'Forecast completed with products requiring review.'
+                   WHEN status = 'cancelling' THEN 'Forecast cancellation is pending.'
+                   WHEN status = 'cancelled' THEN 'Forecast was cancelled.'
                    ELSE 'Forecast failed.'
                END AS message
         FROM forecast_runs
-        WHERE forecast_run_id = %s AND run_by_account_id = %s;
+        WHERE forecast_run_id = %s
+          AND EXISTS (
+              SELECT 1 FROM accounts
+              WHERE account_id = %s AND account_type = 'owner' AND is_active = true
+          );
         """,
         (forecast_run_id, owner_account_id),
     )
@@ -530,4 +580,90 @@ def list_forecast_runs(limit: int = 20) -> list[dict]:
     ))
 
 
-__all__ = ['list_forecasts', 'latest_forecast_run', 'count_forecasts', 'product_sales_history', 'forecast_business_events', 'queue_forecast', 'recover_stale_forecast_runs', 'claim_forecast_run', '_forecast_products', 'process_forecast_run', 'fail_forecast_run', 'forecast_run_status', 'get_forecast_run', 'list_forecast_runs']
+def retry_forecast_run(forecast_run_id: int, actor_account_id: int, reason: str) -> dict:
+    clean_reason = " ".join(reason.strip().split())
+    if len(clean_reason) < 5 or len(clean_reason) > 500:
+        raise ValueError("Enter a reason using 5 to 500 characters.")
+    with get_transaction_cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext('meattrack-forecast-queue'));")
+        cur.execute("SELECT * FROM forecast_runs WHERE forecast_run_id = %s FOR UPDATE;", (forecast_run_id,))
+        original = cur.fetchone()
+        if not original or original["status"] != "failed":
+            raise ValueError("Only failed forecast runs can be retried.")
+        cur.execute(
+            "SELECT forecast_run_id FROM forecast_runs WHERE retry_of_forecast_run_id = %s LIMIT 1;",
+            (forecast_run_id,),
+        )
+        if cur.fetchone():
+            raise ValueError("A retry has already been created for this forecast run.")
+        cur.execute(
+            """
+            INSERT INTO forecast_runs (
+                run_by_account_id, model_name, input_period_start, input_period_end,
+                forecast_horizon_days, status, queued_at, next_attempt_at,
+                configuration, retry_of_forecast_run_id, notes
+            ) VALUES (%s, %s, %s, %s, %s, 'queued', now(), now(), %s::jsonb, %s, %s)
+            RETURNING forecast_run_id, status;
+            """,
+            (
+                actor_account_id, original["model_name"], original["input_period_start"],
+                original["input_period_end"], original["forecast_horizon_days"],
+                json.dumps(original["configuration"]), forecast_run_id,
+                f"Owner retry of run #{forecast_run_id}: {clean_reason}",
+            ),
+        )
+        retry = dict(cur.fetchone())
+        from .superuser import _audit_cursor
+
+        _audit_cursor(
+            cur,
+            actor_account_id=actor_account_id,
+            actor_role="owner",
+            action="retried_forecast_run",
+            entity_type="forecast_runs",
+            entity_id=retry["forecast_run_id"],
+            reason=clean_reason,
+            before_state={"forecast_run_id": forecast_run_id, "status": original["status"]},
+            after_state={"retry_forecast_run_id": retry["forecast_run_id"], "status": retry["status"]},
+        )
+    return clean_row(retry)
+
+
+def cancel_forecast_run(forecast_run_id: int, actor_account_id: int, reason: str) -> dict:
+    clean_reason = " ".join(reason.strip().split())
+    if len(clean_reason) < 5 or len(clean_reason) > 500:
+        raise ValueError("Enter a reason using 5 to 500 characters.")
+    with get_transaction_cursor() as cur:
+        cur.execute("SELECT * FROM forecast_runs WHERE forecast_run_id = %s FOR UPDATE;", (forecast_run_id,))
+        run = cur.fetchone()
+        if not run or run["status"] not in {"queued", "running"}:
+            raise ValueError("Only queued or running forecasts can be cancelled.")
+        new_status = "cancelled" if run["status"] == "queued" else "cancelling"
+        cur.execute(
+            """
+            UPDATE forecast_runs
+            SET status = %s, cancel_requested_at = now(),
+                completed_at = CASE WHEN %s = 'cancelled' THEN now() ELSE completed_at END,
+                locked_at = CASE WHEN %s = 'cancelled' THEN NULL ELSE locked_at END
+            WHERE forecast_run_id = %s RETURNING forecast_run_id, status;
+            """,
+            (new_status, new_status, new_status, forecast_run_id),
+        )
+        updated = dict(cur.fetchone())
+        from .superuser import _audit_cursor
+
+        _audit_cursor(
+            cur,
+            actor_account_id=actor_account_id,
+            actor_role="owner",
+            action="cancelled_forecast_run",
+            entity_type="forecast_runs",
+            entity_id=forecast_run_id,
+            reason=clean_reason,
+            before_state={"status": run["status"]},
+            after_state={"status": new_status},
+        )
+    return clean_row(updated)
+
+
+__all__ = ['list_forecasts', 'latest_forecast_run', 'count_forecasts', 'product_sales_history', 'forecast_business_events', 'queue_forecast', 'recover_stale_forecast_runs', 'claim_forecast_run', '_forecast_products', 'process_forecast_run', 'fail_forecast_run', 'forecast_run_status', 'get_forecast_run', 'list_forecast_runs', 'retry_forecast_run', 'cancel_forecast_run']

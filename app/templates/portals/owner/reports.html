@@ -1,82 +1,30 @@
-<div class="owner-page owner-reports-page">
-<section class="panel owner-reports-panel owner-workspace-surface">
-  <div class="panel-heading">
-    <div>
-      <h2>Team leader sales reports</h2>
-      <span class="hint">Owner-facing reports submitted by team leaders.</span>
-    </div>
-  </div>
-  <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
-    <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
-    <label>Sort
-      <select name="sort">
-        <option value="">Newest</option>
-        <option value="period_desc" {{ 'selected' if sales_reports_page.filters.sort == 'period_desc' else '' }}>Latest period</option>
-        <option value="sales_desc" {{ 'selected' if sales_reports_page.filters.sort == 'sales_desc' else '' }}>Sales high-low</option>
-        <option value="orders_desc" {{ 'selected' if sales_reports_page.filters.sort == 'orders_desc' else '' }}>Orders high-low</option>
-        <option value="oldest" {{ 'selected' if sales_reports_page.filters.sort == 'oldest' else '' }}>Oldest</option>
-      </select>
-    </label>
-  </form>
-
-  <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
-  <div class="table-wrap owner-report-table">
-    <table>
-      <thead>
-        <tr><th>Source</th><th>Submitted by</th><th>Period</th><th>Sales</th><th>Orders</th><th>Notes</th></tr>
-      </thead>
-      <tbody>
+<div class="owner-page owner-reports-page owner-directory-page">
+  <section class="panel owner-workspace-surface">
+    <header class="panel-heading"><div><span class="eyebrow">Sales reporting</span><h2>Team leader sales reports</h2><p class="hint">Choose a report to review its totals, notes, and product breakdown.</p></div><form action="/portal/owner/exports/reports.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form></header>
+    <form class="filter-bar owner-directory-filters" method="get">
+      <label>Search reports<input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Report number, submitted by, or notes"></label>
+      <label>Sort<select name="sort">{% for value, label in [('', 'Newest'), ('period_desc', 'Latest period'), ('sales_desc', 'Sales high–low'), ('orders_desc', 'Orders high–low'), ('oldest', 'Oldest')] %}<option value="{{ value }}" {{ 'selected' if sales_reports_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <div class="owner-directory-filter-actions"><button class="button primary" type="submit">Find reports</button><a class="button subtle" href="/portal/owner/reports">Clear filters</a></div>
+    </form>
+    <div class="owner-report-list">
       {% for report in sales_reports %}
-      <tr>
-        <td>{{ report.report_source.replace("_", " ") }}</td>
-        <td>{{ report.submitted_by }}</td>
-        <td>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</td>
-        <td>{{ report.total_sales|currency }}</td>
-        <td>{{ report.total_orders }}</td>
-        <td>{{ report.notes }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6">No reports found.</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="owner-report-card-list">
-    {% for report in sales_reports %}
-    <article class="owner-report-card">
-      <div>
-        <span class="owner-chip">{{ report.report_source.replace("_", " ") }}</span>
-        <h3>{{ report.submitted_by }}</h3>
-        <small>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</small>
-      </div>
-      <div class="owner-report-metrics">
-        <span><strong>{{ report.total_sales|currency }}</strong><small>sales</small></span>
-        <span><strong>{{ report.total_orders }}</strong><small>orders</small></span>
-      </div>
-      {% if report.notes %}<p>{{ report.notes }}</p>{% endif %}
-      {% set report_items = report.get("items", []) %}
-      {% if report_items %}
-      <details>
-        <summary>{{ report_items|length }} reported products</summary>
-        <ul>
-          {% for item in report_items %}
-          <li>{{ item.name }} · {{ item.quantity_sold|number }} {{ item.unit }} · {{ item.line_total|currency }}</li>
-          {% endfor %}
-        </ul>
-      </details>
-      {% endif %}
-    </article>
-    {% else %}
-    <p class="hint">No reports found.</p>
-    {% endfor %}
-  </div>
-
-  <div class="pagination">
-    {% if sales_reports_page.pagination.has_prev %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page - 1 }}">Previous</a>{% endif %}
-    <span>Page {{ sales_reports_page.pagination.page }} of {{ sales_reports_page.pagination.total_pages }}</span>
-    {% if sales_reports_page.pagination.has_next %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page + 1 }}">Next</a>{% endif %}
-  </div>
-  </div>
-</section>
+      <button class="owner-report-summary" type="button" data-owner-modal-open="owner-report-{{ report.sales_report_id }}" aria-haspopup="dialog" aria-controls="owner-report-{{ report.sales_report_id }}">
+        <span><strong>Report #{{ report.sales_report_id }}</strong><small>{{ report.submitted_by }}</small></span>
+        <span><small>Reporting period</small>{{ report.period_start|nice_date }} – {{ report.period_end|nice_date }}</span>
+        <span><small>Total sales</small><strong>{{ report.total_sales|currency }}</strong></span>
+        <span><small>Orders</small><strong>{{ report.total_orders|number }}</strong></span>
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+      </button>
+      <dialog class="owner-detail-modal" id="owner-report-{{ report.sales_report_id }}" data-owner-modal aria-labelledby="owner-report-title-{{ report.sales_report_id }}">
+        <header class="owner-detail-modal-heading"><div><span class="eyebrow">Sales report</span><h2 id="owner-report-title-{{ report.sales_report_id }}">Report #{{ report.sales_report_id }}</h2><p>{{ report.submitted_by }}</p></div><button class="icon-button" type="button" data-owner-modal-close aria-label="Close report details" autofocus><i data-lucide="x" aria-hidden="true"></i></button></header>
+        <div class="owner-detail-modal-body">
+          <dl class="owner-detail-facts"><div><dt>Source</dt><dd>{{ report.report_source.replace('_', ' ')|title }}</dd></div><div><dt>Reporting period</dt><dd>{{ report.period_start|nice_date }} – {{ report.period_end|nice_date }}</dd></div><div><dt>Total sales</dt><dd>{{ report.total_sales|currency }}</dd></div><div><dt>Orders</dt><dd>{{ report.total_orders|number }}</dd></div></dl>
+          <section class="owner-detail-section"><h3>Report notes</h3><p class="owner-report-notes">{{ report.notes or 'No notes were provided.' }}</p></section>
+          <section class="owner-detail-section"><h3>Reported products</h3>{% set report_items = report.get('items', []) %}{% if report_items %}<div class="table-wrap"><table><thead><tr><th>Product</th><th>Quantity</th><th>Unit price</th><th>Line total</th></tr></thead><tbody>{% for item in report_items %}<tr><td>{{ item.name }}</td><td>{{ item.quantity_sold|number }} {{ item.unit }}</td><td>{{ item.unit_price|default(0)|currency }}</td><td>{{ item.line_total|currency }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="hint">No product lines were recorded for this report.</p>{% endif %}</section>
+        </div>
+      </dialog>
+      {% else %}<p class="owner-directory-empty">No reports found. Try another search or clear your filters.</p>{% endfor %}
+    </div>
+    {% with directory_page=sales_reports_page %}{% include 'portals/owner/_directory_pagination.html' %}{% endwith %}
+  </section>
 </div>

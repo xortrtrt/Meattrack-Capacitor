@@ -13,6 +13,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from app.config import APP_BASE_URL, database_dsn
 from app.business_time import business_today
 from app.security import hash_password
+from tools.forecast_dummy_sales import (
+    DEFAULT_DAYS,
+    DEFAULT_RANDOM_SEED,
+    SEED_PRODUCT_PROFILES,
+    generate_dummy_orders,
+    insert_dummy_orders,
+)
 
 
 def create_activation_link(cur, account_id: int) -> str:
@@ -122,7 +129,7 @@ def main():
         
         # Update resellers approved_by
         cur.execute("""
-            UPDATE resellers SET approved_by_account_id = %s, team_leader_account_id = %s,
+            UPDATE resellers SET reseller_status = 'active', approved_by_account_id = %s, team_leader_account_id = %s,
                 approved_at = %s WHERE reseller_id = %s;
         """, (leader_account_id, leader_account_id, today - timedelta(days=30), resellers['Lipa Fresh Mart']))
         
@@ -153,6 +160,16 @@ def main():
             RETURNING item_id, name;
         """)
         products = {name: item_id for item_id, name in cur.fetchall()}
+
+        forecast_history_start = today - timedelta(days=DEFAULT_DAYS - 1)
+        cur.execute(
+            """
+            UPDATE inventory_items
+            SET created_at = %s
+            WHERE item_id = ANY(%s);
+            """,
+            (forecast_history_start, list(products.values())),
+        )
 
         # 6. Product Recipes
         print("Seeding product recipes...")
@@ -206,6 +223,21 @@ def main():
                    0, quantity_available, 'MEATTRACK', 'Seeded opening finished-batch balance'
             FROM inventory_batches;
         """)
+
+        print("Seeding deterministic fulfilled sales history for forecasting...")
+        dummy_orders = generate_dummy_orders(
+            SEED_PRODUCT_PROFILES,
+            forecast_history_start,
+            today,
+            DEFAULT_RANDOM_SEED,
+        )
+        insert_dummy_orders(
+            cur,
+            dummy_orders,
+            products,
+            resellers['Lipa Fresh Mart'],
+            leader_account_id,
+        )
 
         # Commit everything
         conn.commit()

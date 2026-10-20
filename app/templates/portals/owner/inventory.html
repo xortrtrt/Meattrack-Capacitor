@@ -1,0 +1,38 @@
+<div class="owner-page owner-superuser-page owner-inventory-page">
+  <section class="panel owner-workspace-surface">
+    <header class="panel-heading"><div><span class="eyebrow">Stock oversight</span><h2>Inventory overview</h2><p class="hint">Available finished stock, raw materials, and production readiness in one place.</p></div><a class="button subtle" href="/portal/owner/alerts"><i data-lucide="bell-ring" aria-hidden="true"></i> View alerts</a></header>
+    <div class="owner-stock-summary">
+      <div><span>Finished products</span><strong>{{ products|length }}</strong><small>Products tracked</small></div>
+      <div><span>Available packs</span><strong>{{ products|sum(attribute='available')|number }}</strong><small>After order reservations</small></div>
+      <div><span>Raw materials</span><strong>{{ raw_materials|length }}</strong><small>Active material types</small></div>
+      <div><span>Open alerts</span><strong>{{ alerts|selectattr('status', 'ne', 'resolved')|list|length }}</strong><small>Awaiting resolution</small></div>
+    </div>
+    <nav class="owner-stock-navigation" aria-label="Inventory workspaces">
+      <a href="/portal/owner/materials"><i data-lucide="boxes" aria-hidden="true"></i><span><strong>Raw materials</strong><small>Stock and receipts</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+      <a href="/portal/owner/batches"><i data-lucide="layers" aria-hidden="true"></i><span><strong>Batches</strong><small>Availability and expiry</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+      <a href="/portal/owner/movements"><i data-lucide="arrow-left-right" aria-hidden="true"></i><span><strong>Movement history</strong><small>Receipts, production, and sales</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+    </nav>
+  </section>
+  <div class="owner-stock-layout">
+    <section class="panel owner-workspace-surface">
+      <div class="panel-heading"><div><h2>Finished stock</h2><p class="hint">Availability excludes stock reserved for orders.</p></div><a href="/portal/owner/products">Manage prices</a></div>
+      <div class="table-wrap owner-inventory-table"><table><thead><tr><th>Product</th><th>Available</th><th>Recipe</th><th>Stock status</th></tr></thead><tbody>
+        {% for product in products %}<tr><td><strong>{{ product.name }}</strong><small>{{ product.category }}</small></td><td class="owner-stock-number">{{ product.available|number }} {{ product.unit }}</td><td>{{ product.recipe_count|default(0) }} materials</td><td><span class="status-badge {{ 'active' if product.available > 0 else 'warning' }}">{{ 'Available' if product.available > 0 else 'Out of stock' }}</span></td></tr>
+        {% else %}<tr><td colspan="4">No finished products are configured.</td></tr>{% endfor %}
+      </tbody></table></div>
+    </section>
+    <aside class="panel owner-workspace-surface">
+      <div class="panel-heading"><div><h2>Material stock</h2><p class="hint">Quantities in each material's unit.</p></div></div>
+      <div class="owner-material-snapshot">{% for material in raw_materials %}<div><span><strong>{{ material.name }}</strong><small>{{ material.category.replace('_', ' ') }}</small></span><strong>{{ material.available|number }} {{ material.unit }}</strong></div>{% else %}<p class="hint">No raw materials are configured.</p>{% endfor %}</div>
+      <a class="owner-stock-panel-link" href="/portal/owner/materials">Manage material receipts <i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+    </aside>
+  </div>
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Production</span><h2>Record production</h2><p class="hint">An Owner override requires verification and a reason. Materials are consumed according to the product recipe.</p></div></div>
+    <details class="owner-override"><summary>Owner production override</summary><form action="/portal/owner/inventory/production" method="post"><label>Product<select required name="product_id"><option value="">Choose product</option>{% for product in products %}<option value="{{ product.product_id }}">{{ product.name }}</option>{% endfor %}</select></label><label>Batch code<input required minlength="4" name="batch_code"></label><label>Quantity (whole packs)<input required type="number" min="1" step="1" name="quantity" max="999999999"></label><label>Expiry date<input required type="date" name="expiry_date"></label><label>Reason<textarea required minlength="5" maxlength="500" name="reason"></textarea></label><button class="button primary">Produce as owner</button></form></details>
+  </section>
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Production reference</span><h2>Product recipes</h2><p class="hint">Material quantities required per finished pack.</p></div></div>
+    <div class="table-wrap owner-inventory-table"><table><thead><tr><th>Finished product</th><th>Raw material</th><th>Required quantity</th></tr></thead><tbody>{% for recipe in product_recipes %}<tr><td>{{ recipe.product_name }}</td><td>{{ recipe.raw_material_name }}</td><td>{{ recipe.quantity_required|number }} {{ recipe.unit }}</td></tr>{% else %}<tr><td colspan="3">No product recipes have been configured.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</div>

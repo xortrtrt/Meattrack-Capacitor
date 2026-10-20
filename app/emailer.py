@@ -124,6 +124,50 @@ def send_login_otp(*, to_email: str, name: str, otp_code: str) -> tuple[bool, st
     )
 
 
+def send_owner_step_up_otp(*, to_email: str, name: str, otp_code: str) -> tuple[bool, str]:
+    return _send_email(
+        to_email=to_email,
+        subject="MEATTRACK owner action verification",
+        body="\n".join(
+            [
+                f"Hello {name},",
+                "",
+                "Use this one-time password to unlock sensitive owner actions:",
+                "",
+                otp_code,
+                "",
+                "This OTP expires in 10 minutes. Do not share it with anyone.",
+                "If you did not request this code, sign out and contact another owner.",
+                "",
+                "Batangas Premium",
+            ]
+        ),
+        failure_message="Owner verification email could not be sent.",
+        success_message="Owner verification email sent.",
+    )
+
+
+def send_account_password_reset(*, to_email: str, name: str, reset_url: str) -> tuple[bool, str]:
+    safe_name = escape(name)
+    safe_url = escape(reset_url, quote=True)
+    return _send_email(
+        to_email=to_email,
+        subject="Reset your MEATTRACK password",
+        body="\n".join([
+            f"Hello {name},", "", "An owner requested a password reset for your MEATTRACK account.",
+            f"Set a new password within 24 hours: {reset_url}", "",
+            "If you were not expecting this, contact an owner before using the link.", "", "Batangas Premium",
+        ]),
+        html_body=(
+            f"<p>Hello {safe_name},</p><p>An owner requested a password reset for your MEATTRACK account.</p>"
+            f'<p><a href="{safe_url}">Set a new password</a></p>'
+            "<p>This single-use link expires in 24 hours.</p>"
+        ),
+        failure_message="Password reset email could not be sent.",
+        success_message="Password reset email sent.",
+    )
+
+
 def send_inquiry_status_update(*, to_email: str, name: str, business_name: str) -> tuple[bool, str]:
     return _send_email(
         to_email=to_email,

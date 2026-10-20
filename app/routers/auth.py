@@ -120,7 +120,12 @@ async def activation_submit(
             status_code=400,
         )
     rotate_session(request)
-    return redirect_to(path_with_query("/login", message=f"{account['name']} is activated. You can now sign in."))
+    message = (
+        f"{account['name']} is activated. You can now sign in."
+        if account.get("purpose") == "activation"
+        else "Password updated. You can now sign in."
+    )
+    return redirect_to(path_with_query("/login", message=message))
 
 
 @router.post("/login")

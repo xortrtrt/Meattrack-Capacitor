@@ -1,4 +1,28 @@
 (function () {
+    function placeOwnerUtilities() {
+        if (!document.body.classList.contains("role-owner")) return;
+        const toolbar = document.querySelector(".portal-topbar");
+        const sidebar = document.querySelector(".portal-sidebar");
+        const main = document.querySelector(".portal-main");
+        const navigation = sidebar?.querySelector(".portal-nav");
+        if (!toolbar || !sidebar || !main || !navigation) return;
+        const desktop = window.matchMedia("(min-width: 861px)");
+        const place = () => {
+            const menu = toolbar.querySelector("[data-notification-menu]");
+            if (menu) menu.open = false;
+            if (desktop.matches) sidebar.insertBefore(toolbar, navigation);
+            else main.prepend(toolbar);
+        };
+        desktop.addEventListener("change", place);
+        sidebar.addEventListener("scroll", () => {
+            const menu = toolbar.querySelector("[data-notification-menu]");
+            if (desktop.matches && menu?.open) menu.open = false;
+        }, { passive: true });
+        place();
+    }
+
+    placeOwnerUtilities();
+
     function bindPortalDrawer() {
         const toggle = document.querySelector("[data-portal-nav-toggle]");
         const drawer = document.querySelector("[data-portal-drawer]");

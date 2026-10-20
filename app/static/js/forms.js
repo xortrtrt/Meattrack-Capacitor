@@ -1,11 +1,4 @@
 (function () {
-    const today = new Date().toISOString().slice(0, 10);
-    document.querySelectorAll('input[type="date"]').forEach((input) => {
-        if (!input.value) {
-            input.value = today;
-        }
-    });
-
     document.querySelectorAll("form").forEach((form) => {
         form.addEventListener("submit", () => {
             if (form.hasAttribute("data-chatbot-form") || form.hasAttribute("data-async-form")) {

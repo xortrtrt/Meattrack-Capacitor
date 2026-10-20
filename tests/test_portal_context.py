@@ -76,6 +76,8 @@ READ_FUNCTIONS = (
     "count_order_refunds",
     "refund_status_counts",
     "list_reseller_refund_conversations",
+    "owner_operations_summary",
+    "business_setting",
 )
 
 EXPECTED_CALLS = {
@@ -85,12 +87,13 @@ EXPECTED_CALLS = {
         "list_forecasts",
         "reseller_sales_series",
         "reseller_most_bought_products",
+        "owner_operations_summary",
         "list_notifications",
         "unread_notification_count",
     },
     ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
     ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
-    ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_forecast_runs", "list_notifications", "unread_notification_count"},
+    ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_forecast_runs", "business_setting", "list_notifications", "unread_notification_count"},
     ("owner", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "list_notifications", "unread_notification_count"},
     ("owner", "accounts"): {
         "list_accounts",
@@ -153,6 +156,8 @@ def install_read_spies(monkeypatch):
     for name in READ_FUNCTIONS:
         result = (
             METRICS if name == "current_metrics"
+            else {} if name == "owner_operations_summary"
+            else 7 if name == "business_setting"
             else {"pending": 0, "processing": 0, "completed": 0, "failed": 0} if name == "refund_status_counts"
             else 0 if name.startswith(("count_", "unread_", "reseller_cart_count"))
             else []
@@ -410,7 +415,7 @@ def test_section_filters_are_applied(monkeypatch):
             "team_leader_account_id": 17,
             "q": "lipa",
             "status": "active",
-            "page": 2,
+            "page": 1,
             "page_size": 10,
             "sort": "business_asc",
         },
@@ -439,12 +444,12 @@ def test_section_filters_are_applied(monkeypatch):
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/order?q=tocino&type=Pork&page=2").status_code == 200
-    assert calls["list_products"] == [((), {"q": "tocino", "category": "Pork", "page": 2, "page_size": 8, "sort": "", "active_only": True})]
+    assert calls["list_products"] == [((), {"q": "tocino", "category": "Pork", "page": 1, "page_size": 8, "sort": "", "active_only": True})]
     assert calls["count_products"] == [((), {"q": "tocino", "category": "Pork", "active_only": True})]
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/history?q=order&status=pending&page=2").status_code == 200
-    assert calls["list_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None, "page": 2, "page_size": 10, "sort": ""})]
+    assert calls["list_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None, "page": 1, "page_size": 10, "sort": ""})]
     assert calls["count_orders"] == [((), {"order_type": "reseller", "q": "order", "status": "pending", "team_leader_account_id": None, "reseller_account_id": None})]
 
 
@@ -749,7 +754,7 @@ def test_inventory_logs_apply_movement_category_and_render_compact_ledger(monkey
     assert response.status_code == 200
     assert calls["list_inventory_movements"] == [(
         (),
-        {"q": "tocino", "category": "production", "page": 2, "page_size": 10, "sort": ""},
+        {"q": "tocino", "category": "production", "page": 1, "page_size": 10, "sort": ""},
     )]
     assert calls["count_inventory_movements"] == [((), {"q": "tocino", "category": "production"})]
     assert "Stock movements" in response.text
@@ -1507,21 +1512,24 @@ def test_owner_products_render_product_cards_and_price_form(monkeypatch):
     assert "repeat(2, minmax(0, 1fr))" in owner_css
 
 
-def test_owner_product_price_update_route_still_posts(monkeypatch):
+@pytest.mark.parametrize("price", ["129", "129.75"])
+def test_owner_product_price_update_route_still_posts(monkeypatch, price):
     calls = []
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(repositories, "product_by_id", lambda product_id: {"product_id": product_id})
+    monkeypatch.setattr(owner_portal, "require_owner_step_up", lambda request, section: None)
+    monkeypatch.setattr(repositories, "product_by_id", lambda product_id: {"product_id": product_id, "base_price": 99})
     monkeypatch.setattr(repositories, "update_product_price", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(repositories, "record_owner_audit", lambda *args, **kwargs: None)
 
     response = client.post(
         "/portal/owner/products",
-        data={"product_id": 1, "base_price": 129},
+        data={"product_id": 1, "base_price": price, "reason": "Supplier price update"},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert calls == [((1, Decimal("129.00")), {"actor_account_id": None})]
+    assert calls == [((1, Decimal(price).quantize(Decimal("0.01"))), {"actor_account_id": None})]
 
 
 def test_owner_accounts_render_responsive_cards(monkeypatch):
@@ -1579,18 +1587,21 @@ def test_owner_accounts_render_responsive_cards(monkeypatch):
     assert response.status_code == 200
     assert "owner-account-card" in response.text
     assert "owner-assignment-card" not in response.text
+    assert "Reseller team assignments" not in response.text
     assert "/portal/owner/resellers/2/team-leader" not in response.text
-    assert '<option value="reseller"' not in response.text
+    assert '<option value="reseller"' in response.text
     assert "/portal/owner/accounts/4/role" in response.text
     assert '<option value="sales" selected>Sales leader</option>' in response.text
-    assert list_calls[0]["account_types"] == ("owner", "team_leader")
-    assert count_calls[0]["account_types"] == ("owner", "team_leader")
+    assert list_calls[0]["account_types"] == ("owner", "team_leader", "reseller")
+    assert count_calls[0]["account_types"] == ("owner", "team_leader", "reseller")
 
 
 def test_owner_can_update_only_team_leader_account_roles(monkeypatch):
     client = TestClient(main.app)
     updates = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(owner_portal, "require_owner_step_up", lambda request, section: None)
+    monkeypatch.setattr(repositories, "record_owner_audit", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         repositories,
         "update_team_leader_account_role",
@@ -1599,7 +1610,7 @@ def test_owner_can_update_only_team_leader_account_roles(monkeypatch):
 
     response = client.post(
         "/portal/owner/accounts/4/role",
-        data={"team_leader_role": "sales-supervisor"},
+        data={"team_leader_role": "sales-supervisor", "reason": "Coverage role change"},
         follow_redirects=False,
     )
 
@@ -1607,10 +1618,11 @@ def test_owner_can_update_only_team_leader_account_roles(monkeypatch):
     assert updates == [((4, "sales-supervisor"), {"actor_account_id": None})]
 
 
-def test_owner_activation_route_excludes_reseller_accounts(monkeypatch):
+def test_owner_activation_route_includes_reseller_accounts(monkeypatch):
     client = TestClient(main.app)
     calls = []
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(owner_portal, "require_owner_step_up", lambda request, section: None)
     monkeypatch.setattr(
         repositories,
         "resend_activation",
@@ -1620,10 +1632,10 @@ def test_owner_activation_route_excludes_reseller_accounts(monkeypatch):
     response = client.post("/portal/owner/accounts/8/activation", follow_redirects=False)
 
     assert response.status_code == 303
-    assert calls == [((8, 0), {"account_types": ("owner", "team_leader")})]
+    assert calls == [((8, 0), {"account_types": ("owner", "team_leader", "reseller")})]
 
 
-def test_owner_reports_render_mobile_cards(monkeypatch):
+def test_owner_reports_render_summary_and_detail_modal(monkeypatch):
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
@@ -1650,8 +1662,10 @@ def test_owner_reports_render_mobile_cards(monkeypatch):
     response = client.get("/portal/owner/reports?q=sales&page=1")
 
     assert response.status_code == 200
-    assert "owner-report-card" in response.text
-    assert "owner-report-table" in response.text
+    assert 'data-owner-modal-open="owner-report-1"' in response.text
+    assert 'id="owner-report-1"' in response.text
+    assert "Monthly report" in response.text
+    assert "No product lines were recorded" in response.text
 
 
 def test_team_leader_reports_render_business_date_products_pagination_and_mobile_cards(monkeypatch):
@@ -1755,6 +1769,7 @@ def test_owner_forecasts_render_prophet_ui(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "business_setting", lambda *args, **kwargs: 7)
     monkeypatch.setattr(repositories, "count_forecasts", lambda *args, **kwargs: 1)
     monkeypatch.setattr(repositories, "list_forecast_runs", lambda *args, **kwargs: [])
     monkeypatch.setattr(
@@ -1857,6 +1872,7 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(repositories, "owner_operations_summary", lambda: {})
     monkeypatch.setattr(
         repositories,
         "current_metrics",
@@ -1974,6 +1990,7 @@ def test_owner_dashboard_sales_chart_uses_continuous_line_series(monkeypatch):
     monkeypatch.setattr(repositories, "list_products", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "list_forecasts", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "reseller_most_bought_products", lambda *args, **kwargs: [])
+    monkeypatch.setattr(repositories, "owner_operations_summary", lambda: {})
     monkeypatch.setattr(
         repositories,
         "reseller_sales_series",
@@ -2091,11 +2108,11 @@ def test_sales_supervisor_workflows_share_the_sales_desk_theme():
     base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
     refund_css = open("app/static/css/refunds.css", encoding="utf-8").read()
 
-    assert "20261019-supervisor-theme-1" in base_template
-    assert ".role-sales-supervisor .refund-workspace" in refund_css
-    assert ".role-sales-supervisor .refund-hero" in refund_css
-    assert ".role-sales-supervisor .refund-filters input" in refund_css
-    assert ".role-sales-supervisor .refund-pane-tabs a.is-active" in refund_css
+    assert "20261019-business-theme-2" in base_template
+    assert ".refund-workspace.refund-theme-business" in refund_css
+    assert ".refund-theme-business .refund-hero" in refund_css
+    assert ".refund-theme-business .refund-filters input" in refund_css
+    assert ".refund-theme-business .refund-pane-tabs a.is-active" in refund_css
 
 
 def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
@@ -2250,7 +2267,9 @@ def test_sales_supervisor_account_post_cannot_create_owner(monkeypatch):
     assert blocked.status_code == 303
     assert "Sales+supervisors+can+create+team+leader+accounts+only" in blocked.headers["location"]
     assert allowed.status_code == 303
-    assert created == [(("team_leader", "Supervisor Two", "supervisor2@example.test"), {"team_leader_role": "sales-supervisor"})]
+    assert created == [(("team_leader", "Supervisor Two", "supervisor2@example.test"), {
+        "team_leader_role": "sales-supervisor", "actor_account_id": None,
+    })]
 
 
 def test_sales_supervisor_activation_route_includes_reseller_accounts(monkeypatch):
@@ -2421,7 +2440,7 @@ def test_notification_center_is_available_to_every_portal_role(monkeypatch, role
     assert f'action="/portal/{role_key}/notifications"' in response.text
     assert calls["list_notification_history"] == [(
         (42,),
-        {"status": "unread", "category": "order", "page": 2, "page_size": 15},
+        {"status": "unread", "category": "order", "page": 1, "page_size": 15},
     )]
     assert calls["count_notification_history"] == [(
         (42,),
@@ -2657,6 +2676,25 @@ def test_inventory_finished_products_partial_returns_only_product_region(monkeyp
     assert "inventory-product-card" in response.text
     assert "portal-sidebar" not in response.text
     assert "Raw materials" not in response.text
+
+
+@pytest.mark.parametrize("section", ["batches", "movements"])
+def test_owner_inventory_ledgers_use_ten_rows_per_page(monkeypatch, section):
+    calls = []
+    monkeypatch.setattr(shared_portal, "portal_filters", lambda request: {"q": "stock", "type": "", "page": 2, "sort": "newest"})
+    monkeypatch.setattr(owner_portal.data, f"list_inventory_{section}", lambda **kwargs: calls.append(kwargs) or [])
+    monkeypatch.setattr(owner_portal.data, f"count_inventory_{section}", lambda **kwargs: 25)
+    monkeypatch.setattr(owner_portal.data, "list_inventory_items", lambda **kwargs: [])
+    if section == "movements":
+        monkeypatch.setattr(owner_portal.data, "list_inventory_batches", lambda **kwargs: [])
+
+    context = getattr(owner_portal, f"{section}_context")(None)
+
+    assert calls[0]["page_size"] == 10
+    assert calls[0]["page"] == 2
+    assert calls[0]["q"] == "stock"
+    assert context[f"{section}_page"]["pagination"]["page_size"] == 10
+    assert context[f"{section}_page"]["pagination"]["total_pages"] == 3
 
 
 def test_legacy_inventory_items_redirects_to_raw_materials(monkeypatch):

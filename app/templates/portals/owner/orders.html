@@ -1,0 +1,71 @@
+<div class="owner-page owner-orders-page">
+  <section class="panel owner-order-ledger">
+    <header class="owner-order-ledger-heading">
+      <div><span class="eyebrow">Order desk</span><h2>Reseller order review</h2><p>Review orders across the business. Owner decisions require verification and a recorded reason.</p></div>
+      <div class="owner-order-ledger-count"><strong>{{ orders_page.pagination.total|number if orders_page.pagination is defined else orders|length }}</strong><span>reseller orders</span></div>
+    </header>
+
+    <form class="owner-order-toolbar" method="get" data-auto-filter data-async-filter-target="[data-async-filter-results]">
+      <label class="owner-order-search"><span class="sr-only">Search reseller orders</span><i data-lucide="search" aria-hidden="true"></i><input name="q" value="{{ orders_page.filters.q }}" placeholder="Search order, reseller, or product"></label>
+      <label class="owner-order-select"><span class="sr-only">Order status</span><i data-lucide="list-filter" aria-hidden="true"></i><select name="status" aria-label="Filter orders by status"><option value="">All statuses</option>{% for value in ['to_pay', 'pending', 'approved', 'fulfilled', 'rejected', 'cancelled', 'expired', 'refunded'] %}<option value="{{ value }}" {{ 'selected' if orders_page.filters.status == value else '' }}>{{ value.replace('_', ' ')|title }}</option>{% endfor %}</select></label>
+      <label class="owner-order-select"><span class="sr-only">Sort orders</span><i data-lucide="arrow-up-down" aria-hidden="true"></i><select name="sort" aria-label="Sort orders">{% for value, label in [('newest', 'Newest first'), ('oldest', 'Oldest first'), ('total_desc', 'Highest amount')] %}<option value="{{ value }}" {{ 'selected' if orders_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
+      <button class="sr-only" type="submit">Filter orders</button>
+    </form>
+
+    <div class="owner-order-results" data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+      <div class="owner-order-card-list">
+        {% for item in orders %}
+        <article class="owner-order-card" id="order-{{ item.order_id }}">
+          <button class="owner-order-card-summary" type="button" data-owner-order-open="owner-order-dialog-{{ item.order_id }}" aria-haspopup="dialog" aria-controls="owner-order-dialog-{{ item.order_id }}" aria-label="View order {{ item.order_id }} from {{ item.reseller }}">
+            <div class="owner-order-identity"><span class="owner-order-number">Order #{{ item.order_id }}</span><strong>{{ item.reseller }}</strong>{% if item.order_date %}<time>{{ item.order_date|nice_date }}</time>{% endif %}<span class="status-badge {{ item.status }}">{{ item.status.replace('_', ' ') }}</span></div>
+            <div class="owner-order-preview" aria-label="{{ item['items']|length }} product lines">{% for line in item['items'][:3] %}<img src="{{ line.name|product_image|media_url }}" alt="" width="48" height="48" loading="lazy">{% endfor %}{% if item['items']|length > 3 %}<span>+{{ item['items']|length - 3 }}</span>{% endif %}</div>
+            <div class="owner-order-total"><small>Total</small><strong>{{ item.total_amount|currency }}</strong></div>
+            <span class="owner-order-chevron" aria-hidden="true"><i data-lucide="arrow-up-right"></i></span>
+          </button>
+          <dialog class="owner-order-modal" id="owner-order-dialog-{{ item.order_id }}" aria-labelledby="owner-order-dialog-title-{{ item.order_id }}" data-owner-order-dialog>
+            <header class="owner-order-modal-heading">
+              <div><span class="eyebrow">Owner order review</span><h2 id="owner-order-dialog-title-{{ item.order_id }}">Order #{{ item.order_id }}</h2><p>{{ item.reseller }} · {{ item.total_amount|currency }}</p></div>
+              <button class="icon-button" type="button" data-owner-order-close aria-label="Close order details" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
+            </header>
+          <div class="owner-order-card-body">
+            <section class="owner-order-products" aria-labelledby="owner-order-items-{{ item.order_id }}">
+              <header><div><span class="eyebrow">Order contents</span><h3 id="owner-order-items-{{ item.order_id }}">{{ item['items']|length }} products</h3></div></header>
+              <div class="owner-order-product-list">
+                {% for line in item['items'] %}
+                <article class="owner-order-product-line"><img src="{{ line.name|product_image|media_url }}" alt="{{ line.name }}" width="62" height="62" loading="lazy"><div><strong>{{ line.name }}</strong><small>{{ line.quantity|number }} packs{% if line.unit_price is defined %} × {{ line.unit_price|currency }}{% endif %}</small></div>{% if line.line_total is defined %}<strong>{{ line.line_total|currency }}</strong>{% endif %}</article>
+                {% else %}<p class="hint">No products were recorded for this order.</p>{% endfor %}
+              </div>
+            </section>
+            <aside class="owner-order-review" aria-label="Owner oversight and actions">
+              <header><div><span class="eyebrow">Owner oversight</span><h3>Assignment & payment</h3></div></header>
+              <p class="hint">Assigned to {{ item.team_leader_name or 'Nobody' }}</p>
+              {% if item.payment_proofs %}<div class="owner-order-proof-links"><a href="/portal/order-payment-proofs/{{ item.payment_proofs[0].order_payment_proof_id }}" target="_blank" rel="noopener"><i data-lucide="image" aria-hidden="true"></i><span><strong>View payment proof</strong><small>Opens in a new tab</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a></div>{% else %}<p class="hint">No payment proof submitted.</p>{% endif %}
+              {% if item.status in ['pending', 'approved'] %}
+              <details class="owner-override"><summary>Owner override</summary>
+                <form action="/portal/owner/orders/{{ item.order_id }}/{{ 'fulfill' if item.status == 'approved' else 'approve' }}" method="post">
+                  <label>Override reason<textarea required minlength="5" maxlength="500" name="reason"></textarea></label>
+                  <button class="button primary" type="submit">{{ 'Fulfill' if item.status == 'approved' else 'Approve' }} as owner</button>
+                </form>
+                {% if item.status == 'pending' %}
+                <form action="/portal/owner/orders/{{ item.order_id }}/reject" method="post">
+                  <label>Override reason<textarea required minlength="5" maxlength="500" name="reason"></textarea></label>
+                  <label>Reason sent to reseller<textarea required minlength="5" maxlength="1000" name="rejection_reason"></textarea></label>
+                  <label>Was payment received?<select required name="payment_received"><option value="">Choose payment status</option><option value="yes">Yes — refund review is required</option><option value="no">No payment received</option></select></label>
+                  <button class="button danger" type="submit">Reject as owner</button>
+                </form>
+                {% endif %}
+              </details>
+              {% endif %}
+            </aside>
+          </div>
+          </dialog>
+        </article>
+        {% else %}<div class="owner-order-empty-state"><span><i data-lucide="clipboard-check" aria-hidden="true"></i></span><strong>No reseller orders match these filters.</strong><small>Try another search or status.</small></div>{% endfor %}
+      </div>
+      <footer class="owner-order-footer">
+        <div><form action="/portal/owner/exports/orders.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form><a class="button subtle" href="/portal/owner/orders">Clear filters</a></div>
+        {% if orders_page.pagination is defined %}<nav class="pagination owner-order-pagination" aria-label="Reseller order pages">{% if orders_page.pagination.has_prev %}<a href="{{ request.url.include_query_params(page=orders_page.pagination.page - 1) }}">Previous</a>{% endif %}<span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>{% if orders_page.pagination.has_next %}<a href="{{ request.url.include_query_params(page=orders_page.pagination.page + 1) }}">Next</a>{% endif %}</nav>{% endif %}
+      </footer>
+    </div>
+  </section>
+</div>

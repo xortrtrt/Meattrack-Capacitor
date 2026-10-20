@@ -1,0 +1,10 @@
+/* Allow portal grid children to shrink instead of widening the document. */
+.role-team-leader .portal-main { grid-template-columns: minmax(0, 1fr); }
+.role-team-leader .stock-ledger { min-width: 0; max-width: 100%; }
+.role-team-leader .stock-ledger__header > div:first-child { min-width: 0; }
+.role-team-leader .movement-categories { min-width: 0; max-width: 100%; }
+.role-team-leader .batch-row { min-width: 0; }
+@media (max-width: 640px) {
+  .role-team-leader.leader-role-sales:not(.section-dashboard) .portal-topbar,
+  .role-team-leader.section-dashboard .portal-topbar { margin-inline: -10px; padding-inline: 10px; }
+}

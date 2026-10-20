@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from functools import wraps
+from psycopg2.errors import UniqueViolation
 
 from app import inventory_measurements as measurements
 from app.business_time import business_now, business_today
@@ -22,6 +24,18 @@ from .._shared import (
 )
 from ..notifications import _create_notification_cursor
 from .movements import _insert_inventory_movement, _inventory_actor_name
+
+
+def _batch_code_errors(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except UniqueViolation as exc:
+            if exc.diag.constraint_name == "inventory_batches_batch_code_key":
+                raise ValueError("This batch code already exists.") from exc
+            raise
+    return wrapped
 
 
 def create_product_with_recipe(
@@ -155,6 +169,7 @@ def update_product_pack_content(
     return clean_row(product)
 
 
+@_batch_code_errors
 def produce_product(
     product_id: int,
     batch_code: str,
@@ -162,6 +177,10 @@ def produce_product(
     expiry_date: date,
     actor_account_id: int | None = None,
 ) -> dict:
+    from ..superuser import business_setting
+
+    near_expiry_days = int(business_setting("inventory.near_expiry_days"))
+    critical_expiry_days = int(business_setting("inventory.critical_expiry_days"))
     produced_quantity = measurements.parse_whole_packs(quantity, "Produced quantity")
     clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
     if len(clean_batch_code) < 4:
@@ -183,7 +202,7 @@ def produce_product(
 
         cur.execute("SELECT batch_id FROM inventory_batches WHERE batch_code = %s;", (clean_batch_code,))
         if cur.fetchone() is not None:
-            raise ValueError("Batch code already exists.")
+            raise ValueError("This batch code already exists.")
 
         cur.execute("""
             SELECT pr.material_item_id AS raw_material_id, pr.quantity_required, pr.unit AS recipe_unit,
@@ -268,21 +287,21 @@ def produce_product(
         )
 
         days = (expiry_date - business_today()).days
-        if days <= 7:
+        if days <= near_expiry_days:
             cur.execute("""
                 INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
                 VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
             """, (
-                'warning' if days > 2 else 'critical',
+                'warning' if days > critical_expiry_days else 'critical',
                 product_id, batch["product_batch_id"],
                 f"{produced_quantity:g} {product['unit']} expires in {days} day(s).",
                 business_now()
             ))
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="produced_product_batch", entity_type="inventory_batches", entity_id=batch["product_batch_id"])
-        if days <= 7:
+        if days <= near_expiry_days:
             _create_notification_cursor(
                 cur, recipient_role="team-leader", category="inventory",
-                severity="critical" if days <= 2 else "warning", title="Batch expiry warning",
+                severity="critical" if days <= critical_expiry_days else "warning", title="Batch expiry warning",
                 message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
                 target_url="/portal/team-leader/inventory", source_type="inventory_batches",
                 source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
@@ -290,6 +309,7 @@ def produce_product(
     return clean_row(batch)
 
 
+@_batch_code_errors
 def add_product_batch(
     product_id: int,
     batch_code: str,
@@ -298,6 +318,10 @@ def add_product_batch(
     source_type: str = "direct_received",
     actor_account_id: int | None = None,
 ) -> dict:
+    from ..superuser import business_setting
+
+    near_expiry_days = int(business_setting("inventory.near_expiry_days"))
+    critical_expiry_days = int(business_setting("inventory.critical_expiry_days"))
     clean_quantity = measurements.parse_whole_packs(quantity)
     clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
     if source_type != "direct_received":
@@ -337,21 +361,21 @@ def add_product_batch(
         )
 
         days = (expiry_date - business_today()).days
-        if days <= 7:
+        if days <= near_expiry_days:
             cur.execute("""
                 INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
                 VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
             """, (
-                'warning' if days > 2 else 'critical',
+                'warning' if days > critical_expiry_days else 'critical',
                 product_id, batch["product_batch_id"],
                 f"{clean_quantity:g} {product['unit']} expires in {days} day(s).",
                 business_now(),
             ))
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="registered_product_batch", entity_type="inventory_batches", entity_id=batch["product_batch_id"])
-        if days <= 7:
+        if days <= near_expiry_days:
             _create_notification_cursor(
                 cur, recipient_role="team-leader", category="inventory",
-                severity="critical" if days <= 2 else "warning", title="Batch expiry warning",
+                severity="critical" if days <= critical_expiry_days else "warning", title="Batch expiry warning",
                 message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
                 target_url="/portal/team-leader/inventory", source_type="inventory_batches",
                 source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
