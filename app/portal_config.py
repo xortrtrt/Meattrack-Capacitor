@@ -62,7 +62,6 @@ portal_nav = {
         ("operations", "Operations", "activity"),
         ("inquiries", "Inquiries", "user-check"),
         ("orders", "Orders", "clipboard-check"),
-        ("conversations", "Conversations", "messages-square"),
         ("inventory", "Inventory", "boxes"),
         ("materials", "Materials", "beef"),
         ("batches", "Batches", "package-check"),
@@ -74,8 +73,6 @@ portal_nav = {
         ("refunds", "Refunds", "badge-dollar-sign"),
         ("accounts", "Users & Access", "shield-check"),
         ("resellers", "Resellers", "users"),
-        ("audit", "Audit Logs", "scroll-text"),
-        ("security", "Security", "shield-alert"),
         ("settings", "Settings", "settings"),
         ("profile", "Profile", "user-cog"),
     ],
@@ -84,11 +81,11 @@ portal_nav = {
 
 owner_nav_groups = (
     ("Overview", ("dashboard", "operations")),
-    ("Sales operations", ("inquiries", "orders", "conversations", "refunds")),
+    ("Sales operations", ("inquiries", "orders", "refunds")),
     ("Inventory", ("inventory", "materials", "batches", "movements", "alerts", "products")),
     ("People", ("accounts", "resellers")),
     ("Intelligence", ("reports", "forecasts")),
-    ("Governance", ("audit", "security", "settings")),
+    ("Preferences", ("settings",)),
     ("Account", ("profile",)),
 )
 
@@ -96,6 +93,7 @@ owner_nav_groups = (
 # Workflow pages that are valid portal destinations without appearing in navigation.
 portal_secondary_sections = {
     "owner": {
+        "verify": ("Owner verification", "key-round"),
         "notifications": ("Notifications", "bell"),
     },
     "team-leader": {

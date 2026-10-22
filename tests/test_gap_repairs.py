@@ -62,7 +62,7 @@ def test_owner_recovery_is_allowlisted_bound_and_one_use():
 
 @pytest.mark.parametrize("target", ["https://evil.test/portal/owner/products", "//evil.test/portal/owner/products", "/portal/reseller/profile", "/portal/owner/system", "/portal/owner/unknown", "http://["])
 def test_unsafe_resume_targets_are_rejected(target):
-    assert owner_recovery.safe_destination(request(), target) == "/portal/owner/security"
+    assert owner_recovery.safe_destination(request(), target) == "/portal/owner/verify"
 
 
 def test_owner_recovery_expiry_account_change_and_oversized_draft():
@@ -72,7 +72,7 @@ def test_owner_recovery_expiry_account_change_and_oversized_draft():
     assert req.session[owner_recovery.SESSION_KEY]["discarded"]
     owner_recovery.capture(req, "products", {"base_price": "9"})
     req.session[owner_recovery.SESSION_KEY]["created_at"] -= 901
-    assert owner_recovery.complete(req) == "/portal/owner/security"
+    assert owner_recovery.complete(req) == "/portal/owner/verify"
     assert owner_recovery.SESSION_KEY not in req.session
     owner_recovery.capture(req, "products", {"base_price": "9"})
     req.session["account_id"] = 2
@@ -94,7 +94,7 @@ def test_step_up_http_captures_form_and_resumes_without_post_replay(monkeypatch)
     assert response.status_code == 303
     assert state[owner_recovery.SESSION_KEY]["fields"]["base_price"] == "129.75"
     state["owner_step_up_challenge_id"] = 1
-    response = client.post("/portal/owner/security/step-up/confirm", data={"otp_code": "123456"}, follow_redirects=False)
+    response = client.post("/portal/owner/verify/step-up/confirm", data={"otp_code": "123456"}, follow_redirects=False)
     parsed = urlsplit(response.headers["location"])
     assert parsed.path == "/portal/owner/products"
     assert parse_qs(parsed.query)["q"] == ["bacon"]
@@ -120,9 +120,9 @@ def test_recovery_retains_context_through_wrong_otp_and_resend(monkeypatch):
     monkeypatch.setattr(repositories, "request_owner_step_up", lambda *args: {"challenge_id": 2, "email": "owner@test.invalid", "name": "Owner", "otp_code": "123456"})
     monkeypatch.setattr(owner, "send_owner_step_up_otp", lambda **kw: (True, "sent"))
     client = TestClient(main.app)
-    assert client.post("/portal/owner/security/step-up/confirm", data={"otp_code": "000000"}, follow_redirects=False).status_code == 303
+    assert client.post("/portal/owner/verify/step-up/confirm", data={"otp_code": "000000"}, follow_redirects=False).status_code == 303
     assert state[owner_recovery.SESSION_KEY] == original
-    assert client.post("/portal/owner/security/step-up/request", follow_redirects=False).status_code == 303
+    assert client.post("/portal/owner/verify/step-up/request", follow_redirects=False).status_code == 303
     assert state[owner_recovery.SESSION_KEY] == original
     assert state["owner_step_up_challenge_id"] == 2
 
@@ -137,7 +137,7 @@ def test_recovery_bounds_destination_and_preserves_unchecked_setting():
     assert len(json.dumps(draft).encode("utf-8")) <= owner_recovery.MAX_BYTES
 
 
-@pytest.mark.parametrize("path", ["/portal/owner/forecasts?run_id=%C2%B2", "/portal/owner/conversations?leader=%C2%B2"])
+@pytest.mark.parametrize("path", ["/portal/owner/forecasts?run_id=%C2%B2"])
 def test_invalid_query_ids_do_not_raise(monkeypatch, path):
     from test_portal_context import install_read_spies
     install_read_spies(monkeypatch)

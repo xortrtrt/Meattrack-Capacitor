@@ -2801,6 +2801,14 @@ body.modal-is-open {
   width: 100%;
 }
 
+.role-reseller .receipt-payment-form [data-receipt-review] {
+  min-height: 44px;
+}
+
+.role-reseller .receipt-payment-form [data-receipt-review][hidden] {
+  display: none;
+}
+
 .role-reseller .receipt-payment-form[data-expired="true"] {
   border-color: rgba(178, 59, 53, 0.32);
   background: rgba(178, 59, 53, 0.055);

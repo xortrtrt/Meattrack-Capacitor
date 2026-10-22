@@ -264,6 +264,7 @@
         function bindRefreshedContent() {
             bindReceiptCheckout();
             bindPaymentCountdowns();
+            bindOrderCancellationModals();
         }
 
         function targetSelectorFor(source) {
@@ -1359,6 +1360,7 @@
         const closeButtons = form.querySelectorAll("[data-receipt-modal-close]");
         const acceptButton = form.querySelector("[data-receipt-accept]");
         const editButton = form.querySelector("[data-receipt-edit]");
+        const reviewButton = form.querySelector("[data-receipt-review]");
         const summary = form.querySelector("[data-receipt-summary]");
         const summaryReference = form.querySelector("[data-receipt-summary-reference]");
         const summaryAmount = form.querySelector("[data-receipt-summary-amount]");
@@ -1372,6 +1374,7 @@
         let isScanning = false;
         let detailsAccepted = false;
         let paymentExpired = false;
+        let isSubmitting = false;
 
         const selectedFiles = () => Array.from(fileInput?.files || []);
 
@@ -1400,7 +1403,13 @@
         function updateActionState() {
             const complete = detailsAreComplete() && !isScanning && !paymentExpired;
             acceptButton.disabled = !complete;
-            submitButton.disabled = !(complete && detailsAccepted);
+            submitButton.disabled = isSubmitting || !(complete && detailsAccepted);
+            submitButton.classList.toggle("is-loading", isSubmitting);
+            reviewButton.hidden = Boolean(validateFiles()) || detailsAccepted;
+            reviewButton.disabled = paymentExpired || isSubmitting;
+            reviewButton.querySelector("span").textContent = !isScanning && !tokenInput.value
+                ? "Try reading receipt again"
+                : "Review receipt details";
         }
 
         function resetScan(message = "Receipt changed. Reading the updated screenshot automatically.") {
@@ -1453,8 +1462,10 @@
             document.body.classList.remove("receipt-modal-open");
             if (!detailsAccepted && selectedFiles().length) {
                 cardStatus.textContent = isScanning
-                    ? "Receipt recognition is still running. Open the receipt to follow its progress."
-                    : "Receipt details still need your confirmation. Open the receipt to continue.";
+                    ? "Receipt recognition is still running. Choose Review receipt details to follow its progress."
+                    : !tokenInput.value
+                        ? `${status.textContent} Choose Try reading receipt again to continue.`
+                        : "Confirm the receipt details before submitting payment. Choose Review receipt details to continue.";
                 cardStatus.dataset.state = "warning";
             }
             if (priorFocus instanceof HTMLElement) priorFocus.focus();
@@ -1526,7 +1537,9 @@
                     ? warnings.join(" ")
                     : "Receipt read. Check every detail against the screenshot before confirming.";
                 status.dataset.state = warnings.length ? "warning" : "success";
-                cardStatus.textContent = "Receipt read. Confirm the extracted details in the open window.";
+                cardStatus.textContent = modal.hidden
+                    ? "Receipt read. Choose Review receipt details to check and confirm the payment."
+                    : "Receipt read. Confirm the extracted details in the open window.";
                 cardStatus.dataset.state = warnings.length ? "warning" : "success";
                 const firstMissing = paymentInputs.find((input) => !input.value);
                 (firstMissing || confirmation).focus();
@@ -1599,6 +1612,10 @@
         });
 
         editButton.addEventListener("click", openModal);
+        reviewButton.addEventListener("click", () => {
+            openModal();
+            if (!isScanning && !tokenInput.value) scanReceipt();
+        });
         closeButtons.forEach((button) => button.addEventListener("click", closeModal));
         form.addEventListener("payment-expired", () => {
             paymentExpired = true;
@@ -1632,22 +1649,54 @@
             }
         });
 
-        form.addEventListener("submit", (event) => {
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (isSubmitting) return;
             updateActionState();
             if (submitButton.disabled) {
-                event.preventDefault();
                 status.textContent = "Review the receipt, complete all payment details, and confirm them before placing the order.";
                 status.dataset.state = "error";
                 if (selectedFiles().length) openModal();
                 return;
             }
-            submitButton.disabled = true;
+            const body = new FormData(form);
+            isSubmitting = true;
+            updateActionState();
             submitButton.setAttribute("aria-busy", "true");
             submitButton.querySelector("span").textContent = "Submitting payment...";
+            cardStatus.textContent = "Submitting your receipt and payment details…";
+            cardStatus.dataset.state = "scanning";
+            try {
+                const response = await fetch(form.action, {
+                    method: "POST",
+                    body,
+                    credentials: "same-origin",
+                    headers: { Accept: "application/json" },
+                });
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || "Payment could not be submitted. Please try again.");
+                window.location.assign(result.redirect_url);
+            } catch (error) {
+                const message = error instanceof SyntaxError || error instanceof TypeError
+                    ? "Could not confirm payment submission. Refresh order history to check its status before retrying."
+                    : error.message;
+                status.textContent = message;
+                status.dataset.state = "error";
+                cardStatus.textContent = message;
+                cardStatus.dataset.state = "error";
+                cardStatus.setAttribute("role", "alert");
+                cardStatus.tabIndex = -1;
+                cardStatus.focus();
+                isSubmitting = false;
+                submitButton.removeAttribute("aria-busy");
+                submitButton.querySelector("span").textContent = "Submit payment";
+                updateActionState();
+            }
         });
 
         renderFiles();
         updateActionState();
+        if (selectedFiles().length) handleSelectionChange();
     }
 
     function bindReceiptCheckout() {
@@ -1656,6 +1705,7 @@
 
     function bindOrderCancellationModals() {
         document.querySelectorAll("[data-order-cancel-action]").forEach((action) => {
+            if (action.dataset.orderCancelBound === "true") return;
             const openButton = action.querySelector("[data-order-cancel-open]");
             const modal = action.querySelector("[data-order-cancel-modal]");
             const dialog = modal?.querySelector("[role='dialog']");
@@ -1664,6 +1714,7 @@
             const details = modal?.querySelector("[data-order-cancel-details]");
             const detailHint = modal?.querySelector("[data-order-cancel-detail-hint]");
             if (!openButton || !modal || !dialog || !form || !reason || !details) return;
+            action.dataset.orderCancelBound = "true";
 
             let lastFocused = null;
 

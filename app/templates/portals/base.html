@@ -14,7 +14,7 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261019-owner-workflows-5"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261022-receipt-review-1"
     />
     {% if (role_key == "reseller" and section == "inbox") or (role_key in ["team-leader", "sales-supervisor"] and section == "messages") %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/reseller_inbox.css') }}?v=20261017-live-refund-chat-5" />
@@ -24,9 +24,6 @@
     {% endif %}
     {% if role_key == "owner" and section == "orders" %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-orders.css') }}?v=20261019-ledger-modal-4">
-    {% endif %}
-    {% if role_key == "owner" and section == "conversations" %}
-    <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-conversations.css') }}?v=20261019-modal-1">
     {% endif %}
     {% if role_key == "owner" and section in ["inventory", "products", "batches", "movements"] %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-inventory.css') }}?v=20261019-workspaces-1">
@@ -38,7 +35,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/portal_accounts.css') }}?v=20261020-1">
     {% endif %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/portal_layout_fixes.css') }}?v=20261020-1">
-    {% if role_key == "owner" and section in ["accounts", "reports", "resellers", "security", "audit"] %}
+    {% if role_key == "owner" and section in ["accounts", "reports", "resellers"] %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-directories.css') }}?v=20261019-1">
     {% endif %}
   </head>
@@ -377,15 +374,12 @@
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261017-dynamic-csrf-2"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261020-explicit-dates-1"></script>
     {% if role_key == 'owner' %}<script src="{{ url_for('static', path='js/owner_recovery.js') }}?v=20261020-2" defer></script>{% endif %}
-    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261019-owner-utilities-2"></script>
-    {% if role_key == "owner" and section in ["orders", "conversations", "reports", "accounts"] %}
+    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261022-receipt-submit-retry-3"></script>
+    {% if role_key == "owner" and section in ["orders", "reports", "accounts"] %}
     <script src="{{ url_for('static', path='js/owner_modals.js') }}?v=20261019-modal-4" defer></script>
     {% endif %}
-    {% if role_key == "owner" and section == "conversations" %}
-    <script src="{{ url_for('static', path='js/owner_conversations.js') }}?v=20261019-modal-1" defer></script>
-    {% endif %}
     <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
-    <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261019-report-order-cards-2"></script>
+    <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261020-owner-sales-summary-1"></script>
     {% if (role_key in ["owner", "sales-supervisor"] and section == "refunds") or (role_key == "reseller" and section == "inbox") %}
     <script src="{{ url_for('static', path='js/refunds.js') }}?v=20261017-live-refund-chat-3" defer></script>
     {% endif %}

@@ -244,6 +244,13 @@
                 }
                 payload.textContent = JSON.stringify(rows);
                 renderChart(rows);
+                const summary = document.querySelector("[data-owner-sales-summary]");
+                if (summary) {
+                    summary.querySelector("[data-owner-sales-total]").textContent = formatMoney(data.total);
+                    summary.querySelector("[data-owner-sales-orders]").textContent = formatQuantity(data.orders);
+                    summary.querySelector("[data-owner-sales-start]").textContent = data.range.start;
+                    summary.querySelector("[data-owner-sales-end]").textContent = data.range.end;
+                }
                 const pageUrl = new URL(window.location.href);
                 pageUrl.searchParams.set("sales_period", data.period || periodSelect.value);
                 window.history.replaceState({}, "", pageUrl);

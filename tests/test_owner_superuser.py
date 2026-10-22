@@ -83,37 +83,19 @@ def test_csv_cells_are_guarded_against_spreadsheet_formula_execution():
     assert owner_portal._csv_cell({"safe": True}) == '{"safe": true}'
 
 
-@pytest.mark.parametrize("modal", [False, True])
-def test_owner_transcript_renders_readable_escaped_content(monkeypatch, modal):
-    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(repositories, "owner_conversation_transcript", lambda *args: {
-        "conversation": {"display_name": "Test visitor", "status": "closed"},
-        "messages": [{"sender_type": "visitor", "content": "<script>alert(1)</script>", "created_at": None}],
-    })
+@pytest.mark.parametrize("action", ["transcript", "admin"])
+def test_removed_owner_conversation_actions_are_unavailable(action):
     response = TestClient(main.app).post(
-        "/portal/owner/conversations/00000000-0000-0000-0000-000000000001/transcript",
-        data={"reason": "Review customer request"},
-        headers={"X-Transcript-View": "modal"} if modal else {},
+        f"/portal/owner/conversations/00000000-0000-0000-0000-000000000001/{action}",
+        data={"reason": "Review customer request", "action": "close"},
     )
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/html")
-    assert response.headers["cache-control"] == "no-store"
-    assert "Review customer request" in response.text
-    assert "&lt;script&gt;" in response.text
-    assert "<script>alert(1)</script>" not in response.text
-    if modal:
-        assert "<html" not in response.text
-        assert "owner-transcript-messages" in response.text
+    assert response.status_code == 404
 
 
-def test_owner_modal_transcript_denies_missing_reason_before_reading_messages(monkeypatch):
+def test_removed_owner_conversations_page_is_unavailable(monkeypatch):
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    response = TestClient(main.app).post(
-        "/portal/owner/conversations/00000000-0000-0000-0000-000000000001/transcript",
-        data={"reason": "bad"}, headers={"X-Transcript-View": "modal"},
-    )
-    assert response.status_code == 400
-    assert "5 to 500" in response.json()["error"]
+    response = TestClient(main.app).get("/portal/owner/conversations")
+    assert response.status_code == 404
 
 
 def test_owner_migration_contains_immutable_correction_and_retry_guards():
@@ -131,15 +113,12 @@ def test_owner_migration_contains_immutable_correction_and_retry_guards():
         ("operations", {"operations_summary": {}, "recent_orders": [], "recent_inquiries": [], "alerts": [], "team_workload": []}),
         ("inquiries", {"inquiries_page": {"filters": {"q": "", "status": ""}}, "inquiries": []}),
         ("orders", {"orders_page": {"filters": {"q": "", "status": ""}}, "orders": [{"order_id": 1, "reseller": "Test reseller", "status": "pending", "total_amount": 250, "items": [{"name": "Longganisa", "quantity": 2}], "payment_proofs": []}]}),
-        ("conversations", {"conversation_metadata": [], "team_leaders": []}),
         ("inventory", {"products": [], "raw_materials": [], "product_recipes": [], "alerts": []}),
         ("materials", {"materials_page": {"filters": {"q": ""}}, "materials": []}),
         ("batches", {"batches_page": {"filters": {}}, "batches": [], "finished_products": []}),
         ("movements", {"movements_page": {"filters": {}}, "movements": [], "inventory_items": [], "inventory_batches": []}),
         ("alerts", {"alerts": []}),
         ("resellers", {"resellers_page": {"pagination": {"total": 1}, "filters": {}}, "reseller_assignments": [{"reseller_id": 2, "business_name": "Example store", "contact_person": "Alex", "email": "alex@example.test", "reseller_status": "active", "team_leader_name": "Sales Leader", "team_leader_account_id": 4}], "team_leaders": [{"account_id": 4, "name": "Sales Leader"}]}),
-        ("audit", {"activity_logs_page": {"filters": {"q": ""}}, "activity_logs": [], "audit_filters": {"actor_role": "", "module": "", "action": "", "outcome": "", "date_from": "", "date_to": ""}}),
-        ("security", {"active_sessions": [], "security_events": [], "owner_security_events": [], "owner_step_up_active": False, "owner_step_up_pending": False}),
         ("settings", {"business_settings": dict(superuser.SETTING_DEFAULTS)}),
     ],
 )
@@ -153,6 +132,9 @@ def test_owner_superuser_sections_render(monkeypatch, section, context):
 
     assert response.status_code == 200
     assert ("owner-orders-page" if section == "orders" else "owner-superuser-page") in response.text
+    if section == "operations":
+        assert '/portal/owner/audit' not in response.text
+        assert 'Recent high-risk owner actions' not in response.text
     if section == "resellers":
         assert "owner-resellers-hero" in response.text
         assert "owner-reseller-status-rail is-active" in response.text
@@ -190,7 +172,7 @@ def test_owner_pages_with_real_database(monkeypatch, section):
 
 
 @pytest.mark.postgres
-@pytest.mark.parametrize("resource", ["accounts", "resellers", "orders", "refunds", "movements", "reports", "forecasts", "audit"])
+@pytest.mark.parametrize("resource", ["accounts", "resellers", "orders", "refunds", "movements", "reports", "forecasts"])
 def test_owner_export_queries_with_real_database(resource):
     assert isinstance(superuser.owner_export_rows(resource), list)
 

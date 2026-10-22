@@ -860,13 +860,6 @@ def owner_export_rows(resource: str) -> list[dict]:
                    completed_at, attempt_count, last_error, retry_of_forecast_run_id
             FROM forecast_runs ORDER BY forecast_run_id;
         """,
-        "audit": """
-            SELECT al.activity_log_id, al.created_at, al.account_id, a.name AS actor,
-                   al.actor_role, al.action, al.entity_type, al.entity_id, al.reason,
-                   al.outcome, al.before_state, al.after_state, al.request_id, al.source_key
-            FROM activity_logs al LEFT JOIN accounts a ON a.account_id = al.account_id
-            ORDER BY al.activity_log_id;
-        """,
     }
     query = queries.get(resource)
     if not query:

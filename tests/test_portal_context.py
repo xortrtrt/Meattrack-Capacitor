@@ -83,11 +83,9 @@ READ_FUNCTIONS = (
 EXPECTED_CALLS = {
     ("owner", "dashboard"): {
         "current_metrics",
-        "list_products",
         "list_forecasts",
         "reseller_sales_series",
         "reseller_most_bought_products",
-        "owner_operations_summary",
         "list_notifications",
         "unread_notification_count",
     },
@@ -1924,10 +1922,15 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
     response = client.get("/portal/owner/dashboard")
 
     assert response.status_code == 200
-    assert "Forecast priority" in response.text
+    assert "Forecast priority" not in response.text
     assert "Sales trend" in response.text
     assert "Most bought products" in response.text
-    assert "Stock pulse" in response.text
+    assert "Stock pulse" not in response.text
+    assert "Upcoming demand" in response.text
+    assert 'aria-label="Business overview"' in response.text
+    assert "owner-command-grid" not in response.text
+    assert "/portal/owner/conversations" not in response.text
+    assert "data-owner-sales-summary" in response.text
     assert "data-owner-sales-chart" in response.text
     assert 'name="sales_period"' in response.text
     assert "data-owner-sales-form" in response.text

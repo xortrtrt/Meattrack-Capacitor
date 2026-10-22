@@ -419,11 +419,16 @@ async def reseller_order_payment(
     payment_amount: str = Form(""),
     payment_details_confirmed: str = Form(""),
 ):
+    wants_json = "application/json" in request.headers.get("accept", "")
     guard = shared.require_portal_session(request, "reseller")
     if guard:
+        if wants_json:
+            return JSONResponse({"ok": False, "error": "Your session expired. Please sign in again."}, status_code=401)
         return guard
     account_id = shared.session_account_id(request)
     if account_id is None:
+        if wants_json:
+            return JSONResponse({"ok": False, "error": "Your session expired. Please sign in again."}, status_code=401)
         return shared.redirect_to(shared.safe_portal_path("reseller", "history", error="Your session expired. Please sign in again."))
     try:
         attachments = await shared.parse_payment_proof_attachments(payment_proofs)
@@ -439,17 +444,20 @@ async def reseller_order_payment(
             payment_amount,
             payment_details_confirmed == "yes",
         )
-        data.submit_order_payment(account_id, order_id, attachments, payment_details)
+        await run_in_threadpool(data.submit_order_payment, account_id, order_id, attachments, payment_details)
     except ValueError as exc:
+        if wants_json:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
         return shared.redirect_to(
             shared.safe_portal_path("reseller", "history", view="to_pay", error=str(exc))
         )
-    return shared.redirect_to(
-        shared.safe_portal_path(
-            "reseller", "history", view="pending",
-            message=f"Payment for order #{order_id} was submitted for approval.",
-        )
+    redirect_url = shared.safe_portal_path(
+        "reseller", "history", view="pending",
+        message=f"Payment for order #{order_id} was submitted for approval.",
     )
+    if wants_json:
+        return JSONResponse({"ok": True, "redirect_url": redirect_url})
+    return shared.redirect_to(redirect_url)
 
 
 @router.post("/portal/reseller/orders/{order_id}/cancel")

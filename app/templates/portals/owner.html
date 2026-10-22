@@ -19,9 +19,11 @@
   {% include "portals/owner/users_access.html" %}
 {% elif section == "profile" %}
   {% include "portals/owner/profile.html" %}
+{% elif section == "verify" %}
+  {% include "portals/owner/verify.html" %}
 {% elif section == "notifications" %}
   {% include "portals/notifications.html" %}
-{% elif section in ["operations", "inquiries", "orders", "conversations", "inventory", "materials", "batches", "movements", "alerts", "resellers", "audit", "security", "settings"] %}
+{% elif section in ["operations", "inquiries", "orders", "inventory", "materials", "batches", "movements", "alerts", "resellers", "settings"] %}
   {% include "portals/owner/superuser.html" %}
 {% endif %}
 {% endblock %}

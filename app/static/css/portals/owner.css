@@ -2098,9 +2098,6 @@
 .role-owner .owner-status-tabs a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 0.875rem; font-weight: 600; }
 .role-owner .owner-status-tabs a.is-active { border-color: var(--primary); background: var(--primary); color: var(--gold); }
 .role-owner .owner-status-tabs a:focus-visible { outline: 3px solid var(--gold-deep); outline-offset: 2px; }
-.role-owner.section-conversations .owner-record-grid { align-items: start; }
-.role-owner.section-conversations .owner-record-card { display: grid; gap: 12px; }
-.role-owner.section-conversations .owner-record-card :is(h3, p) { margin: 0; }
 .role-owner .status-badge.closed { background: var(--surface-muted); color: var(--text-light); }
 .role-owner .owner-material-list { display: grid; gap: 0; }
 .role-owner .owner-material-row { display: grid; grid-template-columns: minmax(180px, 0.6fr) minmax(0, 1.4fr); align-items: start; gap: 24px; padding: 24px; border-bottom: 1px solid var(--border); }
@@ -2130,4 +2127,25 @@
   .role-owner .owner-material-row .owner-override > form > button { width: 100%; }
   .role-owner .owner-status-tabs { padding: 12px 16px; gap: 8px; }
   .role-owner .owner-list-toolbar { padding-inline: 16px; }
+}
+
+/* Keep the dashboard overview compact on phones. */
+@media (max-width: 680px) {
+  .role-owner .owner-dashboard-page .owner-signal-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .role-owner .owner-dashboard-page .owner-signal-strip > div {
+    padding: 16px;
+    border-top: 0;
+    border-left: 0;
+  }
+
+  .role-owner .owner-dashboard-page .owner-signal-strip > div:nth-child(even) {
+    border-left: 1px solid var(--border);
+  }
+
+  .role-owner .owner-dashboard-page .owner-signal-strip > div:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
 }

@@ -25,13 +25,13 @@ ACTION_PATTERN = re.compile(
     r"^/portal/(?:owner/(?:accounts(?:/[0-9]+/(?:role|status|activation|password-reset|sessions/revoke|transfer))?"
     r"|products|settings|forecasts(?:/runs/[0-9]+/(?:retry|cancel))?"
     r"|resellers/[0-9]+/team-leader|alerts/[0-9]+/status|orders/[0-9]+/(?:approve|reject|fulfill)"
-    r"|inquiries/[0-9]+/(?:approve|reject)|conversations/[a-fA-F0-9-]+/admin"
+    r"|inquiries/[0-9]+/(?:approve|reject)"
     r"|inventory/(?:corrections|production)|materials/[0-9]+/receipt|batches/receipt"
     r"|refunds/[0-9]+/take-over))$"
 )
 
 
-def safe_destination(request, value: str, fallback: str = "/portal/owner/security") -> str:
+def safe_destination(request, value: str, fallback: str = "/portal/owner/verify") -> str:
     try:
         parsed = urlsplit(str(value))
     except ValueError:
@@ -97,9 +97,9 @@ def _valid(request) -> dict | None:
 def complete(request) -> str:
     draft = _valid(request)
     if not draft:
-        return "/portal/owner/security"
+        return "/portal/owner/verify"
     destination = safe_destination(request, draft["return_to"])
-    if destination == "/portal/owner/security" and draft["return_to"] != destination:
+    if destination == "/portal/owner/verify" and draft["return_to"] != destination:
         request.session.pop(SESSION_KEY, None)
     else:
         draft["ready"] = True

@@ -26,29 +26,33 @@ def test_system_page_and_retry_route_removed(monkeypatch):
     assert callable(repositories.report_system_status)
 
 
-@pytest.mark.parametrize("raw_page,expected", [("bad", 1), ("-1", 1), ("0", 1), ("999999", 3), ("2", 2)])
-def test_security_event_limit_and_independent_pagination(monkeypatch, raw_page, expected):
-    calls = []
-    monkeypatch.setattr(repositories, "list_active_sessions", lambda: [])
-    monkeypatch.setattr(repositories, "list_security_events", lambda **kw: calls.append(("auth", kw)) or [])
-    monkeypatch.setattr(repositories, "count_activity_logs", lambda **kw: 25)
-    monkeypatch.setattr(repositories, "list_activity_logs", lambda **kw: calls.append(("actions", kw)) or [])
+@pytest.mark.parametrize("section", ["audit", "security"])
+def test_removed_owner_pages_are_unavailable(monkeypatch, section):
+    monkeypatch.setattr(shared, "require_portal_session", lambda *args: None)
+    assert section not in {item[0] for item in portal_config.portal_nav["owner"]}
+    assert section not in OWNER_SECTION_CAPABILITIES
+    assert ("owner", section) not in owner.SECTION_LOADERS
+    client = TestClient(main.app)
+    assert client.get(f"/portal/owner/{section}").status_code == 404
+    if section == "security":
+        for action in ("request", "confirm"):
+            assert client.post(f"/portal/owner/security/step-up/{action}", data={"otp_code": "123456"}).status_code == 404
+
+
+def test_owner_verification_does_not_load_security_logs(monkeypatch):
     monkeypatch.setattr(owner, "owner_step_up_active", lambda request: False)
-    context = owner.security_context(make_request(f"actions_page={raw_page}&page=8"))
-    assert ("auth", {"limit": 10}) in calls
-    assert ("actions", {"actor_role": "owner", "page": expected, "page_size": 10}) in calls
-    assert context["owner_actions_page"]["pagination"]["total_pages"] == 3
+    def unexpected_read(*args, **kwargs):
+        raise AssertionError("Verification must not load monitoring data")
+    for name in ("list_active_sessions", "list_security_events", "list_activity_logs", "count_activity_logs"):
+        monkeypatch.setattr(repositories, name, unexpected_read)
+    assert owner.verification_context(make_request("challenge=1")) == {
+        "owner_step_up_active": False, "owner_step_up_pending": True,
+    }
 
 
-def test_audit_clamps_before_query_and_preserves_filters(monkeypatch):
-    calls = []
-    monkeypatch.setattr(repositories, "count_activity_logs", lambda **kw: 21)
-    monkeypatch.setattr(repositories, "list_activity_logs", lambda **kw: calls.append(kw) or [])
-    context = owner.audit_context(make_request("page=999&actor_role=owner&module=orders&action=override&outcome=success&date_from=2026-01-01&date_to=2026-10-19&sort=oldest&q=Alex"))
-    assert calls[0]["page"] == 3
-    assert calls[0]["page_size"] == 10
-    for key in ["q", "actor_role", "module", "action", "outcome", "date_from", "date_to", "sort"]:
-        assert context["activity_logs_page"]["filters"][key] == calls[0][key]
+def test_audit_export_is_unavailable():
+    with pytest.raises(ValueError, match="not available"):
+        repositories.owner_export_rows("audit")
 
 
 @pytest.mark.parametrize("query,status,leader,sort,page", [
@@ -140,3 +144,17 @@ def test_account_modal_preserves_action_eligibility(activation, account_type, ro
     assert ('action="/portal/owner/accounts/9/activation"' in rendered) is activation_action
     assert ('action="/portal/owner/accounts/9/transfer"' in rendered) is transfer_action
     assert "Reseller team assignments" not in rendered
+
+
+def test_owner_verification_renders_without_removed_pages(monkeypatch):
+    monkeypatch.setattr(shared, "require_portal_session", lambda *args: None)
+    monkeypatch.setattr(repositories, "list_notifications", lambda *args: [])
+    monkeypatch.setattr(repositories, "unread_notification_count", lambda *args: 0)
+    response = TestClient(main.app).get("/portal/owner/verify?challenge=1")
+    assert response.status_code == 200
+    assert '/portal/owner/verify/step-up/request' in response.text
+    assert '/portal/owner/verify/step-up/confirm' in response.text
+    assert '/portal/owner/security' not in response.text
+    assert '/portal/owner/audit' not in response.text
+    assert 'Active sessions' not in response.text
+    assert 'Authentication events' not in response.text

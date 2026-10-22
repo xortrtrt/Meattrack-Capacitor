@@ -1,6 +1,0 @@
-<section class="owner-transcript-access-record" aria-label="Access details"><strong>Reason for access</strong><p>{{ access_reason }}</p><small>Access recorded in the audit trail · {{ messages|length }} messages · Read only</small></section>
-<section class="owner-transcript-messages" aria-label="Conversation messages">
-  {% for message in messages %}
-  <article class="owner-transcript-message {{ message.sender_type }}"><header><strong>{{ message.sender_type.replace('_', ' ')|title }}</strong><time>{{ message.created_at|nice_date }}</time></header><p>{{ message.content }}</p></article>
-  {% else %}<p class="hint">This conversation has no messages.</p>{% endfor %}
-</section>

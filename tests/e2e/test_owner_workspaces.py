@@ -91,39 +91,6 @@ def test_owner_navigation_and_workspace_layouts(width):
                         page.keyboard.press("Escape")
                         page.get_by_role("link", name="Clear filters", exact=True).click()
                         page.wait_for_load_state("networkidle")
-                if section == "conversations":
-                    page.get_by_role("link", name="Closed", exact=True).click()
-                    page.wait_for_load_state("networkidle")
-                    assert "status=closed" in page.url
-                    page.get_by_placeholder("Name, contact, or team leader").fill("__no_such_conversation__")
-                    page.get_by_role("button", name="Find conversations").click()
-                    expect(page.locator(".owner-record-card")).to_have_count(0, timeout=15000)
-                    page.get_by_role("link", name="Clear filters", exact=True).click()
-                    page.wait_for_load_state("networkidle")
-                    if page.locator("[data-owner-conversation-open]").count():
-                        opener = page.locator("[data-owner-conversation-open]").first
-                        opener.click()
-                        dialog = page.locator("dialog[open]")
-                        expect(dialog).to_be_visible()
-                        dialog.evaluate("el => Promise.allSettled(el.getAnimations().map(animation => animation.finished))")
-                        expect(dialog.locator("[data-owner-transcript-result]")).to_be_empty()
-                        dialog.get_by_label("Reason for access").fill("Owner portal modal browser verification")
-                        dialog.get_by_role("button", name="Open audited transcript").click()
-                        expect(dialog.locator(".owner-transcript-messages")).to_be_visible(timeout=15000)
-                        if screenshots:
-                            target = Path(screenshots)
-                            target.mkdir(parents=True, exist_ok=True)
-                            page.screenshot(path=str(target / f"owner-conversation-modal-{width}.png"))
-                        page.keyboard.press("Escape")
-                        expect(page.locator("dialog[open]")).to_have_count(0)
-                        expect(opener).to_be_focused()
-                        opener.click()
-                        expect(page.locator("dialog[open] [data-owner-transcript-result]")).to_be_empty()
-                        page.get_by_role("button", name="Close conversation details").click()
-                        expect(page.locator("dialog[open]")).to_have_count(0)
-                if section in {"inventory", "materials", "batches", "movements"}:
-                    page.locator("details.owner-override").first.locator("summary").click()
-                    assert page.locator("details.owner-override[open] form").first.is_visible()
                 if section == "products" and page.locator('input[name="base_price"]').count():
                     price = page.locator('input[name="base_price"]').first
                     original_price = price.input_value()
@@ -194,10 +161,6 @@ def test_owner_navigation_and_workspace_layouts(width):
                     page.keyboard.press("Escape")
                     expect(page.locator("dialog[open]")).to_have_count(0)
                     page.emulate_media(reduced_motion="no-preference")
-                if section == "security":
-                    expect(page.get_by_text("Latest 10 events", exact=True)).to_be_visible()
-                    assert page.locator(".owner-compact-list").last.locator(":scope > div").count() <= 10
-                    assert page.locator(".timeline > article").count() <= 10
                 if section == "resellers":
                     expect(page.locator(".owner-resellers-hero")).to_be_visible()
                     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), section
@@ -214,7 +177,7 @@ def test_owner_navigation_and_workspace_layouts(width):
                     page.get_by_role("link", name="Clear filters", exact=True).click()
                     page.wait_for_load_state("networkidle")
                     assert page.locator(".owner-reseller-card").count() <= 10
-                if screenshots and section in {"dashboard", "operations", "orders", "conversations", "materials", "refunds", "inventory", "products", "batches", "movements", "accounts", "resellers", "forecasts", "profile", "settings", "system", "security"}:
+                if screenshots and section in {"dashboard", "operations", "orders", "materials", "refunds", "inventory", "products", "batches", "movements", "accounts", "resellers", "forecasts", "profile", "settings"}:
                     target = Path(screenshots)
                     target.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(target / f"owner-{section}-{width}.png"), full_page=True)

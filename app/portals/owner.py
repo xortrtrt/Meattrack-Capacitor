@@ -67,7 +67,7 @@ def require_owner_step_up(request: Request, return_section: str, *, draft_fields
         )
     return shared.redirect_to(shared.safe_portal_path(
         "owner",
-        "security",
+        "verify",
         error="Verify your identity before performing this sensitive action.",
         return_to=return_section,
     ))
@@ -245,9 +245,7 @@ def dashboard_context(request: Request) -> dict:
     chart_context = owner_sales_chart_context(request)
     context = {
         "metrics": data.current_metrics(),
-        "operations_summary": data.owner_operations_summary(),
-        "products": data.list_products(page=1, page_size=8),
-        "forecasts": data.list_forecasts(limit=6),
+        "forecasts": data.list_forecasts(limit=3),
         "top_products": data.reseller_most_bought_products(limit=5),
     }
     context.update(chart_context)
@@ -297,7 +295,6 @@ def operations_context(request: Request) -> dict:
         "recent_inquiries": data.list_inquiries(limit=8),
         "alerts": data.list_alerts()[:8],
         "team_workload": data.list_team_workload(),
-        "recent_owner_actions": data.list_activity_logs(actor_role="owner", page=1, page_size=8),
     }
 
 
@@ -309,27 +306,6 @@ def inquiries_context(request: Request) -> dict:
 def orders_context(request: Request) -> dict:
     page = shared.orders_page(request, "reseller", page_size=6)
     return {"orders_page": page, "orders": page["items"]}
-
-
-def conversations_context(request: Request) -> dict:
-    filters = shared.portal_filters(request)
-    status = filters["status"] if filters["status"] in {
-        "open", "queued", "active", "awaiting_contact", "follow_up", "closed", "cancelled",
-    } else ""
-    raw_leader = request.query_params.get("leader", "")
-    leader_id = shared.optional_positive_id(raw_leader)
-    total = data.count_conversation_metadata(q=filters["q"], status=status, leader_id=leader_id)
-    page_number = data.pagination_meta(total, filters["page"], 9)["page"]
-    items = data.list_conversation_metadata(
-        limit=9, q=filters["q"], status=status, leader_id=leader_id, page=page_number,
-    )
-    return {
-        "conversation_metadata": items,
-        "conversations_page": shared.paged(
-            items, total, page_number, 9, q=filters["q"], status=status, leader=str(leader_id or ""),
-        ),
-        "team_leaders": data.list_team_leader_accounts(),
-    }
 
 
 def inventory_context(request: Request) -> dict:
@@ -403,41 +379,8 @@ def resellers_context(request: Request) -> dict:
     }
 
 
-def audit_context(request: Request) -> dict:
-    filters = shared.portal_filters(request)
-    extra = {
-        "actor_role": request.query_params.get("actor_role", "")[:50],
-        "module": request.query_params.get("module", "")[:80],
-        "action": request.query_params.get("action", "")[:100],
-        "outcome": request.query_params.get("outcome", "")[:20],
-        "date_from": request.query_params.get("date_from", "")[:10],
-        "date_to": request.query_params.get("date_to", "")[:10],
-    }
-    for key in ("date_from", "date_to"):
-        try:
-            if extra[key]:
-                date.fromisoformat(extra[key])
-        except ValueError:
-            extra[key] = ""
-    total = data.count_activity_logs(q=filters["q"], **extra)
-    page_number = data.pagination_meta(total, shared.positive_int(request.query_params.get("page"), maximum=2147483647), 10)["page"]
-    items = data.list_activity_logs(
-        q=filters["q"], page=page_number, page_size=10, sort=filters["sort"], **extra
-    )
-    page = shared.paged(items, total, page_number, 10, q=filters["q"], sort=filters["sort"], **extra)
-    return {"activity_logs_page": page, "activity_logs": items, "audit_filters": extra}
-
-
-def security_context(request: Request) -> dict:
-    requested_page = shared.positive_int(request.query_params.get("actions_page"), maximum=2147483647)
-    total = data.count_activity_logs(actor_role="owner")
-    page_number = data.pagination_meta(total, requested_page, 10)["page"]
-    events = data.list_activity_logs(actor_role="owner", page=page_number, page_size=10)
+def verification_context(request: Request) -> dict:
     return {
-        "active_sessions": data.list_active_sessions(),
-        "security_events": data.list_security_events(limit=10),
-        "owner_security_events": events,
-        "owner_actions_page": shared.paged(events, total, page_number, 10),
         "owner_step_up_active": owner_step_up_active(request),
         "owner_step_up_pending": request.query_params.get("challenge") == "1",
     }
@@ -456,7 +399,6 @@ SECTION_LOADERS = {
     ("owner", "operations"): operations_context,
     ("owner", "inquiries"): inquiries_context,
     ("owner", "orders"): orders_context,
-    ("owner", "conversations"): conversations_context,
     ("owner", "inventory"): inventory_context,
     ("owner", "materials"): materials_context,
     ("owner", "batches"): batches_context,
@@ -467,8 +409,7 @@ SECTION_LOADERS = {
     ("owner", "forecasts"): forecasts_context,
     ("owner", "accounts"): accounts_context,
     ("owner", "resellers"): resellers_context,
-    ("owner", "audit"): audit_context,
-    ("owner", "security"): security_context,
+    ("owner", "verify"): verification_context,
     ("owner", "settings"): settings_context,
     ("owner", "profile"): profile_context,
 }
@@ -731,7 +672,7 @@ async def owner_forecast_status(request: Request, forecast_run_id: int):
     return status_payload
 
 
-@router.post("/portal/owner/security/step-up/request")
+@router.post("/portal/owner/verify/step-up/request")
 def owner_step_up_request(request: Request):
     guard = shared.require_portal_session(request, "owner")
     if guard:
@@ -739,7 +680,7 @@ def owner_step_up_request(request: Request):
     require_capability(request, "security.step_up", "owner")
     account_id = shared.session_account_id(request)
     if account_id is None:
-        return shared.redirect_to(shared.safe_portal_path("owner", "security", error="Your session expired."))
+        return shared.redirect_to(shared.safe_portal_path("owner", "verify", error="Your session expired."))
     try:
         challenge = data.request_owner_step_up(account_id)
         sent, message = send_owner_step_up_otp(
@@ -750,13 +691,13 @@ def owner_step_up_request(request: Request):
             raise ValueError(message)
         request.session["owner_step_up_challenge_id"] = challenge["challenge_id"]
     except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "security", error=str(exc)))
+        return shared.redirect_to(shared.safe_portal_path("owner", "verify", error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path(
-        "owner", "security", challenge="1", message="A 6-digit verification code was sent to your email."
+        "owner", "verify", challenge="1", message="A 6-digit verification code was sent to your email."
     ))
 
 
-@router.post("/portal/owner/security/step-up/confirm")
+@router.post("/portal/owner/verify/step-up/confirm")
 def owner_step_up_confirm(request: Request, otp_code: Annotated[str, Form()]):
     guard = shared.require_portal_session(request, "owner")
     if guard:
@@ -769,7 +710,7 @@ def owner_step_up_confirm(request: Request, otp_code: Annotated[str, Form()]):
             raise ValueError("Request a new verification code.")
         data.confirm_owner_step_up(account_id, int(challenge_id), otp_code)
     except (TypeError, ValueError) as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "security", challenge="1", error=str(exc)))
+        return shared.redirect_to(shared.safe_portal_path("owner", "verify", challenge="1", error=str(exc)))
     request.session.pop("owner_step_up_challenge_id", None)
     request.session["owner_step_up_until"] = int((business_now() + timedelta(minutes=10)).timestamp())
     destination = owner_recovery.complete(request)
@@ -809,17 +750,17 @@ def owner_account_revoke_sessions(
     if guard:
         return guard
     require_capability(request, "accounts.manage_all", "owner")
-    step_up = require_owner_step_up(request, "security")
+    step_up = require_owner_step_up(request, "accounts")
     if step_up:
         return step_up
     try:
         data.revoke_managed_account_sessions(account_id, shared.session_account_id(request) or 0, reason)
     except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "security", error=str(exc)))
+        return shared.redirect_to(shared.safe_portal_path("owner", "accounts", error=str(exc)))
     if account_id == shared.session_account_id(request):
         request.session.clear()
         return shared.redirect_to(shared.path_with_query("/login", message="Your sessions were revoked."))
-    return shared.redirect_to(shared.safe_portal_path("owner", "security", message="Account sessions revoked."))
+    return shared.redirect_to(shared.safe_portal_path("owner", "accounts", message="Account sessions revoked."))
 
 
 @router.post("/portal/owner/accounts/{account_id}/password-reset")
@@ -878,34 +819,6 @@ def owner_alert_status(
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("owner", "alerts", error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path("owner", "alerts", message="Alert status updated."))
-
-
-@router.post("/portal/owner/conversations/{conversation_id}/transcript")
-def owner_conversation_transcript(
-    request: Request,
-    conversation_id: str,
-    reason: Annotated[str, Form()],
-):
-    guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "conversations.view_content", "owner")
-    try:
-        transcript = data.owner_conversation_transcript(
-            conversation_id, shared.session_account_id(request) or 0, reason
-        )
-        return shared.templates().TemplateResponse(
-            request,
-            (
-                "portals/owner/transcript_content.html"
-                if request.headers.get("X-Transcript-View") == "modal"
-                else "portals/owner/transcript.html"
-            ),
-            {"request": request, **transcript, "access_reason": reason.strip()},
-            headers={"Cache-Control": "no-store"},
-        )
-    except ValueError as exc:
-        return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 @router.post("/portal/owner/settings")
@@ -1067,34 +980,6 @@ def owner_transfer_account_work(
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("owner", "accounts", error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path("owner", "accounts", message="Active work transferred."))
-
-
-@router.post("/portal/owner/conversations/{conversation_id}/admin")
-def owner_conversation_admin(
-    request: Request,
-    conversation_id: str,
-    action: Annotated[str, Form()],
-    reason: Annotated[str, Form()],
-    team_leader_account_id: Annotated[int | None, Form()] = None,
-):
-    guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "conversations.admin", "owner")
-    step_up = require_owner_step_up(request, "conversations")
-    if step_up:
-        return step_up
-    try:
-        data.administer_conversation(
-            conversation_id,
-            shared.session_account_id(request) or 0,
-            reason,
-            assigned_team_leader_account_id=team_leader_account_id,
-            close=action == "close",
-        )
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "conversations", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("owner", "conversations", message="Conversation updated."))
 
 
 @router.post("/portal/owner/inventory/corrections")

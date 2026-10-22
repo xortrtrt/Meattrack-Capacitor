@@ -4,6 +4,7 @@
   enctype="multipart/form-data"
   class="receipt-payment-form"
   data-receipt-checkout
+  data-async-form
   data-payment-deadline="{{ order.payment_due_at.isoformat() }}"
 >
   <div class="to-pay-clock">
@@ -18,6 +19,7 @@
   </label>
   <div class="receipt-file-list" data-receipt-file-list aria-live="polite"></div>
   <p class="receipt-scan-status" data-receipt-card-status aria-live="polite">Choose 1–3 receipt screenshots, up to 5 MB each.</p>
+  <button class="button subtle small" type="button" data-receipt-review hidden><i data-lucide="scan-text"></i> <span>Review receipt details</span></button>
   <input type="hidden" name="receipt_scan_token" data-receipt-token />
   <div class="receipt-confirmed-summary" data-receipt-summary hidden>
     <span class="receipt-summary-mark"><i data-lucide="badge-check"></i></span>
