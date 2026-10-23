@@ -52,6 +52,20 @@ def seed_sales_supervisor() -> None:
                 """,
                 (E2E_EMAIL, password_hash),
             )
+        # The public smoke test opens a real catalog card on a fresh database.
+        cursor.execute(
+            """
+            INSERT INTO inventory_items (
+                item_type, category, name, description, unit, base_price,
+                pack_size, pack_size_unit, pack_content_status
+            )
+            SELECT 'finished_product', 'Pork', 'E2E Catalog Bacon',
+                   'Browser smoke-test catalog product.', 'pack', 100, 500, 'g', 'declared'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM inventory_items WHERE name = 'E2E Catalog Bacon'
+            );
+            """
+        )
 
 
 if __name__ == "__main__":

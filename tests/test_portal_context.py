@@ -1980,7 +1980,7 @@ def test_owner_sales_period_points_support_dashboard_granularities():
 
 
 def test_owner_dashboard_sales_chart_uses_continuous_line_series(monkeypatch):
-    today = date.today()
+    today = owner_portal.business_today()
     monkeypatch.setattr(
         repositories,
         "current_metrics",
