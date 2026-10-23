@@ -74,16 +74,19 @@ def test_repaired_layouts_dates_and_one_use_owner_recovery(width):
                 web_sessions._persist_session(token, state, 600)
                 context.add_cookies([{"name": SESSION_COOKIE_NAME, "value": token, "url": BASE_URL}])
 
-            for kind, sections in [("inventory", ["batches"]), ("sales", ["reports", "profile"]), ("sales-supervisor", ["accounts", "reports", "profile"]), ("owner", ["audit", "inventory", "batches"])]:
+            for kind, sections in [("inventory", ["batches"]), ("sales", ["reports", "profile"]), ("sales-supervisor", ["accounts", "reports", "profile"]), ("owner", ["movements", "inventory", "batches"])]:
                 authenticate(kind)
                 role = "team-leader" if kind in {"inventory", "sales"} else kind
                 for section in sections:
                     response = page.goto(f"{BASE_URL}/portal/{role}/{section}", wait_until="networkidle")
-                    assert response and response.status == 200
+                    assert response and response.status == 200, f"{kind}/{section}: {response.status if response else 'No response'}"
                     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), f"{kind}/{section}: {width}"
                     if kind == "owner":
                         for field in page.locator('input[type="date"]').all():
-                            expect(field).to_have_value("")
+                            # Production defaults to today's Manila business date;
+                            # expiry and optional receipt/filter dates stay explicit.
+                            expected = business_today().isoformat() if field.get_attribute("name") == "production_date" else ""
+                            expect(field).to_have_value(expected)
                     if kind == "sales-supervisor" and section == "accounts":
                         for control in page.locator('.inline-assignment-form select').all():
                             assert control.bounding_box()["height"] >= 44

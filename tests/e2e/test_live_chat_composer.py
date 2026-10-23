@@ -213,7 +213,9 @@ def test_inquiry_prompt_opens_modal_and_complete_later_closes_it(page: Page) -> 
     assert inquiry_submissions == []
 
     inquiry_open.click()
+    expect(inquiry_dialog.get_by_label("Full name")).to_be_focused()
     inquiry_dialog.get_by_label("Business name").fill("E2E Store")
+    expect(inquiry_dialog.get_by_label("Business name")).to_have_value("E2E Store")
     inquiry_dialog.get_by_label("Email").fill("visitor@example.test")
     inquiry_dialog.get_by_label("Contact number").fill("09171234567")
     inquiry_dialog.get_by_label("Business location").fill("Batangas City")
