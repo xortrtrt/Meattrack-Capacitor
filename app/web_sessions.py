@@ -6,6 +6,7 @@ import secrets
 from http.cookies import SimpleCookie
 
 from starlette.datastructures import MutableHeaders
+from starlette.concurrency import run_in_threadpool
 
 from app.config import APP_ENV, SESSION_COOKIE_NAME
 from app.database import get_transaction_cursor
@@ -102,7 +103,7 @@ class DatabaseSessionMiddleware:
             return
 
         incoming_token = _cookie_value(scope.get("headers", []))
-        loaded = _load_session(incoming_token)
+        loaded = await run_in_threadpool(_load_session, incoming_token)
         original = dict(loaded)
         scope["session"] = loaded
         scope["meattrack.session_token"] = incoming_token
@@ -116,18 +117,18 @@ class DatabaseSessionMiddleware:
 
                 if not session:
                     if token:
-                        _delete_session(token)
+                        await run_in_threadpool(_delete_session, token)
                         headers.append(
                             "set-cookie",
                             f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
                         )
                 elif session != original or rotate:
                     if rotate and token:
-                        _delete_session(token)
+                        await run_in_threadpool(_delete_session, token)
                         token = None
                     token = token or _new_token()
                     seconds = PORTAL_SESSION_SECONDS if session.get("account_id") else PUBLIC_SESSION_SECONDS
-                    _persist_session(token, session, seconds)
+                    await run_in_threadpool(_persist_session, token, session, seconds)
                     cookie = (
                         f"{SESSION_COOKIE_NAME}={token}; Path=/; Max-Age={seconds}; "
                         "HttpOnly; SameSite=Lax"

@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app import web
 from app.audit_context import begin_audit_context, end_audit_context
 from app.config import APP_ENV, AUTH_RATE_LIMIT_ENABLED, CSRF_PROTECTION_ENABLED
+from app.database import DatabaseBusyError
 from app.portals import owner as owner_portal
 from app.portals import refunds as refunds_portal
 from app.portals import product_returns as returns_portal
@@ -22,6 +23,14 @@ from app.web_sessions import DatabaseSessionMiddleware
 
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def database_busy_response():
+    return JSONResponse(
+        {"detail": "The service is busy. Please try again shortly."},
+        status_code=503,
+        headers={"Retry-After": "2"},
+    )
 
 
 class CachedStaticFiles(StaticFiles):
@@ -53,7 +62,11 @@ def create_app() -> FastAPI:
     async def security_headers(request: Request, call_next):
         audit_tokens = begin_audit_context(request)
         try:
-            response = await call_next(request)
+            try:
+                response = await call_next(request)
+            except DatabaseBusyError:
+                # Session loading/saving runs outside route exception handlers.
+                response = database_busy_response()
         finally:
             end_audit_context(audit_tokens)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")

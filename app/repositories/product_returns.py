@@ -678,6 +678,11 @@ def confirm_expired_pullout(
         cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0));", (f"inventory-product:{row['item_id']}",))
         cur.execute("SELECT * FROM inventory_batches WHERE batch_id=%s FOR UPDATE;", (batch_id,))
         batch = cur.fetchone()
+        # A competing replay can commit while this request waits for the stock
+        # lock. Recheck before validating the now-reduced warehouse balance.
+        cur.execute("SELECT 1 FROM expired_stock_movements WHERE operation_key=%s;", (str(UUID(operation_key)),))
+        if cur.fetchone():
+            return
         if batch["expiry_date"] > business_today() or quantity > batch["quantity_available"]:
             raise ValueError("Pull-out must reference expired stock and cannot exceed the warehouse balance.")
         cur.execute(

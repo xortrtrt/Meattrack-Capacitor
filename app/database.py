@@ -3,7 +3,8 @@ from decimal import Decimal
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
-from threading import Lock
+from threading import BoundedSemaphore, Lock
+from weakref import WeakKeyDictionary
 
 from app.config import BUSINESS_TIMEZONE, DATABASE_POOL_MAX, DATABASE_POOL_MIN, database_dsn
 
@@ -15,6 +16,33 @@ if DATABASE_POOL_MIN < 1 or DATABASE_POOL_MAX < DATABASE_POOL_MIN:
 
 pool: ThreadedConnectionPool | None = None
 _pool_lock = Lock()
+_slots_lock = Lock()
+_pool_slots: WeakKeyDictionary[ThreadedConnectionPool, BoundedSemaphore] = WeakKeyDictionary()
+POOL_ACQUIRE_TIMEOUT_SECONDS = 10.0
+
+
+class DatabaseBusyError(RuntimeError):
+    """A request could not acquire a database connection within its wait budget."""
+
+
+@contextmanager
+def _pooled_connection():
+    connection_pool = get_pool()
+    with _slots_lock:
+        slots = _pool_slots.get(connection_pool)
+        if slots is None:
+            slots = BoundedSemaphore(connection_pool.maxconn)
+            _pool_slots[connection_pool] = slots
+    if not slots.acquire(timeout=POOL_ACQUIRE_TIMEOUT_SECONDS):
+        raise DatabaseBusyError("The service is busy. Please try again shortly.")
+    try:
+        conn = connection_pool.getconn()
+        try:
+            yield conn
+        finally:
+            connection_pool.putconn(conn)
+    finally:
+        slots.release()
 
 
 def get_pool() -> ThreadedConnectionPool:
@@ -28,34 +56,21 @@ def get_pool() -> ThreadedConnectionPool:
 
 @contextmanager
 def get_db_cursor():
-    connection_pool = get_pool()
-    conn = connection_pool.getconn()
-    try:
-        # RealDictCursor maps column names to dictionary keys
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT set_config('TimeZone', %s, false)", (BUSINESS_TIMEZONE,))
-            yield cur
-            conn.commit()
-    except Exception as e:
-        conn.rollback()
-        raise e
-    finally:
-        connection_pool.putconn(conn)
+    with get_transaction_cursor() as cur:
+        yield cur
+
 
 @contextmanager
 def get_transaction_cursor():
-    connection_pool = get_pool()
-    conn = connection_pool.getconn()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT set_config('TimeZone', %s, false)", (BUSINESS_TIMEZONE,))
-            yield cur
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        raise e
-    finally:
-        connection_pool.putconn(conn)
+    with _pooled_connection() as conn:
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT set_config('TimeZone', %s, false)", (BUSINESS_TIMEZONE,))
+                yield cur
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
 def fetch_all(query, params=None):
     with get_db_cursor() as cur:

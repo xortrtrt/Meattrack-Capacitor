@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from psycopg2.errors import UniqueViolation
+from starlette.concurrency import run_in_threadpool
 
 from app.capabilities import capability_role_key, require_capability
 from app.database import fetch_all, fetch_one
@@ -154,7 +155,7 @@ async def return_action(request: Request, role_key: str, action: str):
     }
     if action not in capabilities:
         raise HTTPException(404)
-    guard = _guard(request, role_key, capabilities[action])
+    guard = await run_in_threadpool(_guard, request, role_key, capabilities[action])
     if guard:
         return guard
     form = await request.form()
@@ -165,7 +166,8 @@ async def return_action(request: Request, role_key: str, action: str):
         if action == "submit":
             uploads = [u for u in form.getlist("evidence") if getattr(u, "filename", "")]
             attachments = await shared.parse_payment_proof_attachments(uploads)
-            return_id = returns.create_product_return(
+            return_id = await run_in_threadpool(
+                returns.create_product_return,
                 int(str(form.get("order_id", "0"))),
                 actor_id,
                 str(form.get("resolution", "")),
@@ -176,7 +178,8 @@ async def return_action(request: Request, role_key: str, action: str):
             )
             params = {"case": str(return_id)}
         elif action in {"approve", "reject"}:
-            returns.review_product_return(
+            await run_in_threadpool(
+                returns.review_product_return,
                 return_id,
                 actor_id,
                 action == "approve",
@@ -186,7 +189,8 @@ async def return_action(request: Request, role_key: str, action: str):
                 str(form.get("operation_key", "")) or None,
             )
         elif action == "receive":
-            returns.receive_product_return(
+            await run_in_threadpool(
+                returns.receive_product_return,
                 return_id,
                 actor_id,
                 _pairs(form, "line_id", "quantity"),
@@ -195,20 +199,21 @@ async def return_action(request: Request, role_key: str, action: str):
                 str(form.get("operation_key", "")),
             )
         elif action == "discrepancy":
-            returns.flag_return_discrepancy(return_id, actor_id, str(form.get("remarks", "")))
+            await run_in_threadpool(returns.flag_return_discrepancy, return_id, actor_id, str(form.get("remarks", "")))
         elif action == "accept":
-            returns.accept_replacement_quote(return_id, actor_id, int(str(form.get("revision", "0"))))
+            await run_in_threadpool(returns.accept_replacement_quote, return_id, actor_id, int(str(form.get("revision", "0"))))
         elif action == "reserve":
-            returns.reserve_replacement(return_id, actor_id, str(form.get("remarks", "")))
+            await run_in_threadpool(returns.reserve_replacement, return_id, actor_id, str(form.get("remarks", "")))
         elif action == "release":
-            returns.release_replacement(return_id, actor_id, str(form.get("remarks", "")))
+            await run_in_threadpool(returns.release_replacement, return_id, actor_id, str(form.get("remarks", "")))
         elif action == "payment":
             attachments = await shared.parse_payment_proof_attachments(
                 [u for u in form.getlist("payment_proofs") if getattr(u, "filename", "")]
             )
-            returns.record_return_payment(return_id, actor_id, attachments)
+            await run_in_threadpool(returns.record_return_payment, return_id, actor_id, attachments)
         elif action == "verify-payment":
-            returns.verify_return_payment(
+            await run_in_threadpool(
+                returns.verify_return_payment,
                 return_id,
                 actor_id,
                 str(form.get("reference", "")),
@@ -216,7 +221,8 @@ async def return_action(request: Request, role_key: str, action: str):
                 str(form.get("remarks", "")),
             )
         elif action == "legacy":
-            returns.verify_legacy_allocation(
+            await run_in_threadpool(
+                returns.verify_legacy_allocation,
                 int(str(form.get("order_id", "0"))),
                 int(str(form.get("order_item_id", "0"))),
                 int(str(form.get("batch_id", "0"))),
@@ -238,7 +244,7 @@ async def return_action(request: Request, role_key: str, action: str):
 
 @router.post("/portal/{role_key}/expired-stock/actions/{action}")
 async def expired_action(request: Request, role_key: str, action: str):
-    guard = _guard(request, role_key, "inventory.manage")
+    guard = await run_in_threadpool(_guard, request, role_key, "inventory.manage")
     if guard:
         return guard
     form = await request.form()
@@ -251,15 +257,18 @@ async def expired_action(request: Request, role_key: str, action: str):
             "operation_key": str(form.get("operation_key", "")),
         }
         if action == "pullout":
-            returns.confirm_expired_pullout(
+            await run_in_threadpool(
+                returns.confirm_expired_pullout,
                 int(str(form.get("batch_id", "0"))), location=str(form.get("location", "")), **common
             )
         elif action == "dispose":
-            returns.dispose_expired_stock(
+            await run_in_threadpool(
+                returns.dispose_expired_stock,
                 int(str(form.get("holding_id", "0"))), method=str(form.get("method", "")), **common
             )
         elif action == "arrival":
-            returns.record_expired_arrival(
+            await run_in_threadpool(
+                returns.record_expired_arrival,
                 int(str(form.get("product_id", "0"))),
                 batch_code=str(form.get("batch_code", "")),
                 expiry_date=date.fromisoformat(str(form.get("expiry_date", ""))),

@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app import repositories as data
 from app.business_time import BUSINESS_ZONE
@@ -111,11 +112,11 @@ def _refund_redirect(
 
 @router.post("/portal/{role_key}/refunds/{refund_id}/start")
 async def start_refund(request: Request, role_key: str, refund_id: int):
-    account_id, guard = _allowed_role(request, role_key)
+    account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
-        data.start_order_refund(refund_id, account_id, role_key)
+        await run_in_threadpool(data.start_order_refund, refund_id, account_id, role_key)
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc))
     return _refund_redirect(role_key, refund_id, message="Refund processing started.")
@@ -123,11 +124,11 @@ async def start_refund(request: Request, role_key: str, refund_id: int):
 
 @router.post("/portal/{role_key}/refunds/{refund_id}/retry")
 async def retry_refund(request: Request, role_key: str, refund_id: int):
-    account_id, guard = _allowed_role(request, role_key)
+    account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
-        data.start_order_refund(refund_id, account_id, role_key)
+        await run_in_threadpool(data.start_order_refund, refund_id, account_id, role_key)
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc))
     return _refund_redirect(role_key, refund_id, message="A new refund attempt was started.")
@@ -135,22 +136,23 @@ async def retry_refund(request: Request, role_key: str, refund_id: int):
 
 @router.post("/portal/{role_key}/refunds/{refund_id}/take-over")
 async def take_over_refund(request: Request, role_key: str, refund_id: int, reason: str = Form(...)):
-    account_id, guard = _allowed_role(request, role_key)
+    account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     if role_key != "owner":
         raise HTTPException(status_code=404)
     from app.portals.owner import require_owner_step_up
 
-    step_up = require_owner_step_up(request, "refunds")
+    step_up = await run_in_threadpool(require_owner_step_up, request, "refunds")
     if step_up:
         return step_up
     try:
         clean_reason = " ".join(reason.strip().split())
         if len(clean_reason) < 5:
             raise ValueError("Enter a reason for taking over this refund.")
-        data.take_over_order_refund(refund_id, account_id)
-        data.record_owner_audit(
+        await run_in_threadpool(data.take_over_order_refund, refund_id, account_id)
+        await run_in_threadpool(
+            data.record_owner_audit,
             account_id,
             "took_over_refund",
             "order_refunds",
@@ -170,11 +172,11 @@ async def fail_refund(
     refund_id: int,
     failure_reason: str = Form(...),
 ):
-    account_id, guard = _allowed_role(request, role_key)
+    account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
-        data.fail_order_refund(refund_id, account_id, role_key, failure_reason)
+        await run_in_threadpool(data.fail_order_refund, refund_id, account_id, role_key, failure_reason)
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc), pane="transfer")
     return _refund_redirect(role_key, refund_id, message="Refund attempt marked failed. Its history was preserved.")
@@ -191,7 +193,7 @@ async def complete_refund(
     internal_note: str = Form(""),
     proof: UploadFile | None = File(None),
 ):
-    account_id, guard = _allowed_role(request, role_key)
+    account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
@@ -204,7 +206,8 @@ async def complete_refund(
         attachments = await shared.parse_payment_proof_attachments([proof] if proof else [])
         if len(attachments) > 1:
             raise ValueError("Attach only one refund screenshot.")
-        data.complete_order_refund(
+        await run_in_threadpool(
+            data.complete_order_refund,
             refund_id, account_id, role_key,
             refund_method=refund_method,
             transaction_reference=transaction_reference,
@@ -232,7 +235,7 @@ async def send_internal_refund_message(
         if account_id is None:
             raise HTTPException(status_code=404)
         try:
-            data.send_order_refund_message(refund_id, account_id, "reseller", message)
+            await run_in_threadpool(data.send_order_refund_message, refund_id, account_id, "reseller", message)
         except ValueError as exc:
             return shared.redirect_to(shared.safe_portal_path(
                 "reseller", "inbox", refund=str(refund_id), error=str(exc),
@@ -240,11 +243,11 @@ async def send_internal_refund_message(
         return shared.redirect_to(shared.safe_portal_path(
             "reseller", "inbox", refund=str(refund_id),
         ))
-    account_id, guard = _allowed_role(request, role_key)
+    account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
-        data.send_order_refund_message(refund_id, account_id, role_key, message)
+        await run_in_threadpool(data.send_order_refund_message, refund_id, account_id, role_key, message)
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc), pane="conversation")
     return _refund_redirect(role_key, refund_id, pane="conversation")
@@ -296,7 +299,7 @@ def send_refund_message(
 async def refund_proof(request: Request, proof_id: int):
     role_key = request.session.get("role_key")
     account_id = shared.session_account_id(request)
-    proof = data.get_order_refund_proof(proof_id, role_key, account_id)
+    proof = await run_in_threadpool(data.get_order_refund_proof, proof_id, role_key, account_id)
     if not proof:
         raise HTTPException(status_code=404)
     return Response(
