@@ -176,6 +176,7 @@ def produce_product(
     quantity: object,
     expiry_date: date,
     actor_account_id: int | None = None,
+    production_date: date | None = None,
 ) -> dict:
     from ..superuser import business_setting
 
@@ -183,10 +184,13 @@ def produce_product(
     critical_expiry_days = int(business_setting("inventory.critical_expiry_days"))
     produced_quantity = measurements.parse_whole_packs(quantity, "Produced quantity")
     clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
+    production_date = production_date or business_today()
+    if production_date > business_today():
+        raise ValueError("Production date cannot be in the future.")
     if len(clean_batch_code) < 4:
         raise ValueError("Batch code is too short.")
-    if expiry_date < business_today():
-        raise ValueError("Expiry date cannot be in the past.")
+    if expiry_date <= business_today():
+        raise ValueError("Expiry date must be after today. Record expired arrivals in Expired Holding.")
 
     with get_transaction_cursor() as cur:
         cur.execute("""
@@ -244,7 +248,7 @@ def produce_product(
             INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
             VALUES (%s, %s, 'production', %s, %s, %s, %s, %s, 'approved')
             RETURNING batch_id AS product_batch_id, item_id AS product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
-        """, (product_id, clean_batch_code, produced_quantity, produced_quantity, product["unit"], business_today(), expiry_date))
+        """, (product_id, clean_batch_code, produced_quantity, produced_quantity, product["unit"], production_date, expiry_date))
         batch = cur.fetchone()
         actor_name = _inventory_actor_name(cur, actor_account_id)
 
@@ -302,9 +306,9 @@ def produce_product(
             _create_notification_cursor(
                 cur, recipient_role="team-leader", category="inventory",
                 severity="critical" if days <= critical_expiry_days else "warning", title="Batch expiry warning",
-                message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
+                message=f"{product['name']} batch {clean_batch_code}: {produced_quantity:g} packs expire on {expiry_date} ({days} day(s)).",
                 target_url="/portal/team-leader/inventory", source_type="inventory_batches",
-                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
+                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}-{'critical' if days <= critical_expiry_days else 'warning'}",
             )
     return clean_row(batch)
 
@@ -317,17 +321,21 @@ def add_product_batch(
     expiry_date: date,
     source_type: str = "direct_received",
     actor_account_id: int | None = None,
+    received_date: date | None = None,
 ) -> dict:
     from ..superuser import business_setting
 
     near_expiry_days = int(business_setting("inventory.near_expiry_days"))
     critical_expiry_days = int(business_setting("inventory.critical_expiry_days"))
     clean_quantity = measurements.parse_whole_packs(quantity)
+    received_date = received_date or business_today()
+    if received_date > business_today():
+        raise ValueError("Received date cannot be in the future.")
     clean_batch_code = normalize_inventory_text(batch_code, "Batch code").upper()
     if source_type != "direct_received":
         raise ValueError("Direct batch registration must use the direct_received source type.")
-    if expiry_date < business_today():
-        raise ValueError("Expiry date cannot be in the past.")
+    if expiry_date <= business_today():
+        raise ValueError("Expiry date must be after today. Record expired arrivals in Expired Holding.")
 
     with get_transaction_cursor() as cur:
         cur.execute("""
@@ -344,7 +352,7 @@ def add_product_batch(
             INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
             VALUES (%s, %s, 'direct_received', %s, %s, %s, %s, %s, 'approved')
             RETURNING batch_id AS product_batch_id, item_id AS product_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status;
-        """, (product_id, clean_batch_code, clean_quantity, clean_quantity, product["unit"], business_today(), expiry_date))
+        """, (product_id, clean_batch_code, clean_quantity, clean_quantity, product["unit"], received_date, expiry_date))
         batch = cur.fetchone()
         _insert_inventory_movement(
             cur,
@@ -376,9 +384,9 @@ def add_product_batch(
             _create_notification_cursor(
                 cur, recipient_role="team-leader", category="inventory",
                 severity="critical" if days <= critical_expiry_days else "warning", title="Batch expiry warning",
-                message=f"{product['name']} batch {clean_batch_code} expires in {days} day(s).",
+                message=f"{product['name']} batch {clean_batch_code}: {clean_quantity:g} packs expire on {expiry_date} ({days} day(s)).",
                 target_url="/portal/team-leader/inventory", source_type="inventory_batches",
-                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}",
+                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}-{'critical' if days <= critical_expiry_days else 'warning'}",
             )
     return clean_row(batch)
 

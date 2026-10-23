@@ -337,7 +337,6 @@ def batches_context(request: Request) -> dict:
     return {
         "batches_page": shared.paged(items, total, filters["page"], 10, q=filters["q"], type=filters["type"], sort=filters["sort"]),
         "batches": items,
-        "finished_products": data.list_inventory_items(category="finished_product", page=1, page_size=250),
     }
 
 
@@ -1043,43 +1042,6 @@ def owner_material_receipt(
     return shared.redirect_to(shared.safe_portal_path("owner", "materials", message="Material receipt recorded."))
 
 
-@router.post("/portal/owner/batches/receipt")
-def owner_finished_batch_receipt(
-    request: Request,
-    product_id: Annotated[int, Form()],
-    batch_code: Annotated[str, Form()],
-    quantity: Annotated[str, Form()],
-    expiry_date: Annotated[date, Form()],
-    reason: Annotated[str, Form()],
-):
-    guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "inventory.override", "owner")
-    step_up = require_owner_step_up(request, "batches")
-    if step_up:
-        return step_up
-    clean_reason = " ".join(reason.strip().split())
-    try:
-        if len(clean_reason) < 5:
-            raise ValueError("Enter a reason for the finished-product receipt.")
-        actor_id = shared.session_account_id(request) or 0
-        batch = data.add_product_batch(
-            product_id, batch_code, quantity, expiry_date, actor_account_id=actor_id
-        )
-        data.record_owner_audit(
-            actor_id,
-            "owner_finished_product_receipt",
-            "inventory_batches",
-            batch.get("product_batch_id"),
-            reason=clean_reason,
-            after_state={"product_id": product_id, "batch_code": batch_code, "quantity": quantity},
-        )
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "batches", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("owner", "batches", message="Finished-product receipt recorded."))
-
-
 @router.post("/portal/owner/inventory/production")
 def owner_production_override(
     request: Request,
@@ -1088,6 +1050,7 @@ def owner_production_override(
     quantity: Annotated[str, Form()],
     expiry_date: Annotated[date, Form()],
     reason: Annotated[str, Form()],
+    production_date: Annotated[date | None, Form()] = None,
 ):
     guard = shared.require_portal_session(request, "owner")
     if guard:
@@ -1102,7 +1065,7 @@ def owner_production_override(
             raise ValueError("Enter a reason for the production override.")
         actor_id = shared.session_account_id(request) or 0
         batch = data.produce_product(
-            product_id, batch_code, quantity, expiry_date, actor_account_id=actor_id
+            product_id, batch_code, quantity, expiry_date, actor_account_id=actor_id, production_date=production_date
         )
         data.record_owner_audit(
             actor_id,

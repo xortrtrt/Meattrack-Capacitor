@@ -15,6 +15,7 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
         "notifications.view",
         "operations.view_team",
         "orders.manage_assigned",
+        "returns.view", "returns.review",
         "profile.manage_own",
         "refunds.manage_assigned",
         "reports.view_assigned",
@@ -25,12 +26,14 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
         "notifications.view",
         "operations.view_team",
         "orders.manage_assigned",
+        "returns.view", "returns.review",
         "profile.manage_own",
         "reports.view_assigned",
         "resellers.view_assigned",
     }),
     "team-leader:inventory": frozenset({
         "inventory.manage",
+        "returns.view", "returns.receive",
         "inventory.view",
         "notifications.view",
         "operations.view_team",
@@ -39,6 +42,7 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
     }),
     "reseller": frozenset({
         "orders.create",
+        "returns.view", "returns.create",
         "orders.view_own",
         "notifications.view",
         "profile.manage_own",
@@ -48,6 +52,7 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
 
 PORTAL_SECTION_CAPABILITIES = {
     "sales-supervisor": {
+        "returns": "returns.view",
         "dashboard": "operations.view_team", "live-chat": "conversations.manage",
         "messages": "conversations.manage", "inquiries": "inquiries.manage",
         "orders": "orders.manage_assigned", "refunds": "refunds.manage_assigned",
@@ -55,18 +60,22 @@ PORTAL_SECTION_CAPABILITIES = {
         "profile": "profile.manage_own", "notifications": "notifications.view",
     },
     "team-leader:sales": {
+        "returns": "returns.view",
         "dashboard": "operations.view_team", "live-chat": "conversations.manage",
         "messages": "conversations.manage", "resellers": "resellers.view_assigned",
         "orders": "orders.manage_assigned", "reports": "reports.view_assigned",
         "profile": "profile.manage_own", "notifications": "notifications.view",
     },
     "team-leader:inventory": {
+        "returns": "returns.view",
         "dashboard": "operations.view_team", "inventory": "inventory.view",
+        "expired-stock": "inventory.view", "product-details": "inventory.view",
         "raw-materials": "inventory.view", "finished-products": "inventory.view",
         "batches": "inventory.view", "logs": "reports.view_inventory",
         "profile": "profile.manage_own", "notifications": "notifications.view",
     },
     "reseller": {
+        "returns": "returns.view",
         "dashboard": "orders.view_own", "order": "orders.create", "cart": "orders.create",
         "checkout": "orders.create", "history": "orders.view_own", "inbox": "orders.view_own",
         "profile": "profile.manage_own", "notifications": "notifications.view",
@@ -74,6 +83,7 @@ PORTAL_SECTION_CAPABILITIES = {
 }
 
 OWNER_SECTION_CAPABILITIES = {
+    "returns": "returns.view", "expired-stock": "inventory.view_all", "product-details": "inventory.view_all",
     "dashboard": "operations.view",
     "operations": "operations.view",
     "inquiries": "inquiries.view_all",

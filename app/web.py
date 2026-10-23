@@ -90,6 +90,8 @@ def media_url(filename: str) -> str:
 
 
 def configure_templates(csrf_token) -> None:
+    from app.business_time import business_today
+    templates.env.globals["business_today"] = business_today
     templates.env.globals["csrf_token"] = csrf_token
     templates.env.filters.update(
         currency=currency,

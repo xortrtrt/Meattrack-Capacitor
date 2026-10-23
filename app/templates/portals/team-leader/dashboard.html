@@ -90,7 +90,7 @@
           <thead><tr><th>Order</th><th>Reseller</th><th>First item</th><th>Status</th><th>Total</th></tr></thead>
           <tbody>
           {% for order in orders %}
-          {% set dashboard_order_status = 'refunded' if order.refund_status == 'completed' else order.status %}
+          {% set dashboard_order_status = 'refunded' if order.refund_status == 'completed' and order.refunded_amount >= order.total_amount else order.status %}
           <tr>
             <td data-label="Order"><strong>#{{ order.order_id }}</strong></td>
             <td data-label="Reseller">{{ order.reseller }}</td>

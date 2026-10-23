@@ -23,8 +23,8 @@ from app.portals import shared as shared_portal
 def _dsn_with_search_path(dsn: str, schema: str) -> str:
     parts = urlsplit(dsn)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    query["options"] = f"-csearch_path={schema}"
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    query["options"] = f"-csearch_path={schema} -cTimeZone=Asia/Manila"
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query).replace("+", "%20"), parts.fragment))
 
 
 @pytest.fixture

@@ -21,7 +21,7 @@
     {% if orders %}
     <div class="order-card-list">
       {% for order in orders %}
-      {% set reseller_status = 'refunded' if order.refund_status == 'completed' else order.status %}
+      {% set reseller_status = 'refunded' if order.refund_status == 'completed' and order.refunded_amount >= order.total_amount else order.status %}
       <details class="order-history-card" id="order-{{ order.order_id }}" {% if order.status == 'to_pay' or loop.first %}open{% endif %}>
         <summary class="order-card-summary">
           <div class="order-card-identity"><span class="order-card-number">Order #{{ order.order_id }}</span><time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time><span class="status-badge {{ reseller_status }}">{{ 'To pay' if reseller_status == 'to_pay' else reseller_status }}</span></div>
@@ -60,6 +60,8 @@
               {% endif %}
             </div>
             {% include "portals/reseller/_order_cancel_action.html" %}
+            {% if order.status == "fulfilled" %}<a class="button subtle" href="/portal/reseller/returns?order={{ order.order_id }}">Return / Refund / Replace</a>{% endif %}
+            {% if order.refunded_amount %}<p class="hint">{{ "Full refund" if order.refunded_amount >= order.total_amount else "Partial refund" }}: {{ order.refunded_amount|currency }}</p>{% endif %}
           </aside>
         </div>
       </details>

@@ -581,6 +581,9 @@ def complete_order_refund(
                 (now, now, refund_id),
             )
             _add_log_cursor(cur, actor_account_id=actor_id, action="completed_manual_refund", entity_type="order_refunds", entity_id=refund_id)
+            if refund.get("return_id"):
+                from .product_returns import _complete_if_ready
+                _complete_if_ready(cur, refund["return_id"])
             amount = Decimal(str(refund["amount"]))
             _publish_refund_event(
                 cur, refund, event_type="refund_completed", title="Refund completed",

@@ -33,7 +33,7 @@
         <a class="refund-case {{ refund.status }} {{ 'is-selected' if selected_refund and selected_refund.order_refund_id == refund.order_refund_id else '' }}" href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&refund={{ refund.order_refund_id }}">
           <span class="refund-case-icon"><i data-lucide="{{ 'clock-3' if refund.status == 'pending' else 'loader-circle' if refund.status == 'processing' else 'circle-check-big' if refund.status == 'completed' else 'triangle-alert' }}"></i></span>
           <span class="refund-case-copy">
-            <span><strong>Order #{{ refund.order_id }}</strong><em class="refund-badge {{ refund.status }}">{{ 'Refund pending' if refund.status == 'pending' else 'Processing refund' if refund.status == 'processing' else 'Refund completed' if refund.status == 'completed' else 'Refund failed' }}</em></span>
+            <span><strong>Order #{{ refund.order_id }} &middot; Refund #{{ refund.order_refund_id }}</strong><em class="refund-badge {{ refund.status }}">{{ 'Refund pending' if refund.status == 'pending' else 'Processing refund' if refund.status == 'processing' else 'Refund completed' if refund.status == 'completed' else 'Refund failed' }}</em></span>
             <small>{{ refund.business_name or refund.reseller_name or 'Reseller' }}</small>
             <b>PHP {{ '%.2f'|format(refund.amount) }}</b>
           </span>
@@ -57,14 +57,15 @@
       <header class="refund-thread-head">
         <div>
           <span class="eyebrow">Order-linked refund thread</span>
-          <h3>Order #{{ selected_refund.order_id }}</h3>
+          <h3>Order #{{ selected_refund.order_id }} &middot; Refund #{{ selected_refund.order_refund_id }}</h3>
+          {% if selected_refund.return_id %}<a href="/portal/{{ role_key }}/returns?case={{ selected_refund.return_id }}">Open return #{{ selected_refund.return_id }}</a>{% endif %}
           <p>{{ selected_refund.business_name or selected_refund.reseller_name or 'Reseller' }}</p>
         </div>
         <span class="refund-badge large {{ selected_refund.status }}">{{ 'Refund pending' if selected_refund.status == 'pending' else 'Processing refund' if selected_refund.status == 'processing' else 'Refund completed' if selected_refund.status == 'completed' else 'Refund failed' }}</span>
       </header>
 
       <section class="refund-facts" aria-label="Refund details">
-        <div><small>Locked refund amount</small><strong>PHP {{ '%.2f'|format(selected_refund.amount) }}</strong><span>Full confirmed payment</span></div>
+        <div><small>Locked refund amount</small><strong>PHP {{ '%.2f'|format(selected_refund.amount) }}</strong><span>{{ 'Verified return credit / replacement balance' if selected_refund.return_id else 'Full confirmed payment' }}</span></div>
         <div><small>Assigned supervisor</small><strong>{{ selected_refund.assigned_supervisor_name or ('Unassigned — available to claim' if role_key == 'sales-supervisor' else 'Owner action required') }}</strong><span>{{ 'First active supervisor may claim this case' if not selected_refund.assigned_supervisor_name and role_key == 'sales-supervisor' else 'No active supervisor at assignment' if not selected_refund.assigned_supervisor_name else 'Automatic assignment' }}</span></div>
         <div><small>Current processor</small><strong>{{ selected_refund.processor_name or 'Not claimed' }}</strong><span>{{ selected_refund.processing_started_at|nice_date if selected_refund.processing_started_at else 'Waiting to start' }}</span></div>
       </section>
@@ -79,8 +80,13 @@
 
       {% if refund_pane == 'activity' %}
       <section class="refund-timeline" aria-label="Refund audit history">
+        {% if selected_refund.return_id %}
+        <article class="refund-event"><span><i data-lucide="package-check"></i></span><div><header><strong>Returned goods verified</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>Return #{{ selected_refund.return_id }} was approved and physically verified before this refund was created.</p></div></article>
+        <article class="refund-event pending"><span><i data-lucide="wallet-cards"></i></span><div><header><strong>Return refund created</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>PHP {{ '%.2f'|format(selected_refund.amount) }} was locked as the approved return refund amount.</p></div></article>
+        {% else %}
         <article class="refund-event rejection"><span><i data-lucide="circle-x"></i></span><div><header><strong>Order rejected</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>{{ selected_refund.rejection_reason }}</p></div></article>
         <article class="refund-event pending"><span><i data-lucide="wallet-cards"></i></span><div><header><strong>Payment received confirmed</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>PHP {{ '%.2f'|format(selected_refund.amount) }} was locked as the full manual refund amount.</p></div></article>
+        {% endif %}
         {% for attempt in selected_refund.attempts %}
         <article class="refund-event {{ attempt.status }}">
           <span><i data-lucide="{{ 'loader-circle' if attempt.status == 'processing' else 'circle-check-big' if attempt.status == 'completed' else 'triangle-alert' }}"></i></span>

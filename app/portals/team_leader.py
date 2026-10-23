@@ -557,6 +557,7 @@ async def team_production(
     batch_code: str = Form(...),
     quantity: str = Form(...),
     expiry_date: date = Form(...),
+    production_date: Annotated[date | None, Form()] = None,
 ):
     guard = shared.require_portal_session(request, "team-leader")
     if guard:
@@ -571,6 +572,7 @@ async def team_production(
             quantity,
             expiry_date,
             actor_account_id=shared.session_account_id(request),
+            production_date=production_date,
         )
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("team-leader", "inventory", error=str(exc)))

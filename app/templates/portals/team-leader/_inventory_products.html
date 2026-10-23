@@ -12,7 +12,7 @@
   </div>
   <div class="inventory-product-card-copy">
     <span class="reseller-product-category">{{ product.category }}</span>
-    <h3>{{ product.name }}</h3>
+    <h3><a href="/portal/team-leader/product-details?product_id={{ product.item_id }}">{{ product.name }} <span aria-hidden="true">&rarr;</span></a></h3>
     <div class="inventory-product-stats">
       <div class="inventory-product-stat">
         <span><i data-lucide="boxes"></i> Available stock</span>

@@ -197,11 +197,11 @@ def history_context(request: Request) -> dict:
 def _group_order_system_messages(
     system_messages: list[dict],
     refund_conversations: list[dict] | None = None,
+    selected_refund_id: int | None = None,
 ) -> list[dict]:
-    refunds_by_order = {
-        int(item["order_id"]): item
-        for item in (refund_conversations or [])
-    }
+    refunds_by_order: dict[int, list[dict]] = {}
+    for refund in refund_conversations or []:
+        refunds_by_order.setdefault(int(refund["order_id"]), []).append(refund)
     conversations: dict[str, dict] = {}
     for item in system_messages:
         message_id = int(item["order_system_message_id"])
@@ -216,7 +216,8 @@ def _group_order_system_messages(
                 "messages": [],
                 "unread_count": 0,
                 "severity": item.get("severity", "info"),
-                "refund": refunds_by_order.get(int(order_id)) if order_id is not None else None,
+                "refunds": refunds_by_order.get(int(order_id), []) if order_id is not None else [],
+                "refund": next((r for r in refunds_by_order.get(int(order_id), []) if r["order_refund_id"] == selected_refund_id), next(iter(refunds_by_order.get(int(order_id), [])), None)) if order_id is not None else None,
             },
         )
         conversation["messages"].append(item)
@@ -266,7 +267,7 @@ def inbox_context(request: Request) -> dict:
             open_system_message_id = None
     return {
         "system_messages": system_messages,
-        "system_conversations": _group_order_system_messages(system_messages, refund_conversations),
+        "system_conversations": _group_order_system_messages(system_messages, refund_conversations, open_refund_id),
         "system_message_unread_count": data.unread_order_system_message_count(account_id),
         "open_system_message_id": open_system_message_id,
         "open_refund_id": open_refund_id,

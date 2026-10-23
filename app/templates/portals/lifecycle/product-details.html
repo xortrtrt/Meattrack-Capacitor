@@ -1,0 +1,48 @@
+{% from 'portals/lifecycle/_components.html' import metric, section_heading, empty_state, pagination_controls %}
+{% set product = lifecycle_product %}
+<section class="panel lifecycle-workspace lifecycle-product-page">
+  <header class="lifecycle-hero lifecycle-product-hero">
+    <div class="lifecycle-product-identity">
+      <div class="lifecycle-product-photo"><img src="{{ product.name|product_image|media_url }}" alt="{{ product.name }}" width="128" height="128"></div>
+      <div><span class="eyebrow">Finished product / {{ product.category }}</span><h2>{{ product.name }}</h2>
+        <div class="lifecycle-product-meta"><span><i data-lucide="tag" aria-hidden="true"></i>{{ product.base_price|currency }} / {{ product.unit }}</span><span><i data-lucide="weight" aria-hidden="true"></i>{{ product.pack_size|number }} {{ product.pack_size_unit }} per pack</span></div>
+        <span class="status-badge lifecycle-status" data-state="{{ 'approved' if product.is_active else 'rejected' }}">{{ 'Active product' if product.is_active else 'Inactive product' }}</span>
+      </div>
+    </div>
+    <a class="button subtle lifecycle-back" href="/portal/{{ role_key }}/{{ 'inventory' if role_key=='owner' else 'finished-products' }}"><i data-lucide="arrow-left" aria-hidden="true"></i>Back to inventory</a>
+  </header>
+  <section class="lifecycle-stock-overview" aria-label="Stock overview">
+    <div class="lifecycle-metrics lifecycle-metrics--stock">
+      {{ metric('Available to order',product.available,'package-check',featured=true) }}
+      {{ metric('Warehouse stock',product.warehouse,'warehouse') }}
+      {{ metric('Reserved',product.reserved,'lock-keyhole') }}
+      {{ metric('Near expiry',product.near_expiry,'calendar-clock',tone='warning') }}
+    </div>
+    <div class="lifecycle-stock-footnote"><span><i data-lucide="circle-check" aria-hidden="true"></i><strong>{{ product.eligible|number }}</strong> eligible stock</span><span><i data-lucide="circle-alert" aria-hidden="true"></i><strong>{{ product.expired|number }}</strong> expired in warehouse</span><span><i data-lucide="archive" aria-hidden="true"></i><strong>{{ product.holding|number }}</strong> expired holding</span></div>
+  </section>
+  <section class="lifecycle-surface lifecycle-batches-surface" id="product-batches">
+    {{ section_heading('layers','Batches and expiration','Track each receipt, its remaining stock, and its expiration date.',product.batch_pagination.total) }}
+    <div class="lifecycle-batch-list">
+    {% for batch in product.batches %}
+      {% set batch_state = 'expired' if batch.days_left<=0 else ('near_expiry' if batch.days_left<=product.near_expiry_days else batch.quality_status) %}
+      <article class="lifecycle-batch-card" data-state="{{ batch_state }}">
+        <div class="lifecycle-batch-top"><div><span class="lifecycle-mini-label">Batch reference</span><strong>{{ batch.batch_code }}</strong></div><span class="status-badge lifecycle-status" data-state="{{ batch_state }}">{{ 'Expired' if batch.days_left<=0 else ('Expires in ' ~ batch.days_left ~ ' days' if batch.days_left<=product.near_expiry_days else batch.quality_status|title) }}</span></div>
+        <div class="lifecycle-batch-body">
+          <div class="lifecycle-date-track"><div><i data-lucide="package-plus" aria-hidden="true"></i><span><small>Received</small><time datetime="{{ batch.received_date.isoformat() }}">{{ batch.received_date|nice_date }}</time></span></div><span class="lifecycle-date-line" aria-hidden="true"></span><div><i data-lucide="calendar-clock" aria-hidden="true"></i><span><small>Expiration</small><time datetime="{{ batch.expiry_date.isoformat() }}">{{ batch.expiry_date|nice_date }}</time></span></div></div>
+          <div class="lifecycle-batch-stock"><strong>{{ batch.quantity_available|number }} <small>/ {{ batch.quantity_received|number }} packs</small></strong><progress value="{{ batch.quantity_available }}" max="{{ batch.quantity_received if batch.quantity_received else 1 }}" aria-label="Remaining stock for batch {{ batch.batch_code }}"></progress><small>{{ batch.replacement_reserved|number }} reserved for replacements</small></div>
+        </div>
+      </article>
+    {% else %}{{ empty_state('layers','No batches recorded','Receive a finished-product batch to begin tracking stock and expiration.') }}{% endfor %}
+    </div>
+    {{ pagination_controls(product.batch_pagination,'batches') }}
+  </section>
+  <section class="lifecycle-surface" id="product-movements">
+    {{ section_heading('arrow-left-right','Warehouse movement history','Receipts, production, releases, and stock adjustments.',product.movement_pagination.total) }}
+    <div class="lifecycle-movement-list">
+    {% for movement in product.movements %}
+      <article class="lifecycle-movement-row"><span class="lifecycle-movement-icon" data-direction="{{ 'out' if movement.quantity_delta<0 else 'in' }}"><i data-lucide="{{ 'arrow-up-right' if movement.quantity_delta<0 else 'arrow-down-left' }}" aria-hidden="true"></i></span><div class="lifecycle-movement-copy"><strong>{{ movement.movement_type.replace('_',' ')|title }}</strong><p>{{ movement.note or 'Warehouse balance updated.' }}</p><small>{{ movement.actor_name }} &middot; {{ movement.created_at|nice_date }}</small></div><div class="lifecycle-movement-amount"><strong>{{ '+' if movement.quantity_delta>0 else '' }}{{ movement.quantity_delta|number }} <small>{{ movement.unit }}</small></strong><span>{{ movement.balance_before|number }} &rarr; {{ movement.balance_after|number }}</span></div></article>
+    {% else %}{{ empty_state('arrow-left-right','No stock movements yet','Warehouse activity will appear here when stock is received or released.') }}{% endfor %}
+    </div>
+    {{ pagination_controls(product.movement_pagination,'movements') }}
+  </section>
+</section>

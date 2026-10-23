@@ -124,6 +124,7 @@
             <small>{{ conversation.messages|length }} update{{ '' if conversation.messages|length == 1 else 's' }} in this conversation</small>
           </div>
         </header>
+        {% if conversation.refunds|length > 1 %}<nav aria-label="Refund cases">{% for refund in conversation.refunds %}<a class="button subtle" href="?refund={{ refund.order_refund_id }}">Refund #{{ refund.order_refund_id }}: {{ refund.amount|currency }} &middot; {{ refund.status }}</a>{% endfor %}</nav>{% endif %}
         {% if conversation.refund %}
         <div class="reseller-order-view-tabs" role="tablist" aria-label="Refund order views" data-refund-order-tabs>
           <button class="is-active" type="button" role="tab" aria-selected="true" aria-controls="reseller-order-activity-{{ conversation.key }}" data-refund-order-tab="activity"><i data-lucide="history"></i> Activity</button>

@@ -1,7 +1,9 @@
 {% extends "portals/base.html" %}
 
 {% block portal_content %}
-{% if section == "dashboard" %}
+{% if section in ["returns", "expired-stock", "product-details"] %}
+  {% include "portals/lifecycle/" ~ section ~ ".html" %}
+{% elif section == "dashboard" %}
   {% include "portals/owner/dashboard.html" %}
 {% elif section == "orders" %}
   {% include "portals/owner/orders.html" %}

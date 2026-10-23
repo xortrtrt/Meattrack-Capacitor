@@ -47,6 +47,7 @@ portal_nav = {
         ("cart", "Cart", "shopping-cart"),
         ("history", "Order History", "clipboard-list"),
         ("inbox", "Inbox", "inbox"),
+        ("returns", "Product Returns", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
     "team-leader": [
@@ -65,6 +66,7 @@ portal_nav = {
         ("inventory", "Inventory", "boxes"),
         ("materials", "Materials", "beef"),
         ("batches", "Batches", "package-check"),
+        ("expired-stock", "Expired Stock", "archive"),
         ("movements", "Movements", "arrow-left-right"),
         ("alerts", "Alerts", "triangle-alert"),
         ("products", "Products & Prices", "tags"),
@@ -74,6 +76,7 @@ portal_nav = {
         ("accounts", "Users & Access", "shield-check"),
         ("resellers", "Resellers", "users"),
         ("settings", "Settings", "settings"),
+        ("returns", "Product Returns", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
 }
@@ -81,8 +84,8 @@ portal_nav = {
 
 owner_nav_groups = (
     ("Overview", ("dashboard", "operations")),
-    ("Sales operations", ("inquiries", "orders", "refunds")),
-    ("Inventory", ("inventory", "materials", "batches", "movements", "alerts", "products")),
+    ("Sales operations", ("inquiries", "orders", "returns", "refunds")),
+    ("Inventory", ("inventory", "materials", "batches", "movements", "expired-stock", "alerts", "products")),
     ("People", ("accounts", "resellers")),
     ("Intelligence", ("reports", "forecasts")),
     ("Preferences", ("settings",)),
@@ -93,10 +96,12 @@ owner_nav_groups = (
 # Workflow pages that are valid portal destinations without appearing in navigation.
 portal_secondary_sections = {
     "owner": {
+        "product-details": ("Product details", "package-search"),
         "verify": ("Owner verification", "key-round"),
         "notifications": ("Notifications", "bell"),
     },
     "team-leader": {
+        "product-details": ("Product details", "package-search"),
         "notifications": ("Notifications", "bell"),
     },
     "sales-supervisor": {
@@ -116,7 +121,9 @@ team_leader_nav_by_role = {
         ("raw-materials", "Raw Materials", "beef"),
         ("finished-products", "Finished Products", "package-search"),
         ("batches", "Product Batches", "package-check"),
+        ("expired-stock", "Expired Stock", "archive"),
         ("logs", "Inventory Logs", "scroll-text"),
+        ("returns", "Product Returns", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
     "sales": [
@@ -126,6 +133,7 @@ team_leader_nav_by_role = {
         ("resellers", "My Resellers", "users"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
+        ("returns", "Product Returns", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
     "sales-supervisor": [
@@ -137,6 +145,7 @@ team_leader_nav_by_role = {
         ("refunds", "Refunds", "badge-dollar-sign"),
         ("reports", "Reports", "file-text"),
         ("accounts", "Accounts", "shield-check"),
+        ("returns", "Product Returns", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
 }

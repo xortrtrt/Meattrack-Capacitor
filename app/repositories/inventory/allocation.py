@@ -11,6 +11,7 @@ def _plan_fefo_allocations(
     quantities: dict[int, Decimal],
     *,
     reservation_order_id: int | None = None,
+    reservation_return_id: int | None = None,
 ) -> list[dict]:
     allocations: list[dict] = []
     for product_id in sorted(quantities):
@@ -31,15 +32,19 @@ def _plan_fefo_allocations(
             raise ValueError("Unknown product")
 
         cur.execute("""
-            SELECT ib.batch_id, ib.quantity_available, ib.expiry_date
+            SELECT ib.batch_id, ib.quantity_available, ib.expiry_date,
+                   ib.quantity_available - COALESCE((
+                       SELECT SUM(r.quantity) FROM replacement_stock_reservations r
+                       WHERE r.batch_id = ib.batch_id AND r.return_id IS DISTINCT FROM %s
+                   ), 0) AS free_quantity
             FROM inventory_batches ib
             WHERE ib.item_id = %s
               AND ib.quality_status = 'approved'
               AND ib.quantity_available > 0
-              AND ib.expiry_date >= CURRENT_DATE
+              AND ib.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date
             ORDER BY ib.expiry_date ASC, ib.batch_id ASC
             FOR UPDATE;
-        """, (product_id,))
+        """, (reservation_return_id, product_id))
         batches = cur.fetchall()
         if reservation_order_id is None:
             cur.execute(
@@ -56,7 +61,7 @@ def _plan_fefo_allocations(
                 (product_id, reservation_order_id),
             )
         reserved = Decimal(cur.fetchone()["reserved"])
-        available = sum((Decimal(row["quantity_available"]) for row in batches), Decimal("0")) - reserved
+        available = sum((max(Decimal(row["free_quantity"]), Decimal("0")) for row in batches), Decimal("0")) - reserved
         if available < required:
             raise ValueError(
                 f"Not enough {product['name']}. Required {display_decimal(required)} packs, "
@@ -68,7 +73,9 @@ def _plan_fefo_allocations(
             if remaining == 0:
                 break
             before = Decimal(batch["quantity_available"])
-            take = min(before, remaining)
+            take = min(max(Decimal(batch["free_quantity"]), Decimal("0")), remaining)
+            if take == 0:
+                continue
             allocations.append({
                 "product_id": product_id,
                 "product_name": product["name"],
@@ -99,6 +106,25 @@ def _apply_fefo_allocations(
         """, (allocation["after"], allocation["batch_id"], allocation["before"]))
         if cur.rowcount != 1:
             raise RuntimeError("Inventory batch changed while it was locked.")
+        cur.execute("""
+            SELECT order_item_id, quantity FROM order_items
+            WHERE order_id = %s AND product_id = %s ORDER BY order_item_id;
+        """, (order_id, allocation["product_id"]))
+        remaining = allocation["take"]
+        for line in cur.fetchall():
+            cur.execute("SELECT COALESCE(SUM(quantity),0) AS total FROM fulfillment_allocations WHERE order_item_id = %s;", (line["order_item_id"],))
+            take = min(remaining, Decimal(line["quantity"]) - Decimal(cur.fetchone()["total"]))
+            if take > 0:
+                cur.execute("""
+                    INSERT INTO fulfillment_allocations(order_item_id,batch_id,quantity)
+                    VALUES (%s,%s,%s) ON CONFLICT(order_item_id,batch_id)
+                    DO UPDATE SET quantity = fulfillment_allocations.quantity + EXCLUDED.quantity;
+                """, (line["order_item_id"], allocation["batch_id"], take))
+                remaining -= take
+            if remaining == 0:
+                break
+        if remaining:
+            raise ValueError("Fulfillment quantities do not match the order lines.")
         _insert_inventory_movement(
             cur,
             item_id=allocation["product_id"],

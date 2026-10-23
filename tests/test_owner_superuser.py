@@ -52,6 +52,8 @@ def test_every_non_owner_navigation_section_declares_a_capability():
         visible.add("notifications")
         if role == "reseller":
             visible.add("checkout")
+        if role == "team-leader:inventory":
+            visible.add("product-details")
         assert visible == declared
 
 

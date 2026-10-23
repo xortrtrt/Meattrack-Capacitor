@@ -323,14 +323,14 @@ def current_metrics(team_leader_account_id: int | None = None, reseller_account_
                 WHERE reseller_status = 'active'
                 {active_reseller_scope}
             ) AS active_resellers,
-            COALESCE((
+            GREATEST(COALESCE((
                 SELECT SUM(ib.quantity_available)
                 FROM inventory_batches ib
                 JOIN inventory_items ii ON ii.item_id = ib.item_id
                 WHERE ii.item_type = 'finished_product'
                   AND ib.quality_status = 'approved'
-                  AND (ib.expiry_date IS NULL OR ib.expiry_date >= CURRENT_DATE)
-            ), 0) AS total_available;
+                  AND (ib.expiry_date IS NULL OR ib.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
+            ), 0) - COALESCE((SELECT SUM(quantity) FROM all_stock_reservations),0),0) AS total_available;
     """, tuple(params) or None)
 
     return {
@@ -350,7 +350,7 @@ def inventory_product_movement_analytics(days: int = 30, limit: int = 8) -> list
                p.name,
                p.category,
                p.unit,
-               COALESCE(stock.total_available, 0) AS total_available,
+               GREATEST(COALESCE(stock.total_available, 0) - COALESCE((SELECT SUM(r.quantity) FROM all_stock_reservations r WHERE r.product_id=p.item_id),0),0) AS total_available,
                COALESCE(product_in.total_in, 0) AS total_in,
                COALESCE(product_out.total_out, 0) AS total_out
         FROM inventory_items p
@@ -358,7 +358,7 @@ def inventory_product_movement_analytics(days: int = 30, limit: int = 8) -> list
             SELECT item_id, SUM(quantity_available) AS total_available
             FROM inventory_batches
             WHERE quality_status = 'approved'
-              AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+              AND (expiry_date IS NULL OR expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
             GROUP BY item_id
         ) stock ON stock.item_id = p.item_id
         LEFT JOIN (

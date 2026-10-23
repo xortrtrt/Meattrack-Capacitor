@@ -9,6 +9,7 @@ htmlcov/
 node_modules/
 tmp/
 backups/
+outputs/
 *.backup
 meattrack-local-images.tar
 app/static/uploads/profiles/

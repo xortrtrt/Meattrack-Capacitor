@@ -38,6 +38,9 @@
     {% if role_key == "owner" and section in ["accounts", "reports", "resellers"] %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-directories.css') }}?v=20261019-1">
     {% endif %}
+    {% if section in ["returns", "expired-stock", "product-details", "finished-products"] %}
+    <link rel="stylesheet" href="{{ url_for('static', path='css/product_lifecycle.css') }}?v=20261023-pagination1">
+    {% endif %}
   </head>
   <body class="portal-body {{ portal_body_roles|default('role-' ~ role_key) }} section-{{ section }}{% if role_key in ['team-leader', 'sales-supervisor'] %} leader-role-{{ role.team_leader_role }}{% endif %}">
     <button

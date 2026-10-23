@@ -19,7 +19,7 @@
       {% if orders %}
       <div class="sales-order-card-list">
         {% for order in orders if order.order_type == "reseller" %}
-        {% set review_status = 'refunded' if order.refund_status == 'completed' else order.status %}
+        {% set review_status = 'refunded' if order.refund_status == 'completed' and order.refunded_amount >= order.total_amount else order.status %}
         {% set order_locked = order.status in ["fulfilled", "rejected", "cancelled", "expired"] %}
         {% set approval_blocked = order.status != "pending" or not order.payment_proofs %}
         {% set rejection_blocked = order.status != "pending" %}

@@ -1,0 +1,33 @@
+{% macro metric(label, value, icon, money=false, featured=false, tone='neutral') -%}
+<div class="lifecycle-metric {{ 'is-featured' if featured else '' }} tone-{{ tone }}">
+  <span class="lifecycle-metric-label"><i data-lucide="{{ icon }}" aria-hidden="true"></i>{{ label }}</span>
+  <strong>{{ value|currency if money else value|number }}{% if not money %}<small>packs</small>{% endif %}</strong>
+</div>
+{%- endmacro %}
+{% macro pagination_controls(pagination, label) -%}
+{% if pagination.total %}
+<nav class="lifecycle-pagination" aria-label="{{ label|capitalize }} pages">
+  <div class="lifecycle-pagination-summary">
+    <span>Showing {{ pagination.start|number }}&ndash;{{ pagination.end|number }} of {{ pagination.total|number }} {{ label }}</span>
+    <small>Page {{ pagination.page }} of {{ pagination.total_pages }}</small>
+  </div>
+  <div class="lifecycle-pagination-controls">
+    {% if pagination.has_prev %}
+    <a href="{{ pagination.previous_url }}" class="lifecycle-page-step" aria-label="Previous {{ label }} page"><i data-lucide="chevron-left" aria-hidden="true"></i><span>Previous</span></a>
+    {% else %}<span class="lifecycle-page-step" aria-disabled="true"><i data-lucide="chevron-left" aria-hidden="true"></i><span>Previous</span></span>{% endif %}
+    {% for link in pagination.links %}
+    <a href="{{ link.url }}" class="lifecycle-page-number" aria-label="{{ label|capitalize }} page {{ link.page }}"{% if link.page==pagination.page %} aria-current="page"{% endif %}>{{ link.page }}</a>
+    {% endfor %}
+    {% if pagination.has_next %}
+    <a href="{{ pagination.next_url }}" class="lifecycle-page-step" aria-label="Next {{ label }} page"><span>Next</span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+    {% else %}<span class="lifecycle-page-step" aria-disabled="true"><span>Next</span><i data-lucide="chevron-right" aria-hidden="true"></i></span>{% endif %}
+  </div>
+</nav>
+{% endif %}
+{%- endmacro %}
+{% macro empty_state(icon, title, description) -%}
+<div class="lifecycle-empty"><span class="lifecycle-empty-icon"><i data-lucide="{{ icon }}" aria-hidden="true"></i></span><strong>{{ title }}</strong><p>{{ description }}</p></div>
+{%- endmacro %}
+{% macro section_heading(icon, title, description='', count=none) -%}
+<header class="lifecycle-section-heading"><span class="lifecycle-section-icon"><i data-lucide="{{ icon }}" aria-hidden="true"></i></span><div><h3>{{ title }}</h3>{% if description %}<p>{{ description }}</p>{% endif %}</div>{% if count is not none %}<span class="lifecycle-count">{{ count }}</span>{% endif %}</header>
+{%- endmacro %}

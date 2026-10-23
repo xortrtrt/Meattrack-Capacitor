@@ -176,7 +176,7 @@
           <label>Output batch <input required name="batch_code" placeholder="PGL-0710-A" /></label>
           <label>Packs produced <input required type="number" min="1" step="1" name="quantity" max="999999999"></label>
         </div>
-        <label>Expiry date <input required type="date" name="expiry_date" /></label>
+        <label>Production date<input required type="date" name="production_date" value="{{ business_today().isoformat() }}" max="{{ business_today().isoformat() }}"></label><label>Expiry date <input required type="date" name="expiry_date" /></label>
         <footer class="inventory-modal-actions">
           <button class="button subtle" type="button" data-inventory-modal-close>Cancel</button>
           <button class="button primary" type="submit"><i data-lucide="factory"></i> Produce product</button>

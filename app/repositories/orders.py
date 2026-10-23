@@ -103,11 +103,16 @@ def list_orders(
                o.payment_ocr_confidence, o.payment_extraction_method,
                o.payment_confirmed_at, o.payment_ocr_engine,
                o.payment_due_at, o.expired_at,
-               refund.status AS refund_status
+               refund.status AS refund_status, COALESCE(refund.refunded_amount,0) AS refunded_amount
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = o.team_leader_account_id
-        LEFT JOIN order_refunds refund ON refund.order_id = o.order_id
+        LEFT JOIN (SELECT order_id,
+            CASE WHEN bool_or(status='completed') THEN 'completed'
+                 WHEN bool_or(status='processing') THEN 'processing'
+                 WHEN bool_or(status='pending') THEN 'pending' ELSE 'failed' END status,
+            COALESCE(SUM(amount) FILTER(WHERE status='completed'),0) refunded_amount
+            FROM order_refunds GROUP BY order_id) refund ON refund.order_id=o.order_id
         {where_sql}
         ORDER BY {order_sql}
         {"LIMIT %s" if limit is not None else ""}
@@ -614,7 +619,12 @@ def count_orders(
         SELECT COUNT(*) AS total
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
-        LEFT JOIN order_refunds refund ON refund.order_id = o.order_id
+        LEFT JOIN (SELECT order_id,
+            CASE WHEN bool_or(status='completed') THEN 'completed'
+                 WHEN bool_or(status='processing') THEN 'processing'
+                 WHEN bool_or(status='pending') THEN 'pending' ELSE 'failed' END status,
+            COALESCE(SUM(amount) FILTER(WHERE status='completed'),0) refunded_amount
+            FROM order_refunds GROUP BY order_id) refund ON refund.order_id=o.order_id
     """
     where = []
     params: list[object] = []
@@ -678,10 +688,10 @@ def product_by_id(product_id: int) -> dict | None:
                ) AS recipe_count,
                GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
-                     AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
+                     AND (pb.expiry_date IS NULL OR pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
                ), 0) - COALESCE((
                    SELECT SUM(osr.quantity)
-                   FROM order_stock_reservations osr
+                   FROM all_stock_reservations osr
                    WHERE osr.product_id = p.item_id
                ), 0), 0) AS available
         FROM inventory_items p
@@ -700,10 +710,10 @@ def list_reseller_cart_items(account_id: int) -> list[dict]:
                p.name, p.category, p.description, p.unit, p.base_price,
                GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
-                     AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
+                     AND (pb.expiry_date IS NULL OR pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
                ), 0) - COALESCE((
                    SELECT SUM(osr.quantity)
-                   FROM order_stock_reservations osr
+                   FROM all_stock_reservations osr
                    WHERE osr.product_id = p.item_id
                ), 0), 0) AS available,
                rci.quantity AS cart_quantity,
@@ -751,10 +761,10 @@ def _reseller_available_product(cur, product_id: int) -> dict | None:
         SELECT p.item_id AS product_id, p.name, p.is_active,
                GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
-                     AND pb.expiry_date >= CURRENT_DATE
+                     AND pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date
                ), 0) - COALESCE((
                    SELECT SUM(osr.quantity)
-                   FROM order_stock_reservations osr
+                   FROM all_stock_reservations osr
                    WHERE osr.product_id = p.item_id
                ), 0), 0) AS available
         FROM inventory_items p
@@ -989,10 +999,10 @@ def create_order_from_items(
                        FROM inventory_batches pb
                        WHERE pb.item_id = p.item_id
                          AND pb.quality_status = 'approved'
-                         AND pb.expiry_date >= CURRENT_DATE
+                         AND pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date
                    ), 0) - COALESCE((
                        SELECT SUM(osr.quantity)
-                       FROM order_stock_reservations osr
+                       FROM all_stock_reservations osr
                        WHERE osr.product_id = p.item_id
                    ), 0), 0) AS available
             FROM inventory_items p

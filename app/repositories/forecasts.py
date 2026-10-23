@@ -328,9 +328,9 @@ def _forecast_products(input_end: date) -> list[dict]:
     return clean_row(fetch_all(
         """
         SELECT p.item_id AS product_id, p.name, timezone(%s, p.created_at)::date AS product_created_date,
-               COALESCE(SUM(ib.quantity_available) FILTER (
-                   WHERE ib.quality_status = 'approved' AND ib.expiry_date >= %s
-               ), 0) AS usable_stock
+               GREATEST(COALESCE(SUM(ib.quantity_available) FILTER (
+                   WHERE ib.quality_status = 'approved' AND ib.expiry_date > GREATEST(%s, (now() AT TIME ZONE 'Asia/Manila')::date)
+               ), 0) - COALESCE((SELECT SUM(r.quantity) FROM all_stock_reservations r WHERE r.product_id=p.item_id),0),0) AS usable_stock
         FROM inventory_items p
         LEFT JOIN inventory_batches ib ON ib.item_id = p.item_id
         WHERE p.item_type = 'finished_product' AND p.is_active = true

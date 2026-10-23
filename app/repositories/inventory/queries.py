@@ -62,10 +62,10 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
                ii.pack_size, ii.pack_size_unit, ii.pack_content_status, ii.is_active,
                CASE
                    WHEN ii.item_type = 'raw_material' THEN ii.quantity_available
-                   ELSE COALESCE(SUM(ib.quantity_available) FILTER (
+                   ELSE GREATEST(COALESCE(SUM(ib.quantity_available) FILTER (
                        WHERE ib.quality_status = 'approved'
-                         AND ib.expiry_date >= CURRENT_DATE
-                   ), 0)
+                         AND ib.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date
+                   ), 0) - COALESCE((SELECT SUM(r.quantity) FROM all_stock_reservations r WHERE r.product_id=ii.item_id),0),0)
                END AS available
         FROM inventory_items ii
         LEFT JOIN inventory_batches ib ON ib.item_id = ii.item_id
@@ -127,7 +127,7 @@ def list_inventory_batches(q: str = "", category: str = "", page: int | None = N
                ii.name AS item_name, ii.category, ib.batch_code, ib.source_type,
                ib.quantity_received, ib.quantity_available, ib.unit,
                ib.received_date, ib.expiry_date, ib.quality_status,
-               ib.expiry_date - CURRENT_DATE AS days_until_expiry
+               ib.expiry_date - (now() AT TIME ZONE 'Asia/Manila')::date AS days_until_expiry
         FROM inventory_batches ib
         JOIN inventory_items ii ON ii.item_id = ib.item_id
         WHERE {where_sql}
@@ -194,10 +194,10 @@ def list_products(
                ) AS recipe_count,
                GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
                    WHERE pb.quality_status = 'approved'
-                     AND (pb.expiry_date IS NULL OR pb.expiry_date >= CURRENT_DATE)
+                     AND (pb.expiry_date IS NULL OR pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
                ), 0) - COALESCE((
                    SELECT SUM(osr.quantity)
-                   FROM order_stock_reservations osr
+                   FROM all_stock_reservations osr
                    WHERE osr.product_id = p.item_id
                ), 0), 0) AS available
         FROM inventory_items p

@@ -17,7 +17,7 @@ from ._shared import clean_row, fetch_all, fetch_one, get_transaction_cursor
 
 SETTING_DEFAULTS: dict[str, Any] = {
     "order.payment_window_minutes": 15,
-    "inventory.near_expiry_days": 7,
+    "inventory.near_expiry_days": 14,
     "inventory.critical_expiry_days": 2,
     "forecast.default_horizon_days": 7,
     "notifications.owner_critical_alerts": True,
@@ -499,19 +499,23 @@ def compensate_inventory(
             batch = cur.fetchone()
             if not batch:
                 raise ValueError("Inventory batch not found.")
+            cur.execute("SELECT COALESCE(SUM(quantity),0) reserved FROM replacement_stock_reservations WHERE batch_id=%s;", (batch_id,))
+            batch_reserved = Decimal(cur.fetchone()["reserved"])
             before = Decimal(batch["quantity_available"])
             after = measurements.require_capacity(before + delta, "Resulting batch stock")
             if after < 0:
                 raise ValueError("The correction would make batch stock negative.")
+            if after < batch_reserved:
+                raise ValueError("The correction would remove stock reserved for replacements.")
             cur.execute("""
                 SELECT COALESCE(SUM(quantity_available), 0) AS available
                 FROM inventory_batches WHERE item_id = %s AND quality_status = 'approved'
-                  AND expiry_date >= CURRENT_DATE;
+                  AND expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date;
             """, (item_id,))
             product_before = Decimal(cur.fetchone()["available"])
-            sellable = batch["quality_status"] == "approved" and batch["expiry_date"] >= business_today()
+            sellable = batch["quality_status"] == "approved" and batch["expiry_date"] > business_today()
             product_after = product_before + (delta if sellable else 0)
-            cur.execute("SELECT COALESCE(SUM(quantity), 0) AS reserved FROM order_stock_reservations WHERE product_id = %s;", (item_id,))
+            cur.execute("SELECT COALESCE(SUM(quantity), 0) AS reserved FROM all_stock_reservations WHERE product_id = %s;", (item_id,))
             reserved = Decimal(cur.fetchone()["reserved"])
             if delta < 0 and sellable and product_after < reserved:
                 raise ValueError("The correction would remove stock reserved for existing orders.")
@@ -607,8 +611,8 @@ def update_business_settings(values: dict[str, object], actor_account_id: int, r
                 raise ValueError("Payment window must be between 1 and 1440 minutes.")
         elif key in {"inventory.near_expiry_days", "inventory.critical_expiry_days"}:
             normalized[key] = int(value)
-            if not 0 <= normalized[key] <= 90:
-                raise ValueError("Expiry windows must be between 0 and 90 days.")
+            if not (14 if key == "inventory.near_expiry_days" else 0) <= normalized[key] <= 90:
+                raise ValueError("Expiry windows must be between 0 and 90 days; near-expiry warnings require at least 14 days.")
         elif key == "forecast.default_horizon_days":
             normalized[key] = int(value)
             if not 1 <= normalized[key] <= 365:
@@ -619,7 +623,7 @@ def update_business_settings(values: dict[str, object], actor_account_id: int, r
             normalized[key] = " ".join(str(value).strip().split())
             if len(normalized[key]) > 500:
                 raise ValueError("Business contact fields cannot exceed 500 characters.")
-    if normalized.get("inventory.critical_expiry_days", 2) > normalized.get("inventory.near_expiry_days", 7):
+    if normalized.get("inventory.critical_expiry_days", 2) > normalized.get("inventory.near_expiry_days", 14):
         raise ValueError("Critical expiry days cannot exceed the near-expiry window.")
     before = list_business_settings()
     with get_transaction_cursor() as cur:

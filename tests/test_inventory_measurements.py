@@ -104,7 +104,7 @@ class _FefoCursor:
         if "FROM inventory_items ii" in query:
             self._one = {"name": "Tocino", "unit": "pack"}
         elif "FROM inventory_batches ib" in query:
-            self._all = self.batches
+            self._all = [{**row, "free_quantity": row["quantity_available"]} for row in self.batches]
         elif "FROM order_stock_reservations" in query:
             self._one = {"reserved": Decimal("0")}
 

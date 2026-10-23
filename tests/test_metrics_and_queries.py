@@ -150,11 +150,11 @@ def test_refunded_order_filter_uses_completed_refund_status(monkeypatch):
     repositories.list_orders(order_type="reseller", status="refunded")
     repositories.count_orders(order_type="reseller", status="refunded")
 
-    assert "LEFT JOIN order_refunds refund ON refund.order_id = o.order_id" in list_calls[0][0]
+    assert "FROM order_refunds GROUP BY order_id) refund" in list_calls[0][0]
     assert "refund.status = 'completed'" in list_calls[0][0]
     assert "o.status = %s" not in list_calls[0][0]
     assert list_calls[0][1] == ("reseller",)
-    assert "LEFT JOIN order_refunds refund ON refund.order_id = o.order_id" in count_calls[0][0]
+    assert "FROM order_refunds GROUP BY order_id) refund" in count_calls[0][0]
     assert "refund.status = 'completed'" in count_calls[0][0]
     assert "o.status = %s" not in count_calls[0][0]
     assert count_calls[0][1] == ("reseller",)
@@ -306,7 +306,7 @@ def test_inventory_item_and_batch_filters_are_parameterized(monkeypatch):
     assert "LOWER(ii.category) = LOWER(%s)" in fetch_all_calls[1][0]
     assert fetch_all_calls[1][1] == ("raw_material", "raw material", 10, 0)
     assert "ii.category = %s" in fetch_all_calls[2][0]
-    assert "ib.expiry_date - CURRENT_DATE AS days_until_expiry" in fetch_all_calls[2][0]
+    assert "ib.expiry_date - (now() AT TIME ZONE 'Asia/Manila')::date AS days_until_expiry" in fetch_all_calls[2][0]
     assert fetch_all_calls[2][1] == ("%batch%", "%batch%", "%batch%", "Pork", 10, 20)
     assert fetch_one_calls[1][1] == ("%batch%", "%batch%", "%batch%", "Pork")
 

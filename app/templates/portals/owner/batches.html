@@ -21,10 +21,4 @@
     </tbody></table></div>
     {% set inventory_page = batches_page %}{% include "portals/owner/_inventory_pagination.html" %}
   </section>
-  <section class="panel owner-workspace-surface">
-    <div class="panel-heading"><div><span class="eyebrow">Owner override</span><h2>Direct finished-stock receipt</h2><p class="hint">Use for finished stock received directly. This creates a batch and a matching ledger movement.</p></div></div>
-    <details class="owner-override"><summary>Record a direct receipt</summary>
-      <form action="/portal/owner/batches/receipt" method="post"><label>Finished product<select required name="product_id"><option value="">Choose product</option>{% for product in finished_products %}<option value="{{ product.item_id }}">{{ product.name }}</option>{% endfor %}</select></label><label>Batch code<input required minlength="4" name="batch_code" placeholder="Unique batch reference"></label><label>Quantity (whole packs)<input required type="number" min="1" step="1" name="quantity" max="999999999"></label><label>Expiry date<input required type="date" name="expiry_date"></label><label>Reason<textarea required minlength="5" maxlength="500" name="reason"></textarea></label><button class="button primary">Record receipt</button></form>
-    </details>
-  </section>
 </div>

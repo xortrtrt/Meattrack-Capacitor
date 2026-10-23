@@ -15,7 +15,7 @@ ALLOWED_FIELDS = frozenset({
     "name", "email", "account_type", "team_leader_role", "team_leader_account_id",
     "destination_account_id", "active", "reason", "rejection_reason", "status", "action",
     "product_id", "item_id", "batch_id", "batch_code", "quantity", "quantity_delta",
-    "expiry_date", "base_price", "model_name", "forecast_horizon_days",
+    "expiry_date", "received_date", "production_date", "base_price", "model_name", "forecast_horizon_days",
     "order_payment_window_minutes", "near_expiry_days", "critical_expiry_days",
     "forecast_default_horizon_days", "owner_critical_alerts", "contact_email", "contact_phone",
     "contact_address", "business_hours", "return_section",
@@ -26,7 +26,7 @@ ACTION_PATTERN = re.compile(
     r"|products|settings|forecasts(?:/runs/[0-9]+/(?:retry|cancel))?"
     r"|resellers/[0-9]+/team-leader|alerts/[0-9]+/status|orders/[0-9]+/(?:approve|reject|fulfill)"
     r"|inquiries/[0-9]+/(?:approve|reject)"
-    r"|inventory/(?:corrections|production)|materials/[0-9]+/receipt|batches/receipt"
+    r"|inventory/(?:corrections|production)|materials/[0-9]+/receipt"
     r"|refunds/[0-9]+/take-over))$"
 )
 

@@ -53,15 +53,23 @@ def scan_batch_expiry() -> int:
         cur.execute("SELECT pg_try_advisory_xact_lock(hashtext('meattrack-expiry-scan')) AS locked;")
         if not cur.fetchone()["locked"]:
             return 0
+        # Return actions lock the case before its reserved batches. Use the same
+        # order so expiry scanning cannot deadlock a replacement release.
+        cur.execute("""SELECT return_id FROM product_returns r WHERE EXISTS (
+            SELECT 1 FROM replacement_stock_reservations s WHERE s.return_id=r.return_id
+        ) ORDER BY return_id FOR UPDATE;""")
+        cur.fetchall()
         cur.execute(
             """
             UPDATE inventory_batches
             SET quality_status = 'expired'
-            WHERE quality_status = 'approved' AND expiry_date < CURRENT_DATE
+            WHERE quality_status = 'approved' AND expiry_date <= (now() AT TIME ZONE 'Asia/Manila')::date
             RETURNING batch_id;
             """
         )
         changed += len(cur.fetchall())
+        from app.repositories.product_returns import sync_expired_custody
+        sync_expired_custody(cur)
         cur.execute(
             """
             UPDATE alerts a SET status = 'resolved'
@@ -74,14 +82,14 @@ def scan_batch_expiry() -> int:
         )
         cur.execute(
             """
-            SELECT b.batch_id, b.batch_code, b.item_id, i.name
+            SELECT b.batch_id, b.batch_code, b.item_id, b.quantity_available, b.expiry_date, i.name
             FROM inventory_batches b JOIN inventory_items i ON i.item_id = b.item_id
             WHERE b.quality_status = 'expired' AND b.quantity_available > 0
             ORDER BY b.batch_id FOR UPDATE OF b;
             """
         )
         for batch in cur.fetchall():
-            message = f"{batch['name']} batch {batch['batch_code']} is expired and still has stock."
+            message = f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expired on {batch['expiry_date']}. Pull-out required."
             cur.execute(
                 """
                 INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message)
@@ -95,7 +103,7 @@ def scan_batch_expiry() -> int:
             _create_notification_cursor(
                 cur, recipient_role="team-leader", category="inventory", severity="critical",
                 title="Expired batch requires action", message=message,
-                target_url="/portal/team-leader/batches", source_type="inventory_batches",
+                target_url="/portal/team-leader/expired-stock", source_type="inventory_batches",
                 source_id=batch["batch_id"], dedupe_key=f"batch-expired-{batch['batch_id']}",
             )
             if notify_owners:
@@ -108,11 +116,11 @@ def scan_batch_expiry() -> int:
         cur.execute(
             """
             SELECT b.batch_id, b.batch_code, b.expiry_date, b.quantity_available, i.item_id, i.name,
-                   (b.expiry_date - CURRENT_DATE) AS days_left
+                   (b.expiry_date - (now() AT TIME ZONE 'Asia/Manila')::date) AS days_left
             FROM inventory_batches b
             JOIN inventory_items i ON i.item_id = b.item_id
             WHERE b.quality_status = 'approved' AND b.quantity_available > 0
-              AND b.expiry_date BETWEEN CURRENT_DATE AND CURRENT_DATE + %s
+              AND b.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date AND b.expiry_date <= (now() AT TIME ZONE 'Asia/Manila')::date + %s
             ORDER BY b.expiry_date, b.batch_id
             FOR UPDATE OF b;
             """
@@ -129,12 +137,12 @@ def scan_batch_expiry() -> int:
                 DO UPDATE SET severity = EXCLUDED.severity, message = EXCLUDED.message;
                 """,
                 (severity, batch["item_id"], batch["batch_id"],
-                 f"{batch['name']} batch {batch['batch_code']} expires in {days} day(s)."),
+                 f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expire on {batch['expiry_date']} ({days} day(s))."),
             )
             _create_notification_cursor(
                 cur, recipient_role="team-leader", category="inventory", severity=severity,
                 title="Batch expiry warning",
-                message=f"{batch['name']} batch {batch['batch_code']} expires in {days} day(s).",
+                message=f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expire on {batch['expiry_date']} ({days} day(s)).",
                 target_url="/portal/team-leader/batches", source_type="inventory_batches",
                 source_id=batch["batch_id"], dedupe_key=f"batch-expiry-{batch['batch_id']}-{severity}",
             )
@@ -142,7 +150,7 @@ def scan_batch_expiry() -> int:
                 _create_notification_cursor(
                     cur, recipient_role="owner", category="inventory", severity="critical",
                     title="Critical batch expiry warning",
-                    message=f"{batch['name']} batch {batch['batch_code']} expires in {days} day(s).",
+                    message=f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expire on {batch['expiry_date']} ({days} day(s)).",
                     target_url="/portal/owner/alerts", source_type="inventory_batches",
                     source_id=batch["batch_id"], dedupe_key=f"owner-batch-expiry-{batch['batch_id']}-{severity}",
                 )
