@@ -29,12 +29,16 @@ checks enforce this rule even when the background worker is stopped.
 2. Assigned sales staff approve or reject the request. Approval is required before
    inventory receives the goods. An expired item is eligible for review whether
    it expired before delivery or while held by the reseller; approval is manual.
-3. Inventory records actual matching receipts and the holding location. Partial
-   receipts do not start settlement. Discrepancies block processing until sales
-   reviews them; corrected quantities cannot be below quantities already received.
-4. Refunds use original purchase prices and enter the existing supervisor refund
-   workspace after full verification. Several partial refunds may belong to one
-   order. Refund retries preserve their attempt history.
+3. Inventory uses **Record returned items received** to record each actual delivery,
+   its quantities, holding location, staff, timestamp, and remarks. Every receipt
+   links to the original fulfilled batch, holding entry, and custody movement.
+   Partial receipts remain awaiting receipt; a complete receipt moves the case to
+   **Awaiting Inventory verification**. Discrepancies require Sales reapproval.
+4. Inventory explicitly selects **Verify returned goods** after checking the full
+   approved quantity and reconciled custody records. This records the verifier
+   and remarks and creates a refund-only obligation atomically. New settlements
+   require transfer proof, reference, transfer date/time, and settlement remarks.
+   Several partial refunds may belong to one order; retries preserve attempts.
 5. Replacement quotes may use the original products or substitutes. Identical
    products/quantities preserve the original credit. Substitutes use catalog
    prices captured at approval. The reseller accepts each quote revision.
@@ -59,6 +63,22 @@ Remarks, staff identities, timestamps, and custody movements remain recorded.
 Operation keys and transaction locks prevent repeated submissions or concurrent
 claims from producing duplicate stock/settlement actions.
 
+Sales leaders have a **Sales Refunds** section showing only refunds for their
+assigned orders, including rejected paid orders and replacement differences.
+They can inspect attempts and transfer evidence and follow the links to receipts
+and stock custody. Processing actions and message submission remain restricted
+to the existing authorized roles; internal processor notes are excluded from
+the sales view. Direct URLs and evidence downloads use the same ownership scope.
+
+Before each processing attempt or completion, settlement rechecks original
+payment limits, approval, final verification, original prices, received quantities,
+custody balances, and required replacement release. Matching operation replays
+return the recorded result; changed details or reused references/proof are rejected.
+Disposal remains independent of the refund and never changes original sale totals.
+The Product Returns reconciliation filter flags missing links and mismatched
+credit, custody, or completion records without rewriting audit history. Reports
+show cumulative settlement figures separately from period-specific gross sales.
+
 Historical allocation backfill uses only complete, unambiguous fulfillment
 movements. Inventory staff must document missing batch attribution using
 **Legacy orders requiring batch verification** before a legacy claim can settle.
@@ -75,6 +95,12 @@ Migrations 029–031 add the lifecycle tables, indexes, refund links, and operat
 keys. The fresh-install schema includes the same changes. Existing warning windows
 below 14 days are raised; longer windows are preserved. The first updated worker
 scan creates pull-out tasks without claiming physical removal has occurred.
+
+Migration 033 adds explicit Inventory verification, immutable receipt headers and
+lines, structured financial events, operation records, and reconciliation checks.
+It backfills only receipts proven by existing custody records. Historical
+verification dates and completed refunds are preserved without inventing verifier
+identities. Incomplete legacy attribution blocks new settlement until reviewed.
 
 Run the lifecycle integration and browser checks with:
 

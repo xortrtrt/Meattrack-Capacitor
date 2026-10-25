@@ -32,6 +32,7 @@
           </summary>
 
           <div class="sales-order-card-body">
+            {% if order.refund_status %}<p><a href="/portal/{{ role_key }}/refunds?q={{ order.order_id }}">View refund records for Order #{{ order.order_id }}</a>{% if order.refunded_amount %} &middot; {{ 'Full refund' if order.refunded_amount>=order.total_amount else 'Partial refund' }}: {{ order.refunded_amount|currency }}{% endif %}</p>{% endif %}
             <section class="sales-order-products" aria-labelledby="sales-order-items-{{ order.order_id }}">
               <header><div><span class="eyebrow">Order contents</span><h3 id="sales-order-items-{{ order.order_id }}">{{ order['items']|length }} product{{ '' if order['items']|length == 1 else 's' }}</h3></div></header>
               <div class="sales-order-product-list">

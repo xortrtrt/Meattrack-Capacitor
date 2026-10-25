@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
@@ -59,6 +60,8 @@ def _refund_message_actor(request: Request, role_key: str) -> int:
 def refunds_context(request: Request) -> dict:
     role_key = request.path_params.get("role_key", "owner")
     account_id = shared.session_account_id(request)
+    read_only = role_key == "team-leader"
+    require_capability(request,"refunds.view_assigned" if read_only else ("refunds.manage_all" if role_key == "owner" else "refunds.manage_assigned"),role_key)
     filters = shared.portal_filters(request)
     status = filters["status"] if filters["status"] in data.REFUND_STATUSES else ""
     total = data.count_order_refunds(role_key, account_id, status=status, q=filters["q"])
@@ -72,13 +75,16 @@ def refunds_context(request: Request) -> dict:
         try:
             refund_id = shared.optional_positive_id(refund_value)
             selected = data.get_order_refund(refund_id, role_key, account_id) if refund_id else None
-        except ValueError:
-            selected = None
+        except ValueError as exc:
+            raise HTTPException(404) from exc
+        if not selected:
+            raise HTTPException(404,detail="Refund not found or unavailable to your account.")
     pane = request.query_params.get("pane", "activity").strip().lower()
-    if pane == "conversation" and selected:
+    if pane == "conversation" and selected and not read_only:
         pass
     elif (
         pane == "transfer"
+        and not read_only
         and selected
         and selected.get("status") == "processing"
         and selected.get("processing_by_account_id") == account_id
@@ -94,6 +100,9 @@ def refunds_context(request: Request) -> dict:
         "refund_statuses": ("pending", "processing", "completed", "failed"),
         "refund_pane": pane,
         "refund_viewer_account_id": account_id,
+        "refund_read_only": read_only,
+        "operation_key": lambda: str(uuid4()),
+        "refund_totals": data.refund_financial_summary(role_key,account_id),
     }
 
 
@@ -111,24 +120,24 @@ def _refund_redirect(
 
 
 @router.post("/portal/{role_key}/refunds/{refund_id}/start")
-async def start_refund(request: Request, role_key: str, refund_id: int):
+async def start_refund(request: Request, role_key: str, refund_id: int, operation_key: str = Form("")):
     account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
-        await run_in_threadpool(data.start_order_refund, refund_id, account_id, role_key)
+        await run_in_threadpool(data.start_order_refund, refund_id, account_id, role_key, operation_key or None)
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc))
     return _refund_redirect(role_key, refund_id, message="Refund processing started.")
 
 
 @router.post("/portal/{role_key}/refunds/{refund_id}/retry")
-async def retry_refund(request: Request, role_key: str, refund_id: int):
+async def retry_refund(request: Request, role_key: str, refund_id: int, operation_key: str = Form("")):
     account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
-        await run_in_threadpool(data.start_order_refund, refund_id, account_id, role_key)
+        await run_in_threadpool(data.start_order_refund, refund_id, account_id, role_key, operation_key or None)
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc))
     return _refund_redirect(role_key, refund_id, message="A new refund attempt was started.")
@@ -171,12 +180,13 @@ async def fail_refund(
     role_key: str,
     refund_id: int,
     failure_reason: str = Form(...),
+    operation_key: str = Form(""),
 ):
     account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
         return guard
     try:
-        await run_in_threadpool(data.fail_order_refund, refund_id, account_id, role_key, failure_reason)
+        await run_in_threadpool(data.fail_order_refund, refund_id, account_id, role_key, failure_reason, operation_key or None)
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc), pane="transfer")
     return _refund_redirect(role_key, refund_id, message="Refund attempt marked failed. Its history was preserved.")
@@ -192,6 +202,7 @@ async def complete_refund(
     transferred_at: str = Form(...),
     internal_note: str = Form(""),
     proof: UploadFile | None = File(None),
+    operation_key: str = Form(""),
 ):
     account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
@@ -214,6 +225,7 @@ async def complete_refund(
             transferred_at=transfer_time,
             internal_note=internal_note,
             proof=attachments[0] if attachments else None,
+            operation_key=operation_key or None,
         )
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc), pane="transfer")
@@ -313,6 +325,7 @@ async def refund_proof(request: Request, proof_id: int):
 
 
 SECTION_LOADERS = {
+    ("team-leader", "refunds"): refunds_context,
     ("owner", "refunds"): refunds_context,
     ("sales-supervisor", "refunds"): refunds_context,
 }

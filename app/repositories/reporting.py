@@ -6,6 +6,11 @@ from .accounts import require_reseller_team_leader, reseller_account_profile
 from .notifications import _create_notification_cursor
 
 
+def settlement_summary(actor_id: int) -> dict:
+    from .product_returns import return_settlement_totals
+    return return_settlement_totals(actor_id)
+
+
 def list_sales_reports(
     report_source: str | None = None,
     limit: int | None = None,
@@ -717,4 +722,4 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
     return clean_row(rep)
 
 
-__all__ = ['list_sales_reports', 'count_sales_reports', 'list_activity_logs', 'count_activity_logs', 'current_metrics', 'inventory_product_movement_analytics', 'team_sales_report_totals', 'team_sales_report_entries', 'team_rejected_order_entries', 'team_reseller_purchase_summary', 'add_sales_report', 'reseller_month_orders', 'reseller_reportable_products', 'add_reseller_sell_through_report']
+__all__ = ['settlement_summary', 'list_sales_reports', 'count_sales_reports', 'list_activity_logs', 'count_activity_logs', 'current_metrics', 'inventory_product_movement_analytics', 'team_sales_report_totals', 'team_sales_report_entries', 'team_rejected_order_entries', 'team_reseller_purchase_summary', 'add_sales_report', 'reseller_month_orders', 'reseller_reportable_products', 'add_reseller_sell_through_report']

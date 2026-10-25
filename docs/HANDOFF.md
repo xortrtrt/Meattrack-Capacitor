@@ -4,6 +4,23 @@ Updated: 2026-10-25
 
 This guide is for a new maintainer joining from another Codex account. It summarizes the product, implemented business rules, repository and deployment status, verification, and safe next steps. Read it with the project README and database guide before changing code or production data.
 
+## Refund traceability revision — 2026-10-26
+
+The current source adds migration **033**, explicit final Inventory verification,
+immutable returned-item receipt records, structured refund case history,
+reconciliation flags, and a **Sales Refunds** section for assigned sales leaders.
+Sales leaders have view-only access to their assigned order refunds and transfer
+proof; supervisors and Owner retain financial processing. New completions require
+proof, a transfer reference/date, and settlement remarks. Returned goods remain
+non-sellable. See [the release and rollback guide](refund-traceability-release.md)
+and [the lifecycle guide](product-lifecycle.md) for the revised workflow.
+
+The Git/deployment references in the earlier snapshot below are historical.
+Use `git log -1 -- app database` to identify the refund application release and
+verify the server SHA before future operational work. Local release evidence and
+private backup locations are retained by the project owner; they are not copied
+into a fresh clone. Existing customer data and demo assignments must be preserved.
+
 ## Current status at a glance
 
 - Project: MEATTRACK, the Batangas Premium website and operations system.
@@ -13,7 +30,7 @@ This guide is for a new maintainer joining from another Codex account. It summar
 - Latest deployed application revision reported by the release record: 6b493d1545fb32f811576dfe757e6699a54b843f. The handoff commit does not change application code, schema, deployment files, or dependencies.
 - Live check on 2026-10-25: https://batangaspremium.com returned HTTP 200; /health returned {"status":"ok","database":"connected"}. The health endpoint does not expose a revision, so check the server revision if an exact deployed SHA is needed.
 - The latest observed GitHub Actions run for 7228cc3 had quality and production-security checks passing; test and browser-smoke were still running when checked. Check the Actions page for the final run status before treating this documentation commit as fully CI-verified.
-- Database baseline plus 32 ordered migrations; latest: database/migrations/032_fix_order_message_uniqueness.sql.
+- Database baseline plus 33 ordered migrations; latest: database/migrations/033_refund_inventory_traceability.sql.
 - A 30-minute authenticated 10-user live acceptance run passed against the application repair release. Details and limits are below.
 - Do not commit or share credentials, .env files, database backups, payment evidence, private reports, or activation links.
 

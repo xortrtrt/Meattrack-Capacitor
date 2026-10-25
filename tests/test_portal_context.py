@@ -75,6 +75,8 @@ READ_FUNCTIONS = (
     "list_order_refunds",
     "count_order_refunds",
     "refund_status_counts",
+    "refund_financial_summary",
+    "settlement_summary",
     "list_reseller_refund_conversations",
     "owner_operations_summary",
     "business_setting",
@@ -90,9 +92,9 @@ EXPECTED_CALLS = {
         "unread_notification_count",
     },
     ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
-    ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
+    ("owner", "reports"): {"settlement_summary","list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
     ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_forecast_runs", "business_setting", "list_notifications", "unread_notification_count"},
-    ("owner", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "list_notifications", "unread_notification_count"},
+    ("owner", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "refund_financial_summary", "list_notifications", "unread_notification_count"},
     ("owner", "accounts"): {
         "list_accounts",
         "count_accounts",
@@ -104,9 +106,9 @@ EXPECTED_CALLS = {
     ("team-leader", "dashboard"): {"current_metrics", "list_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "resellers"): {"list_team_resellers", "count_team_resellers", "list_notifications", "unread_notification_count"},
     ("sales-supervisor", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
-    ("sales-supervisor", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "list_notifications", "unread_notification_count"},
+    ("sales-supervisor", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "refund_financial_summary", "list_notifications", "unread_notification_count"},
     ("team-leader", "orders"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
-    ("team-leader", "reports"): {
+    ("team-leader", "reports"): {"settlement_summary",
         "list_sales_reports",
         "count_sales_reports",
         "team_sales_report_entries",
@@ -154,9 +156,10 @@ def install_read_spies(monkeypatch):
     for name in READ_FUNCTIONS:
         result = (
             METRICS if name == "current_metrics"
-            else {} if name == "owner_operations_summary"
+            else {} if name in {"owner_operations_summary","settlement_summary"}
             else 7 if name == "business_setting"
             else {"pending": 0, "processing": 0, "completed": 0, "failed": 0} if name == "refund_status_counts"
+            else {"pending_amount":0,"completed_amount":0} if name == "refund_financial_summary"
             else 0 if name.startswith(("count_", "unread_", "reseller_cart_count"))
             else []
         )
@@ -223,6 +226,7 @@ def test_refund_workspace_renders_order_thread_and_audit_evidence(monkeypatch):
     monkeypatch.setattr(repositories, "list_order_refunds", lambda *args, **kwargs: [refund])
     monkeypatch.setattr(repositories, "count_order_refunds", lambda *args, **kwargs: 1)
     monkeypatch.setattr(repositories, "refund_status_counts", lambda *args, **kwargs: {"pending": 0, "processing": 0, "completed": 1, "failed": 0})
+    monkeypatch.setattr(repositories, "refund_financial_summary", lambda *args, **kwargs: {"pending_amount":0,"completed_amount":0})
     monkeypatch.setattr(repositories, "get_order_refund", lambda *args, **kwargs: refund)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
@@ -268,6 +272,7 @@ def test_refund_transfer_is_a_separate_workspace_pane(monkeypatch):
     monkeypatch.setattr(repositories, "list_order_refunds", lambda *args, **kwargs: [refund])
     monkeypatch.setattr(repositories, "count_order_refunds", lambda *args, **kwargs: 1)
     monkeypatch.setattr(repositories, "refund_status_counts", lambda *args, **kwargs: {"pending": 0, "processing": 1, "completed": 0, "failed": 0})
+    monkeypatch.setattr(repositories, "refund_financial_summary", lambda *args, **kwargs: {"pending_amount":0,"completed_amount":0})
     monkeypatch.setattr(repositories, "get_order_refund", lambda *args, **kwargs: refund)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)

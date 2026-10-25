@@ -19,6 +19,9 @@ def isolate_web_session_store(monkeypatch, request):
     if request.node.get_closest_marker("postgres"):
         return
     from app import web_sessions
+    from app import repositories
+
+    monkeypatch.setattr(repositories,"settlement_summary",lambda *args,**kwargs:{})
 
     monkeypatch.setattr(web_sessions, "_load_session", lambda token: {})
     monkeypatch.setattr(web_sessions, "_persist_session", lambda token, data, expires_seconds: None)

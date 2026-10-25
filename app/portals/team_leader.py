@@ -326,6 +326,7 @@ def reports_context(request: Request) -> dict:
         "sales_reports": page["items"],
         "team_report_sales": report_sales,
         "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=account_id),
+        "settlement_summary": data.settlement_summary(account_id),
     }
 
 

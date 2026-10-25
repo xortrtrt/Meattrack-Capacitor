@@ -32,7 +32,7 @@ def _guard(request: Request, role_key: str, capability: str):
 def returns_context(request: Request) -> dict:
     actor_id = shared.session_account_id(request)
     role = capability_role_key(request)
-    cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""))
+    cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""),page=shared.requested_page(request.query_params.get("page")),reconciliation_only=request.query_params.get("reconciliation")=="1")
     case_id = shared.optional_positive_id(request.query_params.get("case"))
     selected = None
     if case_id:
@@ -62,6 +62,7 @@ def returns_context(request: Request) -> dict:
         can_review = False
     return {
         "return_cases": cases,
+        "return_cases_page": shared.paged(cases,cases[0]["list_total"] if cases else 0,cases[0]["list_page"] if cases else 1,12,status=request.query_params.get("status","")),
         "return_case": selected,
         "return_order_id": order_id,
         "returnable_batches": returns.returnable_allocations(order_id, actor_id)
@@ -145,6 +146,7 @@ async def return_action(request: Request, role_key: str, action: str):
         "approve": "returns.review",
         "reject": "returns.review",
         "receive": "returns.receive",
+        "verify": "returns.receive",
         "discrepancy": "returns.receive",
         "accept": "returns.create",
         "reserve": "returns.receive",
@@ -200,6 +202,8 @@ async def return_action(request: Request, role_key: str, action: str):
             )
         elif action == "discrepancy":
             await run_in_threadpool(returns.flag_return_discrepancy, return_id, actor_id, str(form.get("remarks", "")))
+        elif action == "verify":
+            await run_in_threadpool(returns.verify_product_return, return_id, actor_id, str(form.get("remarks", "")), str(form.get("operation_key", "")))
         elif action == "accept":
             await run_in_threadpool(returns.accept_replacement_quote, return_id, actor_id, int(str(form.get("revision", "0"))))
         elif action == "reserve":

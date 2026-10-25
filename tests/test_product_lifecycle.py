@@ -65,7 +65,7 @@ def create_case(d, resolution="refund", quantity=2):
     )
 
 
-def receive(d, case, quantity=2):
+def receive(d, case, quantity=2, *, verify=True):
     line = returns.get_product_return(case, d["inventory"])["lines"][0]
     returns.receive_product_return(
         case,
@@ -75,6 +75,8 @@ def receive(d, case, quantity=2):
         "Matched original batch and packs",
         str(uuid4()),
     )
+    if verify and returns.get_product_return(case,d["inventory"])["status"] == "awaiting_inventory_verification":
+        returns.verify_product_return(case,d["inventory"],"Final quantities and custody verified",str(uuid4()))
 
 
 def substitute(price):
@@ -99,7 +101,15 @@ def complete_refund(d, case):
         refund_method="Bank transfer",
         transaction_reference=f"REF{uuid4().hex[:14]}",
         transferred_at=business_now(),
+        internal_note="Simulated transfer confirmed against ledger",
+        proof=refund_proof(),
     )
+
+
+def refund_proof():
+    import hashlib
+    content = f"Simulated refund evidence {uuid4()}".encode()
+    return {"filename":"refund.png","content_type":"image/png","content":content,"size_bytes":len(content),"checksum_sha256":hashlib.sha256(content).hexdigest()}
 
 
 def test_expiry_blocks_today_without_worker_and_two_batches_remain_separate(lifecycle):
@@ -223,6 +233,7 @@ def test_discrepancy_reapproval_can_reduce_to_received_quantity(lifecycle):
     returns.review_product_return(
         case, d["sales"], True, "Approved corrected one pack claim", revised_quantities=[(line["return_line_id"], 1)]
     )
+    returns.verify_product_return(case,d["inventory"],"Verified corrected approved quantity",str(uuid4()))
     case_data = returns.get_product_return(case, d["reseller"])
     assert case_data["credit"] == 100 and case_data["refund"]["amount"] == 100
 

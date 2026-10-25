@@ -15,7 +15,7 @@ from app import main, repositories, web_sessions, worker
 from app.business_time import business_now, business_today
 from app.repositories import product_returns as returns
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
-from test_product_lifecycle import create_case, lifecycle, receive  # noqa: F401
+from test_product_lifecycle import create_case, lifecycle, receive, complete_refund  # noqa: F401
 
 
 @pytest.mark.postgres
@@ -109,7 +109,12 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         receipt.locator('input[name="quantity"]').fill("2")
         receipt.get_by_label("Expired holding location").fill("Expired freezer A")
         receipt.get_by_label("Receipt remarks").fill("Two expired packs physically received and checked")
-        receipt.get_by_role("button", name="Confirm verified receipt").click()
+        receipt.get_by_role("button", name="Record returned items received").click()
+        page.wait_for_load_state("networkidle")
+        expect(page.locator(".lifecycle-case-detail .status-badge").first).to_have_text("Awaiting Inventory Verification")
+        verification = page.locator('form[action$="/verify"]')
+        verification.get_by_label("Verification remarks").fill("Final receipt and holding quantities checked")
+        verification.get_by_role("button",name="Verify returned goods",exact=True).click()
         page.wait_for_load_state("networkidle")
         expect(page.locator(".lifecycle-case-detail .status-badge").first).to_have_text("Settlement Pending")
 
@@ -217,5 +222,19 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
             expect(
                 page.get_by_role("navigation", name="Batches pages").get_by_text("Page 1 of 2", exact=True)
             ).to_be_visible()
+        refund_id=returns.get_product_return(refund_case,d["sales"])["refund"]["order_refund_id"]
+        complete_refund(d,refund_case)
+        as_role(d["sales"],"team-leader","sales")
+        for width in (375,390,768,1440):
+            page.set_viewport_size({"width":width,"height":900})
+            page.goto(f"http://lifecycle.test/portal/team-leader/refunds?refund={refund_id}")
+            page.wait_for_load_state("networkidle")
+            expect(page.get_by_role("heading",name="Sales Refunds",exact=True,level=2)).to_be_visible()
+            expect(page.get_by_text("View refund screenshot",exact=True)).to_be_visible()
+            expect(page.get_by_role("button",name="Start processing",exact=True)).to_have_count(0)
+            expect(page.locator('textarea[name="message"]')).to_have_count(0)
+            assert "Simulated transfer confirmed against ledger" not in page.locator('body').inner_text()
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth+1")
+            page.screenshot(path=str(output/f"sales-refunds-{width}.png"),full_page=True)
         assert errors == [], errors
         browser.close()

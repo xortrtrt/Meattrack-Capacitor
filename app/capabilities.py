@@ -22,6 +22,7 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
         "resellers.manage",
     }),
     "team-leader:sales": frozenset({
+        "refunds.view_assigned",
         "conversations.manage",
         "notifications.view",
         "operations.view_team",
@@ -60,6 +61,7 @@ PORTAL_SECTION_CAPABILITIES = {
         "profile": "profile.manage_own", "notifications": "notifications.view",
     },
     "team-leader:sales": {
+        "refunds": "refunds.view_assigned",
         "returns": "returns.view",
         "dashboard": "operations.view_team", "live-chat": "conversations.manage",
         "messages": "conversations.manage", "resellers": "resellers.view_assigned",

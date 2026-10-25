@@ -263,7 +263,7 @@ def reports_context(request: Request) -> dict:
     page_number = data.pagination_meta(total, shared.positive_int(request.query_params.get("page"), maximum=2147483647), 10)["page"]
     items = data.list_sales_reports(report_source="team_leader", q=filters["q"], page=page_number, page_size=10, sort=filters["sort"])
     page = shared.paged(items, total, page_number, 10, q=filters["q"], sort=filters["sort"])
-    return {"sales_reports_page": page, "sales_reports": page["items"]}
+    return {"sales_reports_page": page, "sales_reports": page["items"],"settlement_summary":data.settlement_summary(shared.session_account_id(request))}
 
 
 def forecasts_context(request: Request) -> dict:

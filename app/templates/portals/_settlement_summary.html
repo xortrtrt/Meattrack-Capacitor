@@ -1,0 +1,7 @@
+{% set settlement_summary=settlement_summary|default({}) %}
+<section class="panel" aria-label="Cumulative financial settlement totals">
+  <h3>Sales and refund reconciliation</h3>
+  <p class="hint">Cumulative totals for your accessible orders, separate from the report period below.</p>
+  <dl class="refund-facts">{% for label,key in [('Original sales','original_sales'),('Confirmed collections','original_collections'),('Verified return credits','return_credits'),('Pending refund obligations','pending_refunds'),('Completed return refunds','completed_refunds'),('Released replacement value','replacement_value'),('Additional collections','additional_collections'),('Net collections','net_collections')] %}<div><dt>{{ label }}</dt><dd>{{ settlement_summary.get(key,0)|currency }}</dd></div>{% endfor %}</dl>
+  <a href="/portal/{{ role_key }}/refunds">View refund records</a> &middot; <a href="/portal/{{ role_key }}/returns">View Product Returns</a>
+</section>

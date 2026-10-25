@@ -10,6 +10,7 @@ from app.business_time import business_now
 
 from ._shared import *
 from .notifications import _create_notification_cursor, _create_order_system_message_cursor
+from .refund_integrity import check_refund_eligibility, fingerprint, replay_refund_operation, record_refund_operation
 
 
 REFUND_STATUSES = {"pending", "processing", "completed", "failed"}
@@ -25,6 +26,10 @@ def _refund_scope(role_key: str, account_id: int | None, alias: str = "r") -> tu
             f"AND {alias}.status IN ('pending', 'failed')))",
             [account_id],
         )
+    if role_key == "team-leader" and account_id is not None:
+        return (f" AND EXISTS(SELECT 1 FROM orders sales_order JOIN accounts viewer ON viewer.account_id=%s "
+                f"WHERE sales_order.order_id={alias}.order_id AND sales_order.team_leader_account_id=viewer.account_id "
+                "AND viewer.account_type='team_leader' AND viewer.team_leader_role='sales' AND viewer.is_active)", [account_id])
     raise ValueError("You are not authorized to access refunds.")
 
 
@@ -68,7 +73,9 @@ def list_order_refunds(
     params.extend([page_size, offset])
     return clean_row(fetch_all(
         f"""
-        SELECT r.order_refund_id, r.order_id, r.amount, r.currency, r.status,
+        SELECT r.order_refund_id, r.order_id, r.return_id, r.amount, r.currency, r.status,
+               CASE WHEN r.return_id IS NULL THEN 'Rejected paid order'
+                    WHEN pr.resolution='replace' THEN 'Replacement refund difference' ELSE 'Returned expired products' END refund_type,
                r.assigned_supervisor_account_id, r.processing_by_account_id,
                r.requested_at, r.processing_started_at, r.completed_at, r.failed_at,
                reseller.name AS reseller_name, business.business_name,
@@ -77,6 +84,7 @@ def list_order_refunds(
                COALESCE(attempts.attempt_count, 0) AS attempt_count
         FROM order_refunds r
         JOIN orders o ON o.order_id = r.order_id
+        LEFT JOIN product_returns pr ON pr.return_id=r.return_id
         LEFT JOIN accounts reseller ON reseller.account_id = o.created_by_account_id
         LEFT JOIN resellers business ON business.reseller_id = o.reseller_id
         LEFT JOIN accounts supervisor ON supervisor.account_id = r.assigned_supervisor_account_id
@@ -130,6 +138,11 @@ def refund_status_counts(role_key: str, account_id: int | None) -> dict[str, int
     return counts
 
 
+def refund_financial_summary(role_key: str, account_id: int | None) -> dict:
+    scope, params = _refund_scope(role_key, account_id)
+    return clean_row(fetch_one("SELECT COALESCE(SUM(r.amount) FILTER(WHERE r.status<>'completed'),0) pending_amount, COALESCE(SUM(r.amount) FILTER(WHERE r.status='completed'),0) completed_amount FROM order_refunds r WHERE true " + scope, tuple(params)))
+
+
 def get_order_refund(refund_id: int, role_key: str, account_id: int | None) -> dict | None:
     scope, params = _refund_scope(role_key, account_id)
     row = fetch_one(
@@ -177,6 +190,16 @@ def get_order_refund(refund_id: int, role_key: str, account_id: int | None) -> d
         """,
         (refund_id,),
     ))
+    if role_key == "team-leader":
+        for attempt in result["attempts"]:
+            attempt.pop("internal_note", None)
+        result["messages"] = []
+    result["return_case"] = None
+    if result.get("return_id"):
+        from .product_returns import get_product_return
+        result["return_case"] = get_product_return(result["return_id"], int(account_id))
+    result["refund_type"] = ("Rejected paid order" if not result.get("return_id") else
+                             "Replacement refund difference" if result["return_case"]["resolution"] == "replace" else "Returned expired products")
     return result
 
 
@@ -346,6 +369,13 @@ def send_order_refund_message(
 
 
 def _locked_refund(cur, refund_id: int) -> dict | None:
+    cur.execute("SELECT order_id,return_id FROM order_refunds WHERE order_refund_id=%s;", (refund_id,))
+    parent = cur.fetchone()
+    if not parent:
+        return None
+    cur.execute("SELECT order_id FROM orders WHERE order_id=%s FOR UPDATE;", (parent["order_id"],))
+    if parent["return_id"]:
+        cur.execute("SELECT return_id FROM product_returns WHERE return_id=%s FOR UPDATE;", (parent["return_id"],))
     cur.execute(
         """
         SELECT r.*, o.created_by_account_id AS reseller_account_id
@@ -396,6 +426,15 @@ def _publish_refund_event(
     attempt_id: int | None = None,
     severity: str = "info",
 ) -> None:
+    if refund.get("return_id"):
+        from .product_returns import _event
+        cur.execute("SELECT r.*,o.created_by_account_id reseller_account_id,o.team_leader_account_id FROM product_returns r JOIN orders o USING(order_id) WHERE return_id=%s;", (refund["return_id"],))
+        case = dict(cur.fetchone())
+        actor_id = None
+        if attempt_id:
+            cur.execute("SELECT processor_account_id FROM order_refund_attempts WHERE order_refund_attempt_id=%s;", (attempt_id,))
+            actor_id = cur.fetchone()["processor_account_id"]
+        _event(cur,case,actor_id,event_type,message,refund_id=refund["order_refund_id"],attempt_id=attempt_id,amount=refund["amount"])
     reseller_id = refund.get("reseller_account_id")
     if reseller_id is None:
         return
@@ -423,11 +462,14 @@ def _publish_refund_event(
     )
 
 
-def start_order_refund(refund_id: int, actor_id: int, role_key: str) -> int:
+def start_order_refund(refund_id: int, actor_id: int, role_key: str, operation_key: str | None = None) -> int:
     with get_transaction_cursor() as cur:
         refund = _locked_refund(cur, refund_id)
         if not refund:
             raise ValueError("Refund case was not found.")
+        from .product_returns import _actor
+        if _actor(cur,actor_id,{"owner", "sales-supervisor"}) != role_key:
+            raise ValueError("Your authenticated role cannot process this refund.")
         if role_key == "sales-supervisor" and refund.get("assigned_supervisor_account_id") is None:
             if refund["status"] not in {"pending", "failed"}:
                 raise ValueError("This unassigned refund cannot be claimed in its current state.")
@@ -441,13 +483,20 @@ def start_order_refund(refund_id: int, actor_id: int, role_key: str) -> int:
             )
             refund["assigned_supervisor_account_id"] = actor_id
         _authorize_refund(refund, actor_id, role_key)
+        request_hash = fingerprint(refund_id,actor_id,"start")
+        replay = replay_refund_operation(cur,operation_key,refund_id,actor_id,"start",request_hash)
+        if replay is not None:
+            return replay
+        check_refund_eligibility(cur,refund)
         if refund["status"] == "processing":
             if refund["processing_by_account_id"] == actor_id:
                 cur.execute(
                     "SELECT order_refund_attempt_id FROM order_refund_attempts WHERE order_refund_id = %s AND status = 'processing' ORDER BY attempt_number DESC LIMIT 1;",
                     (refund_id,),
                 )
-                return int(cur.fetchone()["order_refund_attempt_id"])
+                attempt_id = int(cur.fetchone()["order_refund_attempt_id"])
+                record_refund_operation(cur,operation_key,refund_id,actor_id,"start",request_hash,attempt_id)
+                return attempt_id
             raise ValueError("Another authorized user is already processing this refund.")
         if refund["status"] not in {"pending", "failed"}:
             raise ValueError("Completed refunds cannot be processed again.")
@@ -462,6 +511,7 @@ def start_order_refund(refund_id: int, actor_id: int, role_key: str) -> int:
             (actor_id, now, now, refund_id),
         )
         attempt_id = _create_attempt(cur, refund, actor_id)
+        record_refund_operation(cur,operation_key,refund_id,actor_id,"start",request_hash,attempt_id)
         cur.execute("SELECT attempt_number FROM order_refund_attempts WHERE order_refund_attempt_id = %s;", (attempt_id,))
         attempt_number = int(cur.fetchone()["attempt_number"])
         _add_log_cursor(cur, actor_account_id=actor_id, action="started_manual_refund", entity_type="order_refunds", entity_id=refund_id)
@@ -473,13 +523,19 @@ def start_order_refund(refund_id: int, actor_id: int, role_key: str) -> int:
         return attempt_id
 
 
-def fail_order_refund(refund_id: int, actor_id: int, role_key: str, failure_reason: str) -> None:
+def fail_order_refund(refund_id: int, actor_id: int, role_key: str, failure_reason: str, operation_key: str | None = None) -> None:
     reason = _clean_text(failure_reason, "Failure reason", 5, 500)
     with get_transaction_cursor() as cur:
         refund = _locked_refund(cur, refund_id)
         if not refund:
             raise ValueError("Refund case was not found.")
         _authorize_refund(refund, actor_id, role_key)
+        from .product_returns import _actor
+        if _actor(cur,actor_id,{"owner", "sales-supervisor"}) != role_key:
+            raise ValueError("Your authenticated role cannot process this refund.")
+        request_hash = fingerprint(refund_id,actor_id,reason)
+        if replay_refund_operation(cur,operation_key,refund_id,actor_id,"fail",request_hash) is not None:
+            return
         if refund["status"] != "processing" or refund["processing_by_account_id"] != actor_id:
             raise ValueError("Only the current processor can mark this refund as failed.")
         cur.execute(
@@ -494,6 +550,7 @@ def fail_order_refund(refund_id: int, actor_id: int, role_key: str, failure_reas
         attempt = cur.fetchone()
         if not attempt:
             raise ValueError("The active refund attempt could not be found.")
+        record_refund_operation(cur,operation_key,refund_id,actor_id,"fail",request_hash,attempt["order_refund_attempt_id"])
         now = business_now()
         cur.execute(
             "UPDATE order_refund_attempts SET status = 'failed', failure_reason = %s, failed_at = %s WHERE order_refund_attempt_id = %s;",
@@ -522,6 +579,7 @@ def complete_order_refund(
     transferred_at: datetime,
     internal_note: str = "",
     proof: dict | None = None,
+    operation_key: str | None = None,
 ) -> None:
     method = _clean_text(refund_method, "Refund method", 2, 100)
     reference, reference_key = _normalize_reference(transaction_reference)
@@ -532,12 +590,22 @@ def complete_order_refund(
         raise ValueError("Transfer date and time are required.")
     if transferred_at > business_now():
         raise ValueError("Transfer date and time cannot be in the future.")
+    note = _clean_text(internal_note, "Settlement remarks", 5, 1000)
+    if not proof:
+        raise ValueError("Attach transfer proof before completing the refund.")
+    request_hash = fingerprint(refund_id,actor_id,method,reference_key,transferred_at.isoformat(),note,proof["checksum_sha256"])
     try:
         with get_transaction_cursor() as cur:
             refund = _locked_refund(cur, refund_id)
             if not refund:
                 raise ValueError("Refund case was not found.")
             _authorize_refund(refund, actor_id, role_key)
+            from .product_returns import _actor
+            if _actor(cur,actor_id,{"owner", "sales-supervisor"}) != role_key:
+                raise ValueError("Your authenticated role cannot process this refund.")
+            if replay_refund_operation(cur,operation_key,refund_id,actor_id,"complete",request_hash) is not None:
+                return
+            check_refund_eligibility(cur,refund)
             if refund["status"] != "processing" or refund["processing_by_account_id"] != actor_id:
                 raise ValueError("Only the current processor can complete this refund.")
             cur.execute(
@@ -552,6 +620,11 @@ def complete_order_refund(
             attempt = cur.fetchone()
             if not attempt:
                 raise ValueError("The active refund attempt could not be found.")
+            cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0));", (f"refund-proof:{proof['checksum_sha256']}",))
+            cur.execute("SELECT 1 FROM order_refund_proofs p JOIN order_refund_attempts a USING(order_refund_attempt_id) WHERE p.checksum_sha256=%s AND a.status='completed' AND a.order_refund_id<>%s;", (proof["checksum_sha256"],refund_id))
+            if cur.fetchone():
+                raise ValueError("This transfer proof was already used for another completed refund.")
+            record_refund_operation(cur,operation_key,refund_id,actor_id,"complete",request_hash,attempt["order_refund_attempt_id"])
             now = business_now()
             cur.execute(
                 """
@@ -600,6 +673,9 @@ def take_over_order_refund(refund_id: int, owner_account_id: int) -> int:
         refund = _locked_refund(cur, refund_id)
         if not refund:
             raise ValueError("Refund case was not found.")
+        from .product_returns import _actor
+        _actor(cur,owner_account_id,{"owner"})
+        check_refund_eligibility(cur,refund)
         if refund["status"] != "processing":
             raise ValueError("Only a refund currently being processed can be taken over.")
         if refund["processing_by_account_id"] == owner_account_id:
@@ -633,13 +709,17 @@ def take_over_order_refund(refund_id: int, owner_account_id: int) -> int:
             (owner_account_id, now, now, refund_id),
         )
         attempt_id = _create_attempt(cur, refund, owner_account_id)
+        _publish_refund_event(cur,refund,event_type="refund_processing",title="Refund processing reassigned",message=f"The owner took over processing of Refund #{refund_id}.",dedupe_key=f"refund-{refund_id}-takeover-{attempt_id}",attempt_id=attempt_id)
         _add_log_cursor(cur, actor_account_id=owner_account_id, action="took_over_manual_refund", entity_type="order_refunds", entity_id=refund_id)
         return attempt_id
 
 
 def get_order_refund_proof(proof_id: int, role_key: str, account_id: int | None) -> dict | None:
-    if account_id is None or role_key not in {"owner", "sales-supervisor", "reseller"}:
+    if account_id is None or role_key not in {"owner", "sales-supervisor", "reseller", "team-leader"}:
         return None
+    if role_key == "team-leader":
+        scope, params = _refund_scope(role_key,account_id)
+        return fetch_one("SELECT p.* FROM order_refund_proofs p JOIN order_refund_attempts a USING(order_refund_attempt_id) JOIN order_refunds r USING(order_refund_id) WHERE p.order_refund_proof_id=%s " + scope, (proof_id,*params))
     access = "o.created_by_account_id = %s" if role_key == "reseller" else (
         "r.assigned_supervisor_account_id = %s" if role_key == "sales-supervisor" else "%s IS NOT NULL"
     )
@@ -661,4 +741,5 @@ __all__ = [
     "get_order_refund", "start_order_refund", "fail_order_refund", "complete_order_refund",
     "take_over_order_refund", "get_order_refund_proof", "list_reseller_refund_conversations",
     "send_order_refund_message", "list_order_refund_messages",
+    "refund_financial_summary",
 ]
