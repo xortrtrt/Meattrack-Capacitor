@@ -49,6 +49,7 @@ READ_FUNCTIONS = (
     "count_activity_logs",
     "count_inventory_movements",
     "team_sales_report_entries",
+    "team_sales_refund_entries",
     "team_rejected_order_entries",
     "team_reseller_purchase_summary",
     "reseller_most_bought_products",
@@ -112,6 +113,7 @@ EXPECTED_CALLS = {
         "list_sales_reports",
         "count_sales_reports",
         "team_sales_report_entries",
+        "team_sales_refund_entries",
         "team_rejected_order_entries",
         "list_notifications",
         "unread_notification_count",
@@ -1740,7 +1742,7 @@ def test_team_leader_reports_render_business_date_products_pagination_and_mobile
     assert "3 pack Chicken Tocino" in response.text
     assert "No notes were provided." in response.text
     assert "built-in method items" not in response.text
-    assert "PHP 910.00 - 1 order" in response.text
+    assert "PHP 910.00 retained - 1 order" in response.text
     assert "Page 1 of 2" in response.text
     assert "page=2" in response.text
     assert 'class="report-order-manifest" id="report-order-manifest" data-report-order-items' in response.text

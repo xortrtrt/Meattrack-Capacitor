@@ -1,4 +1,5 @@
 from __future__ import annotations
+from starlette.concurrency import run_in_threadpool
 
 from datetime import date
 from typing import Annotated
@@ -325,6 +326,7 @@ def reports_context(request: Request) -> dict:
         "sales_reports_page": page,
         "sales_reports": page["items"],
         "team_report_sales": report_sales,
+        "team_report_refunds": data.team_sales_refund_entries(account_id),
         "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=account_id),
         "settlement_summary": data.settlement_summary(account_id),
     }
@@ -696,8 +698,8 @@ async def team_report(
     try:
         shared.require_date_range(period_start, period_end)
         account_id = shared.session_account_id(request)
-        totals = data.team_sales_report_totals(period_start, period_end, team_leader_account_id=account_id)
-        data.add_sales_report(
+        totals = await run_in_threadpool(data.team_sales_report_totals,period_start,period_end,team_leader_account_id=account_id)
+        await run_in_threadpool(data.add_sales_report,
             "team_leader",
             request.session.get("account_name") or "Team leader",
             period_start,
@@ -709,7 +711,7 @@ async def team_report(
         )
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path(role_key, "reports", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path(role_key, "reports", message="Team leader report submitted with current fulfilled sales totals."))
+    return shared.redirect_to(shared.safe_portal_path(role_key, "reports", message="Report submitted with completed refunds separated from retained sales."))
 
 
 @router.post("/portal/sales-supervisor/accounts")

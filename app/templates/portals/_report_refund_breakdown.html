@@ -1,0 +1,21 @@
+{% if report.report_source=='team_leader' %}
+<section class="owner-detail-section">
+  <h3>Sales and refunds are separate</h3>
+  {% if report.reconciliation_required %}<p role="alert">This legacy report cannot be matched reliably to its original orders. Reconcile its source records before treating its submitted amount as retained sales.</p>{% endif %}
+  <dl class="owner-detail-facts">
+    <div><dt>Originally submitted sales</dt><dd>{{ report.submitted_total_sales|default(report.total_sales,true)|currency }}</dd></div>
+    <div><dt>Original submitted order count</dt><dd>{{ report.submitted_total_orders|default(report.total_orders)|number }}</dd></div>
+    {% if report.gross_sales is defined and report.gross_sales is not none %}
+    <div><dt>Original gross sales</dt><dd>{{ report.gross_sales|currency }}</dd></div>
+    <div><dt>Completed refunds — excluded</dt><dd>{{ report.refunded_sales|currency }}</dd></div>
+    <div><dt>Refunds completed after submission</dt><dd>{{ report.late_refund_adjustment|currency }}</dd></div>
+    <div><dt>Current retained sales</dt><dd>{{ report.total_sales|currency if not report.reconciliation_required else 'Requires reconciliation' }}</dd></div>
+    {% endif %}
+  </dl>
+  <h4>Orders with retained sales</h4>
+  {% for row in report.order_rows|default([]) if row.retained_sales>0 %}<p>Order #{{ row.order_id }} &middot; {{ row.retained_sales|currency }} retained &middot; {{ row.refunded_sales|currency }} refunded separately</p>{% else %}<p class="hint">No linked orders with a remaining sales balance.</p>{% endfor %}
+  <h4>Completed refund records</h4>
+  {% for refund in report.refund_rows|default([]) %}<p><a href="/portal/{{ role_key }}/refunds?refund={{ refund.order_refund_id }}">Refund #{{ refund.order_refund_id }}</a> &middot; Order #{{ refund.order_id }} &middot; {{ refund.amount|currency }} &middot; {{ refund.completed_at|nice_date }}{% if refund.late_adjustment %} &middot; Adjustment after submission{% endif %}</p>{% else %}<p class="hint">No completed refunds recorded for the linked orders.</p>{% endfor %}
+  <p class="hint">Pending and failed refunds are not deducted. Original submitted figures remain preserved.</p>
+</section>
+{% endif %}

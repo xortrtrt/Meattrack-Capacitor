@@ -4,6 +4,7 @@ from __future__ import annotations
 from ._shared import *
 from .accounts import require_reseller_team_leader, reseller_account_profile
 from .notifications import _create_notification_cursor
+from .report_settlements import report_order_rows, report_totals, snapshot_report_orders
 
 
 def settlement_summary(actor_id: int) -> dict:
@@ -29,8 +30,14 @@ def list_sales_reports(
                COALESCE(r.business_name, '') AS reseller,
                r.team_leader_account_id,
                tl.name AS team_leader_name,
-               sr.period_start, sr.period_end, sr.total_sales, sr.total_orders, sr.notes
+               sr.period_start, sr.period_end, sr.notes, sr.submitted_at,
+               sr.total_sales submitted_total_sales,sr.total_orders submitted_total_orders,
+               sr.refund_separation_version,
+               CASE WHEN sr.report_source='team_leader' THEN b.retained_sales ELSE sr.total_sales END total_sales,
+               CASE WHEN sr.report_source='team_leader' THEN b.retained_orders ELSE sr.total_orders END total_orders,
+               b.gross_sales,b.refunded_sales,b.refunded_at_submission,b.late_refund_adjustment,b.reconciliation_required
         FROM sales_reports sr
+        LEFT JOIN sales_report_balances b USING(sales_report_id)
         LEFT JOIN accounts a ON a.account_id = sr.submitted_by_account_id
         LEFT JOIN resellers r ON r.reseller_id = sr.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = r.team_leader_account_id
@@ -65,7 +72,8 @@ def list_sales_reports(
         params.extend([search, search, search])
     if where:
         query += " WHERE " + " AND ".join(where)
-    query += f" ORDER BY {safe_sort_sql(sort, REPORT_SORTS, REPORT_SORTS['newest'])}"
+    sorts={**REPORT_SORTS,"sales_desc":"total_sales DESC NULLS LAST, sr.sales_report_id DESC","orders_desc":"total_orders DESC, sr.sales_report_id DESC"}
+    query += f" ORDER BY {safe_sort_sql(sort, sorts, sorts['newest'])}"
     if limit is not None:
         if limit < 1:
             raise ValueError("limit must be positive")
@@ -116,6 +124,18 @@ def list_sales_reports(
         attachments_by_report.setdefault(report_id, []).append(attachment)
     for report in reports:
         report["attachments"] = attachments_by_report.get(report["sales_report_id"], [])
+    order_rows=clean_row(fetch_all("""SELECT s.sales_report_id,s.order_id,s.gross_sales,
+        COALESCE(f.amount,0) refunded_sales,GREATEST(0,s.gross_sales-COALESCE(f.amount,0)) retained_sales
+        FROM sales_report_orders s LEFT JOIN LATERAL(SELECT SUM(amount) amount FROM order_refunds
+          WHERE order_id=s.order_id AND status='completed') f ON true
+        WHERE s.sales_report_id=ANY(%s) ORDER BY s.order_id;""",(report_ids,)))
+    refunds=clean_row(fetch_all("""SELECT s.sales_report_id,f.order_refund_id,f.order_id,f.return_id,f.amount,f.completed_at,
+        NOT EXISTS(SELECT 1 FROM sales_report_refunds x WHERE x.sales_report_id=s.sales_report_id AND x.order_refund_id=f.order_refund_id) late_adjustment
+        FROM sales_report_orders s JOIN order_refunds f ON f.order_id=s.order_id
+        WHERE s.sales_report_id=ANY(%s) AND f.status='completed' ORDER BY f.completed_at,f.order_refund_id;""",(report_ids,)))
+    for report in reports:
+        report["order_rows"]=[row for row in order_rows if row["sales_report_id"]==report["sales_report_id"]]
+        report["refund_rows"]=[row for row in refunds if row["sales_report_id"]==report["sales_report_id"]]
     return reports
 
 
@@ -389,33 +409,8 @@ def inventory_product_movement_analytics(days: int = 30, limit: int = 8) -> list
 
 
 def team_sales_report_totals(period_start: date, period_end: date, team_leader_account_id: int | None = None) -> dict:
-    scope_sql = ""
-    params: list[object] = [period_start, period_end]
-    if team_leader_account_id is not None:
-        scope_sql = """
-          AND (
-              (o.order_type = 'walk_in' AND o.created_by_account_id = %s)
-              OR (o.order_type = 'reseller' AND o.team_leader_account_id = %s)
-          )
-        """
-        params.extend([team_leader_account_id, team_leader_account_id])
-    totals = fetch_one(f"""
-        SELECT COALESCE(SUM(oi.line_total), 0) AS total_sales,
-               COUNT(DISTINCT o.order_id) AS total_orders
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.order_id
-        JOIN inventory_items p ON p.item_id = oi.product_id
-        LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
-        WHERE o.status = 'fulfilled'
-          AND p.item_type = 'finished_product'
-          AND COALESCE(o.fulfilled_at, o.order_date)::date BETWEEN %s AND %s
-          {scope_sql};
-    """, tuple(params))
-    totals = clean_row(totals)
-    return {
-        "total_sales": float(totals["total_sales"] or 0),
-        "total_orders": int(totals["total_orders"] or 0),
-    }
+    with get_transaction_cursor() as cur:
+        return clean_row(report_totals(report_order_rows(cur,period_start,period_end,team_leader_account_id)))
 
 
 def team_sales_report_entries(team_leader_account_id: int | None = None) -> list[dict]:
@@ -430,17 +425,20 @@ def team_sales_report_entries(team_leader_account_id: int | None = None) -> list
         """
         params.extend([team_leader_account_id, team_leader_account_id])
     entries = clean_row(fetch_all(f"""
-        SELECT COALESCE(o.fulfilled_at, o.order_date)::date AS sale_date,
+        SELECT (COALESCE(o.fulfilled_at,o.order_date) AT TIME ZONE 'Asia/Manila')::date AS sale_date,
                o.order_id,
                COALESCE(r.business_name, 'Retail counter') AS customer,
                p.name AS product,
                oi.quantity,
                oi.unit,
-               oi.line_total AS total_sales
+               oi.line_total AS total_sales, o.total_amount order_gross_sales,
+               COALESCE(refunds.amount,0) order_refunded_sales,
+               GREATEST(0,o.total_amount-COALESCE(refunds.amount,0)) order_retained_sales
         FROM orders o
         JOIN order_items oi ON oi.order_id = o.order_id
         JOIN inventory_items p ON p.item_id = oi.product_id
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
+        LEFT JOIN LATERAL(SELECT SUM(amount) amount FROM order_refunds f WHERE f.order_id=o.order_id AND f.status='completed') refunds ON true
         WHERE o.status = 'fulfilled'
           AND p.item_type = 'finished_product'
           {scope_sql}
@@ -449,6 +447,20 @@ def team_sales_report_entries(team_leader_account_id: int | None = None) -> list
     for entry in entries:
         entry["sale_date"] = entry["sale_date"].isoformat()
     return entries
+
+
+def team_sales_refund_entries(team_leader_account_id: int) -> list[dict]:
+    rows=clean_row(fetch_all("""SELECT f.order_refund_id,f.order_id,f.return_id,f.amount,f.completed_at,
+        (COALESCE(o.fulfilled_at,o.order_date) AT TIME ZONE 'Asia/Manila')::date sale_date,
+        CASE WHEN r.resolution='replace' THEN 'Replacement refund difference' ELSE 'Returned products' END refund_type
+        FROM order_refunds f JOIN orders o USING(order_id) LEFT JOIN product_returns r ON r.return_id=f.return_id
+        WHERE f.status='completed' AND o.status='fulfilled'
+        AND ((o.order_type='walk_in' AND o.created_by_account_id=%s) OR (o.order_type='reseller' AND o.team_leader_account_id=%s))
+        ORDER BY f.completed_at DESC,f.order_refund_id DESC;""",(team_leader_account_id,team_leader_account_id)))
+    for row in rows:
+        row['sale_date']=row['sale_date'].isoformat()
+        row['completed_at']=row['completed_at'].isoformat()
+    return rows
 
 
 def team_rejected_order_entries(team_leader_account_id: int | None = None) -> list[dict]:
@@ -538,15 +550,27 @@ def add_sales_report(
         reseller_id = profile["reseller_id"]
     else:
         dep = fetch_one("SELECT department_id FROM departments LIMIT 1;")
-        department_id = dep["department_id"] if dep else 1
+        department_id = dep["department_id"] if dep else None
 
     with get_transaction_cursor() as cur:
+        order_rows=[]
+        if source=="team_leader":
+            if acc_id is None:
+                raise ValueError("A signed-in Sales account is required to submit this report.")
+            from .product_returns import _actor
+            _actor(cur,acc_id,{"sales","sales-supervisor"})
+            order_rows=report_order_rows(cur,period_start,period_end,acc_id,lock=True)
+            totals=report_totals(order_rows)
+            clean_total_sales=totals["total_sales"]
+            total_orders=totals["total_orders"]
         cur.execute("""
-            INSERT INTO sales_reports (report_source, submitted_by_account_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO sales_reports (report_source, submitted_by_account_id, reseller_id, department_id, period_start, period_end, total_sales, total_orders, notes,refund_separation_version,submitted_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,%s,clock_timestamp())
             RETURNING sales_report_id, report_source, period_start, period_end, total_sales, total_orders, notes;
-        """, (source, acc_id, reseller_id, department_id, period_start, period_end, clean_total_sales, total_orders, notes))
+        """, (source, acc_id, reseller_id, department_id, period_start, period_end, clean_total_sales, total_orders, notes,1 if source=="team_leader" else 0))
         rep = cur.fetchone()
+        if source=="team_leader":
+            snapshot_report_orders(cur,rep["sales_report_id"],order_rows)
         _add_log_cursor(cur, actor_account_id=acc_id, action="submitted_sales_report", entity_type="sales_reports", entity_id=rep["sales_report_id"])
     return clean_row(rep)
 
@@ -722,4 +746,4 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
     return clean_row(rep)
 
 
-__all__ = ['settlement_summary', 'list_sales_reports', 'count_sales_reports', 'list_activity_logs', 'count_activity_logs', 'current_metrics', 'inventory_product_movement_analytics', 'team_sales_report_totals', 'team_sales_report_entries', 'team_rejected_order_entries', 'team_reseller_purchase_summary', 'add_sales_report', 'reseller_month_orders', 'reseller_reportable_products', 'add_reseller_sell_through_report']
+__all__ = ['team_sales_refund_entries', 'settlement_summary', 'list_sales_reports', 'count_sales_reports', 'list_activity_logs', 'count_activity_logs', 'current_metrics', 'inventory_product_movement_analytics', 'team_sales_report_totals', 'team_sales_report_entries', 'team_rejected_order_entries', 'team_reseller_purchase_summary', 'add_sales_report', 'reseller_month_orders', 'reseller_reportable_products', 'add_reseller_sell_through_report']

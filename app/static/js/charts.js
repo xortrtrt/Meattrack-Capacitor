@@ -175,7 +175,7 @@
                         callbacks: {
                             label(context) {
                                 const row = sourceRows[context.dataIndex] || {};
-                                return `${formatMoney(context.parsed.y)} · ${formatQuantity(row.orders)} orders`;
+                                return `${formatMoney(context.parsed.y)} \u00b7 ${formatQuantity(row.orders)} orders`;
                             },
                         },
                     },
@@ -371,12 +371,29 @@
                 return;
             }
 
-            const orderIds = new Set();
-            const included = records.filter((record) => record.sale_date >= start && record.sale_date <= end);
-            const sales = included.reduce((sum, record) => {
-                orderIds.add(record.order_id);
-                return sum + Number(record.total_sales || 0);
-            }, 0);
+            const allIncluded = records.filter((record) => record.sale_date >= start && record.sale_date <= end);
+            const balances = new Map();
+            allIncluded.forEach((record) => {
+                const key = String(record.order_id);
+                if (!balances.has(key)) balances.set(key, {gross: 0, refunded: Number(record.order_refunded_sales || 0)});
+                const row = balances.get(key);
+                row.gross += Number(record.total_sales || 0);
+            });
+            balances.forEach((row) => { row.retained = Math.max(0, row.gross - row.refunded); });
+            const included = allIncluded.filter((record) => balances.get(String(record.order_id)).retained > 0);
+            const orderIds = new Set(included.map((record) => record.order_id));
+            const sales = Array.from(balances.values()).reduce((sum, row) => sum + row.retained, 0);
+            const refunded = Array.from(balances.values()).reduce((sum, row) => sum + row.refunded, 0);
+            const refundTotals = document.querySelector('[data-report-refund-totals]');
+            if (refundTotals) refundTotals.textContent = `Completed refunds excluded: ${money(refunded)}`;
+            const refundItems = document.querySelector('[data-report-refund-items]');
+            const refundData = document.getElementById('team-report-refunds-data');
+            if (refundItems && refundData) {
+                const refunds = JSON.parse(refundData.textContent || '[]').filter((row) => row.sale_date >= start && row.sale_date <= end);
+                refundItems.replaceChildren();
+                refunds.forEach((row) => refundItems.appendChild(element('p', '', `Refund #${row.order_refund_id} \u00b7 Order #${row.order_id} \u00b7 ${money(Number(row.amount))} \u00b7 ${row.refund_type} \u00b7 Completed ${new Date(row.completed_at).toLocaleString("en-PH", {timeZone: "Asia/Manila"})}`)));
+                if (!refunds.length) refundItems.appendChild(element('p', 'hint', 'No completed refunds for these sales.'));
+            }
             const packs = included.reduce((sum, record) => sum + Number(record.quantity || 0), 0);
             salesInput.value = money(sales);
             ordersInput.value = `${orderIds.size} ${countLabel(orderIds.size, "order")} / ${quantity(packs)} ${countLabel(packs, "pack")}`;
@@ -444,7 +461,7 @@
                 }
 
                 const total = element("div", "report-order-total");
-                total.append(element("small", "", "Order total"), element("strong", "", money(order.total)));
+                total.append(element("small", "", "Retained sales"), element("strong", "", money(balances.get(String(order.orderId)).retained)));
 
                 const chevron = element("span", "report-order-chevron");
                 chevron.setAttribute("aria-hidden", "true");
@@ -465,12 +482,12 @@
                     const copy = element("div", "report-order-product-copy");
                     copy.append(
                         element("strong", "", record.product || "Product"),
-                        element("small", "", `${quantity(record.quantity)} ${record.unit || "pack"}`),
+                        element("small", "", `Originally ${quantity(record.quantity)} ${record.unit || "pack"}`),
                     );
 
                     const lineTotal = element("div", "report-order-line-total");
                     lineTotal.append(
-                        element("small", "", "Sales"),
+                        element("small", "", "Original line value"),
                         element("strong", "", money(Number(record.total_sales || 0))),
                     );
                     line.append(image, copy, lineTotal);

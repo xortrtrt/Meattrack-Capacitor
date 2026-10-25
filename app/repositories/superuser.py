@@ -854,9 +854,12 @@ def owner_export_rows(resource: str) -> list[dict]:
             ORDER BY im.movement_id;
         """,
         "reports": """
-            SELECT sales_report_id, report_source, submitted_by_account_id, reseller_id,
-                   period_start, period_end, total_sales, total_orders, notes, submitted_at
-            FROM sales_reports ORDER BY sales_report_id;
+            SELECT sr.sales_report_id,sr.report_source,sr.submitted_by_account_id,sr.reseller_id,
+                   sr.period_start,sr.period_end,sr.total_sales submitted_sales,sr.total_orders submitted_orders,
+                   b.gross_sales,b.refunded_sales,CASE WHEN sr.report_source='reseller' THEN sr.total_sales WHEN b.reconciliation_required THEN NULL ELSE b.retained_sales END total_sales,
+                   CASE WHEN b.reconciliation_required THEN NULL ELSE b.retained_sales END retained_sales,b.late_refund_adjustment,b.retained_orders,
+                   b.reconciliation_required,sr.notes,sr.submitted_at
+            FROM sales_reports sr LEFT JOIN sales_report_balances b USING(sales_report_id) ORDER BY sr.sales_report_id;
         """,
         "forecasts": """
             SELECT forecast_run_id, run_by_account_id, model_name, input_period_start,

@@ -88,6 +88,11 @@ verified return credit, released replacement value, additional collections,
 completed return refunds, and net collections. Existing gross-sales records remain
 unchanged. Holding balances are separate from warehouse balances.
 
+Leader-to-Owner reports separately show retained sales and completed refunds.
+Original submitted figures and source order membership are preserved; later
+completed refunds appear as adjustments to the current retained balance.
+See [sales report refund separation](sales-report-refunds.md).
+
 ## Migration and verification
 
 Run `python tools/migrate_database.py` before starting the updated app and worker.

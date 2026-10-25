@@ -382,7 +382,7 @@
     <script src="{{ url_for('static', path='js/owner_modals.js') }}?v=20261019-modal-4" defer></script>
     {% endif %}
     <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
-    <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261020-owner-sales-summary-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261026-report-refunds-1"></script>
     {% if (role_key in ["owner", "sales-supervisor"] and section == "refunds") or (role_key == "reseller" and section == "inbox") %}
     <script src="{{ url_for('static', path='js/refunds.js') }}?v=20261017-live-refund-chat-3" defer></script>
     {% endif %}

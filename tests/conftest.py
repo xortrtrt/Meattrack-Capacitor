@@ -22,6 +22,7 @@ def isolate_web_session_store(monkeypatch, request):
     from app import repositories
 
     monkeypatch.setattr(repositories,"settlement_summary",lambda *args,**kwargs:{})
+    monkeypatch.setattr(repositories,"team_sales_refund_entries",lambda *args,**kwargs:[])
 
     monkeypatch.setattr(web_sessions, "_load_session", lambda token: {})
     monkeypatch.setattr(web_sessions, "_persist_session", lambda token, data, expires_seconds: None)

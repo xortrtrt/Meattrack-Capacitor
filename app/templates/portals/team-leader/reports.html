@@ -6,12 +6,15 @@
                     <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post" data-team-report-form data-business-date="{{ report_default_end_date }}">
                         <div class="form-grid"><label>Start <input required type="date" name="period_start" value="{{ report_default_start_date }}"></label><label>End <input required type="date" name="period_end" value="{{ report_default_end_date }}"></label></div>
                         <div class="form-grid" data-team-report-totals>
-                            <label>Total sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
+                            <label>Retained sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
                             <label>Total orders <input readonly type="text" data-report-total-orders value="0"></label>
                         </div>
                         <label>Notes <textarea name="notes" rows="4"></textarea></label>
                         <button class="button primary" type="submit">Submit report</button>
                     </form>
+                    <p class="hint">Completed refunds are excluded from retained sales. Pending or failed refunds remain unsettled. Pack counts refer to original deliveries. Replacement releases and additional payments are not counted as new ordinary sales.</p>
+                    <p data-report-refund-totals aria-live="polite"></p>
+                    <section aria-label="Completed refunds excluded from sales"><h3>Completed refunds — separate from sales</h3><div data-report-refund-items></div></section>
                     <div class="report-order-items">
                         <header class="report-order-items-heading">
                             <div><span class="eyebrow">Order contents</span><h3>Included order items</h3></div>
@@ -26,6 +29,7 @@
                         </button>
                     </div>
                     <script type="application/json" id="team-report-sales-data">{{ team_report_sales|tojson }}</script>
+                    <script type="application/json" id="team-report-refunds-data">{{ team_report_refunds|default([])|tojson }}</script>
 
                 </article>
                 <article class="panel sales-report-history">
@@ -36,7 +40,7 @@
                     <div class="sales-report-results" data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
                         <div class="stack-list">
                         {% for report in sales_reports if report.report_source == "team_leader" %}
-                            <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency }} - {{ report.total_orders }} {{ "order" if report.total_orders == 1 else "orders" }}</em></div>
+                            <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency if not report.reconciliation_required else "Requires reconciliation" }} retained - {{ report.total_orders }} {{ "order" if report.total_orders == 1 else "orders" }}</em>{% include "portals/_report_refund_breakdown.html" %}</div>
                         {% else %}
                             <div class="sales-report-empty" role="status">
                                 <i data-lucide="file-search" aria-hidden="true"></i>
