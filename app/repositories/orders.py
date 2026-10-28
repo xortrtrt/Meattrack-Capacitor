@@ -54,7 +54,7 @@ def list_orders(
     q = q.strip()
     status = status.strip()
     if status == "refunded":
-        where.append("refund.status = 'completed'")
+        where.append("refund.refunded_amount > 0")
     elif status:
         where.append("o.status = %s")
         params.append(status)
@@ -97,7 +97,7 @@ def list_orders(
                COALESCE(r.business_name, 'Retail counter') AS reseller,
                o.team_leader_account_id,
                tl.name AS team_leader_name,
-               o.status, o.order_date, o.total_amount, o.notes,
+               o.status, o.order_date, o.fulfilled_at, o.total_amount, o.notes,
                o.cancellation_reason, o.cancelled_at,
                o.payment_transaction_number, o.payment_paid_at, o.payment_amount,
                o.payment_ocr_confidence, o.payment_extraction_method,
@@ -108,9 +108,9 @@ def list_orders(
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = o.team_leader_account_id
         LEFT JOIN (SELECT order_id,
-            CASE WHEN bool_or(status='completed') THEN 'completed'
-                 WHEN bool_or(status='processing') THEN 'processing'
-                 WHEN bool_or(status='pending') THEN 'pending' ELSE 'failed' END status,
+            CASE WHEN bool_or(status='processing') THEN 'processing'
+                 WHEN bool_or(status='pending') THEN 'pending'
+                 WHEN bool_or(status='failed') THEN 'failed' ELSE 'completed' END status,
             COALESCE(SUM(amount) FILTER(WHERE status='completed'),0) refunded_amount
             FROM order_refunds GROUP BY order_id) refund ON refund.order_id=o.order_id
         {where_sql}
@@ -620,9 +620,9 @@ def count_orders(
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         LEFT JOIN (SELECT order_id,
-            CASE WHEN bool_or(status='completed') THEN 'completed'
-                 WHEN bool_or(status='processing') THEN 'processing'
-                 WHEN bool_or(status='pending') THEN 'pending' ELSE 'failed' END status,
+            CASE WHEN bool_or(status='processing') THEN 'processing'
+                 WHEN bool_or(status='pending') THEN 'pending'
+                 WHEN bool_or(status='failed') THEN 'failed' ELSE 'completed' END status,
             COALESCE(SUM(amount) FILTER(WHERE status='completed'),0) refunded_amount
             FROM order_refunds GROUP BY order_id) refund ON refund.order_id=o.order_id
     """
@@ -632,7 +632,7 @@ def count_orders(
         where.append("o.order_type = %s")
         params.append(order_type)
     if status == "refunded":
-        where.append("refund.status = 'completed'")
+        where.append("refund.refunded_amount > 0")
     elif status:
         where.append("o.status = %s")
         params.append(status)

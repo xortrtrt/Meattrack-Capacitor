@@ -47,7 +47,6 @@ portal_nav = {
         ("cart", "Cart", "shopping-cart"),
         ("history", "Order History", "clipboard-list"),
         ("inbox", "Inbox", "inbox"),
-        ("returns", "Product Returns", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
     "team-leader": [
@@ -108,6 +107,7 @@ portal_secondary_sections = {
         "notifications": ("Notifications", "bell"),
     },
     "reseller": {
+        "returns": ("My Returns", "package-check"),
         "checkout": ("Checkout", "credit-card"),
         "notifications": ("Notifications", "bell"),
     },
@@ -133,7 +133,7 @@ team_leader_nav_by_role = {
         ("resellers", "My Resellers", "users"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
-        ("returns", "Product Returns", "package-check"),
+        ("returns", "Return Review", "package-check"),
         ("refunds", "Sales Refunds", "badge-dollar-sign"),
         ("profile", "Profile", "user-cog"),
     ],
@@ -146,7 +146,7 @@ team_leader_nav_by_role = {
         ("refunds", "Refunds", "badge-dollar-sign"),
         ("reports", "Reports", "file-text"),
         ("accounts", "Accounts", "shield-check"),
-        ("returns", "Product Returns", "package-check"),
+        ("returns", "Return Review", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
 }

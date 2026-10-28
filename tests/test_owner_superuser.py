@@ -51,7 +51,8 @@ def test_every_non_owner_navigation_section_declares_a_capability():
         visible = {slug for slug, _label, _icon in navigation}
         visible.add("notifications")
         if role == "reseller":
-            visible.add("checkout")
+            # The legacy returns destination redirects into the Order History tab.
+            visible.update({"checkout", "returns"})
         if role == "team-leader:inventory":
             visible.add("product-details")
         assert visible == declared

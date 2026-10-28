@@ -1,5 +1,9 @@
 # Sales report refund separation
 
+For cancellation, return, replacement, and collection reconciliation rules, see
+[Refund and return process](refund-return-process.md). Migration 035 supplies
+the shared cumulative financial balances and reconciliation flags.
+
 Sales leaders submit **retained sales**, with completed refunds shown in a
 separate section. A PHP 1,000 sale with a completed PHP 200 refund contributes
 PHP 800 to retained sales. Fully refunded orders contribute zero and are omitted

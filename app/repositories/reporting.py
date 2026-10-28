@@ -301,6 +301,15 @@ def count_activity_logs(
     return int(row["total"])
 
 
+def inventory_stock_metrics() -> dict:
+    return clean_row(fetch_one("""SELECT GREATEST(COALESCE((
+        SELECT SUM(b.quantity_available) FROM inventory_batches b
+        JOIN inventory_items i ON i.item_id=b.item_id WHERE i.item_type='finished_product'
+        AND b.quality_status='approved' AND (b.expiry_date IS NULL
+         OR b.expiry_date>(now() AT TIME ZONE 'Asia/Manila')::date)),0)
+        -COALESCE((SELECT SUM(quantity) FROM all_stock_reservations),0),0) total_available;"""))
+
+
 def current_metrics(team_leader_account_id: int | None = None, reseller_account_id: int | None = None) -> dict:
     order_scope = ""
     pending_scope = ""
@@ -746,4 +755,4 @@ def add_reseller_sell_through_report(account_id: int, period_start: date, period
     return clean_row(rep)
 
 
-__all__ = ['team_sales_refund_entries', 'settlement_summary', 'list_sales_reports', 'count_sales_reports', 'list_activity_logs', 'count_activity_logs', 'current_metrics', 'inventory_product_movement_analytics', 'team_sales_report_totals', 'team_sales_report_entries', 'team_rejected_order_entries', 'team_reseller_purchase_summary', 'add_sales_report', 'reseller_month_orders', 'reseller_reportable_products', 'add_reseller_sell_through_report']
+__all__ = ['inventory_stock_metrics', 'team_sales_refund_entries', 'settlement_summary', 'list_sales_reports', 'count_sales_reports', 'list_activity_logs', 'count_activity_logs', 'current_metrics', 'inventory_product_movement_analytics', 'team_sales_report_totals', 'team_sales_report_entries', 'team_rejected_order_entries', 'team_reseller_purchase_summary', 'add_sales_report', 'reseller_month_orders', 'reseller_reportable_products', 'add_reseller_sell_through_report']

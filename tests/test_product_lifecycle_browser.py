@@ -15,7 +15,7 @@ from app import main, repositories, web_sessions, worker
 from app.business_time import business_now, business_today
 from app.repositories import product_returns as returns
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
-from test_product_lifecycle import create_case, lifecycle, receive, complete_refund  # noqa: F401
+from test_product_lifecycle import create_case, lifecycle, receive, complete_refund, supporting_photo  # noqa: F401
 
 
 @pytest.mark.postgres
@@ -82,8 +82,10 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         page.get_by_role("button", name="Request return", exact=True).click()
         expect(page.locator('textarea[name="remarks"]:invalid')).to_be_visible()
         page.get_by_label("Return quantity for Test Product batch TEST-1").fill("2")
-        page.get_by_label("Requested resolution").select_option("replace")
+        page.get_by_role("radio", name="Replacement", exact=True).check()
         page.get_by_label("Reason and remarks").fill("Expired two packs from original delivered batch")
+        photo = supporting_photo()
+        page.get_by_label("Supporting photos").set_input_files({"name": photo["filename"], "mimeType": photo["content_type"], "buffer": photo["content"]})
         page.get_by_role("button", name="Request return", exact=True).click()
         page.wait_for_load_state("networkidle")
         page.screenshot(path=str(output / "request-result.png"), full_page=True)
@@ -94,8 +96,18 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         page.screenshot(path=str(output / "reseller-return-390.png"), full_page=True)
 
         as_role(d["sales"], "team-leader", "sales")
-        page.goto("http://lifecycle.test/portal/team-leader/returns?case=1")
+        page.goto("http://lifecycle.test/portal/team-leader/returns")
         page.wait_for_load_state("networkidle")
+        expect(page.locator("[data-return-dialog]")).to_have_count(0)
+        page.locator('[data-return-open="1"]').focus()
+        page.keyboard.press("Enter")
+        page.wait_for_load_state("networkidle")
+        expect(page.get_by_role("dialog", name="Return #1", exact=True)).to_be_visible()
+        expect(page.locator(".return-request-step")).to_have_count(0)
+        expect(page.locator(".sales-return-photo-grid img")).to_have_count(1)
+        expect(page.locator(".sales-return-substitutions")).not_to_have_attribute("open", "")
+        expect(page.locator(".sales-return-receipts")).not_to_have_attribute("open", "")
+        page.screenshot(path=str(output / "sales-request-review-390.png"), full_page=True)
         page.get_by_label("Review remarks", exact=True).fill("Approved after checking expired batch details")
         page.get_by_role("button", name="Approve return request", exact=True).click()
         page.wait_for_load_state("networkidle")
@@ -107,7 +119,7 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         page.wait_for_load_state("networkidle")
         receipt = page.locator('form[action$="/receive"]')
         receipt.locator('input[name="quantity"]').fill("2")
-        receipt.get_by_label("Expired holding location").fill("Expired freezer A")
+        receipt.get_by_label("Non-sellable holding location").fill("Expired freezer A")
         receipt.get_by_label("Receipt remarks").fill("Two expired packs physically received and checked")
         receipt.get_by_role("button", name="Record returned items received").click()
         page.wait_for_load_state("networkidle")
@@ -116,7 +128,7 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         verification.get_by_label("Verification remarks").fill("Final receipt and holding quantities checked")
         verification.get_by_role("button",name="Verify returned goods",exact=True).click()
         page.wait_for_load_state("networkidle")
-        expect(page.locator(".lifecycle-case-detail .status-badge").first).to_have_text("Settlement Pending")
+        expect(page.locator(".lifecycle-case-detail .status-badge").first).to_have_text("Awaiting Replacement Release")
 
         worker.scan_batch_expiry()
         # Give the supervisor a real assigned financial case to inspect.
@@ -151,12 +163,42 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
                 page.wait_for_load_state("networkidle")
                 expect(page.locator(".lifecycle-workspace")).to_be_visible()
                 if label in {"reseller", "sales", "owner", "supervisor"}:
-                    breakdown = page.locator(".lifecycle-financial-details summary")
-                    breakdown.focus()
-                    page.keyboard.press("Enter")
-                    expect(page.locator(".lifecycle-financial-details")).to_have_attribute("open", "")
-                    page.keyboard.press("Enter")
-                    breakdown.blur()
+                    dialog = page.locator("[data-return-dialog]")
+                    expect(dialog).to_be_visible()
+                    assert dialog.evaluate("el => el.matches(':modal')")
+                    assert dialog.evaluate("el => el.scrollWidth <= el.clientWidth + 1")
+                    close = page.get_by_role("button", name="Close return details", exact=True)
+                    expect(close).to_be_focused()
+                    page.keyboard.press("Shift+Tab")
+                    assert dialog.evaluate("el => el.contains(document.activeElement)")
+                    page.keyboard.press("Escape")
+                    expect(dialog).not_to_be_visible()
+                    expect(page).not_to_have_url(re.compile(r"[?&]case="))
+                    selected = page.locator(f'[data-return-open="{refund_case if label == "supervisor" else 1}"]')
+                    expect(selected).to_be_focused()
+                    if label in {"reseller", "sales"}:
+                        expect(page.locator(".lifecycle-financial-details")).to_have_count(0)
+                        if label == "reseller":
+                            assert "Original sales" not in page.locator("body").inner_text()
+                    else:
+                        breakdown = page.locator(".lifecycle-financial-details summary")
+                        breakdown.focus()
+                        page.keyboard.press("Enter")
+                        expect(page.locator(".lifecycle-financial-details")).to_have_attribute("open", "")
+                        page.keyboard.press("Enter")
+                        breakdown.blur()
+                    selected.click()
+                    expect(dialog).to_be_visible()
+                    close.click()
+                    expect(dialog).not_to_be_visible()
+                    expect(page).not_to_have_url(re.compile(r"[?&]case="))
+                    selected.click()
+                    expect(dialog).to_be_visible()
+                    page.mouse.click(1, 1)
+                    expect(dialog).not_to_be_visible()
+                    expect(page).not_to_have_url(re.compile(r"[?&]case="))
+                    selected.click()
+                    expect(dialog).to_be_visible()
                 assert page.evaluate("document.documentElement.scrollWidth <= innerWidth+1"), (
                     f"Horizontal overflow: {label} at {width}"
                 )
@@ -167,7 +209,7 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
             page.goto("http://lifecycle.test/portal/owner/returns?status=rejected")
             page.wait_for_load_state("networkidle")
             expect(page.get_by_text("No return cases", exact=True)).to_be_visible()
-            expect(page.get_by_text("Select a return case", exact=True)).to_be_visible()
+            expect(page.locator("[data-return-dialog]")).to_have_count(0)
             page.screenshot(path=str(output / f"returns-empty-{width}.png"), full_page=True)
         as_role(d["inventory"], "team-leader", "inventory")
         page.goto("http://lifecycle.test/portal/team-leader/finished-products")

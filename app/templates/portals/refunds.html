@@ -7,6 +7,7 @@
     </div>
     <div class="refund-hero-note"><i data-lucide="shield-check"></i><span><strong>{{ 'View settlement progress' if refund_read_only else 'Recorded, not gateway-verified' }}</strong><small>{{ 'Supervisors record transfers. Follow approvals, received items, and settlement here.' if refund_read_only else 'Complete a case only after the transfer is actually sent.' }}</small></span></div>
   </header>
+  <p class="hint"><a href="/portal/{{ role_key }}/returns">Open return review and replacements</a> &middot; Product returns use Inventory verification and Sales confirmation before this existing transfer workflow. Paid-order cancellation refunds retain their direct payment-refund process.</p>
 
   <div class="refund-status-strip" aria-label="Refund totals">
     {% for status in refund_statuses %}
@@ -23,7 +24,7 @@
       <form class="refund-filters" method="get">
         <label><span class="sr-only">Search refunds</span><i data-lucide="search"></i><input name="q" value="{{ refunds_page.filters.q }}" placeholder="Order or reseller"></label>
         <select name="status" aria-label="Refund status">
-          <option value="">All statuses</option>
+          <option value="">All status</option>
           {% for status in refund_statuses %}<option value="{{ status }}" {{ 'selected' if refunds_page.filters.status == status else '' }}>{{ {'pending':'Refund pending','processing':'Processing refund','completed':'Refund completed','failed':'Refund failed'}[status] }}</option>{% endfor %}
         </select>
         <button class="icon-button" type="submit" aria-label="Apply filters"><i data-lucide="filter"></i></button>
@@ -71,6 +72,12 @@
         <div><small>Current processor</small><strong>{{ selected_refund.processor_name or 'Not claimed' }}</strong><span>{{ selected_refund.processing_started_at|nice_date if selected_refund.processing_started_at else 'Waiting to start' }}</span></div>
       </section>
 
+      {% if selected_refund.financials %}
+      <section class="refund-facts" aria-label="Original order financial reconciliation">
+        {% for label,key in [('Original collections','original_collections'),('Replacement collections','additional_collections'),('All completed refunds','completed_refunds'),('Outstanding refunds','pending_refunds'),('Net collections','net_collections')] %}<div><small>{{ label }}</small><strong>{{ selected_refund.financials.get(key,0)|currency }}</strong></div>{% endfor %}
+      </section>
+      {% if selected_refund.financials.flags %}<div role="alert"><strong>Financial reconciliation required</strong><ul>{% for flag in selected_refund.financials.flags %}<li>{{ flag }}</li>{% endfor %}</ul></div>{% endif %}
+      {% endif %}
       {% if selected_refund.return_case %}{% set case = selected_refund.return_case %}{% include 'portals/lifecycle/_receipt_trace.html' %}{% endif %}
       <nav class="refund-pane-tabs" aria-label="Refund case views">
         <a class="{{ 'is-active' if refund_pane == 'activity' else '' }}" data-refund-pane-link data-async-filter-target="[data-refund-thread]" href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&refund={{ selected_refund.order_refund_id }}&pane=activity"><i data-lucide="history"></i> Activity</a>
@@ -105,7 +112,9 @@
       </section>
 
       {% if not refund_read_only %}<section class="refund-actions" aria-label="Refund actions">
-        {% if selected_refund.status == 'pending' %}
+        {% if selected_refund.awaiting_sales_confirmation|default(false) %}
+        <p role="status">Inventory verified the returned goods. Awaiting the assigned Sales Leader's confirmation before this refund can be processed.</p>
+        {% elif selected_refund.status == 'pending' %}
         <form action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/start" method="post" data-refund-confirm="Start processing this refund? The case will be claimed by you.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="operation_key" value="{{ operation_key() }}">
           <div><strong>Ready to process?</strong><p>Claim the case before sending money outside MeatTrack.</p></div><button class="button primary" type="submit"><i data-lucide="play"></i> Start processing</button>

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
@@ -29,20 +28,26 @@ def _guard(request: Request, role_key: str, capability: str):
     return None
 
 
-def returns_context(request: Request) -> dict:
+def _returns_context(request: Request) -> dict:
     actor_id = shared.session_account_id(request)
     role = capability_role_key(request)
+    inventory_only = role == "team-leader:inventory"
     cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""),page=shared.requested_page(request.query_params.get("page")),reconciliation_only=request.query_params.get("reconciliation")=="1")
     case_id = shared.optional_positive_id(request.query_params.get("case"))
     selected = None
     if case_id:
         try:
             selected = returns.get_product_return(case_id, actor_id)
-            selected["additional_due"] = max(0, selected["replacement_total"] - selected["credit"])
-            selected["unused_credit"] = max(0, selected["credit"] - selected["replacement_total"])
+            if not inventory_only:
+                selected["additional_due"] = max(0, selected["replacement_total"] - selected["credit"])
+                selected["unused_credit"] = max(0, selected["credit"] - selected["replacement_total"])
         except ValueError as exc:
             raise HTTPException(404, detail=str(exc)) from exc
     order_id = shared.optional_positive_id(request.query_params.get("order"))
+    return_order = returns.reseller_return_order(order_id, actor_id) if order_id and role == "reseller" else None
+    if order_id and role == "reseller" and not return_order:
+        raise HTTPException(404, detail="Order not found or unavailable to your account.")
+    available_returns = returns.returnable_allocations(order_id, actor_id) if return_order else []
     legacy = []
     if role in {"owner", "team-leader:inventory"}:
         legacy = fetch_all("""SELECT oi.order_id,oi.order_item_id,oi.product_id,oi.quantity,i.name,
@@ -58,31 +63,61 @@ def returns_context(request: Request) -> dict:
         ):
             legacy_batches.setdefault(batch["item_id"], []).append(batch)
     can_review = role in {"owner", "team-leader:sales", "sales-supervisor"}
-    if selected and role != "owner" and selected["team_leader_account_id"] != actor_id:
+    if can_review and selected and role != "owner" and selected["team_leader_account_id"] != actor_id:
         can_review = False
     return {
         "return_cases": cases,
         "return_cases_page": shared.paged(cases,cases[0]["list_total"] if cases else 0,cases[0]["list_page"] if cases else 1,12,status=request.query_params.get("status","")),
         "return_case": selected,
         "return_order_id": order_id,
-        "returnable_batches": returns.returnable_allocations(order_id, actor_id)
-        if order_id and role == "reseller"
-        else [],
-        "replacement_products": list_products(active_only=True) if role != "reseller" else [],
-        "return_summary": returns.return_settlement_totals(actor_id),
+        "return_order": return_order,
+        "returnable_batches": [row for row in available_returns if row["returnable_quantity"] > 0],
+        "replacement_products": list_products(active_only=True) if can_review else [],
+        "return_inventory_only": inventory_only,
+        "return_inventory_summary": returns.inventory_return_totals(actor_id) if inventory_only else {},
+        "return_summary": returns.return_settlement_totals(actor_id) if role in {"owner", "team-leader:sales", "sales-supervisor"} else {},
         "operation_key": lambda: str(uuid4()),
         "return_is_reseller": role == "reseller",
         "return_can_review": can_review,
+        "return_can_authorize": bool(can_review and selected and selected["status"] == "settlement_pending"
+            and selected.get("verified_at") and selected.get("verified_by_account_id") and not selected.get("sales_authorized")),
         "return_can_receive": role in {"owner", "team-leader:inventory"},
         "legacy_lines": legacy,
         "legacy_batches": legacy_batches,
     }
 
 
+def reseller_returns_context(request: Request) -> dict:
+    context = _returns_context(request)
+    return {**context, "return_view": "reseller",
+        "return_request_open": bool(context["return_order_id"] or request.query_params.get("request") == "1"),
+        "return_order_options": returns.reseller_return_orders(shared.session_account_id(request)) if not context["return_order"] else [],
+    }
+
+
+def sales_returns_context(request: Request) -> dict:
+    return {**_returns_context(request), "return_view": "sales"}
+
+
+def inventory_returns_context(request: Request) -> dict:
+    return {**_returns_context(request), "return_view": "inventory"}
+
+
+def returns_context(request: Request) -> dict:
+    role = capability_role_key(request)
+    if role == "reseller":
+        return reseller_returns_context(request)
+    if role == "team-leader:inventory":
+        return inventory_returns_context(request)
+    return sales_returns_context(request)
+
+
 def expired_context(request: Request) -> dict:
+    workspace = returns.expired_stock_workspace()
     return {
-        **returns.expired_stock_workspace(),
-        "replacement_products": list_products(),
+        **workspace,
+        "return_holdings": [row for row in workspace["holdings"] if row["source"] == "return"],
+        "warehouse_holdings": [row for row in workspace["holdings"] if row["source"] != "return"],
         "operation_key": lambda: str(uuid4()),
     }
 
@@ -154,6 +189,7 @@ async def return_action(request: Request, role_key: str, action: str):
         "payment": "returns.create",
         "verify-payment": "returns.review",
         "legacy": "returns.receive",
+        "proceed": "returns.authorize",
     }
     if action not in capabilities:
         raise HTTPException(404)
@@ -167,6 +203,8 @@ async def return_action(request: Request, role_key: str, action: str):
     try:
         if action == "submit":
             uploads = [u for u in form.getlist("evidence") if getattr(u, "filename", "")]
+            if len(uploads) > 3:
+                raise ValueError("Attach up to 3 supporting photos only.")
             attachments = await shared.parse_payment_proof_attachments(uploads)
             return_id = await run_in_threadpool(
                 returns.create_product_return,
@@ -179,6 +217,9 @@ async def return_action(request: Request, role_key: str, action: str):
                 str(form.get("operation_key", "")) or None,
             )
             params = {"case": str(return_id)}
+        elif action == "proceed":
+            await run_in_threadpool(returns.authorize_return_settlement, return_id, actor_id,
+                str(form.get("remarks", "")), str(form.get("operation_key", "")))
         elif action in {"approve", "reject"}:
             await run_in_threadpool(
                 returns.review_product_return,
@@ -242,8 +283,14 @@ async def return_action(request: Request, role_key: str, action: str):
             if isinstance(exc, ValueError)
             else "This operation or reference has already been recorded. Refresh the case."
         )
-        return shared.redirect_to(shared.safe_portal_path(role_key, "returns", error=error, **params))
-    return shared.redirect_to(shared.safe_portal_path(role_key, "returns", message="Return action recorded.", **params))
+        if capability_role_key(request) == "team-leader:inventory" and any(
+            word in error.lower() for word in ("payment", "refund", "credit", "price", "quote")
+        ):
+            error = "Sales clearance is required. Ask the assigned Sales Leader to review this return before stock release."
+        return shared.redirect_to(shared.safe_portal_path(role_key, "history" if role_key == "reseller" else "returns",
+            error=error, **({"view": "returns", **params} if role_key == "reseller" else params)))
+    return shared.redirect_to(shared.safe_portal_path(role_key, "history" if role_key == "reseller" else "returns",
+        message="Return action recorded.", **({"view": "returns", **params} if role_key == "reseller" else params)))
 
 
 @router.post("/portal/{role_key}/expired-stock/actions/{action}")
@@ -268,16 +315,7 @@ async def expired_action(request: Request, role_key: str, action: str):
         elif action == "dispose":
             await run_in_threadpool(
                 returns.dispose_expired_stock,
-                int(str(form.get("holding_id", "0"))), method=str(form.get("method", "")), **common
-            )
-        elif action == "arrival":
-            await run_in_threadpool(
-                returns.record_expired_arrival,
-                int(str(form.get("product_id", "0"))),
-                batch_code=str(form.get("batch_code", "")),
-                expiry_date=date.fromisoformat(str(form.get("expiry_date", ""))),
-                location=str(form.get("location", "")),
-                **common,
+                int(str(form.get("holding_id", "0"))), method=None, **common
             )
         else:
             raise HTTPException(404)
@@ -301,7 +339,11 @@ def return_attachment(request: Request, attachment_id: int):
     if not attachment:
         raise HTTPException(404)
     try:
-        returns.get_product_return(attachment["return_id"], actor_id)
+        case = returns.get_product_return(attachment["return_id"], actor_id)
+        if attachment["purpose"] == "payment" and not any(
+            row["attachment_id"] == attachment_id for row in case["attachments"]
+        ):
+            raise HTTPException(404)
     except ValueError as exc:
         raise HTTPException(404) from exc
     return Response(

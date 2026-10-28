@@ -1,16 +1,19 @@
 <section class="panel reseller-history-panel order-ledger">
   <header class="order-ledger-heading">
-    <div><span class="eyebrow">Purchases</span><h2>Order history</h2><p>Track payment, approval, and fulfillment in one place.</p></div>
-    <div class="order-ledger-count" aria-label="{{ orders_page.pagination.total }} total orders"><strong>{{ orders_page.pagination.total|number }}</strong><span>order{{ '' if orders_page.pagination.total == 1 else 's' }}</span></div>
+    <div><span class="eyebrow">Purchases</span><h2>Order history</h2><p>Track payments, orders, and your return history in one place.</p></div>
+    <div class="order-ledger-count" aria-label="{{ orders_page.pagination.total }} total {{ 'returns' if orders_page.filters.view=='returns' else 'orders' }}"><strong>{{ orders_page.pagination.total|number }}</strong><span>{{ 'return' if orders_page.filters.view=='returns' else 'order' }}{{ '' if orders_page.pagination.total == 1 else 's' }}</span></div>
   </header>
 
   <nav class="order-history-tabs" aria-label="Order history views" data-async-filter-target="[data-async-filter-results]" data-async-filter-sync="order-history-tabs">
-    {% set history_tabs = [('all', 'list', 'All orders'), ('to_pay', 'wallet-cards', 'To pay'), ('pending', 'clock-3', 'Pending'), ('approved', 'badge-check', 'Approved'), ('fulfilled', 'package-check', 'Fulfilled'), ('refunded', 'badge-dollar-sign', 'Refunded'), ('cancelled', 'circle-x', 'Cancelled')] %}
+    {% set history_tabs = [('all', 'list', 'All orders'), ('to_pay', 'wallet-cards', 'To pay'), ('pending', 'clock-3', 'Pending'), ('approved', 'badge-check', 'Approved'), ('fulfilled', 'package-check', 'Fulfilled'), ('refunded', 'badge-dollar-sign', 'Refunded'), ('cancelled', 'circle-x', 'Cancelled'), ('returns', 'undo-2', 'My Returns')] %}
     {% for value, icon, label in history_tabs %}
-    <a class="{{ 'active' if orders_page.filters.view == value else '' }}" href="?view={{ value }}{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}" {% if orders_page.filters.view == value %}aria-current="page"{% endif %}><i data-lucide="{{ icon }}"></i> {{ label }}</a>
+    <a {{ 'data-full-navigation' if value=='returns' or orders_page.filters.view=='returns' else '' }} class="{{ 'active' if orders_page.filters.view == value else '' }}" href="?view={{ value }}{% if orders_page.filters.q %}&q={{ orders_page.filters.q|urlencode }}{% endif %}{% if orders_page.filters.sort %}&sort={{ orders_page.filters.sort|urlencode }}{% endif %}" {% if orders_page.filters.view == value %}aria-current="page"{% endif %}><i data-lucide="{{ icon }}"></i> {{ label }}</a>
     {% endfor %}
   </nav>
 
+  {% if orders_page.filters.view=='returns' %}
+  {% include 'portals/reseller/returns.html' %}
+  {% else %}
   <form class="history-toolbar" method="get" data-async-filter-target="[data-async-filter-results]">
     <input type="hidden" name="view" value="{{ orders_page.filters.view }}" data-async-filter-sync="order-history-view" />
     <label class="history-search-control"><span class="sr-only">Search orders</span><i data-lucide="search" aria-hidden="true"></i><input name="q" value="{{ orders_page.filters.q }}" placeholder="Search by order or product" /></label>
@@ -59,9 +62,11 @@
                 <div class="order-action-note"><i data-lucide="circle-check-big"></i><span><strong>No action needed</strong><small>This order is up to date.</small></span></div>
               {% endif %}
             </div>
-            {% include "portals/reseller/_order_cancel_action.html" %}
-            {% if order.status == "fulfilled" %}<a class="button subtle" href="/portal/reseller/returns?order={{ order.order_id }}">Return / Refund / Replace</a>{% endif %}
-            {% if order.refunded_amount %}<p class="hint">{{ "Full refund" if order.refunded_amount >= order.total_amount else "Partial refund" }}: {{ order.refunded_amount|currency }}</p>{% endif %}
+            <div class="order-followup-actions">
+              {% include "portals/reseller/_order_cancel_action.html" %}
+              {% if order.status == "fulfilled" %}<div class="order-return-action">{% if order.request_window_open %}<a class="button order-return-trigger" href="/portal/reseller/history?view=returns&order={{ order.order_id }}"><i data-lucide="undo-2" aria-hidden="true"></i>Return / Refund / Replace</a><p class="hint">Request before {{ order.request_deadline|nice_date }} (Manila time).</p>{% else %}<p class="hint">{{ order.request_window_reason }}</p>{% endif %}</div>{% endif %}
+              {% if order.refunded_amount %}<p class="hint">{{ "Full refund" if order.refunded_amount >= order.total_amount else "Partial refund" }}: {{ order.refunded_amount|currency }}</p>{% endif %}
+            </div>
           </aside>
         </div>
       </details>
@@ -73,4 +78,5 @@
 
     {% if orders_page.pagination.total_pages > 1 %}<nav class="pagination order-ledger-pagination" aria-label="Order history pages">{% if orders_page.pagination.has_prev %}<a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page - 1 }}"><i data-lucide="chevron-left"></i> Previous</a>{% endif %}<span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>{% if orders_page.pagination.has_next %}<a href="?view={{ orders_page.filters.view|urlencode }}&q={{ orders_page.filters.q|urlencode }}&sort={{ orders_page.filters.sort|urlencode }}&page={{ orders_page.pagination.page + 1 }}">Next <i data-lucide="chevron-right"></i></a>{% endif %}</nav>{% endif %}
   </div>
+{% endif %}
 </section>

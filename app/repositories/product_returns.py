@@ -2,18 +2,44 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from app.business_time import business_today
+from app.business_time import business_now, business_today
 from app.database import clean_row, fetch_all, fetch_one, get_transaction_cursor
 from app.inventory_measurements import parse_whole_packs
 from ._shared import pagination_meta
 from .inventory.allocation import _plan_fefo_allocations
 from .inventory.movements import _insert_inventory_movement, _inventory_actor_name
 from .notifications import _create_notification_cursor
-from .refund_integrity import fingerprint, receipt_problems
+from .refund_integrity import (
+    fingerprint, receipt_problems, replacement_problems, require_settlement_authorization, settlement_is_authorized,
+)
+from .return_views import (
+    INVENTORY_EVENT_MESSAGES, INVENTORY_STATUS_SQL, SALES_STAGE_SQL, RESELLER_EVENT_MESSAGES,
+    inventory_return_view, reseller_return_view,
+)
+
+
+RETURN_REQUEST_PERIOD = timedelta(days=5)
+
+
+def return_request_window(order: dict, *, now: datetime | None = None) -> dict:
+    """New requests close exactly 120 hours after recorded fulfillment."""
+    now = now or business_now()
+    fulfilled_at = order.get("fulfilled_at")
+    deadline = fulfilled_at + RETURN_REQUEST_PERIOD if fulfilled_at else None
+    allowed = bool(order.get("status") == "fulfilled" and fulfilled_at and fulfilled_at <= now < deadline)
+    if order.get("status") != "fulfilled":
+        reason = "Product return requests open after fulfillment. Contact Sales about a paid cancellation."
+    elif not fulfilled_at or fulfilled_at > now:
+        reason = "The fulfillment time needs verification. Contact Sales before requesting a return."
+    elif not allowed:
+        reason = "The 5-day return/refund/replacement request window has closed."
+    else:
+        reason = "Requests are allowed within 5 days (120 hours) of fulfillment, subject to Sales review."
+    return {"request_window_open": allowed, "request_deadline": deadline, "request_window_reason": reason}
 
 
 def _text(value: str, label: str = "Remarks", minimum: int = 5, maximum: int = 1000) -> str:
@@ -77,11 +103,27 @@ def _event(cur, case: dict, actor_id: int | None, action: str, remarks: str, ope
     )
     event_id = cur.fetchone()["event_id"]
     cur.execute("UPDATE product_returns SET updated_at=now() WHERE return_id=%s;", (case["return_id"],))
+    fallback_owner = False
+    handoff_required = action == "inventory_verified" and case["status"] != "completed"
+    if handoff_required:
+        cur.execute("""SELECT 1 FROM accounts WHERE account_id=%s AND is_active
+            AND account_type='team_leader' AND team_leader_role IN ('sales','sales-supervisor');""",
+            (case.get("team_leader_account_id"),))
+        fallback_owner = not bool(cur.fetchone())
+        if fallback_owner:
+            _create_notification_cursor(
+                cur, recipient_role="owner", category="order", title="Returned goods complete—Sales assignment requires attention",
+                message=f"Return #{case['return_id']} has complete verified receipts. Resolve its missing or inactive Sales assignment before settlement.",
+                target_url=f"/portal/owner/returns?case={case['return_id']}", source_type="product_returns",
+                source_id=case["return_id"], dedupe_key=f"return-event-{event_id}-owner-handoff",
+            )
     for recipient, role in (
         (case.get("reseller_account_id"), "reseller"),
         (case.get("team_leader_account_id"), "team-leader"),
     ):
         if recipient:
+            if role == "team-leader" and fallback_owner:
+                continue
             if role == "team-leader":
                 cur.execute("SELECT team_leader_role FROM accounts WHERE account_id=%s;", (recipient,))
                 account = cur.fetchone()
@@ -91,19 +133,25 @@ def _event(cur, case: dict, actor_id: int | None, action: str, remarks: str, ope
                 cur,
                 recipient_account_id=recipient,
                 category="order",
-                title=f"Return #{case['return_id']}: {action.replace('_', ' ')}",
-                message=remarks,
+                title=("Returned goods complete—Sales confirmation required" if role != "reseller" and handoff_required
+                       else f"Return #{case['return_id']}: {action.replace('_', ' ')}"),
+                message=(RESELLER_EVENT_MESSAGES.get(action, "Your return has been updated. Open it to view the next step.")
+                         if role == "reseller" and action != "rejected" else
+                         f"All approved goods for Return #{case['return_id']} arrived and were verified. Confirm proceeding with the approved resolution."
+                         if handoff_required else remarks),
                 target_url=f"/portal/{role}/returns?case={case['return_id']}",
                 source_type="product_returns",
                 source_id=case["return_id"],
                 dedupe_key=f"return-event-{event_id}-{recipient}",
             )
+    if action not in INVENTORY_EVENT_MESSAGES:
+        return
     _create_notification_cursor(
         cur,
         recipient_role="team-leader",
         category="inventory",
-        title=f"Return #{case['return_id']}: {action.replace('_', ' ')}",
-        message=remarks,
+        title=f"Returned stock #{case['return_id']}",
+        message=INVENTORY_EVENT_MESSAGES[action],
         target_url=f"/portal/team-leader/returns?case={case['return_id']}",
         source_type="product_returns",
         source_id=case["return_id"],
@@ -173,6 +221,13 @@ def create_product_return(
                 if (existing["order_id"],existing["requested_by_account_id"],existing["request_hash"]) != (order_id,actor_id,request_hash):
                     raise ValueError("This return reference was used with different details. Refresh the request.")
                 return int(existing["return_id"])
+        window = return_request_window(order)
+        if not window["request_window_open"]:
+            raise ValueError(window["request_window_reason"])
+        if not attachments:
+            raise ValueError("Attach at least one supporting photo before submitting your request.")
+        if len(attachments) > 3:
+            raise ValueError("Attach up to 3 supporting photos only.")
         selected = []
         for allocation_id, value in sorted(lines):
             quantity = parse_whole_packs(value)
@@ -183,8 +238,8 @@ def create_product_return(
                 (allocation_id, order_id),
             )
             allocation = cur.fetchone()
-            if not allocation or allocation["expiry_date"] > business_today():
-                raise ValueError("Select a fulfilled batch that has reached its expiration date.")
+            if not allocation or allocation["expiry_date"] is None:
+                raise ValueError("Select a traceable batch from this fulfilled order. Inventory must resolve missing batch details first.")
             cur.execute(
                 """SELECT COALESCE(SUM(l.quantity),0) AS claimed FROM product_return_lines l
                 JOIN product_returns r USING(return_id) WHERE l.allocation_id=%s AND r.status<>'rejected';""",
@@ -320,7 +375,9 @@ def review_product_return(
                     (return_id, revision, product_id, quantity, price, line_total),
                 )
             cur.execute(
-                "UPDATE product_returns SET quote_revision=%s,accepted_revision=NULL,replacement_total=%s WHERE return_id=%s;",
+                """UPDATE product_returns SET quote_revision=%s,accepted_revision=NULL,replacement_total=%s,
+                settlement_authorized_by_account_id=NULL,settlement_authorized_at=NULL,
+                settlement_authorized_quote_revision=NULL WHERE return_id=%s;""",
                 (revision, total, return_id),
             )
         elif case["status"] == "settlement_pending":
@@ -419,10 +476,25 @@ def _complete_if_ready(cur, return_id: int) -> None:
     case = cur.fetchone()
     if not case or not case["verified_at"] or case["status"] != "settlement_pending":
         return
+    if not settlement_is_authorized(case):
+        return
     if case["resolution"] == "replace" and not case["replacement_released_at"]:
         return
-    cur.execute("SELECT 1 FROM order_refunds WHERE return_id=%s AND status<>'completed';", (return_id,))
-    if not cur.fetchone():
+    if not case["approved_by_account_id"] or not case["verified_by_account_id"]:
+        raise ValueError("Sales approval and final Inventory verification are required.")
+    problems = receipt_problems(cur, return_id) + replacement_problems(cur, case, require_release=True)
+    if problems:
+        raise ValueError(problems[0])
+    expected = case["credit"] if case["resolution"] == "refund" else max(
+        Decimal(0), case["credit"] - case["replacement_total"]
+    )
+    cur.execute("SELECT order_id,amount,status FROM order_refunds WHERE return_id=%s;", (return_id,))
+    refund = cur.fetchone()
+    if expected > 0 and not refund:
+        raise ValueError("Verified settlement is missing its refund record.")
+    if refund and (refund["order_id"] != case["order_id"] or refund["amount"] != expected):
+        raise ValueError("Refund does not match the original order and verified settlement amount.")
+    if not refund or refund["status"] == "completed":
         cur.execute(
             "UPDATE product_returns SET status='completed',completed_at=now(),updated_at=now() WHERE return_id=%s;",
             (return_id,),
@@ -468,10 +540,10 @@ def receive_product_return(
             if (
                 not line
                 or quantity + line["received_quantity"] > line["quantity"]
-                or line["expiry_date"] > business_today()
+                or line["expiry_date"] is None
             ):
                 raise ValueError(
-                    "Receipt must match an approved expired batch and outstanding quantity. Flag discrepancies separately."
+                    "Receipt must match a Sales-approved original batch and outstanding quantity. Flag discrepancies separately."
                 )
             holding_id = _holding(
                 cur,
@@ -509,10 +581,16 @@ def verify_product_return(return_id: int, actor_id: int, remarks: str, operation
         cur.execute("SELECT * FROM product_return_events WHERE operation_key=%s;", (operation_key,))
         event = cur.fetchone()
         if event:
-            if event["return_id"] != return_id or event["action"] != "inventory_verified" or event["request_hash"] != request_hash:
+            if event["return_id"] != return_id or event["action"] not in {"inventory_verified", "inventory_reverified"} or event["request_hash"] != request_hash:
                 raise ValueError("This verification reference was used with different details.")
             return
-        if case["verified_at"] or case["status"] != "awaiting_inventory_verification" or not case["approved_by_account_id"]:
+        legacy_verification = (
+            case["verified_at"] and not case["verified_by_account_id"]
+            and case["status"] in {"settlement_pending", "completed"}
+        )
+        if not legacy_verification and (case["verified_at"] or case["status"] != "awaiting_inventory_verification"):
+            raise ValueError("Receive all Sales-approved goods and resolve discrepancies before final Inventory verification.")
+        if not case["approved_by_account_id"]:
             raise ValueError("Receive all Sales-approved goods and resolve discrepancies before final Inventory verification.")
         problems = receipt_problems(cur, return_id)
         if problems:
@@ -520,11 +598,61 @@ def verify_product_return(return_id: int, actor_id: int, remarks: str, operation
         cur.execute("SELECT SUM(quantity*unit_price) credit FROM product_return_lines WHERE return_id=%s;", (return_id,))
         if cur.fetchone()["credit"] != case["credit"]:
             raise ValueError("Return credit does not match the original purchase prices.")
-        cur.execute("UPDATE product_returns SET verified_at=now(),verified_by_account_id=%s,verification_remarks=%s,status='settlement_pending' WHERE return_id=%s RETURNING *;", (actor_id,remarks,return_id))
+        next_status = "completed" if legacy_verification and case["status"] == "completed" else "settlement_pending"
+        cur.execute("UPDATE product_returns SET verified_at=now(),verified_by_account_id=%s,verification_remarks=%s,status=%s WHERE return_id=%s RETURNING *;", (actor_id,remarks,next_status,return_id))
         verified = dict(cur.fetchone())
-        _event(cur, case, actor_id, "inventory_verified", remarks, operation_key, request_hash=request_hash)
+        _event(cur, case, actor_id, "inventory_reverified" if next_status == "completed" else "inventory_verified",
+               remarks, operation_key, request_hash=request_hash)
         if case["resolution"] == "refund":
             _refund(cur, verified)
+        _complete_if_ready(cur, return_id)
+
+
+def authorize_return_settlement(return_id: int, actor_id: int, remarks: str, operation_key: str) -> None:
+    remarks = _text(remarks, "Sales confirmation remarks")
+    operation_key = str(UUID(operation_key))
+    with get_transaction_cursor() as cur:
+        case = _case(cur, return_id, actor_id, {"sales", "sales-supervisor"})
+        request_hash = fingerprint(return_id, actor_id, remarks, case["quote_revision"])
+        cur.execute("SELECT * FROM product_return_events WHERE operation_key=%s;", (operation_key,))
+        event = cur.fetchone()
+        if event:
+            if (event["return_id"], event["actor_account_id"], event["action"], event["request_hash"]) != (
+                return_id, actor_id, "settlement_authorized", request_hash
+            ):
+                raise ValueError("This Sales confirmation reference was used with different details.")
+            return
+        if case["status"] != "settlement_pending" or not case["verified_at"] or not case["verified_by_account_id"]:
+            raise ValueError("Inventory must verify all approved returned goods before Sales confirms proceeding.")
+        if not case["approved_by_account_id"]:
+            raise ValueError("Sales approval is required before settlement confirmation.")
+        problems = receipt_problems(cur, return_id)
+        if problems:
+            raise ValueError(problems[0])
+        if case["resolution"] == "replace":
+            cur.execute("SELECT SUM(line_total) total FROM replacement_quote_lines WHERE return_id=%s AND revision=%s;",
+                        (return_id, case["quote_revision"]))
+            if case["quote_revision"] <= 0 or cur.fetchone()["total"] != case["replacement_total"]:
+                raise ValueError("The current replacement quotation does not reconcile.")
+        if settlement_is_authorized(case):
+            raise ValueError("Sales has already confirmed this resolution. Refresh the case.")
+        cur.execute("""UPDATE product_returns SET settlement_authorized_by_account_id=%s,
+            settlement_authorized_at=now(),settlement_authorized_quote_revision=quote_revision
+            WHERE return_id=%s;""", (actor_id, return_id))
+        _event(cur, case, actor_id, "settlement_authorized", remarks, operation_key, request_hash=request_hash)
+        cur.execute("SELECT order_refund_id,assigned_supervisor_account_id FROM order_refunds WHERE return_id=%s AND status<>'completed';", (return_id,))
+        refund = cur.fetchone()
+        if refund:
+            supervisor_id = refund["assigned_supervisor_account_id"]
+            processor_role = "sales-supervisor" if supervisor_id else "owner"
+            _create_notification_cursor(
+                cur, recipient_account_id=supervisor_id, recipient_role=None if supervisor_id else "owner",
+                category="order", title="Return refund cleared for processing",
+                message=f"Sales confirmed Return #{return_id}. Continue Refund #{refund['order_refund_id']} in the existing refund workflow.",
+                target_url=f"/portal/{processor_role}/refunds?refund={refund['order_refund_id']}",
+                source_type="order_refunds", source_id=refund["order_refund_id"],
+                dedupe_key=f"return-{return_id}-authorized-refund-{case['quote_revision']}",
+            )
         _complete_if_ready(cur, return_id)
 
 
@@ -555,6 +683,7 @@ def accept_replacement_quote(return_id: int, actor_id: int, revision: int) -> No
 def reserve_replacement(return_id: int, actor_id: int, remarks: str) -> None:
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"inventory"})
+        require_settlement_authorization(case)
         if (
             case["status"] != "settlement_pending"
             or not case["verified_at"]
@@ -586,6 +715,7 @@ def record_return_payment(return_id: int, actor_id: int, attachments: list[dict]
         raise ValueError("Attach a payment screenshot.")
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"reseller"})
+        require_settlement_authorization(case)
         if (
             case["resolution"] != "replace"
             or case["status"] != "settlement_pending"
@@ -625,6 +755,7 @@ def verify_return_payment(return_id: int, actor_id: int, reference: str, amount:
         raise ValueError("Enter a valid payment amount.")
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"sales", "sales-supervisor"})
+        require_settlement_authorization(case)
         if case["payment_verified_at"]:
             raise ValueError("Additional payment is already verified.")
         if (
@@ -659,6 +790,7 @@ def release_replacement(return_id: int, actor_id: int, remarks: str) -> None:
         case = _case(cur, return_id, actor_id, {"inventory"})
         if case["replacement_released_at"]:
             return
+        require_settlement_authorization(case)
         if (
             case["status"] != "settlement_pending"
             or not case["verified_at"]
@@ -669,8 +801,9 @@ def release_replacement(return_id: int, actor_id: int, remarks: str) -> None:
         problems = receipt_problems(cur, return_id)
         if problems:
             raise ValueError(problems[0])
-        if case["replacement_total"] > case["credit"] and not case["payment_verified_at"]:
-            raise ValueError("Sales must verify the additional payment before release.")
+        problems = replacement_problems(cur, case)
+        if problems:
+            raise ValueError(problems[0])
         cur.execute(
             "SELECT DISTINCT b.item_id FROM replacement_stock_reservations r JOIN inventory_batches b USING(batch_id) WHERE return_id=%s ORDER BY b.item_id;",
             (return_id,),
@@ -715,6 +848,9 @@ def release_replacement(return_id: int, actor_id: int, remarks: str) -> None:
                 actor_name=_inventory_actor_name(cur, actor_id),
                 note=f"Replacement for return #{return_id}: {_text(remarks)}",
             )
+            cur.execute("""UPDATE replacement_releases SET inventory_movement_id=
+                currval(pg_get_serial_sequence('inventory_movements','movement_id'))
+                WHERE return_id=%s AND batch_id=%s;""", (return_id, row["batch_id"]))
         cur.execute("DELETE FROM replacement_stock_reservations WHERE return_id=%s;", (return_id,))
         cur.execute("UPDATE product_returns SET replacement_released_at=now() WHERE return_id=%s;", (return_id,))
         _refund(cur, case)
@@ -811,7 +947,7 @@ def record_expired_arrival(
 
 
 def dispose_expired_stock(
-    holding_id: int, actor_id: int, quantity: object, method: str, remarks: str, operation_key: str
+    holding_id: int, actor_id: int, quantity: object, method: str | None, remarks: str, operation_key: str
 ) -> None:
     quantity = parse_whole_packs(quantity)
     with get_transaction_cursor() as cur:
@@ -835,7 +971,7 @@ def dispose_expired_stock(
             actor_id,
             _text(remarks),
             operation_key,
-            _text(method, "Disposal method", 3, 200),
+            _text(method, "Disposal method", 3, 200) if method is not None else None,
         )
 
 
@@ -893,21 +1029,31 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
         elif role == "sales":
             scope, params = " AND o.team_leader_account_id=%s", [actor_id]
         if status:
-            scope += " AND r.status=%s"
+            stage_sql = INVENTORY_STATUS_SQL if role == "inventory" else SALES_STAGE_SQL if role != "reseller" else "r.status"
+            scope += f" AND ({stage_sql})=%s"
             params.append(status)
         if reconciliation_only:
-            scope += " AND cardinality(checks.flags)>0"
-        cur.execute("SELECT COUNT(*) total FROM product_returns r JOIN orders o USING(order_id) JOIN product_return_reconciliation checks USING(return_id) WHERE true" + scope,tuple(params))
+            if role == "inventory":
+                from .return_views import INVENTORY_FLAGS
+                scope += " AND checks.flags && %s::text[]"
+                params.append(sorted(INVENTORY_FLAGS))
+            else:
+                scope += " AND cardinality(checks.flags)>0"
+        cur.execute("SELECT COUNT(*) total FROM product_returns r JOIN orders o USING(order_id) JOIN product_return_review_reconciliation checks USING(return_id) WHERE true" + scope,tuple(params))
         total = cur.fetchone()["total"]
         pagination = pagination_meta(total,page,12)
         cur.execute(
-            """SELECT r.*,a.name reseller_name,o.team_leader_account_id,o.total_amount order_total,
+            f"""SELECT r.*,a.name reseller_name,o.team_leader_account_id,o.total_amount order_total,
+            {INVENTORY_STATUS_SQL} inventory_status,
+            {SALES_STAGE_SQL} sales_stage,
+            (SELECT SUM(l.quantity) FROM product_return_lines l WHERE l.return_id=r.return_id) requested_quantity,
+            (SELECT SUM(l.received_quantity) FROM product_return_lines l WHERE l.return_id=r.return_id) received_quantity,
             GREATEST(r.replacement_total-r.credit,0) additional_due,GREATEST(r.credit-r.replacement_total,0) unused_credit,
             EXISTS(SELECT 1 FROM replacement_stock_reservations s WHERE s.return_id=r.return_id) has_reservations,
             (SELECT status FROM order_refunds f WHERE f.return_id=r.return_id) refund_status,
             (SELECT order_refund_id FROM order_refunds f WHERE f.return_id=r.return_id) order_refund_id,checks.flags reconciliation_flags
             FROM product_returns r JOIN orders o USING(order_id) JOIN accounts a ON a.account_id=o.created_by_account_id
-            JOIN product_return_reconciliation checks USING(return_id)
+            JOIN product_return_review_reconciliation checks USING(return_id)
             WHERE true"""
             + scope
             + " ORDER BY r.updated_at DESC,r.return_id DESC LIMIT 12 OFFSET %s;",
@@ -917,11 +1063,17 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
         for row in rows:
             row["list_total"] = total
             row["list_page"] = pagination["page"]
+            row["sales_authorized"] = settlement_is_authorized(row)
+        if role == "inventory":
+            return [inventory_return_view(row) for row in rows]
+        if role == "reseller":
+            return [reseller_return_view(row) for row in rows]
         return rows
 
 
 def get_product_return(return_id: int, actor_id: int) -> dict:
     with get_transaction_cursor() as cur:
+        role = _actor(cur, actor_id, {"reseller", "sales", "sales-supervisor", "inventory"})
         case = _case(cur, return_id, actor_id, {"reseller", "sales", "sales-supervisor", "inventory"}, read_only=True)
         cur.execute(
             """SELECT l.*,a.batch_id,oi.product_id,i.name,b.batch_code,b.expiry_date FROM product_return_lines l
@@ -946,8 +1098,27 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
         )
         case["attachments"] = clean_row(cur.fetchall())
         case["has_reservations"] = _valid_reservation(cur, case)
-        cur.execute("SELECT order_refund_id,status,amount FROM order_refunds WHERE return_id=%s;", (return_id,))
+        cur.execute("SELECT order_refund_id,status,amount,completed_at FROM order_refunds WHERE return_id=%s;", (return_id,))
         case["refund"] = clean_row(cur.fetchone())
+        case["sales_authorized"] = settlement_is_authorized(case)
+        case["sales_stage"] = "ready_for_confirmation" if case["status"] == "settlement_pending" and not case["sales_authorized"] else case["status"]
+        case["additional_due"] = max(Decimal(0), case["replacement_total"] - case["credit"])
+        case["unused_credit"] = max(Decimal(0), case["credit"] - case["replacement_total"])
+        cur.execute("""SELECT s.batch_id,b.batch_code,b.item_id product_id,i.name,b.expiry_date,s.quantity,
+            (b.quality_status='approved' AND b.expiry_date>(now() AT TIME ZONE 'Asia/Manila')::date
+             AND b.quantity_available>=s.quantity) eligible
+            FROM replacement_stock_reservations s JOIN inventory_batches b USING(batch_id)
+            JOIN inventory_items i ON i.item_id=b.item_id WHERE s.return_id=%s
+            ORDER BY b.expiry_date,b.batch_id;""", (return_id,))
+        case["reserved_batches"] = clean_row(cur.fetchall())
+        cur.execute("""SELECT x.release_id,x.batch_id,b.batch_code,b.item_id product_id,i.name,b.expiry_date,
+            x.quantity,a.name released_by_name,x.created_at released_at,m.movement_id
+            FROM replacement_releases x JOIN inventory_batches b USING(batch_id)
+            JOIN inventory_items i ON i.item_id=b.item_id LEFT JOIN accounts a ON a.account_id=x.released_by_account_id
+            LEFT JOIN inventory_movements m ON m.movement_id=x.inventory_movement_id
+            WHERE x.return_id=%s ORDER BY x.created_at,x.release_id;""",
+            (return_id,))
+        case["released_batches"] = clean_row(cur.fetchall())
         cur.execute("SELECT h.*,a.name received_by_name FROM product_return_receipts h LEFT JOIN accounts a ON a.account_id=h.received_by_account_id WHERE return_id=%s ORDER BY receipt_id;", (return_id,))
         case["receipts"] = clean_row(cur.fetchall())
         cur.execute("""SELECT x.*,h.location,h.quantity_remaining,h.source_batch_code,
@@ -971,12 +1142,28 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
             case["reconciliation_flags"].append("Refund amount does not match the verified credit.")
         if case["verified_at"] and expected_refund > 0 and not case["refund"] and (case["resolution"] == "refund" or case["replacement_released_at"]):
             case["reconciliation_flags"].append("The verified settlement is missing its refund record.")
-        cur.execute("SELECT flags FROM product_return_reconciliation WHERE return_id=%s;",(return_id,))
+        cur.execute("SELECT flags FROM product_return_review_reconciliation WHERE return_id=%s;",(return_id,))
         case["reconciliation_flags"] = list(dict.fromkeys(case["reconciliation_flags"] + cur.fetchone()["flags"]))
+        if role == "inventory":
+            cur.execute(f"SELECT {INVENTORY_STATUS_SQL} inventory_status FROM product_returns r WHERE return_id=%s;", (return_id,))
+            case["inventory_status"] = cur.fetchone()["inventory_status"]
+            case["inventory_can_reserve"] = bool(
+                case["verified_at"] and case["verified_by_account_id"] and case["resolution"] == "replace"
+                and case["status"] == "settlement_pending" and case["accepted_revision"] == case["quote_revision"]
+                and case["sales_authorized"]
+                and not case["replacement_released_at"]
+            )
+            case["inventory_can_release"] = bool(
+                case["inventory_can_reserve"] and case["has_reservations"] and not replacement_problems(cur, case)
+            )
+            return clean_row(inventory_return_view(case))
+        if role == "reseller":
+            return clean_row(reseller_return_view(case))
         return clean_row(case)
 
 
 def returnable_allocations(order_id: int, actor_id: int) -> list[dict]:
+    now = business_now()
     return clean_row(
         fetch_all(
             """SELECT a.allocation_id,a.quantity,b.batch_code,b.expiry_date,i.name,oi.unit_price,
@@ -985,10 +1172,35 @@ def returnable_allocations(order_id: int, actor_id: int) -> list[dict]:
         FROM fulfillment_allocations a JOIN order_items oi USING(order_item_id) JOIN orders o USING(order_id)
         JOIN inventory_batches b USING(batch_id) JOIN inventory_items i ON i.item_id=oi.product_id
         WHERE o.order_id=%s AND o.created_by_account_id=%s AND o.status='fulfilled'
-        AND b.expiry_date<=(now() AT TIME ZONE 'Asia/Manila')::date ORDER BY i.name,b.expiry_date;""",
-            (order_id, actor_id),
+        AND o.fulfilled_at<=%s AND o.fulfilled_at>%s
+        AND b.expiry_date IS NOT NULL ORDER BY i.name,b.expiry_date;""",
+            (order_id, actor_id, now, now - RETURN_REQUEST_PERIOD),
         )
     )
+
+
+def reseller_return_orders(actor_id: int) -> list[dict]:
+    """Owned fulfilled orders still inside the request window."""
+    now = business_now()
+    return clean_row(fetch_all("""SELECT order_id,total_amount,fulfilled_at FROM orders
+        WHERE created_by_account_id=%s AND order_type='reseller' AND status='fulfilled'
+        AND fulfilled_at<=%s AND fulfilled_at>%s
+        ORDER BY fulfilled_at DESC,order_id DESC;""", (actor_id, now, now - RETURN_REQUEST_PERIOD)))
+
+
+def reseller_return_order(order_id: int, actor_id: int) -> dict | None:
+    order = fetch_one("""SELECT order_id,status,total_amount,payment_amount,fulfilled_at FROM orders
+        WHERE order_id=%s AND created_by_account_id=%s AND order_type='reseller';""", (order_id, actor_id))
+    if not order:
+        return None
+    result = dict(order)
+    result.update(return_request_window(result))
+    result["payment_difference"] = max(Decimal(0), result["total_amount"] - (result["payment_amount"] or Decimal(0)))
+    result["products"] = fetch_all("""SELECT oi.order_item_id,i.name,oi.quantity,oi.unit_price,
+        COALESCE((SELECT SUM(a.quantity) FROM fulfillment_allocations a WHERE a.order_item_id=oi.order_item_id),0) traced_quantity
+        FROM order_items oi JOIN inventory_items i ON i.item_id=oi.product_id
+        WHERE oi.order_id=%s ORDER BY oi.order_item_id;""", (order_id,))
+    return clean_row(result)
 
 
 def expired_stock_workspace() -> dict:
@@ -1000,7 +1212,11 @@ def expired_stock_workspace() -> dict:
         ),
         "holdings": clean_row(
             fetch_all(
-                "SELECT h.*,i.name FROM expired_holdings h JOIN inventory_items i ON i.item_id=h.product_id WHERE quantity_remaining>0 ORDER BY h.created_at;"
+                """SELECT h.*,i.name,l.return_id,r.order_id FROM expired_holdings h
+                JOIN inventory_items i ON i.item_id=h.product_id
+                LEFT JOIN product_return_lines l ON l.return_line_id=h.return_line_id
+                LEFT JOIN product_returns r ON r.return_id=l.return_id
+                WHERE quantity_remaining>0 ORDER BY h.created_at;"""
             )
         ),
         "disposals": clean_row(
@@ -1082,48 +1298,52 @@ def product_lifecycle_details(product_id: int, *, batch_page: int = 1, movement_
     return product
 
 
+def inventory_return_totals(actor_id: int) -> dict:
+    with get_transaction_cursor() as cur:
+        _actor(cur, actor_id, {"inventory"})
+        cur.execute("""SELECT
+            COALESCE((SELECT SUM(l.quantity-l.received_quantity) FROM product_return_lines l
+              JOIN product_returns r USING(return_id) WHERE r.status<>'rejected'),0) outstanding_packs,
+            COALESCE((SELECT SUM(received_quantity) FROM product_return_lines),0) received_packs,
+            COALESCE((SELECT SUM(quantity) FROM replacement_releases),0) replacement_packs_released;""")
+        return clean_row(dict(cur.fetchone()))
+
+
 def return_settlement_totals(actor_id: int) -> dict:
     with get_transaction_cursor() as cur:
-        role = _actor(cur, actor_id, {"sales", "sales-supervisor", "inventory", "reseller"})
+        role = _actor(cur, actor_id, {"sales", "sales-supervisor", "reseller"})
         scope, params = "", ()
         if role in {"sales", "sales-supervisor"}:
-            scope, params = " WHERE o.team_leader_account_id=%s", (actor_id,)
+            scope = " WHERE ((order_type='walk_in' AND created_by_account_id=%s) OR (order_type='reseller' AND team_leader_account_id=%s))"
+            params = (actor_id, actor_id)
         elif role == "reseller":
-            scope, params = " WHERE o.created_by_account_id=%s", (actor_id,)
+            scope, params = " WHERE created_by_account_id=%s", (actor_id,)
+        # A single statement gives every total the same database snapshot, even
+        # while another session completes a refund or replacement payment.
+        columns = (
+            "original_sales", "original_collections", "return_credits", "replacement_value",
+            "additional_collections", "completed_refunds", "cancellation_refunds", "return_refunds",
+            "replacement_refunds", "pending_refunds", "net_collections", "retained_sales",
+        )
+        sums = ",".join(f"COALESCE(SUM({name}),0) {name}" for name in columns)
         cur.execute(
-            """SELECT COALESCE(SUM(r.credit) FILTER(WHERE r.verified_at IS NOT NULL),0) return_credits,
-            COALESCE(SUM(r.replacement_total) FILTER(WHERE r.replacement_released_at IS NOT NULL),0) replacement_value,
-            COALESCE(SUM(r.payment_amount) FILTER(WHERE r.payment_verified_at IS NOT NULL),0) additional_collections,
-            COALESCE(SUM((SELECT COALESCE(SUM(f.amount),0) FROM order_refunds f WHERE f.return_id=r.return_id AND f.status='completed')),0) completed_refunds
-            FROM product_returns r JOIN orders o USING(order_id)"""
-            + scope,
+            """WITH balances AS (SELECT * FROM (
+                SELECT f.*,o.total_amount order_value,
+                CASE WHEN f.order_type='reseller' AND f.status IN ('approved','fulfilled')
+                THEN GREATEST(o.total_amount-COALESCE(o.payment_amount,0),0) ELSE 0 END payment_difference
+                FROM order_financial_reconciliation f JOIN orders o USING(order_id)
+            ) source""" + scope + ") SELECT " + sums + """,
+            COUNT(*) FILTER(WHERE cardinality(flags)>0 OR payment_difference>0) reconciliation_count,
+            COALESCE(SUM(payment_difference),0) payment_difference_total,
+            COALESCE((SELECT jsonb_agg(to_jsonb(s) ORDER BY s.order_id DESC) FROM (
+                SELECT order_id,status,order_value,original_collections,additional_collections,
+                completed_refunds,net_collections,payment_difference FROM balances
+                WHERE original_collections<>0 OR original_sales<>0 OR completed_refunds<>0 OR additional_collections<>0
+                ORDER BY order_id DESC LIMIT 20
+            ) s),'[]'::jsonb) source_orders FROM balances;""",
             params,
         )
-        totals = dict(cur.fetchone())
-        cur.execute(
-            "SELECT COALESCE(SUM(o.total_amount) FILTER(WHERE o.status='fulfilled'),0) gross FROM orders o" + scope,
-            params,
-        )
-        totals["original_sales"] = cur.fetchone()["gross"]
-        cur.execute(
-            "SELECT COALESCE(SUM(CASE WHEN o.order_type='walk_in' AND o.status='fulfilled' THEN o.total_amount WHEN o.status IN ('approved','fulfilled') OR (o.status='rejected' AND o.rejection_payment_received=true) THEN o.payment_amount ELSE 0 END),0) collections FROM orders o"
-            + scope,
-            params,
-        )
-        totals["original_collections"] = cur.fetchone()["collections"]
-        cur.execute(
-            "SELECT COALESCE(SUM(f.amount),0) total FROM order_refunds f JOIN orders o USING(order_id)"
-            + scope
-            + (" AND " if scope else " WHERE ")
-            + "f.status='completed';",
-            params,
-        )
-        totals["net_collections"] = (
-            totals["original_collections"] + totals["additional_collections"] - cur.fetchone()["total"]
-        )
-        cur.execute("SELECT COALESCE(SUM(f.amount),0) total FROM order_refunds f JOIN orders o USING(order_id)" + scope + (" AND " if scope else " WHERE ") + "f.status<>'completed';",params)
-        totals["pending_refunds"] = cur.fetchone()["total"]
-        return clean_row(totals)
+        return clean_row(dict(cur.fetchone()))
 
 
 def verify_legacy_allocation(

@@ -19,16 +19,25 @@ checks enforce this rule even when the background worker is stopped.
 - **Expired Stock** lists warehouse goods pending physical pull-out, expired
   holding quantities, and disposal history. Expiry blocks sales; staff still
   confirm the physical movement and destination.
-- Partial pull-out and disposal are supported. Expired incoming goods go directly
-  into holding through **Record an already-expired arrival**.
+- Expired Stock uses four tabs: **Pending pull-out**, **Expired holding**,
+  **Disposed**, and **Custody history**. Partial pull-out and disposal are supported.
+  Disposal requires quantity and remarks; a separate disposal method is not required.
+  Direct expired arrivals are no longer offered; verified reseller returns enter
+  holding through **Product Returns**.
 
 ## Reseller return workflow
 
-1. From a fulfilled order, choose **Return / Refund / Replace**, select expired
+Product Returns shows a full-width list of clickable cases. Selecting a case opens
+a dialog with its progress, batches, receipts, review actions, and settlement history.
+Close it with the close button, Escape, or the backdrop; focus returns to the case.
+Existing case links and action redirects open the same dialog, including validation
+messages. Filters and pagination remain in the list.
+
+1. From a fulfilled order, choose **Return / Refund / Replace**, select original delivery
    batch quantities, choose a resolution, and enter remarks. Photos are optional.
 2. Assigned sales staff approve or reject the request. Approval is required before
-   inventory receives the goods. An expired item is eligible for review whether
-   it expired before delivery or while held by the reseller; approval is manual.
+   inventory receives the goods. Requests may cover expired or non-expired products; eligibility approval is
+   manual and is based on the return reason and original delivery records.
 3. Inventory uses **Record returned items received** to record each actual delivery,
    its quantities, holding location, staff, timestamp, and remarks. Every receipt
    links to the original fulfilled batch, holding entry, and custody movement.

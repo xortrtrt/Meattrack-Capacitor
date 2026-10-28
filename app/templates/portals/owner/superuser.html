@@ -26,7 +26,7 @@
   {% elif section == "inquiries" %}
   <section class="panel owner-workspace-surface">
     <div class="panel-heading"><div><span class="eyebrow">Global queue</span><h2>Reseller inquiries</h2></div></div>
-    <form class="filter-bar" method="get"><label>Search<input name="q" value="{{ inquiries_page.filters.q }}" placeholder="Business, applicant, or email"></label><label>Status<select name="status"><option value="">All statuses</option>{% for value in ['pending', 'assigned', 'contacted', 'approved', 'rejected'] %}<option value="{{ value }}" {{ 'selected' if inquiries_page.filters.status == value else '' }}>{{ value|title }}</option>{% endfor %}</select></label><button class="button subtle">Filter inquiries</button></form>
+    <form class="filter-bar" method="get"><label>Search<input name="q" value="{{ inquiries_page.filters.q }}" placeholder="Business, applicant, or email"></label><label>Status<select name="status"><option value="">All status</option>{% for value in ['pending', 'assigned', 'contacted', 'approved', 'rejected'] %}<option value="{{ value }}" {{ 'selected' if inquiries_page.filters.status == value else '' }}>{{ value|title }}</option>{% endfor %}</select></label><button class="button subtle">Filter inquiries</button></form>
     <div class="owner-record-grid">
       {% for item in inquiries %}
       <article class="owner-record-card">

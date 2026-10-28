@@ -181,7 +181,7 @@ def dashboard_context(request: Request) -> dict:
     if leader_role == "inventory":
         return {
             "team_leader_role": leader_role,
-            "metrics": data.current_metrics(team_leader_account_id=account_id),
+            "metrics": data.inventory_stock_metrics(),
             "products": data.list_products(),
             "movement_analytics": data.inventory_product_movement_analytics(days=30, limit=8),
         }
@@ -540,7 +540,7 @@ async def team_product(request: Request):
         data.create_product_with_recipe(
             str(form.get("name", "")),
             str(form.get("category", "")),
-            form.get("base_price", "0"),
+            "0",
             material_item_ids,
             quantity_required,
             quantity_required_units,

@@ -359,7 +359,7 @@
 
         document.addEventListener("click", (event) => {
             const link = event.target.closest(categorySelector);
-            if (!link || link.dataset.inventoryProductsLink !== undefined || event.defaultPrevented
+            if (!link || link.hasAttribute("data-full-navigation") || link.dataset.inventoryProductsLink !== undefined || event.defaultPrevented
                 || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
                 return;
             }

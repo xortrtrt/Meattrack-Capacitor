@@ -18,10 +18,7 @@
         <span><i data-lucide="boxes"></i> Available stock</span>
         <strong>{{ product.available|number }} <small>{{ product.unit }}</small></strong>
       </div>
-      <div class="inventory-product-stat inventory-product-price">
-        <span><i data-lucide="philippine-peso"></i> Unit price</span>
-        <strong>{{ product.base_price|currency }} <small>/{{ product.unit }}</small></strong>
-      </div>
+
     </div>
     <div class="inventory-product-content">
       <i data-lucide="{{ 'package-open' if is_package else 'scale' }}"></i>

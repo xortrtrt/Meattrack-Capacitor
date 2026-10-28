@@ -89,7 +89,7 @@ The module is called Product Returns, not Backorders. Initial scope is expired p
 Case progression:
 Submitted → Sales approved → Awaiting receipt → Inventory verified → Settlement pending → Completed
 
-A submitted case can be rejected by Sales with required remarks. Approved returns identify the original order line, fulfilled batch/allocation, whole-pack quantity, requested resolution, and required remarks; optional photos may be attached. Active and completed claims cannot exceed the fulfilled quantity of a specific allocation. Inventory records actual receipt and any mismatch. A discrepancy blocks settlement until resolved and resubmitted for Sales approval. Original order fulfillment remains unchanged; case status and settlement appear separately.
+A submitted case can be rejected by Sales with required remarks. Approved returns identify the original order line, fulfilled batch/allocation, whole-pack quantity, requested resolution, and required remarks; at least one supporting photo is required (up to three, 5 MB each). Active and completed claims cannot exceed the fulfilled quantity of a specific allocation. Inventory records actual receipt and any mismatch. A discrepancy blocks settlement until resolved and resubmitted for Sales approval. Original order fulfillment remains unchanged; case status and settlement appear separately.
 
 Three common outcomes:
 

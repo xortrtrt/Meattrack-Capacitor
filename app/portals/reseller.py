@@ -12,6 +12,7 @@ from app import repositories as data
 from app import receipt_ocr
 from app.business_time import business_today
 from app.portals import shared
+from app.repositories.product_returns import return_request_window
 
 
 router = APIRouter()
@@ -166,6 +167,14 @@ def order_context(request: Request) -> dict:
 
 def history_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
+    if request.query_params.get("view", "").strip().lower() == "returns":
+        from app.portals.product_returns import reseller_returns_context
+        context = reseller_returns_context(request)
+        pagination = context["return_cases_page"]["pagination"]
+        return {**context, "orders": [],
+            "orders_page": shared.paged([], pagination["total"], pagination["page"], 12,
+                view="returns", q="", sort=""),
+        }
     if account_id is not None:
         data.expire_unpaid_orders(account_id=account_id)
     history_view = request.query_params.get("view", "all").strip().lower()
@@ -187,6 +196,9 @@ def history_context(request: Request) -> dict:
         status_override=status_override,
     )
     page["filters"]["view"] = history_view
+    for order in page["items"]:
+        if order.get("status") == "fulfilled":
+            order.update(return_request_window(order))
     return {
         "orders_page": page,
         "orders": page["items"],

@@ -1,0 +1,9 @@
+{% if case.resolution=='replace' %}
+<section class="lifecycle-box replacement-batch-trace"><h4>Replacement batch traceability</h4>
+  <p>Returned goods stay in non-sellable holding. Replacement stock is taken from the eligible sellable batches below.</p>
+  <h5>Reserved batches—planned stock</h5>
+  {% for batch in case.reserved_batches %}<p><strong>{{ batch.name }} / {{ batch.batch_code }}</strong> &middot; {{ batch.quantity|number }} packs &middot; expires {{ batch.expiry_date|nice_date }}{% if not batch.eligible %} &middot; Reservation requires renewal{% endif %}</p>{% else %}<p>No replacement stock is currently reserved.</p>{% endfor %}
+  <h5>Released batches—actual stock taken</h5>
+  {% for batch in case.released_batches %}<article class="lifecycle-box"><strong>{{ batch.name }} / {{ batch.batch_code }}</strong><p>Batch #{{ batch.batch_id }} &middot; {{ batch.quantity|number }} packs &middot; expires {{ batch.expiry_date|nice_date }}</p><p>Released {{ batch.released_at|nice_date }} by {{ batch.released_by_name }}{% if batch.movement_id %} &middot; Movement #{{ batch.movement_id }}{% else %} &middot; Historical release: direct movement link unavailable{% endif %}</p></article>{% else %}<p>No replacement goods have been released.</p>{% endfor %}
+</section>
+{% endif %}

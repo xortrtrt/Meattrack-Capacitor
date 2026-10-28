@@ -88,6 +88,7 @@ def refunds_context(request: Request) -> dict:
         and selected
         and selected.get("status") == "processing"
         and selected.get("processing_by_account_id") == account_id
+        and not selected.get("awaiting_sales_confirmation")
     ):
         pass
     else:

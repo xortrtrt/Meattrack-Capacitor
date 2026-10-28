@@ -23,6 +23,7 @@ METRICS = {
 }
 
 READ_FUNCTIONS = (
+    "inventory_stock_metrics",
     "current_metrics",
     "list_products",
     "list_alerts",
@@ -136,7 +137,7 @@ EXPECTED_CALLS = {
 }
 
 INVENTORY_EXPECTED_CALLS = {
-    ("team-leader", "dashboard"): {"current_metrics", "list_products", "inventory_product_movement_analytics", "list_notifications", "unread_notification_count"},
+    ("team-leader", "dashboard"): {"inventory_stock_metrics", "list_products", "inventory_product_movement_analytics", "list_notifications", "unread_notification_count"},
     ("team-leader", "inventory"): {
         "list_products",
         "count_products",
@@ -157,7 +158,7 @@ def install_read_spies(monkeypatch):
     calls = defaultdict(list)
     for name in READ_FUNCTIONS:
         result = (
-            METRICS if name == "current_metrics"
+            METRICS if name in {"current_metrics", "inventory_stock_metrics"}
             else {} if name in {"owner_operations_summary","settlement_summary"}
             else 7 if name == "business_setting"
             else {"pending": 0, "processing": 0, "completed": 0, "failed": 0} if name == "refund_status_counts"
@@ -2026,7 +2027,7 @@ def test_inventory_dashboard_renders_product_movement_chart(monkeypatch):
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(
         repositories,
-        "current_metrics",
+        "inventory_stock_metrics",
         lambda *args, **kwargs: {
             "fulfilled_sales": 0,
             "pending_reseller_orders": 0,

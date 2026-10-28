@@ -75,7 +75,7 @@ def list_order_refunds(
         f"""
         SELECT r.order_refund_id, r.order_id, r.return_id, r.amount, r.currency, r.status,
                CASE WHEN r.return_id IS NULL THEN 'Rejected paid order'
-                    WHEN pr.resolution='replace' THEN 'Replacement refund difference' ELSE 'Returned expired products' END refund_type,
+                    WHEN pr.resolution='replace' THEN 'Replacement refund difference' ELSE 'Returned products' END refund_type,
                r.assigned_supervisor_account_id, r.processing_by_account_id,
                r.requested_at, r.processing_started_at, r.completed_at, r.failed_at,
                reseller.name AS reseller_name, business.business_name,
@@ -199,7 +199,12 @@ def get_order_refund(refund_id: int, role_key: str, account_id: int | None) -> d
         from .product_returns import get_product_return
         result["return_case"] = get_product_return(result["return_id"], int(account_id))
     result["refund_type"] = ("Rejected paid order" if not result.get("return_id") else
-                             "Replacement refund difference" if result["return_case"]["resolution"] == "replace" else "Returned expired products")
+                             "Replacement refund difference" if result["return_case"]["resolution"] == "replace" else "Returned products")
+    result["financials"] = clean_row(fetch_one(
+        "SELECT * FROM order_financial_reconciliation WHERE order_id=%s;", (result["order_id"],)
+    ))
+    result["awaiting_sales_confirmation"] = bool(result["return_case"] and
+        result["return_case"]["status"] != "completed" and not result["return_case"].get("sales_authorized"))
     return result
 
 

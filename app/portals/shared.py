@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
@@ -340,6 +340,13 @@ def normalize_notification_targets(
     role_key: str,
     team_leader_role: str | None,
 ) -> list[dict]:
+    if role_key == "team-leader" and team_leader_role == "inventory":
+        items = [
+            {**item, "title": "Returned stock update", "message": "Review returned quantities, batches, verification, and replacement stock."}
+            if "/returns" in str(item.get("target_url") or "") else item
+            for item in items
+            if not any(path in str(item.get("target_url") or "") for path in ("/refunds", "/orders", "/reports"))
+        ]
     return [
         {
             **item,
@@ -378,6 +385,9 @@ def portal_role_for_request(role_key: str, request: Request) -> dict:
 
 def portal_section_context(role_key: str, section: str, request: Request) -> dict:
     context = PORTAL_SECTION_LOADERS[(role_key, section)](request)
+    if role_key == "team-leader" and session_team_leader_role(request) == "inventory":
+        from app.repositories.return_views import inventory_context_view
+        context = inventory_context_view(context)
     products = context.get("products", [])
     if products:
         selected_product = products[0]
@@ -399,6 +409,8 @@ def portal_section_context(role_key: str, section: str, request: Request) -> dic
 async def portal_order_payment_proof(request: Request, proof_id: int):
     role_key = request.session.get("role_key")
     account_id = session_account_id(request)
+    if role_key == "team-leader" and session_team_leader_role(request) == "inventory":
+        raise HTTPException(status_code=404)
     if role_key not in {"owner", "team-leader", "sales-supervisor", "reseller"} or account_id is None:
         raise HTTPException(status_code=404)
     proof = data.get_order_payment_proof(proof_id, account_id, role_key)
@@ -431,6 +443,8 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
     guard = require_portal_session(request, role_key)
     if guard:
         return guard
+    if role_key == "reseller" and section == "returns":
+        return redirect_to("/portal/reseller/history?" + urlencode({**request.query_params, "view": "returns"}))
     nav = portal_nav_for_request(role_key, request)
     nav_sections = {item[0]: item for item in nav}
     secondary_section = portal_config.portal_secondary_sections.get(role_key, {}).get(section)

@@ -5,7 +5,7 @@
     <div class="lifecycle-product-identity">
       <div class="lifecycle-product-photo"><img src="{{ product.name|product_image|media_url }}" alt="{{ product.name }}" width="128" height="128"></div>
       <div><span class="eyebrow">Finished product / {{ product.category }}</span><h2>{{ product.name }}</h2>
-        <div class="lifecycle-product-meta"><span><i data-lucide="tag" aria-hidden="true"></i>{{ product.base_price|currency }} / {{ product.unit }}</span><span><i data-lucide="weight" aria-hidden="true"></i>{{ product.pack_size|number }} {{ product.pack_size_unit }} per pack</span></div>
+        <div class="lifecycle-product-meta">{% if role_key=='owner' %}<span><i data-lucide="tag" aria-hidden="true"></i>{{ product.base_price|currency }} / {{ product.unit }}</span>{% endif %}<span><i data-lucide="weight" aria-hidden="true"></i>{{ product.pack_size|number }} {{ product.pack_size_unit }} per pack</span></div>
         <span class="status-badge lifecycle-status" data-state="{{ 'approved' if product.is_active else 'rejected' }}">{{ 'Active product' if product.is_active else 'Inactive product' }}</span>
       </div>
     </div>

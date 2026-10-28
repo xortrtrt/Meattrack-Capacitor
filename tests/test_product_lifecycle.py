@@ -59,13 +59,25 @@ def lifecycle(strict_inventory_database):  # noqa: F811
     )
 
 
+def supporting_photo():
+    import hashlib
+    from io import BytesIO
+    from PIL import Image
+    stream = BytesIO()
+    Image.new("RGB", (8, 8), "white").save(stream, format="PNG")
+    content = stream.getvalue()
+    return {"filename": "return-photo.png", "content_type": "image/png", "content": content,
+            "size_bytes": len(content), "checksum_sha256": hashlib.sha256(content).hexdigest()}
+
+
 def create_case(d, resolution="refund", quantity=2):
     return returns.create_product_return(
-        d["order"], d["reseller"], resolution, [(d["allocation"], quantity)], "Expired goods returned for review"
+        d["order"], d["reseller"], resolution, [(d["allocation"], quantity)], "Expired goods returned for review",
+        attachments=[supporting_photo()],
     )
 
 
-def receive(d, case, quantity=2, *, verify=True):
+def receive(d, case, quantity=2, *, verify=True, authorize=True):
     line = returns.get_product_return(case, d["inventory"])["lines"][0]
     returns.receive_product_return(
         case,
@@ -77,6 +89,8 @@ def receive(d, case, quantity=2, *, verify=True):
     )
     if verify and returns.get_product_return(case,d["inventory"])["status"] == "awaiting_inventory_verification":
         returns.verify_product_return(case,d["inventory"],"Final quantities and custody verified",str(uuid4()))
+        if authorize:
+            returns.authorize_return_settlement(case,d["sales"],"Sales confirms the verified return resolution",str(uuid4()))
 
 
 def substitute(price):
@@ -160,7 +174,8 @@ def test_product_details_pages_preserve_totals_and_include_entire_movement_histo
     assert negative["batch_pagination"]["page"] == negative["movement_pagination"]["page"] == 1
 
 
-def test_pullout_and_disposal_are_partial_and_idempotent(lifecycle):
+@pytest.mark.parametrize("method", [None, "Documented waste collection"])
+def test_pullout_and_disposal_are_partial_and_idempotent(lifecycle, method):
     d = lifecycle
     worker.scan_batch_expiry()
     worker.scan_batch_expiry()
@@ -180,11 +195,12 @@ def test_pullout_and_disposal_are_partial_and_idempotent(lifecycle):
             holding["holding_id"],
             d["inventory"],
             2,
-            "Documented waste collection",
+            method,
             "Disposed with inventory witness",
             key,
         )
     assert fetch_one("SELECT quantity_remaining n FROM expired_holdings;")["n"] == 2
+    assert fetch_one("SELECT disposal_method FROM expired_stock_movements WHERE action='disposal';")["disposal_method"] == method
     with pytest.raises(ValueError, match="exceeds"):
         returns.dispose_expired_stock(
             holding["holding_id"], d["inventory"], 3, "Waste collection", "Cannot exceed actual holding", str(uuid4())
@@ -337,7 +353,7 @@ def test_request_and_approval_operation_keys_prevent_duplicate_cases_and_quotes(
             "replace",
             [(d["allocation"], 2)],
             "Expired packs requiring replacement",
-            operation_key=key,
+            attachments=[supporting_photo()], operation_key=key,
         )
         for _ in range(2)
     ]

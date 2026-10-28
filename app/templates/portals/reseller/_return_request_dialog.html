@@ -1,0 +1,70 @@
+<dialog id="return-request-dialog" class="returns-case-dialog customer-return-request" data-return-request-dialog data-return-order="{{ return_order_id or '' }}" data-auto-open="{{ 'true' if return_request_open else 'false' }}" aria-labelledby="return-request-title">
+  <div class="returns-dialog-bar">
+    <h3 id="return-request-title">Request a return</h3>
+    <button type="button" class="returns-dialog-close" data-return-close aria-label="Close return request" autofocus><i data-lucide="x" aria-hidden="true"></i></button>
+  </div>
+  <div class="return-request-content">
+    {% if error and return_request_open %}<div class="returns-dialog-notice is-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if return_order_id %}
+    <div class="return-request-context">
+    <header class="return-request-order">
+      <h4>Order #{{ return_order_id }}</h4>
+      <a class="button secondary" href="/portal/reseller/history?view=returns&amp;request=1"><i data-lucide="arrow-left-right" aria-hidden="true"></i>Choose another order</a>
+    </header>
+    <section class="return-request-window" aria-label="Return request window">
+      <i data-lucide="clock-3" aria-hidden="true"></i>
+      <div><strong>{{ '5-day request window' if return_order.request_window_open else 'Request unavailable' }}</strong>{% if not return_order.request_window_open %}<p>{{ return_order.request_window_reason }}</p>{% endif %}
+        {% if return_order.request_deadline %}<p>{{ 'Submit before' if return_order.request_window_open else 'Window closed' }} <time datetime="{{ return_order.request_deadline.isoformat() }}">{{ return_order.request_deadline|nice_date }}</time> (Manila time).</p>{% endif %}
+      </div>
+    </section>
+    </div>
+    {% if return_order.request_window_open and returnable_batches %}
+    <form class="lifecycle-form return-request-form" method="post" action="{{ action_base }}submit" enctype="multipart/form-data">
+      <input type="hidden" name="order_id" value="{{ return_order_id }}"><input type="hidden" name="operation_key" value="{{ operation_key() }}">
+      <fieldset class="return-request-section" aria-describedby="return-products-hint">
+        <legend><span class="return-request-step" aria-hidden="true">1</span>Select products</legend>
+        <p id="return-products-hint" class="return-request-instruction">Enter packs for at least one product. Leave the rest at 0.</p>
+        <div class="return-request-products">
+        {% for batch in returnable_batches %}
+        <div class="return-request-product">
+          <div class="return-request-product-info"><strong>{{ batch.name }}</strong><span>Batch {{ batch.batch_code }} &middot; expires {{ batch.expiry_date|nice_date }}</span><small>Up to {{ batch.returnable_quantity|number }} packs</small></div>
+          <input type="hidden" name="allocation_id" value="{{ batch.allocation_id }}">
+          <label for="return-quantity-{{ batch.allocation_id }}">Packs to return<input id="return-quantity-{{ batch.allocation_id }}" aria-label="Return quantity for {{ batch.name }} batch {{ batch.batch_code }}" aria-describedby="return-products-hint" type="number" name="quantity" min="0" max="{{ batch.returnable_quantity|int }}" step="1" value="0"></label>
+        </div>
+        {% endfor %}
+        </div>
+      </fieldset>
+      <fieldset class="return-request-section" aria-describedby="return-resolution-hint">
+        <legend><span class="return-request-step" aria-hidden="true">2</span>Choose an outcome</legend>
+        <p id="return-resolution-hint" class="return-request-instruction">Select one option. Subject to Sales approval.</p>
+        <div class="return-resolution-options">
+          <label class="return-resolution-option" for="return-refund"><input id="return-refund" type="radio" name="resolution" value="refund" required checked aria-labelledby="return-refund-title" aria-describedby="return-refund-description"><span><strong id="return-refund-title">Refund</strong><small id="return-refund-description">Request money back for returned products.</small></span></label>
+          <label class="return-resolution-option" for="return-replacement"><input id="return-replacement" type="radio" name="resolution" value="replace" required aria-labelledby="return-replacement-title" aria-describedby="return-replacement-description"><span><strong id="return-replacement-title">Replacement</strong><small id="return-replacement-description">Request replacement products.</small></span></label>
+        </div>
+      </fieldset>
+      <fieldset class="return-request-section">
+        <legend><span class="return-request-step" aria-hidden="true">3</span>Add details</legend>
+        <p id="return-details-hint" class="return-request-instruction">Explain the issue and upload at least one clear photo.</p>
+        <div class="return-request-details">
+          <label for="return-reason"><span class="return-request-field-label">Reason and remarks<span class="return-request-required">Required</span></span><textarea id="return-reason" name="remarks" required minlength="5" maxlength="1000" rows="3" aria-describedby="return-details-hint" placeholder="For example: The packaging was damaged when the order arrived."></textarea></label>
+          <label for="return-evidence"><span class="return-request-field-label">Supporting photos<span class="return-request-required">Required</span></span><input id="return-evidence" type="file" name="evidence" required multiple accept="image/jpeg,image/png,image/webp" aria-describedby="return-evidence-hint"><small id="return-evidence-hint">Upload 1–3 photos (JPG, PNG, or WebP), up to 5 MB each.</small></label>
+        </div>
+      </fieldset>
+      <div class="return-request-actions"><button class="button secondary" type="button" data-return-close>Cancel</button><button class="button" type="submit">Request return<i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+    </form>
+    {% else %}
+      {% if return_order.request_window_open %}<p>There are no unclaimed, traceable quantities available to request on this order.</p>{% for product in return_order.products %}<p><strong>{{ product.name }}</strong> &middot; {{ product.quantity|number }} packs{% if product.traced_quantity<product.quantity %} &middot; Original delivery batch verification is needed; contact Sales/Inventory.{% else %} &middot; Check your existing return requests for these quantities.{% endif %}</p>{% endfor %}{% endif %}
+      <div class="return-request-actions"><button class="button secondary" type="button" data-return-close>Back to history</button></div>
+    {% endif %}
+    {% else %}
+    <div class="return-request-intro"><h4>Choose an order</h4><p>Return, refund, and replacement requests must be submitted within 5 days (120 hours) of fulfillment. Sales reviews each request for eligibility.</p></div>
+    {% if return_order_options %}
+    <form class="lifecycle-form return-request-form" method="get" action="/portal/reseller/history">
+      <input type="hidden" name="view" value="returns">
+      <label for="return-order">Order<select id="return-order" name="order" required><option value="">Select an order</option>{% for order in return_order_options %}<option value="{{ order.order_id }}">Order #{{ order.order_id }} &middot; {{ order.total_amount|currency }} &middot; fulfilled {{ order.fulfilled_at|nice_date }}</option>{% endfor %}</select></label>
+      <div class="return-request-actions"><button class="button secondary" type="button" data-return-close>Cancel</button><button class="button" type="submit">Continue<i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+    </form>
+    {% else %}<p>You have no fulfilled orders within the 5-day request window.</p><div class="return-request-actions"><button class="button secondary" type="button" data-return-close>Back to history</button><a class="button" href="/portal/reseller/history?view=fulfilled">View fulfilled orders</a></div>{% endif %}
+    {% endif %}
+  </div>
+</dialog>

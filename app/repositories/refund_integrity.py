@@ -56,6 +56,79 @@ def receipt_problems(cur, return_id: int) -> list[str]:
     return list(dict.fromkeys(problems))
 
 
+def settlement_is_authorized(case: dict) -> bool:
+    return bool(
+        case.get("settlement_authorized_by_account_id") and case.get("settlement_authorized_at")
+        and case.get("settlement_authorized_quote_revision") == case["quote_revision"]
+    )
+
+
+def require_settlement_authorization(case: dict) -> None:
+    if case["status"] == "completed" and not case.get("settlement_authorized_by_account_id"):
+        return  # Historical terminal records are not reopened or assigned fictional authorizers.
+    if not settlement_is_authorized(case):
+        raise ValueError("Sales confirmation is required after Inventory verifies all approved returned goods.")
+
+
+def replacement_problems(cur, case: dict, *, require_release: bool = False) -> list[str]:
+    """Reconcile the accepted quote, extra collection, and physical release."""
+    if case["resolution"] != "replace":
+        return []
+    cur.execute(
+        "SELECT SUM(line_total) total FROM replacement_quote_lines WHERE return_id=%s AND revision=%s;",
+        (case["return_id"], case["quote_revision"]),
+    )
+    problems = []
+    if case["quote_revision"] <= 0 or cur.fetchone()["total"] != case["replacement_total"]:
+        problems.append("Replacement quote lines do not match the replacement total.")
+    if case["accepted_revision"] != case["quote_revision"]:
+        problems.append("The current replacement quote requires reseller acceptance.")
+    extra = max(Decimal(0), case["replacement_total"] - case["credit"])
+    if extra > 0 and (
+        not case["payment_verified_at"]
+        or not case["payment_verified_by_account_id"]
+        or not case["payment_reference"]
+        or case["payment_amount"] != extra
+    ):
+        problems.append("Sales must verify the exact additional payment before release.")
+    if extra > 0 and case["payment_verified_at"]:
+        cur.execute(
+            "SELECT 1 FROM return_attachments WHERE return_id=%s AND purpose='payment' AND revision=%s LIMIT 1;",
+            (case["return_id"], case["quote_revision"]),
+        )
+        if not cur.fetchone():
+            problems.append("The verified additional collection is missing its current payment proof.")
+    if extra == 0 and (case["payment_verified_at"] or case["payment_amount"]):
+        problems.append("This replacement does not require an additional payment.")
+    if require_release:
+        cur.execute(
+            """WITH quoted AS (
+                SELECT product_id,SUM(quantity) quantity FROM replacement_quote_lines
+                WHERE return_id=%s AND revision=%s GROUP BY product_id
+            ), released AS (
+                SELECT b.item_id product_id,SUM(r.quantity) quantity FROM replacement_releases r
+                JOIN inventory_batches b USING(batch_id) WHERE r.return_id=%s GROUP BY b.item_id
+            ) SELECT 1 FROM quoted q FULL JOIN released r USING(product_id)
+            WHERE q.quantity IS DISTINCT FROM r.quantity LIMIT 1;""",
+            (case["return_id"], case["quote_revision"], case["return_id"]),
+        )
+        if not case["replacement_released_at"] or cur.fetchone():
+            problems.append("Replacement releases do not match the accepted quote quantities.")
+        if case.get("settlement_authorized_at"):
+            cur.execute("""SELECT 1 FROM replacement_releases x JOIN inventory_batches b USING(batch_id)
+                LEFT JOIN inventory_movements m ON m.movement_id=x.inventory_movement_id
+                WHERE x.return_id=%s AND (x.created_at>=%s OR x.inventory_movement_id IS NOT NULL)
+                AND (m.movement_id IS NULL OR m.movement_type<>'replacement_release'
+                 OR m.affected_batch_id IS DISTINCT FROM x.batch_id OR m.item_id<>b.item_id
+                 OR m.order_id IS DISTINCT FROM %s OR m.quantity_delta<>-x.quantity
+                 OR m.balance_before-m.balance_after<>x.quantity
+                 OR m.actor_account_id IS DISTINCT FROM x.released_by_account_id) LIMIT 1;""",
+                (case["return_id"], case["settlement_authorized_at"], case["order_id"]))
+            if cur.fetchone():
+                problems.append("Replacement release is missing its matching batch stock movement.")
+    return problems
+
+
 def check_refund_eligibility(cur, refund: dict) -> None:
     cur.execute("SELECT * FROM orders WHERE order_id=%s;", (refund["order_id"],))
     order = cur.fetchone()
@@ -66,6 +139,7 @@ def check_refund_eligibility(cur, refund: dict) -> None:
     if not refund.get("return_id"):
         if order["status"] != "rejected" or not order["rejection_payment_received"] or refund["amount"] != collected:
             raise ValueError("A rejected-order refund requires the full confirmed original payment.")
+        check_order_financials(cur, refund["order_id"])
         return
     cur.execute("SELECT * FROM product_returns WHERE return_id=%s;", (refund["return_id"],))
     case = cur.fetchone()
@@ -73,11 +147,13 @@ def check_refund_eligibility(cur, refund: dict) -> None:
         not case
         or case["order_id"] != refund["order_id"]
         or not case["verified_at"]
+        or not case["verified_by_account_id"]
         or not case["approved_by_account_id"]
     ):
         raise ValueError("Final Inventory verification and Sales approval are required before settlement.")
     if case["status"] not in {"settlement_pending", "completed"} or order["status"] != "fulfilled":
         raise ValueError("Resolve the return discrepancy and verify returned items before settlement.")
+    require_settlement_authorization(case)
     problems = receipt_problems(cur, case["return_id"])
     if problems:
         raise ValueError(problems[0])
@@ -90,9 +166,22 @@ def check_refund_eligibility(cur, refund: dict) -> None:
     if case["resolution"] == "replace":
         if not case["replacement_released_at"] or case["accepted_revision"] != case["quote_revision"]:
             raise ValueError("The accepted replacement must be released before its refund is settled.")
+        problems = replacement_problems(cur, case, require_release=True)
+        if problems:
+            raise ValueError(problems[0])
         expected = max(Decimal(0), case["credit"] - case["replacement_total"])
     if refund["amount"] != expected or expected <= 0:
         raise ValueError("Refund amount does not match the verified return credit or replacement difference.")
+    check_order_financials(cur, refund["order_id"])
+
+
+def check_order_financials(cur, order_id: int) -> None:
+    cur.execute("SELECT flags FROM order_financial_reconciliation WHERE order_id=%s;", (order_id,))
+    balance = cur.fetchone()
+    if not balance:
+        raise ValueError("The original collection record is missing.")
+    if balance["flags"]:
+        raise ValueError(balance["flags"][0])
 
 
 def replay_refund_operation(

@@ -133,7 +133,7 @@ def test_order_type_filters_headers_and_items(monkeypatch):
     assert orders[0]["payment_proofs"][0]["filename"] == "proof.png"
 
 
-def test_refunded_order_filter_uses_completed_refund_status(monkeypatch):
+def test_refunded_order_filter_uses_completed_amount_even_with_other_open_refunds(monkeypatch):
     list_calls = []
     count_calls = []
     monkeypatch.setattr(
@@ -151,11 +151,11 @@ def test_refunded_order_filter_uses_completed_refund_status(monkeypatch):
     repositories.count_orders(order_type="reseller", status="refunded")
 
     assert "FROM order_refunds GROUP BY order_id) refund" in list_calls[0][0]
-    assert "refund.status = 'completed'" in list_calls[0][0]
+    assert "refund.refunded_amount > 0" in list_calls[0][0]
     assert "o.status = %s" not in list_calls[0][0]
     assert list_calls[0][1] == ("reseller",)
     assert "FROM order_refunds GROUP BY order_id) refund" in count_calls[0][0]
-    assert "refund.status = 'completed'" in count_calls[0][0]
+    assert "refund.refunded_amount > 0" in count_calls[0][0]
     assert "o.status = %s" not in count_calls[0][0]
     assert count_calls[0][1] == ("reseller",)
 

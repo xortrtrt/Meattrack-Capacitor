@@ -18,7 +18,7 @@
       </label>
       <label>Status
         <select name="status">
-          <option value="">All statuses</option>
+          <option value="">All status</option>
           {% for value in ["pending", "active", "suspended", "inactive"] %}
           <option value="{{ value }}" {{ 'selected' if team_resellers_page.filters.status == value else '' }}>{{ value|title }}</option>
           {% endfor %}
