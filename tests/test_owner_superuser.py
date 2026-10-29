@@ -53,6 +53,9 @@ def test_every_non_owner_navigation_section_declares_a_capability():
         if role == "reseller":
             # The legacy returns destination redirects into the Order History tab.
             visible.update({"checkout", "returns"})
+        if role == "team-leader:sales":
+            # Legacy Returns remains authorized and redirects to Refunds & returns.
+            visible.add("returns")
         if role == "team-leader:inventory":
             visible.add("product-details")
         assert visible == declared
