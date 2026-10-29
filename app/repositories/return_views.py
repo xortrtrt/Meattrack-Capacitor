@@ -22,6 +22,7 @@ INVENTORY_EVENT_MESSAGES = {
     "sales_approved": "Sales approved the returned products and quantities.",
     "rejected": "Sales did not approve this return request.",
     "inventory_received": "Returned goods were received into holding.",
+    "inventory_receipt_complete": "All approved products and proof matched. Complete receipt confirmed into Discarded inventory; the approved resolution may proceed.",
     "inventory_verified": "Inventory verified the received goods and custody records.",
     "inventory_reverified": "Inventory rechecked the custody records for this completed return.",
     "receipt_discrepancy": "Returned goods require a quantity, batch, or condition review.",
@@ -33,9 +34,14 @@ INVENTORY_EVENT_MESSAGES = {
 }
 
 RESELLER_EVENT_MESSAGES = {
+    "replacement_received": "You acknowledged receiving your replacement.",
+    "customer_issue_reported": "Your replacement issue was sent to Sales for follow-up.",
+    "customer_issue_resolved": "Sales provided a resolution for your reported issue.",
+    "rejected": "Sales declined this return request.",
     "submitted": "Your return request was submitted for Sales review.",
     "sales_approved": "Sales approved the return. Send back the approved products and quantities.",
     "inventory_received": "A delivery of your returned items was received into non-sellable holding.",
+    "inventory_receipt_complete": "All approved returned products matched and were received. Your approved refund or replacement can proceed.",
     "inventory_verified": "All approved returned items were received and verified. Awaiting Sales confirmation.",
     "inventory_reverified": "Inventory rechecked the goods records for your completed return. Your recorded outcome remains complete.",
     "receipt_discrepancy": "The received items need further review. Sales will contact you about the next step.",
@@ -72,7 +78,7 @@ def inventory_return_view(case: dict) -> dict:
         approved_by_account_id verified_at verified_by_account_id verified_by_name verification_remarks
         replacement_released_at quote_revision accepted_revision has_reservations reseller_name
         team_leader_account_id created_at updated_at list_total list_page requested_quantity received_quantity
-        inventory_can_reserve inventory_can_release sales_authorized""")
+        inventory_can_reserve inventory_can_release inventory_can_confirm_receipt sales_authorized receipt_confirmed receipt_review_version""")
     result["status"] = case["inventory_status"]
     for key, fields in {
         "lines": "return_line_id allocation_id batch_id product_id name batch_code expiry_date quantity received_quantity",
@@ -101,7 +107,9 @@ def reseller_return_view(case: dict) -> dict:
     result = _pick(case, """return_id order_id resolution status remarks credit replacement_total quote_revision
         accepted_revision verified_at replacement_released_at payment_verified_at payment_amount
         created_at completed_at updated_at has_reservations list_total list_page requested_quantity received_quantity
-        additional_due unused_credit sales_authorized""")
+        additional_due unused_credit sales_authorized experience replacement_received_at has_open_followup
+        has_payment_proof offer_snapshot offer_changes previous_offer""")
+    result["followups"] = [_pick(row, "followup_id message status resolution_message created_at resolved_at messages") for row in case.get("followups", [])]
     status = case["status"]
     if status == "completed":
         label = "Completed"
@@ -121,6 +129,10 @@ def reseller_return_view(case: dict) -> dict:
         label = "Replacement released—refund pending"
     elif case["accepted_revision"] != case["quote_revision"]:
         label = "Review replacement offer"
+    elif not case.get("has_reservations"):
+        label = "Preparing valid replacement stock"
+    elif case.get("additional_due", 0) > 0 and case.get("has_payment_proof") and not case.get("payment_verified_at"):
+        label = "Payment proof submitted"
     elif case.get("additional_due", 0) > 0 and case.get("has_reservations") and not case.get("payment_verified_at"):
         label = "Additional payment required"
     else:
@@ -138,9 +150,9 @@ def reseller_return_view(case: dict) -> dict:
     refund = case.get("refund")
     result["refund"] = _pick(refund, "order_refund_id amount status completed_at") if refund else None
     result["events"] = [
-        {**_pick(event, "action created_at"), "remarks": event["remarks"] if event["action"] == "rejected"
-         else RESELLER_EVENT_MESSAGES[event["action"]]}
-        for event in case.get("events", []) if event["action"] in RESELLER_EVENT_MESSAGES or event["action"] == "rejected"
+        {**_pick(event, "action created_at"), "remarks": event.get("customer_message")
+         or RESELLER_EVENT_MESSAGES.get(event["action"], "Sales updated your return.")}
+        for event in case.get("events", []) if event.get("customer_message") or event["action"] in RESELLER_EVENT_MESSAGES
     ]
     return result
 

@@ -1,0 +1,8 @@
+{% set saved_base = '/portal/' ~ role_key ~ '/reports/' ~ document.report_id %}
+<div class="ar-downloads">
+  <details class="ar-csv-menu"><summary class="button subtle"><i data-lucide="file-spreadsheet" aria-hidden="true"></i>CSV <i data-lucide="chevron-down" aria-hidden="true"></i></summary><div class="ar-csv-options">
+    {% for section in ['summary','sales','orders','returns','refunds'] %}{% if document.report_id %}<a href="{{ saved_base }}/csv?section={{ section }}">{{ section|title }} CSV</a>{% else %}<button type="submit" data-keep-label="true" formaction="/portal/{{ role_key }}/reports/preview/csv?section={{ section }}">{{ section|title }} CSV</button>{% endif %}{% endfor %}
+  </div></details>
+  {% if document.report_id %}<a class="button subtle" href="{{ saved_base }}/xlsx"><i data-lucide="download" aria-hidden="true"></i>Excel</a><a class="button subtle" href="{{ saved_base }}/print" target="_blank" rel="noopener"><i data-lucide="printer" aria-hidden="true"></i>Print</a>
+  {% else %}<button class="button subtle" type="submit" data-keep-label="true" formaction="/portal/{{ role_key }}/reports/preview/xlsx"><i data-lucide="download" aria-hidden="true"></i>Excel</button><button class="button subtle" type="submit" data-keep-label="true" formaction="/portal/{{ role_key }}/reports/preview/print" formtarget="_blank"><i data-lucide="printer" aria-hidden="true"></i>View &amp; print</button>{% endif %}
+</div>

@@ -68,6 +68,16 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 
 ## Project structure
 
+### Linked project knowledge (Obsidian)
+
+Open this repository folder as an Obsidian vault and start with
+[`docs/knowledge/Start Here.md`](docs/knowledge/Start%20Here.md). The linked notes
+map the architecture, roles, business workflows, database, integrations, and test
+coverage. Graph view and backlinks show the connections. Coding agents read the
+same Markdown through the guidance in `AGENTS.md`; keep affected notes current
+when changing the system. Shared vault settings live in `.obsidian/`, while
+per-device workspace state is ignored by Git.
+
 ```text
 app/                    FastAPI routes, data access, templates, and static files
 database/schema.sql     Baseline schema for a new PostgreSQL database
@@ -285,7 +295,12 @@ Healthy response:
 
 The endpoint returns HTTP `503` when PostgreSQL is unavailable.
 
-## Hostinger VPS deployment
+## Contabo VPS deployment
+
+The project owner confirmed on 2026-10-29 that production is hosted on a
+Contabo VPS. The subscription expiry/renewal date has not been recorded in this
+repository; verify it in the hosting account. Domain registration expiry must
+be checked separately.
 
 The production layout assumes an Ubuntu VPS with Docker Compose, host-level
 Nginx, and HTTPS managed by Certbot. PostgreSQL stays on a private Docker

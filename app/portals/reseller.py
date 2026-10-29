@@ -4,7 +4,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -249,6 +249,14 @@ def _group_order_system_messages(
 
 def inbox_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
+    return_contact = None
+    return_id = shared.optional_positive_id(request.query_params.get("return_id"))
+    if return_id:
+        from app.repositories.product_returns import get_product_return
+        try:
+            return_contact = get_product_return(return_id, account_id)
+        except ValueError as exc:
+            raise HTTPException(404) from exc
     open_system_message_id = shared.optional_positive_id(request.query_params.get("system_message"))
     open_refund_id = shared.optional_positive_id(request.query_params.get("refund"))
     refund_conversations = data.list_reseller_refund_conversations(account_id)
@@ -278,6 +286,8 @@ def inbox_context(request: Request) -> dict:
         else:
             open_system_message_id = None
     return {
+        "return_contact": return_contact,
+        "return_report_issue": bool(return_contact and return_contact.get("replacement_released_at") and request.query_params.get("report_issue") == "1"),
         "system_messages": system_messages,
         "system_conversations": _group_order_system_messages(system_messages, refund_conversations, open_refund_id),
         "system_message_unread_count": data.unread_order_system_message_count(account_id),

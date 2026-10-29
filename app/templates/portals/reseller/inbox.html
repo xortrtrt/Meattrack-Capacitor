@@ -1,4 +1,4 @@
-<section class="reseller-inbox" data-reseller-inbox data-open-system-message="{{ open_system_message_id or '' }}" data-open-refund="{{ open_refund_id or '' }}">
+<section class="reseller-inbox" data-reseller-inbox data-open-system-message="{{ open_system_message_id or '' }}" data-open-refund="{{ open_refund_id or '' }}" data-return-id="{{ return_contact.return_id if return_contact else '' }}" data-report-issue="{{ '1' if return_report_issue else '' }}">
   <header class="reseller-inbox-hero">
     <div>
       <span class="eyebrow">Reseller communications</span>
@@ -106,6 +106,7 @@
         <div class="reseller-chat-messages" role="log" aria-live="polite" aria-label="Messages with your sales leader" data-reseller-chat-messages>
           <div class="reseller-message-empty" data-reseller-message-empty><span><i data-lucide="message-circle"></i></span><strong>Your conversation starts here</strong><p>Messages between you and your assigned sales leader stay available in this inbox.</p></div>
         </div>
+        {% if return_contact %}<div class="return-chat-context" data-return-chat-context><a href="/portal/reseller/history?view=returns&amp;case={{ return_contact.return_id }}">Return #{{ return_contact.return_id }} · Order #{{ return_contact.order_id }}</a><span>{{ 'Reporting a replacement issue' if return_report_issue else 'Contacting Sales about this return' }}</span><p role="status" data-return-chat-notice></p></div>{% endif %}
         <form class="reseller-chat-composer" data-reseller-chat-form>
           <label class="sr-only" for="reseller-chat-message">Your message</label>
           <textarea id="reseller-chat-message" name="message" maxlength="500" rows="1" placeholder="Message your sales leader…" required disabled></textarea>

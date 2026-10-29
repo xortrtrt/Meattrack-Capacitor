@@ -1,0 +1,8 @@
+{% if case.experience %}
+{% set next_step = case.experience.reseller if return_is_reseller else case.experience.sales %}
+<section class="return-next-step" aria-label="Next step" data-return-next-step>
+  <span class="return-next-step__icon"><i data-lucide="{{ 'circle-check' if case.status=='completed' and not case.has_open_followup else 'arrow-right' }}" aria-hidden="true"></i></span>
+  <div><span class="eyebrow">{{ 'Your next step' if next_step.action else 'Current progress' }}</span><h4>{{ next_step.title }}</h4><p>{{ next_step.description }}</p><small>Handling this: {{ case.experience.owner }}</small></div>
+</section>
+<dl class="return-outcomes" aria-label="Replacement and money progress"><div><dt>Products</dt><dd>{{ case.experience.replacement_progress }}</dd></div><div><dt>Money</dt><dd>{{ case.experience.financial_progress }}</dd></div></dl>
+{% endif %}

@@ -17,6 +17,7 @@ from app.portals import product_returns as returns_portal
 from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
 from app.portals import team_leader as team_leader_portal
+from app.portals import activity_reports as activity_reports_portal
 from app.routers import auth, chatbot, live_chat, public, system
 from app.security_controls import csrf_token, enforce_csrf
 from app.web_sessions import DatabaseSessionMiddleware
@@ -133,6 +134,7 @@ def create_app() -> FastAPI:
         reseller_portal.router,
         refunds_portal.router,
         returns_portal.router,
+        activity_reports_portal.router,
         shared_portal.router,
     ):
         application.include_router(portal_router)

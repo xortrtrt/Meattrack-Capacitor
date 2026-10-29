@@ -1,5 +1,4 @@
 from __future__ import annotations
-from starlette.concurrency import run_in_threadpool
 
 from datetime import date
 from typing import Annotated
@@ -9,11 +8,9 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from app import live_chat
 from app import reseller_messaging
 from app import repositories as data
-from app.business_time import business_today
 from app.config import LIVE_CHAT_ENABLED
 from app.portals import owner as owner_portal
 from app.portals import shared
-from app.web import media_url, product_image
 
 
 router = APIRouter()
@@ -21,7 +18,7 @@ router = APIRouter()
 
 def logs_page(request: Request, page_size: int = 10, inventory_only: bool = False) -> dict:
     filters = shared.portal_filters(request)
-    movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales"} else ""
+    movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales", "returns"} else ""
     if inventory_only:
         total = data.count_inventory_movements(q=filters["q"], category=movement_category)
         filters["page"] = shared.clamp_page(total, filters["page"], page_size)
@@ -188,6 +185,7 @@ def dashboard_context(request: Request) -> dict:
     return {
         "team_leader_role": leader_role,
         "metrics": data.current_metrics(team_leader_account_id=account_id),
+        "settlement_summary": data.settlement_summary(account_id),
         "inquiries": (
             data.list_inquiries(
                 limit=4,
@@ -245,6 +243,7 @@ def logs_context(request: Request) -> dict:
             ("", "All movements"),
             ("opening", "Opening"),
             ("receipts", "Receipts"),
+            ("returns", "Returns"),
             ("production", "Production"),
             ("sales", "Sales"),
         ),
@@ -310,26 +309,9 @@ def orders_context(request: Request) -> dict:
 
 
 def reports_context(request: Request) -> dict:
-    account_id = shared.session_account_id(request)
-    page = shared.reports_page(request, "team_leader", team_leader_account_id=account_id)
-    report_end_date = business_today()
-    report_sales = [
-        {
-            **entry,
-            "product_image_url": media_url(product_image(str(entry.get("product") or ""))),
-        }
-        for entry in data.team_sales_report_entries(team_leader_account_id=account_id)
-    ]
-    return {
-        "report_default_start_date": report_end_date.replace(day=1).isoformat(),
-        "report_default_end_date": report_end_date.isoformat(),
-        "sales_reports_page": page,
-        "sales_reports": page["items"],
-        "team_report_sales": report_sales,
-        "team_report_refunds": data.team_sales_refund_entries(account_id),
-        "team_rejected_orders": data.team_rejected_order_entries(team_leader_account_id=account_id),
-        "settlement_summary": data.settlement_summary(account_id),
-    }
+    from .activity_reports import workspace_context
+    page = shared.reports_page(request, "team_leader", team_leader_account_id=shared.session_account_id(request))
+    return {"sales_reports_page": page, "sales_reports": page["items"], **workspace_context(request)}
 
 
 SECTION_LOADERS = {
@@ -682,36 +664,10 @@ async def team_order_decision(
 
 @router.post("/portal/sales-supervisor/reports")
 @router.post("/portal/team-leader/reports")
-async def team_report(
-    request: Request,
-    period_start: date = Form(...),
-    period_end: date = Form(...),
-    notes: str = Form(""),
-):
-    role_key = request.session.get("role_key") if request.session.get("role_key") in {"team-leader", "sales-supervisor"} else "team-leader"
-    guard = shared.require_portal_session(request, role_key)
-    if guard:
-        return guard
-    role_guard = shared.require_team_leader_role(request, "sales")
-    if role_guard:
-        return role_guard
-    try:
-        shared.require_date_range(period_start, period_end)
-        account_id = shared.session_account_id(request)
-        totals = await run_in_threadpool(data.team_sales_report_totals,period_start,period_end,team_leader_account_id=account_id)
-        await run_in_threadpool(data.add_sales_report,
-            "team_leader",
-            request.session.get("account_name") or "Team leader",
-            period_start,
-            period_end,
-            totals["total_sales"],
-            totals["total_orders"],
-            notes.strip(),
-            account_id=account_id,
-        )
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path(role_key, "reports", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path(role_key, "reports", message="Report submitted with completed refunds separated from retained sales."))
+async def team_report(request: Request):
+    from .activity_reports import submit
+    role_key = "sales-supervisor" if request.session.get("role_key") == "sales-supervisor" else "team-leader"
+    return await submit(request, role_key)
 
 
 @router.post("/portal/sales-supervisor/accounts")

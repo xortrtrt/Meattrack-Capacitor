@@ -4,7 +4,7 @@
     <div>
       <span class="stock-ledger__eyebrow">Inventory control</span>
       <h2 id="stock-ledger-title">Stock movements</h2>
-      <p>Every increase and deduction, in one clear timeline.</p>
+      <p>Stock increases, deductions, and reseller returns in one timeline.</p>
     </div>
     <div class="stock-ledger__count" aria-label="{{ activity_logs_page.pagination.total }} total movements" data-async-filter-sync="movement-count">
       <strong>{{ activity_logs_page.pagination.total|number }}</strong>
@@ -30,7 +30,7 @@
       <input
         name="q"
         value="{{ activity_logs_page.filters.q }}"
-        placeholder="Search item or movement"
+        placeholder="Search item, order, or destination"
         autocomplete="off"
       />
     </label>
@@ -47,23 +47,31 @@
   <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
   <div class="movement-list" role="list" aria-label="Stock movement history">
     {% for log in activity_logs %}
-      {% set is_in = log.quantity_delta > 0 %}
-      {% set is_out = log.quantity_delta < 0 %}
-      {% set movement_label = 'Opening balance' if log.action == 'opening_balance' else 'Raw stock received' if log.action == 'raw_receipt' else 'Finished stock received' if log.action == 'direct_finished_receipt' else 'Used in production' if log.action == 'production_consumption' else 'Production output' if log.action == 'production_output' else 'Released for sale' if log.action == 'sale_fulfillment' else log.action.replace('_', ' ') %}
-      {% set movement_icon = 'arrow-down-to-line' if is_in else 'arrow-up-from-line' if is_out else 'minus' %}
-    <article class="movement-row movement-row--{{ 'in' if is_in else 'out' if is_out else 'neutral' }}" role="listitem">
+      {% set is_return = log.action == 'reseller_return' %}
+      {% set is_expiry = log.action == 'expired_pending_pullout' %}
+      {% set is_in = not is_return and log.quantity_delta > 0 %}
+      {% set is_out = not is_return and log.quantity_delta < 0 %}
+      {% set movement_label = 'Moved to pending pull-out' if is_expiry else 'Returned from reseller order' if is_return else 'Opening balance' if log.action == 'opening_balance' else 'Raw stock received' if log.action == 'raw_receipt' else 'Finished stock received' if log.action == 'direct_finished_receipt' else 'Used in production' if log.action == 'production_consumption' else 'Production output' if log.action == 'production_output' else 'Released for sale' if log.action == 'sale_fulfillment' else log.action.replace('_', ' ') %}
+      {% set movement_icon = 'clock-alert' if is_expiry else 'undo-2' if is_return else 'arrow-down-to-line' if is_in else 'arrow-up-from-line' if is_out else 'minus' %}
+    <article class="movement-row movement-row--{{ 'return' if is_return else 'in' if is_in else 'out' if is_out else 'neutral' }}" role="listitem">
       <span class="movement-row__icon" aria-hidden="true"><i data-lucide="{{ movement_icon }}"></i></span>
       <div class="movement-row__item">
         <strong>{{ log.entity }}</strong>
         <span>{{ movement_label }}</span>
+        {% if is_expiry %}<span>Unavailable for sale · Batch {{ log.batch_code }}</span>{% endif %}
+        {% if is_return %}<span class="movement-row__return-source">Order #{{ log.order_id }} · <a href="/portal/team-leader/returns?case={{ log.return_id }}">Return #{{ log.return_id }}</a></span><small class="movement-row__return-detail">{{ log.reseller_name }} · Batch {{ log.batch_code }}</small>{% endif %}
       </div>
       <div class="movement-row__change">
-        <span class="movement-direction">{{ 'Stock in' if is_in else 'Stock out' if is_out else 'No change' }}</span>
-        <strong>{{ '+' if is_in else '' }}{{ log.quantity_delta|number }} <small>{{ log.unit }}</small></strong>
+        <span class="movement-direction">{{ 'Flagged' if is_expiry else 'Returned' if is_return else 'Stock in' if is_in else 'Stock out' if is_out else 'No change' }}</span>
+        <strong>{{ '+' if is_in else '' }}{{ (log.status_quantity if is_expiry else log.quantity_delta)|number }} <small>{{ log.unit }}</small></strong>
       </div>
       <div class="movement-row__balance">
-        <span>Balance after</span>
+        {% if is_return %}
+        <span>Sent to</span><strong class="movement-row__destination">{{ log.destination }}</strong><small>Non-sellable inventory</small>
+        {% else %}
+        <span>Total stock after</span>
         <strong>{{ log.balance_after|number }} <small>{{ log.unit }}</small></strong>
+        {% endif %}
       </div>
       <time class="movement-row__date" datetime="{{ log.created_at }}">
         <i data-lucide="calendar-days" aria-hidden="true"></i>

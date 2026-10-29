@@ -28,7 +28,9 @@ def test_returns_tab_legacy_links_and_request_redirects(lifecycle, monkeypatch):
         assert page.status_code == 200
         assert 'data-auto-open="false"' in page.text
         assert 'aria-current="page"><i data-lucide="undo-2"></i> My Returns</a>' in page.text
-        assert '<input type="hidden" name="view" value="returns">' in page.text
+        assert 'data-return-request-open' not in page.text
+        assert 'name="status"' not in page.text
+        assert 'Show requests' not in page.text
         assert f'<option value="{d["order"]}">Order #{d["order"]}' in page.text
         navigation = page.text.split('id="portal-nav"', 1)[1].split("</nav>", 1)[0]
         assert "My Returns" not in navigation
@@ -54,7 +56,8 @@ def test_returns_tab_legacy_links_and_request_redirects(lifecycle, monkeypatch):
         tracked = client.get(f"/portal/reseller/returns?case={query['case'][0]}&status=submitted")
         assert tracked.status_code == 200 and 'data-return-dialog=' in tracked.text
         assert urlsplit(str(tracked.url)).path == "/portal/reseller/history"
-        assert 'name="status"' in tracked.text and 'value="submitted" selected' in tracked.text
+        assert 'name="status"' not in tracked.text
+        assert 'return-tracking-dialog' in tracked.text
     assert fetch_one("SELECT count(*) n FROM order_refunds WHERE order_id=%s", (d["order"],))["n"] == 0
 
 
@@ -91,17 +94,19 @@ def test_order_history_returns_modal_on_mobile_and_desktop(lifecycle, monkeypatc
             expect(page.locator('.portal-nav a[href="/portal/reseller/returns"]')).to_have_count(0)
             request = page.locator("[data-return-request-dialog]")
             expect(request).not_to_be_visible()
-            opener = page.get_by_role("button", name="Request a return / refund", exact=True)
+            expect(page.locator('[data-return-request-open]')).to_have_count(0)
+            expect(page.get_by_role("button", name="Show requests", exact=True)).to_have_count(0)
+            expect(page.locator('select[name="status"]')).to_have_count(0)
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
-            opener.click()
+            page.goto("http://returns-tab.test/portal/reseller/history?view=returns&request=1", wait_until="networkidle")
             expect(request).to_be_visible()
             expect(request.get_by_role("combobox", name="Order", exact=True)).to_be_visible()
             page.keyboard.press("Escape")
             expect(request).not_to_be_visible()
-            expect(opener).to_be_focused()
+            expect(page.locator('[data-return-list-heading]')).to_be_focused()
             expect(page).not_to_have_url(re.compile(r"[?&]request="))
             assert "request=" not in page.url and "view=returns" in page.url
-            opener.click()
+            page.goto("http://returns-tab.test/portal/reseller/history?view=returns&request=1", wait_until="networkidle")
             request.get_by_role("combobox", name="Order", exact=True).select_option(str(d["order"]))
             request.get_by_role("button", name="Continue", exact=True).click()
             page.wait_for_load_state("networkidle")
@@ -128,18 +133,21 @@ def test_order_history_returns_modal_on_mobile_and_desktop(lifecycle, monkeypatc
             cancel.click()
             expect(request).not_to_be_visible()
             expect(page).not_to_have_url(re.compile(r"[?&]order="))
-            opener.click()
+            page.goto(f"http://returns-tab.test/portal/reseller/history?view=returns&order={d['order']}", wait_until="networkidle")
             expect(request).to_be_visible()
             assert f"order={d['order']}" in page.url
             page.mouse.click(0, 0)
             expect(request).not_to_be_visible()
-            expect(opener).to_be_focused()
+            expect(page.locator('[data-return-list-heading]')).to_be_focused()
             expect(page).not_to_have_url(re.compile(r"[?&]order="))
             assert "order=" not in page.url
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
             assert not page.locator("html").evaluate("el => el.classList.contains('return-dialog-is-open')")
             page.screenshot(path=str(output / f"history-{width}.png"), full_page=True)
-        opener.click()
+        page.get_by_role("link", name="Fulfilled", exact=True).click()
+        page.wait_for_load_state("networkidle")
+        page.get_by_role("link", name="Return / Refund / Replace", exact=True).click()
+        page.wait_for_load_state("networkidle")
         page.get_by_label("Return quantity for Test Product batch TEST-1").fill("2")
         page.get_by_label("Reason and remarks").fill("Return delivered products for Sales eligibility review")
         upload = page.get_by_label("Supporting photos")
@@ -161,15 +169,12 @@ def test_order_history_returns_modal_on_mobile_and_desktop(lifecycle, monkeypatc
         expect(page.locator(f'[data-return-open="{case["return_id"]}"]')).to_be_focused()
         # Use a canonical GET after the in-process POST redirect bridge.
         page.goto("http://returns-tab.test/portal/reseller/history?view=returns", wait_until="networkidle")
-        page.get_by_role("combobox", name="Show requests", exact=True).select_option("submitted")
-        page.get_by_role("button", name="Show requests", exact=True).click()
-        page.wait_for_load_state("networkidle")
-        assert "view=returns" in page.url and "status=submitted" in page.url
+        expect(page.locator('select[name="status"]')).to_have_count(0)
         page.locator(f'[data-return-open="{case["return_id"]}"]').click()
         expect(page.locator("[data-return-dialog]")).to_be_visible()
         page.keyboard.press("Escape")
         expect(page).not_to_have_url(re.compile(r"[?&]case="))
-        assert "status=submitted" in page.url and "case=" not in page.url
+        assert "case=" not in page.url
         page.get_by_role("link", name="All orders", exact=True).click()
         page.wait_for_load_state("networkidle")
         page.get_by_role("link", name="Fulfilled", exact=True).click()
@@ -178,5 +183,43 @@ def test_order_history_returns_modal_on_mobile_and_desktop(lifecycle, monkeypatc
         page.wait_for_load_state("networkidle")
         expect(page.locator(f'[data-return-open="{case["return_id"]}"]')).to_be_visible()
         expect(page.locator("[data-return-request-dialog]")).not_to_be_visible()
+        for width in (375, 768, 1440):
+            page.set_viewport_size({"width": width, "height": 900})
+            card = page.locator(f'.order-history-card#return-{case["return_id"]}')
+            expect(card).to_be_visible()
+            expect(card.locator(".order-card-body")).to_be_visible()
+            expect(card.locator(".order-card-total")).to_contain_text("2 packs")
+            expect(card.locator(".order-card-items")).to_contain_text(f'Order #{d["order"]}')
+            expect(page.locator(".reseller-returns-page .lifecycle-hero")).to_have_count(0)
+            summary = card.locator("summary")
+            summary.focus()
+            page.keyboard.press("Enter")
+            expect(card.locator(".order-card-body")).not_to_be_visible()
+            page.keyboard.press("Enter")
+            expect(card.locator(".order-card-body")).to_be_visible()
+            assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
+            assert card.evaluate("el=>el.scrollWidth<=el.clientWidth+1")
+            page.screenshot(path=str(output / f"return-ledger-{width}.png"), full_page=True)
+            card.get_by_role("link", name="Track return", exact=True).click()
+            page.wait_for_load_state("networkidle")
+            details = page.get_by_role("dialog", name=f'Return #{case["return_id"]}', exact=True)
+            expect(details).to_be_visible()
+            assert details.evaluate("el=>el.scrollTop===0")
+            expect(details.locator(".return-tracking-overview")).to_contain_text("Under Sales review")
+            expect(details.get_by_role("heading", name="Your returned items", exact=True)).to_be_visible()
+            expect(details.locator(".return-tracking-product")).to_contain_text("Test Product")
+            expect(details.locator(".return-tracking-progress")).to_contain_text("Your return progress")
+            expect(details.locator(".return-tracking-attachments a")).to_have_count(1)
+            assert details.evaluate("el=>el.scrollWidth<=el.clientWidth+1")
+            page.screenshot(path=str(output / f"track-return-{width}.png"), full_page=True)
+            details.get_by_role("button", name="Close details", exact=True).click()
+            expect(details).not_to_be_visible()
+            expect(page.locator(f'[data-return-open="{case["return_id"]}"]')).to_be_focused()
+            expect(page).not_to_have_url(re.compile(r"[?&]case="))
+            page.locator(f'[data-return-open="{case["return_id"]}"]').click()
+            expect(details).to_be_visible()
+            assert details.evaluate("el=>el.scrollTop===0")
+            page.keyboard.press("Escape")
+            expect(details).not_to_be_visible()
         assert not errors, errors
         browser.close()

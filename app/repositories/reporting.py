@@ -25,7 +25,7 @@ def list_sales_reports(
     if report_source not in {None, "reseller", "team_leader"}:
         raise ValueError("report_source must be reseller, team_leader, or None")
     query = """
-        SELECT sr.sales_report_id, sr.report_source,
+        SELECT sr.sales_report_id, sr.report_source, x.payload AS activity_snapshot,
                COALESCE(a.name, 'System') AS submitted_by,
                COALESCE(r.business_name, '') AS reseller,
                r.team_leader_account_id,
@@ -33,10 +33,11 @@ def list_sales_reports(
                sr.period_start, sr.period_end, sr.notes, sr.submitted_at,
                sr.total_sales submitted_total_sales,sr.total_orders submitted_total_orders,
                sr.refund_separation_version,
-               CASE WHEN sr.report_source='team_leader' THEN b.retained_sales ELSE sr.total_sales END total_sales,
-               CASE WHEN sr.report_source='team_leader' THEN b.retained_orders ELSE sr.total_orders END total_orders,
+               CASE WHEN x.sales_report_id IS NOT NULL THEN sr.total_sales WHEN sr.report_source='team_leader' THEN b.retained_sales ELSE sr.total_sales END total_sales,
+               CASE WHEN x.sales_report_id IS NOT NULL THEN sr.total_orders WHEN sr.report_source='team_leader' THEN b.retained_orders ELSE sr.total_orders END total_orders,
                b.gross_sales,b.refunded_sales,b.refunded_at_submission,b.late_refund_adjustment,b.reconciliation_required
         FROM sales_reports sr
+        LEFT JOIN sales_report_activity_snapshots x USING(sales_report_id)
         LEFT JOIN sales_report_balances b USING(sales_report_id)
         LEFT JOIN accounts a ON a.account_id = sr.submitted_by_account_id
         LEFT JOIN resellers r ON r.reseller_id = sr.reseller_id
@@ -67,7 +68,7 @@ def list_sales_reports(
         params.append(reseller_account_id)
     q = q.strip()
     if q:
-        where.append("(COALESCE(a.name, 'System') ILIKE %s OR sr.notes ILIKE %s OR CAST(sr.sales_report_id AS text) ILIKE %s)")
+        where.append("(COALESCE(x.payload #>> '{author,name}', a.name, 'System') ILIKE %s OR sr.notes ILIKE %s OR CAST(sr.sales_report_id AS text) ILIKE %s)")
         search = f"%{q}%"
         params.extend([search, search, search])
     if where:
@@ -136,6 +137,13 @@ def list_sales_reports(
     for report in reports:
         report["order_rows"]=[row for row in order_rows if row["sales_report_id"]==report["sales_report_id"]]
         report["refund_rows"]=[row for row in refunds if row["sales_report_id"]==report["sales_report_id"]]
+        snapshot = report.get("activity_snapshot")
+        if snapshot:
+            summary = snapshot["summary"]
+            report.update(submitted_by=snapshot["author"]["name"], total_sales=summary["retained_sales"],
+                          total_orders=summary["retained_orders"], orders_handled=summary["orders_handled"],
+                          gross_sales=summary["gross_sales"], refunded_sales=summary["sales_refunds"],
+                          reconciliation_required=False, late_refund_adjustment=0)
     return reports
 
 
@@ -150,6 +158,7 @@ def count_sales_reports(
     query = """
         SELECT COUNT(*) AS total
         FROM sales_reports sr
+        LEFT JOIN sales_report_activity_snapshots x USING(sales_report_id)
         LEFT JOIN accounts a ON a.account_id = sr.submitted_by_account_id
         LEFT JOIN resellers r ON r.reseller_id = sr.reseller_id
     """
@@ -178,7 +187,7 @@ def count_sales_reports(
         params.append(reseller_account_id)
     q = q.strip()
     if q:
-        where.append("(COALESCE(a.name, 'System') ILIKE %s OR sr.notes ILIKE %s OR CAST(sr.sales_report_id AS text) ILIKE %s)")
+        where.append("(COALESCE(x.payload #>> '{author,name}', a.name, 'System') ILIKE %s OR sr.notes ILIKE %s OR CAST(sr.sales_report_id AS text) ILIKE %s)")
         search = f"%{q}%"
         params.extend([search, search, search])
     if where:

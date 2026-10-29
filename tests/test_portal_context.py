@@ -11,7 +11,6 @@ from app import main, repositories, security_controls, web
 from app.portals import owner as owner_portal
 from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
-from app.portals import team_leader as team_leader_portal
 
 
 METRICS = {
@@ -105,17 +104,14 @@ EXPECTED_CALLS = {
         "list_notifications",
         "unread_notification_count",
     },
-    ("team-leader", "dashboard"): {"current_metrics", "list_orders", "list_notifications", "unread_notification_count"},
+    ("team-leader", "dashboard"): {"settlement_summary", "current_metrics", "list_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "resellers"): {"list_team_resellers", "count_team_resellers", "list_notifications", "unread_notification_count"},
     ("sales-supervisor", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
     ("sales-supervisor", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "refund_financial_summary", "list_notifications", "unread_notification_count"},
     ("team-leader", "orders"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
-    ("team-leader", "reports"): {"settlement_summary",
+    ("team-leader", "reports"): {
         "list_sales_reports",
         "count_sales_reports",
-        "team_sales_report_entries",
-        "team_sales_refund_entries",
-        "team_rejected_order_entries",
         "list_notifications",
         "unread_notification_count",
     },
@@ -1676,80 +1672,26 @@ def test_owner_reports_render_summary_and_detail_modal(monkeypatch):
     assert "No product lines were recorded" in response.text
 
 
-def test_team_leader_reports_render_business_date_products_pagination_and_mobile_cards(monkeypatch):
+def test_team_leader_reports_render_period_and_legacy_history(monkeypatch):
+    from app.portals import activity_reports
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 5)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(team_leader_portal, "business_today", lambda: date(2026, 10, 17))
+    monkeypatch.setattr(activity_reports, "business_today", lambda: date(2026, 10, 17))
     monkeypatch.setattr(repositories, "count_sales_reports", lambda *args, **kwargs: 11)
-    monkeypatch.setattr(
-        repositories,
-        "list_sales_reports",
-        lambda *args, **kwargs: [
-            {
-                "sales_report_id": 1,
-                "report_source": "team_leader",
-                "submitted_by": "Sales Leader B",
-                "period_start": date(2026, 10, 17),
-                "period_end": date(2026, 10, 17),
-                "total_sales": 910,
-                "total_orders": 1,
-                "notes": "Daily report",
-                "items": [],
-            }
-        ],
-    )
-    monkeypatch.setattr(
-        repositories,
-        "team_sales_report_entries",
-        lambda *args, **kwargs: [
-            {
-                "sale_date": "2026-10-17",
-                "order_id": 31,
-                "customer": "Xort's store",
-                "product": "Beef Longganisa",
-                "quantity": 2,
-                "unit": "pack",
-                "total_sales": 150,
-            }
-        ],
-    )
-    monkeypatch.setattr(
-        repositories,
-        "team_rejected_order_entries",
-        lambda *args, **kwargs: [
-            {
-                "order_id": 28,
-                "reseller": "Xort's store",
-                "items": "1 pack Bacon, 3 pack Chicken Tocino",
-                "rejected_at": datetime(2026, 10, 17, 9, 30, tzinfo=timezone.utc),
-                "total_amount": 1133,
-                "notes": "",
-            }
-        ],
-    )
-
+    monkeypatch.setattr(repositories, "list_sales_reports", lambda *args, **kwargs: [{
+        "sales_report_id": 1, "report_source": "team_leader", "submitted_by": "Sales Leader B",
+        "period_start": date(2026, 10, 17), "period_end": date(2026, 10, 17), "submitted_at": date(2026,10,17),
+        "total_sales": 910, "total_orders": 1, "notes": "Daily report", "items": []}])
     response = client.get("/portal/team-leader/reports")
-
     assert response.status_code == 200
-    assert 'data-business-date="2026-10-17"' in response.text
-    assert 'name="period_start" value="2026-10-01"' in response.text
-    assert 'name="period_end" value="2026-10-17"' in response.text
-    assert "Assigned reseller purchase summary" not in response.text
-    assert 'class="rejected-order-card"' in response.text
-    assert "1 pack Bacon" in response.text
-    assert "3 pack Chicken Tocino" in response.text
-    assert "No notes were provided." in response.text
-    assert "built-in method items" not in response.text
-    assert "PHP 910.00 retained - 1 order" in response.text
-    assert "Page 1 of 2" in response.text
-    assert "page=2" in response.text
-    assert 'class="report-order-manifest" id="report-order-manifest" data-report-order-items' in response.text
-    assert 'data-report-order-more aria-controls="report-order-manifest"' in response.text
-    assert '"product_image_url": "/static/img/beef_longganisa.jpg"' in response.text
-    assert "report-items-table" not in response.text
+    assert 'value="2026-10-01"' in response.text and 'value="2026-10-17"' in response.text
+    assert "Generate preview" in response.text and "Cumulative financial totals" not in response.text
+    response = client.get("/portal/team-leader/reports?view=history")
+    assert "Legacy sales report" in response.text and "PHP 910.00" in response.text
+    assert "Page 1 of 2" in response.text and "page=2" in response.text
 
 
 def test_team_leader_reports_render_search_empty_state(monkeypatch):
@@ -1760,16 +1702,9 @@ def test_team_leader_reports_render_search_empty_state(monkeypatch):
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(repositories, "count_sales_reports", lambda *args, **kwargs: 0)
     monkeypatch.setattr(repositories, "list_sales_reports", lambda *args, **kwargs: [])
-    monkeypatch.setattr(repositories, "team_sales_report_entries", lambda *args, **kwargs: [])
-    monkeypatch.setattr(repositories, "team_rejected_order_entries", lambda *args, **kwargs: [])
-
-    response = client.get("/portal/team-leader/reports?q=missing")
-
+    response = client.get("/portal/team-leader/reports?view=history&q=missing")
     assert response.status_code == 200
-    assert "No team reports found" in response.text
-    assert "Try a different name, report number, or note." in response.text
-    assert "No rejected reseller orders" in response.text
-    assert 'role="status"' in response.text
+    assert "No submitted reports found" in response.text and 'role="status"' in response.text
 
 
 def test_owner_forecasts_render_prophet_ui(monkeypatch):
@@ -2102,10 +2037,10 @@ def test_sales_team_leader_pages_use_workflow_specific_layouts():
     assert 'role_key in ["team-leader", "sales-supervisor"]' in base_template
     assert "sales-review-surface" in templates["inquiries"]
     assert "sales-review-surface" in templates["orders"]
-    assert "sales-report-builder" in templates["reports"]
-    assert "sales-report-history" in templates["reports"]
-    assert "sales-report-rejections" in templates["reports"]
-    assert "rejected-order-card" in templates["reports"]
+    assert "ar-workspace" in templates["reports"]
+    assert "ar-history" in templates["reports"]
+    assert "data-report-tabs" in templates["reports"]
+    assert "Generate preview" in templates["reports"]
     assert "sales-profile-identity" in templates["profile"]
     assert "sales-profile-security" in templates["profile"]
     assert "sales-live-chat-page" in templates["live_chat"]

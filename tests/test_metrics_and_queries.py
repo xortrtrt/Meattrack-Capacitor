@@ -272,6 +272,10 @@ def test_inventory_movements_are_filtered_by_category_before_pagination(monkeypa
     assert fetch_all_calls[0][1] == (
         "%tocino%",
         "%tocino%",
+        "%tocino%",
+        "%tocino%",
+        "%tocino%",
+        "%tocino%",
         ["production_consumption", "production_output"],
         10,
         10,

@@ -1,0 +1,6 @@
+<div class="ar-table-wrap" tabindex="0" role="region" aria-label="{{ table.title }} records">
+  <table class="ar-table"><thead><tr>{% for key,label,kind in table.columns %}<th scope="col" class="{{ 'ar-numeric' if kind in ['money','number'] else '' }}">{{ label }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in table.rows %}<tr>{% for key,label,kind in table.columns %}<td class="{{ 'ar-numeric' if kind in ['money','number'] else '' }}">{% if row.get(key) is none %}—{% elif kind=='money' %}{{ row[key]|currency }}{% elif kind=='number' %}{{ row[key]|number }}{% else %}{{ row.get(key,'') }}{% endif %}</td>{% endfor %}</tr>
+    {% else %}<tr><td colspan="{{ table.columns|length }}" class="ar-empty">No {{ table.key }} records for these original order dates and your recorded actions.</td></tr>{% endfor %}</tbody>
+  </table>
+</div>

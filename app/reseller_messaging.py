@@ -116,7 +116,7 @@ def _list_messages(
     cur.execute(
         """
         SELECT m.reseller_message_id, m.client_message_id, m.sender_account_id,
-               m.content, m.created_at, m.read_at,
+               m.content, m.created_at, m.read_at, m.return_id,
                a.name AS sender_name, a.account_type AS sender_account_type
         FROM reseller_messages m
         JOIN accounts a ON a.account_id = m.sender_account_id
@@ -203,13 +203,15 @@ def delete_for_reseller(account_id: int) -> bool:
         return cur.rowcount == 1
 
 
-def send_from_reseller(account_id: int, client_message_id: str, content: str) -> dict:
+def send_from_reseller(account_id: int, client_message_id: str, content: str, *, return_id: int | None = None,
+                       report_issue: bool = False) -> dict:
     return _send_message(
         sender_account_id=account_id,
         reseller_account_id=account_id,
         client_message_id=client_message_id,
         content=content,
         leader_account_id=None,
+        return_id=return_id, report_issue=report_issue,
     )
 
 
@@ -218,6 +220,7 @@ def send_from_leader(
     reseller_account_id: int,
     client_message_id: str,
     content: str,
+    *, return_id: int | None = None,
 ) -> dict:
     return _send_message(
         sender_account_id=leader_account_id,
@@ -225,6 +228,7 @@ def send_from_leader(
         client_message_id=client_message_id,
         content=content,
         leader_account_id=leader_account_id,
+        return_id=return_id,
     )
 
 
@@ -235,6 +239,8 @@ def _send_message(
     client_message_id: str,
     content: str,
     leader_account_id: int | None,
+    return_id: int | None = None,
+    report_issue: bool = False,
 ) -> dict:
     cleaned = normalize_message(content)
     try:
@@ -242,23 +248,53 @@ def _send_message(
     except (ValueError, TypeError, AttributeError) as exc:
         raise ResellerMessagingError("A valid message id is required.") from exc
 
+    if report_issue and (not return_id or leader_account_id is not None):
+        raise ResellerMessagingError("Select your released replacement to report an issue.")
     with get_transaction_cursor() as cur:
-        participant = _reseller_participant(cur, reseller_account_id, for_update=True)
-        current_leader_id = int(participant.get("team_leader_account_id") or 0)
-        if not current_leader_id:
-            raise ResellerMessagingError("A sales leader must be assigned before you can send messages.")
-        if leader_account_id is not None and current_leader_id != int(leader_account_id):
-            raise ResellerMessagingError("This reseller is assigned to another sales leader.")
+        if return_id:
+            from app.repositories.product_returns import _case
+            case = _case(cur, return_id, sender_account_id, {"reseller"} if leader_account_id is None else {"sales", "sales-supervisor"})
+            if case["reseller_account_id"] != reseller_account_id:
+                raise ResellerMessagingError("This return does not belong to this conversation.")
+            cur.execute("""SELECT m.*,a.name sender_name,a.account_type sender_account_type,
+                EXISTS(SELECT 1 FROM return_followup_messages f WHERE f.reseller_message_id=m.reseller_message_id) reported_issue
+                FROM reseller_messages m JOIN accounts a ON a.account_id=m.sender_account_id
+                WHERE m.sender_account_id=%s AND m.client_message_id=%s ORDER BY m.reseller_message_id LIMIT 1""",
+                (sender_account_id, message_uuid))
+            previous = cur.fetchone()
+            if previous:
+                if previous["return_id"] != return_id or previous["content"] != cleaned or previous["reported_issue"] != report_issue:
+                    raise ResellerMessagingError("This message reference was used with different details.")
+                return _serialize(dict(previous)) or {}
+            if report_issue:
+                from app.repositories.return_customer import report_followup
+                report_followup(cur, case, sender_account_id, cleaned, message_uuid)
+        try:
+            participant = _reseller_participant(cur, reseller_account_id, for_update=True)
+            current_leader_id = int(participant.get("team_leader_account_id") or 0)
+            if not current_leader_id:
+                raise ResellerMessagingError("A sales leader must be assigned before you can send messages.")
+            if return_id:
+                cur.execute("SELECT 1 FROM accounts WHERE account_id=%s AND is_active AND account_type='team_leader' AND team_leader_role IN ('sales','sales-supervisor')", (current_leader_id,))
+                if not cur.fetchone():
+                    raise ResellerMessagingError("The assigned Sales contact is unavailable.")
+            if leader_account_id is not None and current_leader_id != int(leader_account_id):
+                raise ResellerMessagingError("This reseller is assigned to another sales leader.")
+        except ResellerMessagingError:
+            if report_issue:
+                return {"followup_saved": True, "return_id": return_id,
+                        "warning": "Your issue was saved for Sales follow-up. Chat is unavailable until an active Sales contact is assigned."}
+            raise
         conversation = _ensure_conversation(cur, participant)
         cur.execute(
             """
             INSERT INTO reseller_messages (
-                conversation_id, client_message_id, sender_account_id, content
-            ) VALUES (%s, %s, %s, %s)
+                conversation_id, client_message_id, sender_account_id, content, return_id
+            ) VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (conversation_id, client_message_id) DO NOTHING
             RETURNING *;
             """,
-            (conversation["conversation_id"], message_uuid, sender_account_id, cleaned),
+            (conversation["conversation_id"], message_uuid, sender_account_id, cleaned, return_id),
         )
         message = cur.fetchone()
         if not message:
@@ -270,6 +306,10 @@ def _send_message(
                 (conversation["conversation_id"], message_uuid),
             )
             message = cur.fetchone()
+            if message["content"] != cleaned or message["return_id"] != return_id or message["sender_account_id"] != sender_account_id:
+                raise ResellerMessagingError("This message reference was used with different details.")
+        if report_issue:
+            cur.execute("UPDATE return_followup_messages SET reseller_message_id=%s WHERE client_message_id=%s", (message["reseller_message_id"], message_uuid))
         cur.execute(
             """
             UPDATE reseller_conversations

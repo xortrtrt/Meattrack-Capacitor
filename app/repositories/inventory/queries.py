@@ -3,7 +3,6 @@ from __future__ import annotations
 from .._shared import (
     BATCH_SORTS,
     INVENTORY_ITEM_SORTS,
-    MOVEMENT_SORTS,
     PRODUCT_SORTS,
     clean_row,
     fetch_all,
@@ -18,7 +17,88 @@ MOVEMENT_CATEGORY_TYPES = {
     "production": ("production_consumption", "production_output"),
     "sales": ("sale_fulfillment",),
     "corrections": ("owner_correction",),
+    "returns": ("reseller_return",),
 }
+
+
+# Calculate historical product totals before filtering or pagination. Stored movement
+# balances remain batch snapshots for Product Details and the immutable audit ledger.
+# Custody receipts and expiry status changes never add to or deduct from stock.
+_MOVEMENT_LOG_SOURCE = """WITH stock_movements AS (
+    SELECT im.*,
+           SUM(im.quantity_delta) OVER (
+               PARTITION BY im.item_id ORDER BY im.created_at,im.movement_id
+               ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+           ) total_balance_after
+    FROM inventory_movements im
+), movement_log AS (
+    SELECT im.movement_id,im.movement_type,im.item_id,im.quantity_delta,im.unit,
+           im.total_balance_after balance_after,
+           im.total_balance_after-im.quantity_delta balance_before,
+           im.actor_name,im.note,im.affected_batch_id,
+           im.order_id,im.created_at,'stock'::text log_source,NULL::bigint return_id,
+           NULL::text destination,NULL::text reseller_name,NULL::text return_batch_code,
+           NULL::numeric status_quantity
+    FROM stock_movements im
+    UNION ALL
+    SELECT m.movement_id,'reseller_return',h.product_id,m.quantity,i.unit,
+           m.quantity,0,COALESCE(a.name,'MEATTRACK'),NULL::text,h.batch_id,
+           r.order_id,m.created_at,'return',r.return_id,h.location,
+           COALESCE(s.business_name,'Reseller'),h.source_batch_code,NULL::numeric
+    FROM expired_stock_movements m
+    JOIN expired_holdings h USING(holding_id)
+    JOIN product_return_lines l ON l.return_line_id=h.return_line_id
+    JOIN product_returns r USING(return_id)
+    JOIN orders o ON o.order_id=r.order_id
+    JOIN inventory_items i ON i.item_id=h.product_id
+    LEFT JOIN accounts a ON a.account_id=m.actor_account_id
+    LEFT JOIN resellers s ON s.reseller_id=o.reseller_id
+    WHERE m.action='return_receipt' AND h.source='return' AND o.order_type='reseller'
+    UNION ALL
+    SELECT p.pullout_id,'expired_pending_pullout',b.item_id,0::numeric,b.unit,
+           COALESCE(product_snapshot.total_balance_after,0),
+           COALESCE(product_snapshot.total_balance_after,0),
+           'MEATTRACK','Expired stock is unavailable for sale and awaiting physical pull-out.',b.batch_id,
+           NULL::bigint,p.created_at,'expiry',NULL::bigint,'Pending pull-out',NULL::text,b.batch_code,
+           COALESCE(batch_snapshot.balance_after,b.quantity_available-COALESCE((
+               SELECT SUM(later.quantity_delta) FROM inventory_movements later
+               WHERE later.affected_batch_id=b.batch_id AND later.created_at>p.created_at
+           ),0))
+    FROM expired_pullouts p
+    JOIN inventory_batches b USING(batch_id)
+    LEFT JOIN LATERAL (
+        SELECT sm.total_balance_after FROM stock_movements sm
+        WHERE sm.item_id=b.item_id AND sm.created_at<=p.created_at
+        ORDER BY sm.created_at DESC,sm.movement_id DESC LIMIT 1
+    ) product_snapshot ON true
+    LEFT JOIN LATERAL (
+        SELECT im.balance_after FROM inventory_movements im
+        WHERE im.affected_batch_id=b.batch_id AND im.created_at<=p.created_at
+        ORDER BY im.created_at DESC,im.movement_id DESC LIMIT 1
+    ) batch_snapshot ON true
+)"""
+
+_MOVEMENT_LOG_SORTS = {
+    "newest": "im.created_at DESC,im.log_source ASC,im.movement_id DESC",
+    "oldest": "im.created_at ASC,im.log_source ASC,im.movement_id ASC",
+    "actor_asc": "im.actor_name ASC,im.created_at DESC,im.log_source ASC,im.movement_id DESC",
+    "action_asc": "im.movement_type ASC,im.created_at DESC,im.log_source ASC,im.movement_id DESC",
+}
+
+
+def _movement_log_filter(q: str, category: str) -> tuple[str, list]:
+    params: list[object] = []
+    where = []
+    if q.strip():
+        search = f"%{q.strip()}%"
+        where.append("""(im.movement_type ILIKE %s OR ii.name ILIKE %s
+            OR im.destination ILIKE %s OR im.reseller_name ILIKE %s
+            OR im.order_id::text ILIKE %s OR im.return_batch_code ILIKE %s)""")
+        params.extend([search] * 6)
+    if category.strip() in MOVEMENT_CATEGORY_TYPES:
+        where.append("im.movement_type = ANY(%s)")
+        params.append(list(MOVEMENT_CATEGORY_TYPES[category.strip()]))
+    return (f"WHERE {' AND '.join(where)}" if where else "", params)
 
 
 def inventory_item_filter(category: str) -> tuple[str, str]:
@@ -330,36 +410,24 @@ def list_inventory_movements(
     page_size: int = 10,
     sort: str = "",
 ) -> list[dict]:
-    params: list[object] = []
-    where: list[str] = []
-    q = q.strip()
-    category = category.strip()
-    if q:
-        search = f"%{q}%"
-        where.append("""(
-            im.movement_type ILIKE %s
-            OR ii.name ILIKE %s
-        )""")
-        params.extend([search, search])
-    if category in MOVEMENT_CATEGORY_TYPES:
-        where.append("im.movement_type = ANY(%s)")
-        params.append(list(MOVEMENT_CATEGORY_TYPES[category]))
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    where_sql, params = _movement_log_filter(q, category)
     paging_sql = ""
     if page is not None:
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
-    order_sql = safe_sort_sql(sort, MOVEMENT_SORTS, MOVEMENT_SORTS["newest"])
+    order_sql = safe_sort_sql(sort, _MOVEMENT_LOG_SORTS, _MOVEMENT_LOG_SORTS["newest"])
     return clean_row(fetch_all(f"""
+        {_MOVEMENT_LOG_SOURCE}
         SELECT im.movement_id,
                im.movement_type AS action,
                ii.name AS entity,
                im.quantity_delta,
                im.unit,
                im.balance_after,
-               im.balance_before, im.actor_name, im.note, ib.batch_code,
-               im.created_at
-        FROM inventory_movements im
+               im.balance_before, im.actor_name, im.note, COALESCE(im.return_batch_code,ib.batch_code) batch_code,
+               im.created_at,im.log_source,im.order_id,im.return_id,im.destination,im.reseller_name,
+               im.status_quantity
+        FROM movement_log im
         JOIN inventory_items ii ON ii.item_id = im.item_id
         LEFT JOIN inventory_batches ib ON ib.batch_id = im.affected_batch_id
         {where_sql}
@@ -369,24 +437,11 @@ def list_inventory_movements(
 
 
 def count_inventory_movements(q: str = "", category: str = "") -> int:
-    params: list[object] = []
-    where: list[str] = []
-    q = q.strip()
-    category = category.strip()
-    if q:
-        search = f"%{q}%"
-        where.append("""(
-            im.movement_type ILIKE %s
-            OR ii.name ILIKE %s
-        )""")
-        params.extend([search, search])
-    if category in MOVEMENT_CATEGORY_TYPES:
-        where.append("im.movement_type = ANY(%s)")
-        params.append(list(MOVEMENT_CATEGORY_TYPES[category]))
-    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+    where_sql, params = _movement_log_filter(q, category)
     row = fetch_one(f"""
+        {_MOVEMENT_LOG_SOURCE}
         SELECT COUNT(*) AS total
-        FROM inventory_movements im
+        FROM movement_log im
         JOIN inventory_items ii ON ii.item_id = im.item_id
         {where_sql};
     """, tuple(params) or None)

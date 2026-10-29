@@ -61,10 +61,12 @@ def get_db_cursor():
 
 
 @contextmanager
-def get_transaction_cursor():
+def get_transaction_cursor(*, repeatable_read: bool = False):
     with _pooled_connection() as conn:
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if repeatable_read:
+                    cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
                 cur.execute("SELECT set_config('TimeZone', %s, false)", (BUSINESS_TIMEZONE,))
                 yield cur
             conn.commit()

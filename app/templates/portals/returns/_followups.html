@@ -1,0 +1,8 @@
+{% for followup in case.followups|default([]) %}
+<section class="return-followup {{ 'is-open' if followup.status=='open' else '' }}" aria-label="Reseller follow-up">
+  <header><h4>{{ 'Reported replacement issue' if followup.status=='open' else 'Resolved replacement issue' }}</h4><span class="status-badge">{{ followup.status|title }}</span></header>
+  {% for message in followup.messages %}<p>{{ message.content }}</p><small>{{ message.created_at|nice_date }}</small>{% else %}<p>{{ followup.message }}</p>{% endfor %}
+  {% if followup.resolution_message %}<p><strong>Sales’ explanation:</strong> {{ followup.resolution_message }}</p>{% endif %}
+  {% if followup.status=='open' and not return_is_reseller and return_can_review %}<form class="lifecycle-form" method="post" action="{{ action_base }}resolve-issue"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="return_id" value="{{ case.return_id }}"><input type="hidden" name="followup_id" value="{{ followup.followup_id }}"><label>Resolution for the reseller<textarea name="customer_message" required minlength="5" maxlength="1000" rows="3"></textarea></label><small>Visible to the reseller. This closes the follow-up without changing stock or settlement.</small><button class="button" type="submit">Resolve follow-up</button></form>{% endif %}
+</section>
+{% endfor %}

@@ -26,7 +26,17 @@
 {% elif section == "orders" %}
   {% include "portals/team-leader/orders.html" %}
 {% elif section == "refunds" %}
+  {% if refunds_returns_workspace %}
+  <nav class="sales-resolution-tabs" aria-label="Refund and return views">
+    <a href="/portal/team-leader/refunds" data-full-navigation {% if refund_workspace_view=='refunds' %}aria-current="page"{% endif %}><i data-lucide="badge-dollar-sign" aria-hidden="true"></i>Money refunds</a>
+    <a href="/portal/team-leader/refunds?view=returns" data-full-navigation {% if refund_workspace_view=='returns' %}aria-current="page"{% endif %}><i data-lucide="package-check" aria-hidden="true"></i>Product returns</a>
+  </nav>
+  {% endif %}
+  {% if refund_workspace_view=='returns' %}
+  {% include "portals/team-leader/returns.html" %}
+  {% else %}
   {% include "portals/refunds.html" %}
+  {% endif %}
 {% elif section == "reports" %}
   {% include "portals/team-leader/reports.html" %}
 {% elif section == "accounts" %}

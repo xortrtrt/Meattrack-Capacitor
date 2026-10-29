@@ -2742,3 +2742,67 @@
     justify-self:stretch
   }
 }
+
+/* Inventory receipt decisions: compare proof, choose one outcome, then prepare stock. */
+.portal-body .lifecycle-returns-page .inventory-return-dialog {
+  width: min(900px, calc(100% - 48px));
+  scrollbar-gutter: auto;
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+.inventory-return-header {padding:20px 24px;border-bottom:3px solid var(--gold);background:var(--primary);color:var(--white)}
+.inventory-return-header .eyebrow {color:var(--gold);font-size:.7rem}
+.portal-body .inventory-return-header h3 {margin:6px 0 0;color:var(--white);font-size:1.5rem}
+.inventory-return-header .returns-dialog-close {border-color:var(--gold-deep);border-radius:50%;background:transparent;color:var(--gold)}
+.inventory-return-header .returns-dialog-close:hover {background:color-mix(in srgb,var(--gold) 12%,transparent)}
+.inventory-return-content {display:grid;gap:20px;min-width:0;padding:24px}
+.inventory-return-status {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;font-size:.8125rem}
+.inventory-return-status>span:last-child {display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--text-light)}
+.inventory-return-status svg {width:18px;height:18px;color:var(--gold-deep)}
+.portal-body .inventory-return-step {display:grid;gap:18px;min-width:0;padding:22px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+.inventory-return-step>header {display:flex;align-items:flex-start;gap:12px}
+.inventory-return-step-number {display:grid;place-items:center;flex:0 0 30px;height:30px;border:1px solid var(--border);border-radius:50%;background:var(--surface-muted);color:var(--gold-deep);font-size:.8125rem;font-weight:750}
+.portal-body .inventory-return-step header h4 {margin:2px 0 6px}
+.inventory-return-step p,.inventory-return-next-step p {color:var(--text-light);font-size:.875rem;line-height:1.65}
+.inventory-return-products {display:grid;gap:10px}
+.inventory-return-products article {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-muted);font-size:.875rem}
+.inventory-return-products article>div {display:grid;min-width:0;gap:6px}
+.inventory-return-products article span {color:var(--text-light);font-size:.8125rem;overflow-wrap:anywhere}
+.inventory-return-products article strong {overflow-wrap:anywhere}
+.inventory-return-evidence {display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+.inventory-return-evidence a {display:grid;overflow:hidden;border:1px solid var(--border);border-radius:10px;color:var(--primary);text-decoration:none}
+.inventory-return-evidence img {display:block;width:100%;height:128px;object-fit:cover;background:var(--surface-muted)}
+.inventory-return-evidence a>span {display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:10px 12px;font-size:.8125rem;font-weight:650}
+.inventory-return-evidence svg {width:16px;height:16px}
+.inventory-receipt-choice {min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.inventory-receipt-choice>summary {display:grid;grid-template-columns:24px minmax(0,1fr) 18px;align-items:center;gap:12px;min-height:84px;padding:18px;cursor:pointer;list-style:none}
+.inventory-receipt-choice>summary::-webkit-details-marker,.inventory-return-records>summary::-webkit-details-marker {display:none}
+.inventory-receipt-choice summary>span {display:grid;gap:6px}
+.inventory-receipt-choice summary strong {font-size:.9375rem;line-height:1.4}
+.inventory-receipt-choice summary small {font-size:.8125rem;line-height:1.5;color:var(--text-light)}
+.inventory-receipt-choice summary>svg:first-child {width:24px;height:24px;color:var(--gold-deep)}
+.inventory-receipt-choice.is-mismatch summary>svg:first-child {color:var(--error)}
+.inventory-receipt-choice[open] {border-color:var(--gold-deep)}
+.inventory-receipt-choice[open]>summary {border-bottom:1px solid var(--border);background:var(--surface-muted)}
+.inventory-receipt-choice[open]>summary>svg:last-child {transform:rotate(180deg)}
+.inventory-receipt-choice>.lifecycle-form {padding:18px;margin:0}
+.portal-body .inventory-receipt-choice .inventory-receipt-attestation {display:grid;grid-template-columns:20px minmax(0,1fr);align-items:start;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;font-size:.875rem;line-height:1.6}
+.inventory-receipt-attestation input {width:20px;height:20px;min-height:20px;margin:2px 0 0;padding:0;accent-color:var(--gold-deep)}
+.inventory-return-dialog .button {justify-content:center;min-height:48px;white-space:normal}
+.portal-body .inventory-return-next-step {display:grid;grid-template-columns:24px minmax(0,1fr);align-items:start;gap:12px;padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.inventory-return-next-step>svg {color:var(--gold-deep)}
+.inventory-return-next-step.is-attention>svg {color:var(--error)}
+.portal-body .inventory-return-next-step h4 {margin:0 0 8px}
+.inventory-return-waiting {padding:14px;border-left:3px solid var(--gold);background:var(--surface-muted)}
+.inventory-return-records {border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.inventory-return-records>summary {display:flex;align-items:center;gap:10px;min-height:56px;padding:16px;cursor:pointer;list-style:none;font-size:.875rem;font-weight:700}
+.inventory-return-records>summary>svg:last-child {margin-left:auto}
+.inventory-return-records>div {display:grid;gap:20px;padding:0 18px 18px}
+@media(max-width:600px){
+  .portal-body .lifecycle-returns-page .inventory-return-dialog {width:calc(100% - 24px);max-height:calc(100dvh - 24px)}
+  .inventory-return-header,.inventory-return-content {padding:16px}
+  .portal-body .inventory-return-step {padding:16px}
+  .inventory-receipt-choice>summary {gap:10px;padding:14px}
+  .inventory-receipt-choice>.lifecycle-form {padding:14px}
+  .inventory-return-status {align-items:flex-start;flex-direction:column}
+}

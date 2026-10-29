@@ -62,6 +62,11 @@ def refunds_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
     read_only = role_key == "team-leader"
     require_capability(request,"refunds.view_assigned" if read_only else ("refunds.manage_all" if role_key == "owner" else "refunds.manage_assigned"),role_key)
+    if read_only and request.query_params.get("view") == "returns":
+        require_capability(request, "returns.view", role_key)
+        from app.portals.product_returns import sales_returns_context
+        return {**sales_returns_context(request), "refund_workspace_view": "returns",
+                "refunds_returns_workspace": True}
     filters = shared.portal_filters(request)
     status = filters["status"] if filters["status"] in data.REFUND_STATUSES else ""
     total = data.count_order_refunds(role_key, account_id, status=status, q=filters["q"])
@@ -94,6 +99,8 @@ def refunds_context(request: Request) -> dict:
     else:
         pane = "activity"
     return {
+        "refunds_returns_workspace": read_only,
+        "refund_workspace_view": "refunds",
         "refunds_page": shared.paged(items, total, filters["page"], 12, q=filters["q"], status=status),
         "refunds": items,
         "refund_counts": data.refund_status_counts(role_key, account_id),

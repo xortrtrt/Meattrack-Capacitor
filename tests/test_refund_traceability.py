@@ -194,7 +194,9 @@ def test_sales_visibility_scope_proofs_and_http_mutations(lifecycle, monkeypatch
     with TestClient(main.app) as client:
         response = client.get(f"/portal/team-leader/refunds?refund={refund}")
         assert response.status_code == 200, response.text[:1000]
-        assert "Sales Refunds" in response.text and "Receipt #" in response.text
+        assert 'aria-label="Refund and return views"' in response.text and "Receipt #" in response.text
+        assert 'class="refund-hero"' not in response.text
+        assert "Open return review and replacements" not in response.text
         assert "SIMULATED transfer checked against ledger" not in response.text
         assert 'name="internal_note"' not in response.text
         for action in ["start", "retry", "fail", "complete", "take-over", "messages"]:

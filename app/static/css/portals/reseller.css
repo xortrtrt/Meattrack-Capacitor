@@ -517,6 +517,355 @@
   margin-top: 20px;
 }
 
+/* Returns share the order ledger, including its expandable rows and action rail. */
+.role-reseller .order-return-resolution {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-light);
+  font-size: 0.8125rem;
+}
+
+.role-reseller .order-return-resolution svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--gold-deep);
+}
+
+.role-reseller .reseller-return-ledger .order-action-note small {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .role-reseller .order-return-resolution {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* Reseller return tracking: order details with a dedicated progress column. */
+.portal-body.role-reseller .reseller-returns-page .return-tracking-dialog {
+  width: min(1040px, calc(100% - 48px));
+  border-color: var(--border);
+  border-radius: 20px;
+  background: var(--surface-muted);
+  color: var(--primary);
+  scrollbar-gutter: auto;
+}
+
+.role-reseller .return-tracking-header {
+  gap: 20px;
+  padding: 22px 28px;
+  border-bottom: 3px solid var(--gold);
+  background: var(--primary);
+  color: var(--white);
+}
+
+.role-reseller .return-tracking-header .eyebrow {
+  color: var(--gold);
+  font-size: 0.7rem;
+}
+
+.portal-body .return-tracking-dialog .return-tracking-header h3 {
+  margin-top: 6px;
+  color: var(--white);
+  font-size: 1.6rem;
+}
+
+.role-reseller .return-tracking-header .returns-dialog-close {
+  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gold);
+}
+
+.role-reseller .return-tracking-header .returns-dialog-close:hover {
+  background: color-mix(in srgb, var(--gold) 15%, transparent);
+}
+
+.role-reseller .return-tracking-content {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+  padding: 28px;
+}
+
+.role-reseller .return-tracking-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.role-reseller .return-tracking-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.role-reseller .return-tracking-status > div {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.role-reseller .return-tracking-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--gold-deep);
+}
+
+.role-reseller .return-tracking-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.role-reseller .return-tracking-overview dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+}
+
+.role-reseller .return-tracking-overview dt,
+.role-reseller .return-tracking-totals dt {
+  color: var(--text-light);
+  font-size: 0.75rem;
+}
+
+.role-reseller .return-tracking-overview dd {
+  margin: 5px 0 0;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.role-reseller .return-tracking-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 290px);
+  align-items: start;
+  gap: 24px;
+}
+
+.role-reseller .return-tracking-main {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+}
+
+.role-reseller .return-tracking-section {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.role-reseller .return-tracking-section > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.role-reseller .return-tracking-section > header > svg {
+  color: var(--gold-deep);
+}
+
+.role-reseller .return-tracking-section p {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.role-reseller .return-tracking-product {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.role-reseller .return-tracking-product > div > strong {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.role-reseller .return-tracking-product small {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.role-reseller .return-tracking-remarks {
+  display: grid;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.role-reseller .return-tracking-remarks > strong {
+  font-size: 0.8125rem;
+}
+
+.role-reseller .return-tracking-remarks p,
+.role-reseller .return-tracking-caption {
+  color: var(--text-light);
+}
+
+.role-reseller .return-tracking-totals,
+.role-reseller .return-tracking-quote-lines {
+  display: grid;
+  gap: 12px;
+}
+
+.role-reseller .return-tracking-totals {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.role-reseller .return-tracking-totals > div,
+.role-reseller .return-tracking-quote-lines > div,
+.role-reseller .return-tracking-refund {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.875rem;
+}
+
+.role-reseller .return-tracking-totals dd {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-reseller .return-tracking-refund > strong {
+  font-size: 1.5rem;
+}
+
+.role-reseller .return-tracking-attachments {
+  display: grid;
+  gap: 10px;
+}
+
+.role-reseller .return-tracking-attachments a {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--primary);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.role-reseller .return-tracking-attachments a:hover {
+  background: var(--surface-muted);
+}
+
+.role-reseller .return-tracking-attachments svg {
+  color: var(--gold-deep);
+}
+
+.role-reseller .return-tracking-timeline {
+  padding: 0;
+  list-style: none;
+}
+
+.role-reseller .return-tracking-timeline li {
+  position: relative;
+  margin-left: 6px;
+  padding: 0 0 24px 22px;
+  border-left: 1px solid var(--border);
+}
+
+.role-reseller .return-tracking-timeline li::before {
+  position: absolute;
+  top: 4px;
+  left: -5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--gold-deep);
+  content: '';
+}
+
+.role-reseller .return-tracking-timeline li:last-child {
+  padding-bottom: 0;
+  border-left-color: transparent;
+}
+
+.role-reseller .return-tracking-timeline time {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-light);
+  font-size: 0.75rem;
+}
+
+.role-reseller .return-tracking-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 28px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.role-reseller .return-tracking-footer > span {
+  color: var(--text-light);
+  font-size: 0.75rem;
+}
+
+.role-reseller .return-tracking-dialog .button {
+  min-height: 44px;
+  white-space: normal;
+}
+
+@media (max-width: 800px) {
+  .role-reseller .return-tracking-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .portal-body.role-reseller .reseller-returns-page .return-tracking-dialog {
+    width: calc(100% - 24px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 16px;
+  }
+
+  .role-reseller .return-tracking-header,
+  .role-reseller .return-tracking-footer {
+    padding: 16px;
+  }
+
+  .role-reseller .return-tracking-content {
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .role-reseller .return-tracking-overview,
+  .role-reseller .return-tracking-section {
+    padding: 16px;
+  }
+
+  .role-reseller .return-tracking-grid {
+    gap: 16px;
+  }
+}
+
 @keyframes order-card-reveal {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }

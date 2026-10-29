@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
@@ -318,6 +318,9 @@ def notification_target_for(
     if len(parts) != 3:
         return fallback
     _portal, target_role, section = parts
+    if role_key == "team-leader" and team_leader_role == "sales" and section == "returns":
+        section = "refunds"
+        parsed = parsed._replace(query=urlencode({**dict(parse_qsl(parsed.query)), "view": "returns"}))
     current_sections = {
         item[0] for item in portal_config.portal_nav_for(role_key, team_leader_role)
     }
@@ -445,6 +448,9 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         return guard
     if role_key == "reseller" and section == "returns":
         return redirect_to("/portal/reseller/history?" + urlencode({**request.query_params, "view": "returns"}))
+    if role_key == "team-leader" and section == "returns" and session_team_leader_role(request) == "sales":
+        require_capability(request, "returns.view", "team-leader:sales")
+        return redirect_to("/portal/team-leader/refunds?" + urlencode({**request.query_params, "view": "returns"}))
     nav = portal_nav_for_request(role_key, request)
     nav_sections = {item[0]: item for item in nav}
     secondary_section = portal_config.portal_secondary_sections.get(role_key, {}).get(section)

@@ -247,7 +247,7 @@ def test_discrepancy_reapproval_can_reduce_to_received_quantity(lifecycle):
     returns.flag_return_discrepancy(case, d["inventory"], "Only one matching pack delivered")
     line = returns.get_product_return(case, d["sales"])["lines"][0]
     returns.review_product_return(
-        case, d["sales"], True, "Approved corrected one pack claim", revised_quantities=[(line["return_line_id"], 1)]
+        case, d["sales"], True, "Approved corrected one pack claim", revised_quantities=[(line["return_line_id"], 1)], customer_message="Your corrected one-pack return is approved."
     )
     returns.verify_product_return(case,d["inventory"],"Verified corrected approved quantity",str(uuid4()))
     case_data = returns.get_product_return(case, d["reseller"])
@@ -503,5 +503,8 @@ def test_new_portal_pages_render_with_scoped_sessions(lifecycle, monkeypatch):
         with TestClient(main.app) as client:
             for path in paths:
                 response = client.get(path, follow_redirects=False)
+                if path.startswith(f"/portal/{role}/returns") and (role == "reseller" or specialization == "sales"):
+                    assert response.status_code == 303
+                    response = client.get(response.headers["location"])
                 assert response.status_code == 200, response.text[:1000]
                 assert "lifecycle" in response.text or "product-details?product_id=" in response.text

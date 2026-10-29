@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import os
 import re
 from urllib.parse import urljoin
@@ -103,93 +102,29 @@ def test_supervisor_reseller_orders_start_collapsed_and_open_on_request(page: Pa
     expect(first_order).to_have_attribute("open", "")
 
 
-def test_supervisor_report_groups_products_into_compact_order_cards(page: Page) -> None:
-    today = business_today().isoformat()
-    report_items = [
-        {
-            "sale_date": today,
-            "order_id": 99031,
-            "customer": "E2E Reseller",
-            "product": product,
-            "quantity": quantity,
-            "unit": "pack",
-            "total_sales": total,
-            "product_image_url": image_url,
-        }
-        for product, quantity, total, image_url in (
-            ("Beef Longganisa", 2, 150, "/static/img/beef_longganisa.jpg"),
-            ("Chicken Rebusado", 1, 85, "/static/img/chicken_rebusado.jpg"),
-            ("Chicken Tocino", 3, 210, "/static/img/chicken_tocino.jpg"),
-            ("Pork Rebusado", 3, 270, "/static/img/pork_rebusado.jpg"),
-            ("Tocino Ala Eh", 2, 140, "/static/img/tocino_ala_eh.jpg"),
-            ("Trial Package", 2, 2798, "/static/img/trial_package.jpg"),
-        )
-    ]
-    report_items.extend(
-        {
-            "sale_date": today,
-            "order_id": order_id,
-            "customer": f"E2E Reseller {order_id}",
-            "product": "Bacon Smoked",
-            "quantity": 1,
-            "unit": "pack",
-            "total_sales": 125,
-            "product_image_url": "/static/img/bacon_smoked.jpg",
-        }
-        for order_id in range(99032, 99038)
-    )
-
+def test_supervisor_report_preview_has_accessible_sections_and_downloads(page: Page) -> None:
     page.goto(f"{BASE_URL}/login", wait_until="networkidle")
     page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
     page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
     page.locator('input[name="consent"]').check()
     page.get_by_role("button", name="Sign In").click()
     page.wait_for_url("**/portal/sales-supervisor/dashboard")
-
-    def replace_report_items(route) -> None:
-        response = route.fetch()
-        body = re.sub(
-            r'(<script type="application/json" id="team-report-sales-data">).*?(</script>)',
-            lambda match: f"{match.group(1)}{json.dumps(report_items)}{match.group(2)}",
-            response.text(),
-            flags=re.DOTALL,
-        )
-        route.fulfill(response=response, body=body)
-
-    page.route("**/portal/sales-supervisor/reports", replace_report_items)
     response = page.goto(f"{BASE_URL}/portal/sales-supervisor/reports", wait_until="networkidle")
     assert response is not None and response.ok
-
-    cards = page.locator(".report-order-card")
-    visible_cards = page.locator(".report-order-card:visible")
-    expect(cards).to_have_count(7)
-    expect(visible_cards).to_have_count(5)
-    expect(cards.first.locator("summary")).to_contain_text("Order #99031")
-    expect(cards.first.locator("summary")).to_contain_text("6 products")
-    expect(cards.first.locator(".report-order-preview img")).to_have_count(3)
-    expect(cards.first).not_to_have_attribute("open", "")
-
-    cards.first.locator("summary").click()
-    expect(cards.first).to_have_attribute("open", "")
-    expect(cards.first.locator(".report-order-product-line")).to_have_count(6)
-    expect(cards.first.locator(".report-order-product-line").first).to_contain_text("Beef Longganisa")
-    expect(page.locator(".report-items-table")).to_have_count(0)
-
-    load_more = page.locator("[data-report-order-more]")
-    expect(load_more).to_be_visible()
-    expect(load_more).to_contain_text("Show 2 more orders")
-    load_more.click()
-    expect(visible_cards).to_have_count(7)
-    expect(load_more).to_be_hidden()
-    expect(page.locator(".report-order-card summary").nth(5)).to_be_focused()
-
+    page.get_by_role("button", name="Generate preview").click()
+    page.wait_for_url("**/reports?**preview=1")
+    expect(page.get_by_role("tab")).to_have_count(4)
+    expect(page.locator('[data-report-metric="retained_sales"]')).to_be_visible()
+    page.get_by_role("tab").first.focus()
+    page.keyboard.press("End")
+    expect(page.get_by_role("tab").last).to_have_attribute("aria-selected", "true")
+    expect(page.locator('[data-report-panel="refunds"]')).to_be_visible()
+    with page.expect_download() as download:
+        page.get_by_role("button", name="Excel", exact=True).click()
+    assert download.value.suggested_filename.endswith(".xlsx")
     page.set_viewport_size({"width": 390, "height": 844})
-    page.reload(wait_until="networkidle")
-    expect(page.locator(".report-order-card:visible")).to_have_count(5)
-    expect(page.locator("[data-report-order-more]")).to_be_visible()
-    page.locator(".report-order-card summary").first.click()
-    report_items = page.locator(".report-order-items")
-    assert report_items.evaluate("element => element.scrollWidth <= element.clientWidth")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
+    expect(page.get_by_role("button", name="Submit to Owner", exact=True)).to_be_visible()
 
 
 def test_public_and_supervisor_profile_smoke(page: Page) -> None:

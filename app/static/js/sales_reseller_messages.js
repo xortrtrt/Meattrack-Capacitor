@@ -38,6 +38,15 @@
         return result;
     }
 
+    function messageUuid() {
+        if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        bytes[6] = (bytes[6] & 15) | 64;
+        bytes[8] = (bytes[8] & 63) | 128;
+        const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+        return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+    }
+
     function setStatus(copy, tone = "ready") {
         status.querySelector("span:last-child").textContent = copy;
         status.dataset.tone = tone;
@@ -65,6 +74,13 @@
         const time = document.createElement("time");
         time.textContent = messageTime(item.created_at);
         row.append(meta, bubble, time);
+        if (item.return_id) {
+            const link = document.createElement("a");
+            link.className = "return-chat-reference";
+            link.href = `/portal/team-leader/refunds?view=returns&case=${Number(item.return_id)}`;
+            link.textContent = `Return #${item.return_id}`;
+            row.prepend(link);
+        }
         feed.append(row);
         lastMessageId = Math.max(lastMessageId, Number(item.reseller_message_id) || 0);
         feed.scrollTop = feed.scrollHeight;
@@ -176,7 +192,7 @@
         try {
             const result = await api(`/api/portal/live-chat/resellers/${activeResellerId}/messages`, {
                 method: "POST",
-                body: JSON.stringify({ message: content, client_message_id: crypto.randomUUID() }),
+                body: JSON.stringify({ message: content, client_message_id: messageUuid() }),
             });
             input.value = "";
             appendMessage(result.message);
@@ -214,7 +230,8 @@
     });
 
     refreshConversations().then(() => {
-        const first = conversations[0];
+        const selected = Number(new URLSearchParams(location.search).get("reseller"));
+        const first = conversations.find(item => Number(item.reseller_account_id) === selected) || conversations[0];
         if (first) openThread(Number(first.reseller_account_id), true);
     }).catch((error) => setStatus(error.message, "error"));
     refreshTimer = window.setInterval(() => {

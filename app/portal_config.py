@@ -133,8 +133,7 @@ team_leader_nav_by_role = {
         ("resellers", "My Resellers", "users"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
-        ("returns", "Return Review", "package-check"),
-        ("refunds", "Sales Refunds", "badge-dollar-sign"),
+        ("refunds", "Refunds & returns", "badge-dollar-sign"),
         ("profile", "Profile", "user-cog"),
     ],
     "sales-supervisor": [

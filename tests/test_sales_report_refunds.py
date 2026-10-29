@@ -36,6 +36,11 @@ def test_replacement_difference_separated_and_topup_not_ordinary_sales(lifecycle
     assert submit(d)["total_sales"] == retained
     result = report(d)
     assert result["gross_sales"] == 1000 and result["refunded_sales"] == refunded
+    from app.repositories.activity_reports import build_report
+    activity = build_report(d["sales"], business_today(), business_today())
+    assert activity["summary"]["retained_sales"] == retained
+    assert activity["summary"]["sales_refunds"] == refunded
+    assert activity["summary"]["gross_sales"] == 1000
 
 
 def submit(d):

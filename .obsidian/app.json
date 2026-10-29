@@ -1,0 +1,16 @@
+{
+  "alwaysUpdateLinks": true,
+  "newFileLocation": "folder",
+  "newFileFolderPath": "docs/knowledge",
+  "attachmentFolderPath": "docs/knowledge/attachments",
+  "showUnsupportedFiles": false,
+  "excludedFiles": [
+    ".venv/",
+    "node_modules/",
+    "backups/",
+    "outputs/",
+    "tmp/",
+    "app/static/vendor/",
+    "app/static/uploads/"
+  ]
+}

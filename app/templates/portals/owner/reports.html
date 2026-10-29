@@ -1,7 +1,7 @@
 {% include 'portals/_settlement_summary.html' %}
 <div class="owner-page owner-reports-page owner-directory-page">
   <section class="panel owner-workspace-surface">
-    <header class="panel-heading"><div><span class="eyebrow">Sales reporting</span><h2>Team leader sales reports</h2><p class="hint">Choose a report to review its totals, notes, and product breakdown.</p></div><form action="/portal/owner/exports/reports.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form></header>
+    <header class="panel-heading"><div><span class="eyebrow">Sales reporting</span><h2>Sales leader reports</h2><p class="hint">Open a submitted activity report to review its frozen sales, orders, returns and refund outcomes. Earlier sales reports remain labelled as legacy reports.</p></div><form action="/portal/owner/exports/reports.csv" method="post"><button class="button subtle" type="submit">Export summary CSV</button></form></header>
     <form class="filter-bar owner-directory-filters" method="get">
       <label>Search reports<input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Report number, submitted by, or notes"></label>
       <label>Sort<select name="sort">{% for value, label in [('', 'Newest'), ('period_desc', 'Latest period'), ('sales_desc', 'Sales high–low'), ('orders_desc', 'Orders high–low'), ('oldest', 'Oldest')] %}<option value="{{ value }}" {{ 'selected' if sales_reports_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
@@ -9,8 +9,17 @@
     </form>
     <div class="owner-report-list">
       {% for report in sales_reports %}
+      {% if report.activity_snapshot %}
+      <a class="owner-report-summary" href="/portal/owner/reports/{{ report.sales_report_id }}">
+        <span><strong>Activity report #{{ report.sales_report_id }}</strong><small>{{ report.submitted_by }}</small></span>
+        <span><small>Original order dates</small>{{ report.period_start|nice_date }} – {{ report.period_end|nice_date }}</span>
+        <span><small>Retained sales</small><strong>{{ report.total_sales|currency }}</strong></span>
+        <span><small>Orders handled</small><strong>{{ report.orders_handled|number }}</strong></span>
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+      </a>
+      {% else %}
       <button class="owner-report-summary" type="button" data-owner-modal-open="owner-report-{{ report.sales_report_id }}" aria-haspopup="dialog" aria-controls="owner-report-{{ report.sales_report_id }}">
-        <span><strong>Report #{{ report.sales_report_id }}</strong><small>{{ report.submitted_by }}</small></span>
+        <span><strong>Report #{{ report.sales_report_id }}</strong><small>Legacy sales report · {{ report.submitted_by }}</small></span>
         <span><small>Reporting period</small>{{ report.period_start|nice_date }} – {{ report.period_end|nice_date }}</span>
         <span><small>Retained sales</small><strong>{{ report.total_sales|currency if not report.reconciliation_required else "Requires reconciliation" }}</strong></span>
         <span><small>Orders</small><strong>{{ report.total_orders|number }}</strong></span>
@@ -19,12 +28,14 @@
       <dialog class="owner-detail-modal" id="owner-report-{{ report.sales_report_id }}" data-owner-modal aria-labelledby="owner-report-title-{{ report.sales_report_id }}">
         <header class="owner-detail-modal-heading"><div><span class="eyebrow">Sales report</span><h2 id="owner-report-title-{{ report.sales_report_id }}">Report #{{ report.sales_report_id }}</h2><p>{{ report.submitted_by }}</p></div><button class="icon-button" type="button" data-owner-modal-close aria-label="Close report details" autofocus><i data-lucide="x" aria-hidden="true"></i></button></header>
         <div class="owner-detail-modal-body">
+          <p class="hint">Legacy sales report. Combined personal activity and return details were not captured.</p>
           <dl class="owner-detail-facts"><div><dt>Source</dt><dd>{{ report.report_source.replace('_', ' ')|title }}</dd></div><div><dt>Reporting period</dt><dd>{{ report.period_start|nice_date }} – {{ report.period_end|nice_date }}</dd></div><div><dt>Retained sales</dt><dd>{{ report.total_sales|currency if not report.reconciliation_required else "Requires reconciliation" }}</dd></div><div><dt>Orders</dt><dd>{{ report.total_orders|number }}</dd></div></dl>
           {% include "portals/_report_refund_breakdown.html" %}
           <section class="owner-detail-section"><h3>Report notes</h3><p class="owner-report-notes">{{ report.notes or 'No notes were provided.' }}</p></section>
           <section class="owner-detail-section"><h3>Reported products</h3>{% set report_items = report.get('items', []) %}{% if report_items %}<div class="table-wrap"><table><thead><tr><th>Product</th><th>Quantity</th><th>Unit price</th><th>Line total</th></tr></thead><tbody>{% for item in report_items %}<tr><td>{{ item.name }}</td><td>{{ item.quantity_sold|number }} {{ item.unit }}</td><td>{{ item.unit_price|default(0)|currency }}</td><td>{{ item.line_total|currency }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="hint">No product lines were recorded for this report.</p>{% endif %}</section>
         </div>
       </dialog>
+      {% endif %}
       {% else %}<p class="owner-directory-empty">No reports found. Try another search or clear your filters.</p>{% endfor %}
     </div>
     {% with directory_page=sales_reports_page %}{% include 'portals/owner/_directory_pagination.html' %}{% endwith %}

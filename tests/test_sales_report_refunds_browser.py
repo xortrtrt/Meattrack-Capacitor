@@ -58,14 +58,17 @@ def test_leader_and_owner_separate_late_refund_in_actual_browser(lifecycle, monk
                 team_leader_role="sales",
                 portal_expires_at=int(business_now().timestamp()) + 600,
             )
-            response = page.goto("http://report.test/portal/team-leader/reports", wait_until="networkidle")
+            response = page.goto("http://report.test/portal/team-leader/reports?view=history", wait_until="networkidle")
             assert response.status == 200
-            expect(page.locator("[data-report-total-sales]")).to_have_value("PHP 800.00")
-            expect(page.locator("[data-report-refund-items]")).to_contain_text("PHP 200.00")
-            expect(page.locator(".report-order-total")).to_contain_text("PHP 800.00")
+            expect(page.locator(".ar-history-card")).to_contain_text("PHP 800.00")
+            expect(page.locator(".ar-history-card")).to_contain_text("Legacy sales report")
+            page.locator(".ar-legacy-details > summary").click()
+            expect(page.locator(".ar-legacy-details")).to_contain_text("Adjustment after submission")
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
+            page.evaluate("window.scrollTo(0,0)")
             page.screenshot(path=str(output / f"leader-{width}.png"), full_page=True)
             session.update(account_id=d["owner"], role_key="owner", team_leader_role=None)
+            page.set_viewport_size({"width": width, "height": 900})
             response = page.goto("http://report.test/portal/owner/reports", wait_until="networkidle")
             assert response.status == 200
             page.locator(f'[data-owner-modal-open="owner-report-{submitted["sales_report_id"]}"]').click()

@@ -40,6 +40,7 @@
       }
       history.replaceState(null, "", url);
       dialog.showModal();
+      dialog.scrollTop = 0;
       syncScrollLock();
     };
     const close = () => dialog.close();

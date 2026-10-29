@@ -12,7 +12,10 @@ from starlette.concurrency import run_in_threadpool
 from app.capabilities import capability_role_key, require_capability
 from app.database import fetch_all, fetch_one
 from app.repositories import product_returns as returns
+from app.repositories import return_customer
+from app.return_experience import QUEUES, normalize_queue
 from app.repositories.inventory import list_products
+from app.inventory_measurements import parse_whole_packs
 from app.portals import shared
 
 router = APIRouter()
@@ -32,7 +35,9 @@ def _returns_context(request: Request) -> dict:
     actor_id = shared.session_account_id(request)
     role = capability_role_key(request)
     inventory_only = role == "team-leader:inventory"
-    cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""),page=shared.requested_page(request.query_params.get("page")),reconciliation_only=request.query_params.get("reconciliation")=="1")
+    queue = normalize_queue(request.query_params.get("queue")) if role == "team-leader:sales" else None
+    case_options = {"queue": queue} if queue is not None else {}
+    cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""),page=shared.requested_page(request.query_params.get("page")),reconciliation_only=request.query_params.get("reconciliation")=="1", **case_options)
     case_id = shared.optional_positive_id(request.query_params.get("case"))
     selected = None
     if case_id:
@@ -66,6 +71,9 @@ def _returns_context(request: Request) -> dict:
     if can_review and selected and role != "owner" and selected["team_leader_account_id"] != actor_id:
         can_review = False
     return {
+        "return_queue": queue,
+        "return_queue_options": QUEUES,
+        "return_queue_counts": returns.return_queue_counts(actor_id) if queue is not None else {},
         "return_cases": cases,
         "return_cases_page": shared.paged(cases,cases[0]["list_total"] if cases else 0,cases[0]["list_page"] if cases else 1,12,status=request.query_params.get("status","")),
         "return_case": selected,
@@ -174,8 +182,37 @@ def _pairs(form, id_name: str, quantity_name: str) -> list[tuple[int, str]]:
     return result
 
 
+@router.get("/portal/{role_key}/refunds/returns/actions/{action}", include_in_schema=False)
+@router.get("/portal/{role_key}/returns/actions/{action}", include_in_schema=False)
+def return_action_page(request: Request, role_key: str, action: str):
+    """Recover a refreshed form-action address without performing an action."""
+    if action not in {
+        "submit", "approve", "reject", "receive", "verify", "discrepancy", "accept",
+        "reserve", "release", "payment", "verify-payment", "legacy", "proceed", "inspect",
+        "acknowledge-replacement", "resolve-issue",
+    }:
+        raise HTTPException(404)
+    guard = _guard(request, role_key, "returns.view")
+    if guard:
+        return guard
+    sales_workspace = role_key == "team-leader" and shared.session_team_leader_role(request) == "sales"
+    if "/refunds/returns/actions/" in request.url.path and not sales_workspace:
+        raise HTTPException(404)
+    destination = "history" if role_key == "reseller" else "refunds" if sales_workspace else "returns"
+    case_id = shared.optional_positive_id(request.query_params.get("case"))
+    params = {"case": str(case_id)} if case_id else {}
+    if role_key == "reseller" or sales_workspace:
+        params["view"] = "returns"
+    return shared.redirect_to(shared.safe_portal_path(role_key, destination, **params))
+
+
+@router.post("/portal/{role_key}/refunds/returns/actions/{action}")
 @router.post("/portal/{role_key}/returns/actions/{action}")
 async def return_action(request: Request, role_key: str, action: str):
+    if "/refunds/returns/actions/" in request.url.path and not (
+        role_key == "team-leader" and shared.session_team_leader_role(request) == "sales"
+    ):
+        raise HTTPException(404)
     capabilities = {
         "submit": "returns.create",
         "approve": "returns.review",
@@ -190,6 +227,9 @@ async def return_action(request: Request, role_key: str, action: str):
         "verify-payment": "returns.review",
         "legacy": "returns.receive",
         "proceed": "returns.authorize",
+        "inspect": "returns.receive",
+        "acknowledge-replacement": "returns.create",
+        "resolve-issue": "returns.review",
     }
     if action not in capabilities:
         raise HTTPException(404)
@@ -200,8 +240,15 @@ async def return_action(request: Request, role_key: str, action: str):
     actor_id = shared.session_account_id(request)
     return_id = shared.optional_positive_id(str(form.get("return_id", "")))
     params = {"case": str(return_id)} if return_id else {}
+    sales_workspace = role_key == "team-leader" and shared.session_team_leader_role(request) == "sales"
+    destination = "history" if role_key == "reseller" else "refunds" if sales_workspace else "returns"
     try:
-        if action == "submit":
+        if action == "acknowledge-replacement":
+            await run_in_threadpool(return_customer.acknowledge_replacement, return_id, actor_id)
+        elif action == "resolve-issue":
+            await run_in_threadpool(return_customer.resolve_followup, return_id, actor_id,
+                int(str(form.get("followup_id", "0"))), str(form.get("customer_message", "")))
+        elif action == "submit":
             uploads = [u for u in form.getlist("evidence") if getattr(u, "filename", "")]
             if len(uploads) > 3:
                 raise ValueError("Attach up to 3 supporting photos only.")
@@ -230,21 +277,35 @@ async def return_action(request: Request, role_key: str, action: str):
                 _pairs(form, "product_id", "replacement_quantity"),
                 _pairs(form, "revised_line_id", "approved_quantity"),
                 str(form.get("operation_key", "")) or None,
+                customer_message=str(form.get("customer_message", "")),
             )
+        elif action == "inspect":
+            outcome = str(form.get("outcome", ""))
+            review_version = str(form.get("review_version", ""))
+            if not review_version:
+                raise ValueError("Reload this case before recording the receipt decision.")
+            if outcome == "complete" and form.get("proof_matches") != "1":
+                raise ValueError("Confirm that every approved product, quantity, batch, and supporting photo matches.")
+            remarks = ("All approved products, quantities, batches, and supporting proof matched in full."
+                       if outcome == "complete" else str(form.get("remarks", "")))
+            await run_in_threadpool(returns.inspect_product_return, return_id, actor_id, outcome,
+                remarks, str(form.get("operation_key", "")), review_version)
         elif action == "receive":
-            await run_in_threadpool(
-                returns.receive_product_return,
-                return_id,
-                actor_id,
-                _pairs(form, "line_id", "quantity"),
-                str(form.get("location", "")),
-                str(form.get("remarks", "")),
-                str(form.get("operation_key", "")),
-            )
+            case = await run_in_threadpool(returns.get_product_return, return_id, actor_id)
+            lines = _pairs(form, "line_id", "quantity")
+            supplied = {line_id: parse_whole_packs(quantity) for line_id, quantity in lines}
+            outstanding = {line["return_line_id"]: line["quantity"] - line["received_quantity"]
+                           for line in case["lines"] if line["quantity"] > line["received_quantity"]}
+            if not supplied or len(supplied) != len(lines) or supplied != outstanding:
+                raise ValueError("Partial receipts are no longer accepted. Confirm a complete match or report a mismatch to Sales.")
+            await run_in_threadpool(returns.inspect_product_return, return_id, actor_id, "complete",
+                str(form.get("remarks", "")), str(form.get("operation_key", "")))
         elif action == "discrepancy":
-            await run_in_threadpool(returns.flag_return_discrepancy, return_id, actor_id, str(form.get("remarks", "")))
+            await run_in_threadpool(returns.inspect_product_return, return_id, actor_id, "mismatch",
+                str(form.get("remarks", "")), str(form.get("operation_key", "")) or str(uuid4()))
         elif action == "verify":
-            await run_in_threadpool(returns.verify_product_return, return_id, actor_id, str(form.get("remarks", "")), str(form.get("operation_key", "")))
+            await run_in_threadpool(returns.inspect_product_return, return_id, actor_id, "complete",
+                str(form.get("remarks", "")), str(form.get("operation_key", "")))
         elif action == "accept":
             await run_in_threadpool(returns.accept_replacement_quote, return_id, actor_id, int(str(form.get("revision", "0"))))
         elif action == "reserve":
@@ -287,10 +348,10 @@ async def return_action(request: Request, role_key: str, action: str):
             word in error.lower() for word in ("payment", "refund", "credit", "price", "quote")
         ):
             error = "Sales clearance is required. Ask the assigned Sales Leader to review this return before stock release."
-        return shared.redirect_to(shared.safe_portal_path(role_key, "history" if role_key == "reseller" else "returns",
-            error=error, **({"view": "returns", **params} if role_key == "reseller" else params)))
-    return shared.redirect_to(shared.safe_portal_path(role_key, "history" if role_key == "reseller" else "returns",
-        message="Return action recorded.", **({"view": "returns", **params} if role_key == "reseller" else params)))
+        return shared.redirect_to(shared.safe_portal_path(role_key, destination,
+            error=error, **({"view": "returns", **params} if role_key == "reseller" or sales_workspace else params)))
+    return shared.redirect_to(shared.safe_portal_path(role_key, destination,
+        message="Return action recorded.", **({"view": "returns", **params} if role_key == "reseller" or sales_workspace else params)))
 
 
 @router.post("/portal/{role_key}/expired-stock/actions/{action}")
@@ -310,7 +371,7 @@ async def expired_action(request: Request, role_key: str, action: str):
         if action == "pullout":
             await run_in_threadpool(
                 returns.confirm_expired_pullout,
-                int(str(form.get("batch_id", "0"))), location=str(form.get("location", "")), **common
+                int(str(form.get("batch_id", "0"))), location=returns.EXPIRED_HOLDING_LOCATION, **common
             )
         elif action == "dispose":
             await run_in_threadpool(

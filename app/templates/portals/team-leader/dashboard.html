@@ -79,6 +79,22 @@
   </section>
   </section>
 
+  {% set financials=settlement_summary|default({}) %}
+  <section class="dashboard-ledger dashboard-financials" aria-labelledby="sales-financials-title">
+    <header class="dashboard-section-head"><div><span class="dashboard-kicker">All time · your accessible orders</span><h2 id="sales-financials-title">Sales and refunded money</h2><p>Completed refunds are separated from sales and pending obligations.</p></div><a class="dashboard-text-link" href="/portal/{{ role_key }}/refunds">View refunds <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></header>
+    <dl class="dashboard-financial-totals">
+      <div><dt>Original fulfilled sales</dt><dd>{{ financials.get('original_sales',0)|currency }}</dd><small>Before completed return refunds</small></div>
+      <div class="is-refunded"><dt>Money refunded</dt><dd>{{ financials.get('completed_refunds',0)|currency }}</dd><small>All completed refund transfers</small></div>
+      <div class="is-retained"><dt>Retained sales</dt><dd>{{ financials.get('retained_sales',0)|currency }}</dd><small>Fulfilled sales after return refunds</small></div>
+    </dl>
+    <div class="dashboard-financial-breakdown">
+      <section aria-labelledby="dashboard-refund-types"><h3 id="dashboard-refund-types">Refund breakdown</h3><dl>{% for label,key in [('Cancelled orders','cancellation_refunds'),('Returned products','return_refunds'),('Replacement differences','replacement_refunds'),('Pending refund obligations','pending_refunds')] %}<div><dt>{{ label }}</dt><dd>{{ financials.get(key,0)|currency }}</dd></div>{% endfor %}</dl></section>
+      <section aria-labelledby="dashboard-collections"><h3 id="dashboard-collections">Money collected</h3><dl>{% for label,key in [('Confirmed original collections','original_collections'),('Additional replacement payments','additional_collections'),('Net collections after refunds','net_collections')] %}<div><dt>{{ label }}</dt><dd>{{ financials.get(key,0)|currency }}</dd></div>{% endfor %}</dl></section>
+    </div>
+    <p class="hint">Cancellation refunds return payments on unfulfilled orders and do not reduce fulfilled sales. Pending refunds do not reduce these totals until completed. Net collections = confirmed payments + additional payments − completed refunds.</p>
+    {% if financials.get('reconciliation_count',0) %}<p class="dashboard-financial-warning" role="alert">{{ financials.reconciliation_count }} order(s) need financial reconciliation. Review their payment and refund records before relying on these totals.</p>{% endif %}
+  </section>
+
   <div class="dashboard-workspace">
     <section class="dashboard-ledger" aria-labelledby="orders-title">
       <header class="dashboard-section-head">

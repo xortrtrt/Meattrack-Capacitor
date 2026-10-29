@@ -856,10 +856,15 @@ def owner_export_rows(resource: str) -> list[dict]:
         "reports": """
             SELECT sr.sales_report_id,sr.report_source,sr.submitted_by_account_id,sr.reseller_id,
                    sr.period_start,sr.period_end,sr.total_sales submitted_sales,sr.total_orders submitted_orders,
-                   b.gross_sales,b.refunded_sales,CASE WHEN sr.report_source='reseller' THEN sr.total_sales WHEN b.reconciliation_required THEN NULL ELSE b.retained_sales END total_sales,
-                   CASE WHEN b.reconciliation_required THEN NULL ELSE b.retained_sales END retained_sales,b.late_refund_adjustment,b.retained_orders,
-                   b.reconciliation_required,sr.notes,sr.submitted_at
-            FROM sales_reports sr LEFT JOIN sales_report_balances b USING(sales_report_id) ORDER BY sr.sales_report_id;
+                   CASE WHEN x.sales_report_id IS NOT NULL THEN (x.payload->'summary'->>'gross_sales')::numeric ELSE b.gross_sales END gross_sales,
+                   CASE WHEN x.sales_report_id IS NOT NULL THEN (x.payload->'summary'->>'sales_refunds')::numeric ELSE b.refunded_sales END refunded_sales,
+                   CASE WHEN x.sales_report_id IS NOT NULL OR sr.report_source='reseller' THEN sr.total_sales WHEN b.reconciliation_required THEN NULL ELSE b.retained_sales END total_sales,
+                   CASE WHEN x.sales_report_id IS NOT NULL THEN sr.total_sales WHEN b.reconciliation_required THEN NULL ELSE b.retained_sales END retained_sales,
+                   CASE WHEN x.sales_report_id IS NOT NULL THEN 0 ELSE b.late_refund_adjustment END late_refund_adjustment,
+                   CASE WHEN x.sales_report_id IS NOT NULL THEN sr.total_orders ELSE b.retained_orders END retained_orders,
+                   CASE WHEN x.sales_report_id IS NOT NULL THEN false ELSE b.reconciliation_required END reconciliation_required,sr.notes,sr.submitted_at
+            FROM sales_reports sr LEFT JOIN sales_report_balances b USING(sales_report_id)
+            LEFT JOIN sales_report_activity_snapshots x USING(sales_report_id) ORDER BY sr.sales_report_id;
         """,
         "forecasts": """
             SELECT forecast_run_id, run_by_account_id, model_name, input_period_start,

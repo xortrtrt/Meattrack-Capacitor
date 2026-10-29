@@ -29,6 +29,8 @@ router = APIRouter()
 class ResellerMessagePayload(BaseModel):
     message: str = Field(min_length=1, max_length=500)
     client_message_id: uuid.UUID
+    return_id: int | None = Field(default=None, gt=0)
+    report_issue: bool = False
 
 
 def _sales_live_account(request: Request) -> int:
@@ -357,16 +359,16 @@ def reseller_inbox_send(request: Request, payload: ResellerMessagePayload):
     account_id = _reseller_message_account(request)
     try:
         enforce_live_message(request, account_id=account_id)
-        message = reseller_messaging.send_from_reseller(
-            account_id,
-            str(payload.client_message_id),
-            payload.message,
-        )
+        if payload.return_id or payload.report_issue:
+            message = reseller_messaging.send_from_reseller(account_id, str(payload.client_message_id), payload.message,
+                return_id=payload.return_id, report_issue=payload.report_issue)
+        else:
+            message = reseller_messaging.send_from_reseller(account_id, str(payload.client_message_id), payload.message)
     except RateLimitExceeded as exc:
         return rate_limit_response(exc)
     except ValueError as exc:
         return JSONResponse({"error": "message_failed", "message": str(exc)}, status_code=400)
-    return {"message": message}
+    return {"message": None, **message} if message.get("followup_saved") else {"message": message}
 
 
 @router.post("/api/portal/reseller/inbox/read")
@@ -400,12 +402,15 @@ def sales_reseller_thread(request: Request, reseller_account_id: int, after_id: 
 def sales_reseller_send(request: Request, reseller_account_id: int, payload: ResellerMessagePayload):
     account_id = _sales_live_account(request)
     try:
+        if payload.report_issue:
+            raise ValueError("Only the reseller can report a replacement issue.")
         enforce_live_message(request, account_id=account_id)
         message = reseller_messaging.send_from_leader(
             account_id,
             reseller_account_id,
             str(payload.client_message_id),
             payload.message,
+            **({"return_id": payload.return_id} if payload.return_id else {}),
         )
     except RateLimitExceeded as exc:
         return rate_limit_response(exc)

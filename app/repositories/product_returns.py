@@ -23,6 +23,8 @@ from .return_views import (
 
 
 RETURN_REQUEST_PERIOD = timedelta(days=5)
+RETURN_HOLDING_LOCATION = "Discarded inventory"
+EXPIRED_HOLDING_LOCATION = "Expired holding"
 
 
 def return_request_window(order: dict, *, now: datetime | None = None) -> dict:
@@ -72,8 +74,9 @@ def _case(cur, return_id: int, actor_id: int, allowed: set[str], *, read_only: b
         if parent:
             cur.execute("SELECT order_id FROM orders WHERE order_id=%s FOR UPDATE;", (parent["order_id"],))
     cur.execute(
-        """SELECT r.*,o.created_by_account_id AS reseller_account_id,o.team_leader_account_id
-        FROM product_returns r JOIN orders o USING(order_id) WHERE return_id=%s FOR UPDATE OF r;""",
+        """SELECT r.*,o.created_by_account_id AS reseller_account_id,o.team_leader_account_id,a.name reseller_name
+        FROM product_returns r JOIN orders o USING(order_id) JOIN accounts a ON a.account_id=o.created_by_account_id
+        WHERE return_id=%s FOR UPDATE OF r;""",
         (return_id,),
     )
     case = cur.fetchone()
@@ -96,24 +99,29 @@ def _case(cur, return_id: int, actor_id: int, allowed: set[str], *, read_only: b
 
 
 def _event(cur, case: dict, actor_id: int | None, action: str, remarks: str, operation_key: str | None = None,
-           *, refund_id: int | None = None, attempt_id: int | None = None, amount=None, request_hash: str | None = None) -> None:
+           *, refund_id: int | None = None, attempt_id: int | None = None, amount=None, request_hash: str | None = None,
+           customer_message: str | None = None) -> None:
     cur.execute(
-        "INSERT INTO product_return_events(return_id,actor_account_id,action,remarks,operation_key,refund_id,refund_attempt_id,amount,request_hash) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING event_id;",
-        (case["return_id"], actor_id, action, remarks, operation_key, refund_id, attempt_id, amount, request_hash),
+        "INSERT INTO product_return_events(return_id,actor_account_id,action,remarks,operation_key,refund_id,refund_attempt_id,amount,request_hash,customer_message) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING event_id;",
+        (case["return_id"], actor_id, action, remarks, operation_key, refund_id, attempt_id, amount, request_hash, customer_message),
     )
     event_id = cur.fetchone()["event_id"]
     cur.execute("UPDATE product_returns SET updated_at=now() WHERE return_id=%s;", (case["return_id"],))
     fallback_owner = False
     handoff_required = action == "inventory_verified" and case["status"] != "completed"
-    if handoff_required:
+    if handoff_required or action in {"receipt_discrepancy", "customer_issue_reported"}:
         cur.execute("""SELECT 1 FROM accounts WHERE account_id=%s AND is_active
             AND account_type='team_leader' AND team_leader_role IN ('sales','sales-supervisor');""",
             (case.get("team_leader_account_id"),))
         fallback_owner = not bool(cur.fetchone())
         if fallback_owner:
             _create_notification_cursor(
-                cur, recipient_role="owner", category="order", title="Returned goods complete—Sales assignment requires attention",
-                message=f"Return #{case['return_id']} has complete verified receipts. Resolve its missing or inactive Sales assignment before settlement.",
+                cur, recipient_role="owner", category="order",
+                title=("Returned goods complete—Sales assignment requires attention" if handoff_required else
+                       "Replacement issue—Sales assignment requires attention" if action == "customer_issue_reported" else
+                       "Return receipt mismatch—Sales assignment requires attention"),
+                message=(f"Return #{case['return_id']} has complete verified receipts. Resolve its missing or inactive Sales assignment before settlement."
+                         if handoff_required else f"Return #{case['return_id']} needs Sales review. Resolve its missing or inactive Sales assignment. {remarks}"),
                 target_url=f"/portal/owner/returns?case={case['return_id']}", source_type="product_returns",
                 source_id=case["return_id"], dedupe_key=f"return-event-{event_id}-owner-handoff",
             )
@@ -133,10 +141,11 @@ def _event(cur, case: dict, actor_id: int | None, action: str, remarks: str, ope
                 cur,
                 recipient_account_id=recipient,
                 category="order",
-                title=("Returned goods complete—Sales confirmation required" if role != "reseller" and handoff_required
+                title=("Return receipt mismatch—Sales review required" if role != "reseller" and action == "receipt_discrepancy"
+                       else "Returned goods complete—Sales confirmation required" if role != "reseller" and handoff_required
                        else f"Return #{case['return_id']}: {action.replace('_', ' ')}"),
-                message=(RESELLER_EVENT_MESSAGES.get(action, "Your return has been updated. Open it to view the next step.")
-                         if role == "reseller" and action != "rejected" else
+                message=((customer_message or RESELLER_EVENT_MESSAGES.get(action, "Your return has been updated. Open it to view the next step."))
+                         if role == "reseller" else
                          f"All approved goods for Return #{case['return_id']} arrived and were verified. Confirm proceeding with the approved resolution."
                          if handoff_required else remarks),
                 target_url=f"/portal/{role}/returns?case={case['return_id']}",
@@ -273,11 +282,12 @@ def review_product_return(
     replacements: list[tuple[int, object]] | None = None,
     revised_quantities: list[tuple[int, object]] | None = None,
     operation_key: str | None = None,
+    customer_message: str | None = None,
 ) -> None:
     remarks = _text(remarks)
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"sales", "sales-supervisor"})
-        request_hash = fingerprint(return_id,actor_id,approve,remarks,replacements,revised_quantities)
+        request_hash = fingerprint(return_id,actor_id,approve,remarks,replacements,revised_quantities,customer_message)
         if operation_key:
             operation_key = str(UUID(operation_key))
             cur.execute(
@@ -289,6 +299,10 @@ def review_product_return(
                 if previous["return_id"] != return_id or previous["request_hash"] != request_hash:
                     raise ValueError("This review reference was used with different details.")
                 return
+        if not approve or case["status"] == "discrepancy":
+            customer_message = _text(customer_message, "Explanation for the reseller")
+        elif customer_message:
+            customer_message = _text(customer_message, "Explanation for the reseller")
         if (
             case["status"] not in {"submitted", "discrepancy", "awaiting_receipt", "awaiting_inventory_verification", "settlement_pending"}
             or case["replacement_released_at"]
@@ -299,8 +313,10 @@ def review_product_return(
             if case["status"] != "submitted":
                 raise ValueError("Only a submitted request can be rejected.")
             cur.execute("UPDATE product_returns SET status='rejected' WHERE return_id=%s;", (return_id,))
-            _event(cur, case, actor_id, "rejected", remarks, operation_key,request_hash=request_hash)
+            _event(cur, case, actor_id, "rejected", remarks, operation_key,request_hash=request_hash,customer_message=customer_message)
             return
+        from .return_customer import snapshot_offer
+        snapshot_offer(cur, return_id)
         if revised_quantities:
             if case["status"] != "discrepancy" or case["verified_at"]:
                 raise ValueError("Quantity revisions require a documented receipt discrepancy.")
@@ -390,10 +406,11 @@ def review_product_return(
         )
         cur.execute("SELECT * FROM product_returns WHERE return_id=%s;", (return_id,))
         updated = dict(cur.fetchone())
+        snapshot_offer(cur, return_id)
         if updated["verified_at"] and updated["resolution"] == "refund":
             _refund(cur, updated)
             _complete_if_ready(cur, return_id)
-        _event(cur, case, actor_id, "sales_approved", remarks, operation_key,request_hash=request_hash)
+        _event(cur, case, actor_id, "sales_approved", remarks, operation_key,request_hash=request_hash,customer_message=customer_message)
 
 
 def _holding(
@@ -509,103 +526,178 @@ def _complete_if_ready(cur, return_id: int) -> None:
 def receive_product_return(
     return_id: int, actor_id: int, receipts: list[tuple[int, object]], location: str, remarks: str, operation_key: str
 ) -> None:
-    remarks, location = _text(remarks), _text(location, "Holding location", 2, 200)
+    """Historical receipt primitive; portal receipt decisions use inspect_product_return."""
     with get_transaction_cursor() as cur:
-        case = _case(cur, return_id, actor_id, {"inventory"})
-        operation_key = str(UUID(operation_key))
-        request_hash = fingerprint(return_id, actor_id, sorted((int(i), str(parse_whole_packs(q))) for i,q in receipts), location, remarks)
-        cur.execute("SELECT * FROM product_return_receipts WHERE operation_key=%s;", (operation_key,))
-        recorded = cur.fetchone()
-        if recorded:
-            if recorded["return_id"] != return_id or recorded["request_hash"] != request_hash:
-                raise ValueError("This receipt reference was used with different details.")
-            return
-        if case["status"] != "awaiting_receipt":
-            raise ValueError("Sales approval is required before receiving these items.")
-        if not receipts or len({int(i) for i, _ in receipts}) != len(receipts):
-            raise ValueError("Select distinct approved return lines and quantities.")
-        cur.execute("INSERT INTO product_return_receipts(return_id,operation_key,request_hash,received_by_account_id,location,remarks) VALUES(%s,%s,%s,%s,%s,%s) RETURNING receipt_id;", (return_id,operation_key,request_hash,actor_id,location,remarks))
-        receipt_id = cur.fetchone()["receipt_id"]
-        from uuid import uuid5, NAMESPACE_URL
+        _receive_product_return(cur, return_id, actor_id, receipts, location, remarks, operation_key)
 
-        for index, (line_id, value) in enumerate(receipts):
-            quantity = parse_whole_packs(value)
-            cur.execute(
-                """SELECT l.*,a.batch_id,b.item_id,b.batch_code,b.expiry_date FROM product_return_lines l
-                JOIN fulfillment_allocations a USING(allocation_id) JOIN inventory_batches b USING(batch_id)
-                WHERE l.return_id=%s AND l.return_line_id=%s FOR UPDATE OF l;""",
-                (return_id, line_id),
-            )
-            line = cur.fetchone()
-            if (
-                not line
-                or quantity + line["received_quantity"] > line["quantity"]
-                or line["expiry_date"] is None
-            ):
-                raise ValueError(
-                    "Receipt must match a Sales-approved original batch and outstanding quantity. Flag discrepancies separately."
-                )
-            holding_id = _holding(
-                cur,
-                product_id=line["item_id"],
-                batch_code=line["batch_code"],
-                expiry_date=line["expiry_date"],
-                quantity=quantity,
-                location=location,
-                actor_id=actor_id,
-                source="return",
-                batch_id=line["batch_id"],
-                return_line_id=line_id,
-            )
-            key = operation_key if index == 0 else str(uuid5(NAMESPACE_URL, f"{operation_key}-{line_id}"))
-            _custody(cur, holding_id, "return_receipt", quantity, actor_id, remarks, key)
-            cur.execute("INSERT INTO product_return_receipt_lines(receipt_id,return_line_id,holding_id,movement_id,quantity) SELECT %s,%s,%s,movement_id,%s FROM expired_stock_movements WHERE operation_key=%s;", (receipt_id,line_id,holding_id,quantity,key))
-            cur.execute(
-                "UPDATE product_return_lines SET received_quantity=received_quantity+%s WHERE return_line_id=%s;",
-                (quantity, line_id),
-            )
+
+def _receive_product_return(cur, return_id, actor_id, receipts, location, remarks, operation_key) -> None:
+    remarks, location = _text(remarks), _text(location, "Holding location", 2, 200)
+    case = _case(cur, return_id, actor_id, {"inventory"})
+    operation_key = str(UUID(operation_key))
+    request_hash = fingerprint(return_id, actor_id, sorted((int(i), str(parse_whole_packs(q))) for i,q in receipts), location, remarks)
+    cur.execute("SELECT * FROM product_return_receipts WHERE operation_key=%s;", (operation_key,))
+    recorded = cur.fetchone()
+    if recorded:
+        if recorded["return_id"] != return_id or recorded["request_hash"] != request_hash:
+            raise ValueError("This receipt reference was used with different details.")
+        return
+    if case["status"] != "awaiting_receipt":
+        raise ValueError("Sales approval is required before receiving these items.")
+    if not receipts or len({int(i) for i, _ in receipts}) != len(receipts):
+        raise ValueError("Select distinct approved return lines and quantities.")
+    cur.execute("INSERT INTO product_return_receipts(return_id,operation_key,request_hash,received_by_account_id,location,remarks) VALUES(%s,%s,%s,%s,%s,%s) RETURNING receipt_id;", (return_id,operation_key,request_hash,actor_id,location,remarks))
+    receipt_id = cur.fetchone()["receipt_id"]
+    from uuid import uuid5, NAMESPACE_URL
+
+    for index, (line_id, value) in enumerate(receipts):
+        quantity = parse_whole_packs(value)
         cur.execute(
-            "SELECT 1 FROM product_return_lines WHERE return_id=%s AND received_quantity<quantity;", (return_id,)
+            """SELECT l.*,a.batch_id,b.item_id,b.batch_code,b.expiry_date FROM product_return_lines l
+            JOIN fulfillment_allocations a USING(allocation_id) JOIN inventory_batches b USING(batch_id)
+            WHERE l.return_id=%s AND l.return_line_id=%s FOR UPDATE OF l;""",
+            (return_id, line_id),
         )
-        if not cur.fetchone():
-            cur.execute("UPDATE product_returns SET status='awaiting_inventory_verification' WHERE return_id=%s;", (return_id,))
-        _event(cur, case, actor_id, "inventory_received", f"Receipt #{receipt_id}: {remarks}")
+        line = cur.fetchone()
+        if (
+            not line
+            or quantity + line["received_quantity"] > line["quantity"]
+            or line["expiry_date"] is None
+        ):
+            raise ValueError(
+                "Receipt must match a Sales-approved original batch and outstanding quantity. Flag discrepancies separately."
+            )
+        holding_id = _holding(
+            cur,
+            product_id=line["item_id"],
+            batch_code=line["batch_code"],
+            expiry_date=line["expiry_date"],
+            quantity=quantity,
+            location=location,
+            actor_id=actor_id,
+            source="return",
+            batch_id=line["batch_id"],
+            return_line_id=line_id,
+        )
+        key = operation_key if index == 0 else str(uuid5(NAMESPACE_URL, f"{operation_key}-{line_id}"))
+        _custody(cur, holding_id, "return_receipt", quantity, actor_id, remarks, key)
+        cur.execute("INSERT INTO product_return_receipt_lines(receipt_id,return_line_id,holding_id,movement_id,quantity) SELECT %s,%s,%s,movement_id,%s FROM expired_stock_movements WHERE operation_key=%s;", (receipt_id,line_id,holding_id,quantity,key))
+        cur.execute(
+            "UPDATE product_return_lines SET received_quantity=received_quantity+%s WHERE return_line_id=%s;",
+            (quantity, line_id),
+        )
+    cur.execute(
+        "SELECT 1 FROM product_return_lines WHERE return_id=%s AND received_quantity<quantity;", (return_id,)
+    )
+    if not cur.fetchone():
+        cur.execute("UPDATE product_returns SET status='awaiting_inventory_verification' WHERE return_id=%s;", (return_id,))
+    _event(cur, case, actor_id, "inventory_received", f"Receipt #{receipt_id}: {remarks}")
 
 
 def verify_product_return(return_id: int, actor_id: int, remarks: str, operation_key: str) -> None:
+    """Reconcile historical receipts; new portal checks combine receipt and verification."""
+    with get_transaction_cursor() as cur:
+        _verify_product_return(cur, return_id, actor_id, remarks, operation_key)
+
+
+def _verify_product_return(cur, return_id, actor_id, remarks, operation_key, *, authorize_approval=False) -> None:
     remarks = _text(remarks)
     operation_key = str(UUID(operation_key))
     request_hash = fingerprint(return_id, actor_id, remarks)
+    case = _case(cur, return_id, actor_id, {"inventory"})
+    cur.execute("SELECT * FROM product_return_events WHERE operation_key=%s;", (operation_key,))
+    event = cur.fetchone()
+    if event:
+        if event["return_id"] != return_id or event["action"] not in {"inventory_verified", "inventory_reverified", "inventory_receipt_complete"} or event["request_hash"] != request_hash:
+            raise ValueError("This verification reference was used with different details.")
+        return
+    legacy_verification = (
+        case["verified_at"] and not case["verified_by_account_id"]
+        and case["status"] in {"settlement_pending", "completed"}
+    )
+    pending_clearance = authorize_approval and case["status"] == "settlement_pending" and not settlement_is_authorized(case)
+    if not legacy_verification and not pending_clearance and (case["verified_at"] or case["status"] != "awaiting_inventory_verification"):
+        raise ValueError("Receive all Sales-approved goods and resolve discrepancies before final Inventory verification.")
+    if not case["approved_by_account_id"]:
+        raise ValueError("Receive all Sales-approved goods and resolve discrepancies before final Inventory verification.")
+    problems = receipt_problems(cur, return_id)
+    if problems:
+        raise ValueError(problems[0])
+    cur.execute("SELECT SUM(quantity*unit_price) credit FROM product_return_lines WHERE return_id=%s;", (return_id,))
+    if cur.fetchone()["credit"] != case["credit"]:
+        raise ValueError("Return credit does not match the original purchase prices.")
+    if authorize_approval:
+        try:
+            _actor(cur, case["approved_by_account_id"], {"sales", "sales-supervisor"})
+        except ValueError as exc:
+            raise ValueError("The original Sales approval needs review before this return can proceed.") from exc
+        if case["resolution"] == "replace":
+            cur.execute("SELECT SUM(line_total) total FROM replacement_quote_lines WHERE return_id=%s AND revision=%s;",
+                        (return_id, case["quote_revision"]))
+            if case["quote_revision"] <= 0 or cur.fetchone()["total"] != case["replacement_total"]:
+                raise ValueError("The Sales-approved replacement quote requires review.")
+        cur.execute("""UPDATE product_returns SET settlement_authorized_by_account_id=approved_by_account_id,
+            settlement_authorized_at=now(),settlement_authorized_quote_revision=quote_revision WHERE return_id=%s;""", (return_id,))
+    next_status = "completed" if legacy_verification and case["status"] == "completed" else "settlement_pending"
+    cur.execute("UPDATE product_returns SET verified_at=now(),verified_by_account_id=%s,verification_remarks=%s,status=%s WHERE return_id=%s RETURNING *;", (actor_id,remarks,next_status,return_id))
+    verified = dict(cur.fetchone())
+    _event(cur, case, actor_id, "inventory_receipt_complete" if authorize_approval else "inventory_reverified" if next_status == "completed" else "inventory_verified",
+           remarks, operation_key, request_hash=request_hash)
+    if case["resolution"] == "refund":
+        _refund(cur, verified)
+    _complete_if_ready(cur, return_id)
+
+
+def _receipt_review_version(case: dict, lines: list[dict]) -> str:
+    return fingerprint(case["return_id"], case["approved_by_account_id"], case["quote_revision"],
+                       sorted((line["return_line_id"], line["allocation_id"], int(line["quantity"])) for line in lines))
+
+
+def inspect_product_return(return_id: int, actor_id: int, outcome: str, remarks: str, operation_key: str,
+                           review_version: str | None = None) -> None:
+    """Accept a complete matching return or report a mismatch; never accept a partial receipt."""
+    from uuid import NAMESPACE_URL, uuid5
+
+    if outcome not in {"complete", "mismatch"}:
+        raise ValueError("Choose complete receipt or report a mismatch.")
+    remarks = _text(remarks)
+    operation_key = str(UUID(operation_key))
+    request_hash = fingerprint(return_id, actor_id, remarks)
+    action = "inventory_receipt_complete" if outcome == "complete" else "receipt_discrepancy"
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"inventory"})
         cur.execute("SELECT * FROM product_return_events WHERE operation_key=%s;", (operation_key,))
-        event = cur.fetchone()
-        if event:
-            if event["return_id"] != return_id or event["action"] not in {"inventory_verified", "inventory_reverified"} or event["request_hash"] != request_hash:
-                raise ValueError("This verification reference was used with different details.")
+        previous = cur.fetchone()
+        if previous:
+            if (previous["return_id"], previous["actor_account_id"], previous["action"], previous["request_hash"]) != (
+                return_id, actor_id, action, request_hash,
+            ):
+                raise ValueError("This receipt decision was already recorded with different details.")
             return
-        legacy_verification = (
-            case["verified_at"] and not case["verified_by_account_id"]
-            and case["status"] in {"settlement_pending", "completed"}
-        )
-        if not legacy_verification and (case["verified_at"] or case["status"] != "awaiting_inventory_verification"):
-            raise ValueError("Receive all Sales-approved goods and resolve discrepancies before final Inventory verification.")
-        if not case["approved_by_account_id"]:
-            raise ValueError("Receive all Sales-approved goods and resolve discrepancies before final Inventory verification.")
-        problems = receipt_problems(cur, return_id)
-        if problems:
-            raise ValueError(problems[0])
-        cur.execute("SELECT SUM(quantity*unit_price) credit FROM product_return_lines WHERE return_id=%s;", (return_id,))
-        if cur.fetchone()["credit"] != case["credit"]:
-            raise ValueError("Return credit does not match the original purchase prices.")
-        next_status = "completed" if legacy_verification and case["status"] == "completed" else "settlement_pending"
-        cur.execute("UPDATE product_returns SET verified_at=now(),verified_by_account_id=%s,verification_remarks=%s,status=%s WHERE return_id=%s RETURNING *;", (actor_id,remarks,next_status,return_id))
-        verified = dict(cur.fetchone())
-        _event(cur, case, actor_id, "inventory_reverified" if next_status == "completed" else "inventory_verified",
-               remarks, operation_key, request_hash=request_hash)
-        if case["resolution"] == "refund":
-            _refund(cur, verified)
-        _complete_if_ready(cur, return_id)
+        cur.execute("SELECT return_line_id,allocation_id,quantity,received_quantity FROM product_return_lines WHERE return_id=%s ORDER BY return_line_id FOR UPDATE;", (return_id,))
+        lines = cur.fetchall()
+        if review_version is not None and review_version != _receipt_review_version(case, lines):
+            raise ValueError("The approved request changed. Reload this case before recording receipt.")
+        if outcome == "mismatch":
+            if case["status"] not in {"awaiting_receipt", "awaiting_inventory_verification"} or case["verified_at"]:
+                raise ValueError("Sales must review this return before another receipt decision.")
+            cur.execute("UPDATE product_returns SET status='discrepancy' WHERE return_id=%s;", (return_id,))
+            _event(cur, case, actor_id, action, remarks, operation_key, request_hash=request_hash)
+            return
+        if not case["approved_by_account_id"] or case["status"] not in {
+            "awaiting_receipt", "awaiting_inventory_verification", "settlement_pending",
+        }:
+            raise ValueError("Sales must approve or resolve the mismatch before complete receipt can be confirmed.")
+        if settlement_is_authorized(case):
+            raise ValueError("The complete receipt has already been confirmed.")
+        if not lines:
+            raise ValueError("No Sales-approved return items were found.")
+        remaining = [(line["return_line_id"], line["quantity"] - line["received_quantity"])
+                     for line in lines if line["quantity"] > line["received_quantity"]]
+        if remaining:
+            receipt_key = str(uuid5(NAMESPACE_URL, f"complete-return-receipt-{operation_key}"))
+            _receive_product_return(cur, return_id, actor_id, remaining, RETURN_HOLDING_LOCATION, remarks, receipt_key)
+        _verify_product_return(cur, return_id, actor_id, remarks, operation_key, authorize_approval=True)
 
 
 def authorize_return_settlement(return_id: int, actor_id: int, remarks: str, operation_key: str) -> None:
@@ -1015,7 +1107,9 @@ def sync_expired_custody(cur) -> None:
             )
 
 
-def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reconciliation_only: bool = False) -> list[dict]:
+def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reconciliation_only: bool = False,
+                         queue: str | None = None) -> list[dict]:
+    from app.return_experience import QUEUE_SQL, PAYMENT_PROOF_SQL, FOLLOWUP_SQL, VALID_RESERVATION_SQL, experience, normalize_queue
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"reseller", "sales", "sales-supervisor", "inventory"})
         scope, params = "", []
@@ -1028,6 +1122,10 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
             )
         elif role == "sales":
             scope, params = " AND o.team_leader_account_id=%s", [actor_id]
+        if queue is not None and role != "inventory":
+            scope += f" AND ({QUEUE_SQL})=%s" if normalize_queue(queue) != "all" else ""
+            if normalize_queue(queue) != "all":
+                params.append(normalize_queue(queue))
         if status:
             stage_sql = INVENTORY_STATUS_SQL if role == "inventory" else SALES_STAGE_SQL if role != "reseller" else "r.status"
             scope += f" AND ({stage_sql})=%s"
@@ -1049,9 +1147,10 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
             (SELECT SUM(l.quantity) FROM product_return_lines l WHERE l.return_id=r.return_id) requested_quantity,
             (SELECT SUM(l.received_quantity) FROM product_return_lines l WHERE l.return_id=r.return_id) received_quantity,
             GREATEST(r.replacement_total-r.credit,0) additional_due,GREATEST(r.credit-r.replacement_total,0) unused_credit,
-            EXISTS(SELECT 1 FROM replacement_stock_reservations s WHERE s.return_id=r.return_id) has_reservations,
+            {VALID_RESERVATION_SQL if role != 'inventory' else 'EXISTS(SELECT 1 FROM replacement_stock_reservations s WHERE s.return_id=r.return_id)'} has_reservations,
             (SELECT status FROM order_refunds f WHERE f.return_id=r.return_id) refund_status,
             (SELECT order_refund_id FROM order_refunds f WHERE f.return_id=r.return_id) order_refund_id,checks.flags reconciliation_flags
+            ,{PAYMENT_PROOF_SQL} has_payment_proof,{FOLLOWUP_SQL} has_open_followup
             FROM product_returns r JOIN orders o USING(order_id) JOIN accounts a ON a.account_id=o.created_by_account_id
             JOIN product_return_review_reconciliation checks USING(return_id)
             WHERE true"""
@@ -1064,11 +1163,27 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
             row["list_total"] = total
             row["list_page"] = pagination["page"]
             row["sales_authorized"] = settlement_is_authorized(row)
+            if role != "inventory":
+                row["experience"] = experience(row)
         if role == "inventory":
             return [inventory_return_view(row) for row in rows]
         if role == "reseller":
             return [reseller_return_view(row) for row in rows]
         return rows
+
+
+def return_queue_counts(actor_id: int) -> dict:
+    from app.return_experience import QUEUE_SQL
+    with get_transaction_cursor() as cur:
+        role = _actor(cur, actor_id, {"sales", "sales-supervisor"})
+        scope = " AND o.team_leader_account_id=%s" if role != "owner" else ""
+        params = (actor_id,) if scope else None
+        cur.execute(f"""SELECT {QUEUE_SQL} queue,COUNT(*) total FROM product_returns r
+            JOIN orders o USING(order_id) JOIN product_return_review_reconciliation checks USING(return_id)
+            WHERE true {scope} GROUP BY 1""", params)
+        counts = {row["queue"]: row["total"] for row in cur.fetchall()}
+        counts["all"] = sum(counts.values())
+        return counts
 
 
 def get_product_return(return_id: int, actor_id: int) -> dict:
@@ -1082,6 +1197,7 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
             (return_id,),
         )
         case["lines"] = clean_row(cur.fetchall())
+        case["receipt_review_version"] = _receipt_review_version(case, case["lines"])
         cur.execute(
             "SELECT e.*,a.name actor_name FROM product_return_events e LEFT JOIN accounts a ON a.account_id=e.actor_account_id WHERE return_id=%s ORDER BY event_id;",
             (return_id,),
@@ -1101,6 +1217,10 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
         cur.execute("SELECT order_refund_id,status,amount,completed_at FROM order_refunds WHERE return_id=%s;", (return_id,))
         case["refund"] = clean_row(cur.fetchone())
         case["sales_authorized"] = settlement_is_authorized(case)
+        case["receipt_confirmed"] = bool(case["sales_authorized"] and any(
+            event["action"] == "inventory_receipt_complete" and event["created_at"] == case.get("settlement_authorized_at")
+            for event in case["events"]
+        ))
         case["sales_stage"] = "ready_for_confirmation" if case["status"] == "settlement_pending" and not case["sales_authorized"] else case["status"]
         case["additional_due"] = max(Decimal(0), case["replacement_total"] - case["credit"])
         case["unused_credit"] = max(Decimal(0), case["credit"] - case["replacement_total"])
@@ -1147,6 +1267,10 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
         if role == "inventory":
             cur.execute(f"SELECT {INVENTORY_STATUS_SQL} inventory_status FROM product_returns r WHERE return_id=%s;", (return_id,))
             case["inventory_status"] = cur.fetchone()["inventory_status"]
+            case["inventory_can_confirm_receipt"] = bool(
+                case["approved_by_account_id"] and not case["sales_authorized"]
+                and case["status"] in {"awaiting_receipt", "awaiting_inventory_verification", "settlement_pending"}
+            )
             case["inventory_can_reserve"] = bool(
                 case["verified_at"] and case["verified_by_account_id"] and case["resolution"] == "replace"
                 and case["status"] == "settlement_pending" and case["accepted_revision"] == case["quote_revision"]
@@ -1157,6 +1281,8 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
                 case["inventory_can_reserve"] and case["has_reservations"] and not replacement_problems(cur, case)
             )
             return clean_row(inventory_return_view(case))
+        from .return_customer import enrich_case
+        enrich_case(cur, case)
         if role == "reseller":
             return clean_row(reseller_return_view(case))
         return clean_row(case)

@@ -1,114 +1,35 @@
-{% include 'portals/_settlement_summary.html' %}
-            <div class="sales-page sales-reports-page">
-            <section class="content-grid two sales-report-builder">
-                <article class="panel sales-report-compose">
-                    <h2>Submit team sales report</h2>
-                    <form class="form-panel bare" action="/portal/{{ role_key }}/reports" method="post" data-team-report-form data-business-date="{{ report_default_end_date }}">
-                        <div class="form-grid"><label>Start <input required type="date" name="period_start" value="{{ report_default_start_date }}"></label><label>End <input required type="date" name="period_end" value="{{ report_default_end_date }}"></label></div>
-                        <div class="form-grid" data-team-report-totals>
-                            <label>Retained sales <input readonly type="text" data-report-total-sales value="PHP 0.00"></label>
-                            <label>Total orders <input readonly type="text" data-report-total-orders value="0"></label>
-                        </div>
-                        <label>Notes <textarea name="notes" rows="4"></textarea></label>
-                        <button class="button primary" type="submit">Submit report</button>
-                    </form>
-                    <p class="hint">Completed refunds are excluded from retained sales. Pending or failed refunds remain unsettled. Pack counts refer to original deliveries. Replacement releases and additional payments are not counted as new ordinary sales.</p>
-                    <p data-report-refund-totals aria-live="polite"></p>
-                    <section aria-label="Completed refunds excluded from sales"><h3>Completed refunds — separate from sales</h3><div data-report-refund-items></div></section>
-                    <div class="report-order-items">
-                        <header class="report-order-items-heading">
-                            <div><span class="eyebrow">Order contents</span><h3>Included order items</h3></div>
-                            <span class="report-order-count" data-report-order-count>0 orders</span>
-                        </header>
-                        <div class="report-order-manifest" id="report-order-manifest" data-report-order-items aria-live="polite">
-                            <div class="report-order-empty"><i data-lucide="package-open" aria-hidden="true"></i><span>No fulfilled order items in this period.</span></div>
-                        </div>
-                        <button class="report-order-more" type="button" data-report-order-more aria-controls="report-order-manifest" hidden>
-                            <span data-report-order-more-label>Show more orders</span>
-                            <i data-lucide="chevrons-down" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                    <script type="application/json" id="team-report-sales-data">{{ team_report_sales|tojson }}</script>
-                    <script type="application/json" id="team-report-refunds-data">{{ team_report_refunds|default([])|tojson }}</script>
-
-                </article>
-                <article class="panel sales-report-history">
-                    <h2>Team reports</h2>
-                    <form class="filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
-                        <label>Search <input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Submitted by or notes"></label>
-                    </form>
-                    <div class="sales-report-results" data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
-                        <div class="stack-list">
-                        {% for report in sales_reports if report.report_source == "team_leader" %}
-                            <div class="stack-item"><strong>{{ report.submitted_by }}</strong><span>{{ report.period_start|nice_date }} - {{ report.period_end|nice_date }}</span><em>{{ report.total_sales|currency if not report.reconciliation_required else "Requires reconciliation" }} retained - {{ report.total_orders }} {{ "order" if report.total_orders == 1 else "orders" }}</em>{% include "portals/_report_refund_breakdown.html" %}</div>
-                        {% else %}
-                            <div class="sales-report-empty" role="status">
-                                <i data-lucide="file-search" aria-hidden="true"></i>
-                                <strong>No team reports found</strong>
-                                <span>{% if sales_reports_page.filters.q %}Try a different name, report number, or note.{% else %}Submitted team reports will appear here.{% endif %}</span>
-                            </div>
-                        {% endfor %}
-                        </div>
-                        {% if sales_reports_page.pagination.total_pages > 1 %}
-                        <nav class="pagination sales-report-pagination" aria-label="Team report pages">
-                            {% if sales_reports_page.pagination.has_prev %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page - 1 }}">Previous</a>{% endif %}
-                            <span>Page {{ sales_reports_page.pagination.page }} of {{ sales_reports_page.pagination.total_pages }}</span>
-                            {% if sales_reports_page.pagination.has_next %}<a href="?q={{ sales_reports_page.filters.q|urlencode }}&sort={{ sales_reports_page.filters.sort|urlencode }}&page={{ sales_reports_page.pagination.page + 1 }}">Next</a>{% endif %}
-                        </nav>
-                        {% endif %}
-                    </div>
-                </article>
-            </section>
-            <section class="panel sales-report-rejections" aria-labelledby="rejected-orders-title">
-                <div class="panel-heading">
-                    <div>
-                        <span class="rejected-order-kicker">Order exceptions</span>
-                        <h2 id="rejected-orders-title">Rejected reseller orders</h2>
-                    </div>
-                    <span class="hint">Kept separate from fulfilled sales and report totals.</span>
-                </div>
-                {% if team_rejected_orders %}
-                <div class="rejected-order-list">
-                    {% for rejected in team_rejected_orders %}
-                    <article class="rejected-order-card">
-                        <header class="rejected-order-header">
-                            <div class="rejected-order-identity">
-                                <span>Order #{{ rejected.order_id }}</span>
-                                <h3>{{ rejected.reseller }}</h3>
-                            </div>
-                            <dl class="rejected-order-meta">
-                                <div>
-                                    <dt>Rejected</dt>
-                                    <dd>{{ rejected.rejected_at|nice_date }}</dd>
-                                </div>
-                                <div>
-                                    <dt>Order total</dt>
-                                    <dd>{{ rejected.total_amount|currency }}</dd>
-                                </div>
-                            </dl>
-                        </header>
-                        <div class="rejected-order-details">
-                            <div class="rejected-order-products">
-                                <h4>Products</h4>
-                                <ul>
-                                    {% for item in rejected["items"].split(", ") %}
-                                    <li>{{ item }}</li>
-                                    {% endfor %}
-                                </ul>
-                            </div>
-                            <div class="rejected-order-notes">
-                                <h4>Notes</h4>
-                                <p>{{ rejected.notes or "No notes were provided." }}</p>
-                            </div>
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="rejected-orders-empty" role="status">
-                    <i data-lucide="circle-check-big" aria-hidden="true"></i>
-                    <div><strong>No rejected reseller orders</strong><span>Rejected orders will appear here for review.</span></div>
-                </div>
-                {% endif %}
-            </section>
-            </div>
+<div class="ar-workspace">
+  <header class="ar-workspace-heading"><div><span class="eyebrow">Your work, on record</span><h1>Sales activity reports</h1><p>Bring your sales, order decisions, returns and refund outcomes into one report for the Owner.</p></div><span class="ar-recipient"><i data-lucide="send" aria-hidden="true"></i>Reports go to the Owner</span></header>
+  <nav class="ar-view-nav" aria-label="Report views"><a class="{{ 'is-active' if report_view=='prepare' else '' }}" href="/portal/{{ role_key }}/reports" {% if report_view=='prepare' %}aria-current="page"{% endif %}><i data-lucide="file-pen-line" aria-hidden="true"></i>Prepare report</a><a class="{{ 'is-active' if report_view=='history' else '' }}" href="/portal/{{ role_key }}/reports?view=history" {% if report_view=='history' %}aria-current="page"{% endif %}><i data-lucide="archive" aria-hidden="true"></i>Submitted reports</a></nav>
+  {% if report_view=='prepare' %}
+  <section class="ar-surface ar-period" aria-labelledby="ar-period-title">
+    <div class="ar-period-heading"><div><h2 id="ar-period-title">Choose your reporting period</h2><p>Dates refer to when the original orders were placed, including related cases you personally handled.</p></div><div class="ar-shortcuts"><button type="button" data-period-start="{{ report_today[:7] }}-01" data-period-end="{{ report_today }}">This month</button><button type="button" data-period-start="{{ previous_start }}" data-period-end="{{ previous_end }}">Previous month</button></div></div>
+    <form class="ar-period-form" method="get" action="/portal/{{ role_key }}/reports/preview"><label for="ar-start">Start date<input id="ar-start" name="period_start" type="date" required value="{{ report_start }}" max="{{ report_today }}"></label><label for="ar-end">End date<input id="ar-end" name="period_end" type="date" required value="{{ report_end }}" max="{{ report_today }}"></label><button class="button primary" type="submit" data-keep-label="true"><i data-lucide="list-filter" aria-hidden="true"></i>Generate preview</button></form>
+    {% if activity_error %}<p class="ar-error" role="alert">{{ activity_error }}</p>{% endif %}
+  </section>
+  {% if activity_preview %}
+    <form class="ar-report-form" action="/portal/{{ role_key }}/reports" method="post" data-activity-report-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="preview_token" value="{{ preview_token }}">
+      <section class="ar-preview-heading"><div><span class="eyebrow">Preview · Not submitted</span><h2>{{ report_start }} – {{ report_end }}</h2><p>Prepared by {{ document.author.name }} · Captured {{ captured_label }} PHT</p></div>{% include 'portals/reports/_downloads.html' %}</section>
+      <div class="ar-metrics">{% for key,label in [('gross_sales','Original fulfilled sales'),('sales_refunds','Refunds against these sales'),('retained_sales','Retained sales'),('orders_handled','Orders personally handled')] %}<article class="ar-metric {{ 'ar-metric-featured' if key=='retained_sales' else '' }}"><span>{{ label }}</span><strong data-report-metric="{{ key }}">{{ document.summary[key]|currency if key!='orders_handled' else document.summary[key]|number }}</strong></article>{% endfor %}</div>
+      <section class="ar-surface ar-records">
+        <div class="ar-tab-nav" data-report-tabs aria-label="Report sections">{% for table in tables if table.key!='summary' %}<a href="#ar-panel-{{ table.key }}" id="ar-tab-{{ table.key }}" data-report-tab="{{ table.key }}">{{ table.title }}<span>{{ table.rows|length }}</span></a>{% endfor %}</div>
+        {% for table in tables if table.key!='summary' %}<section class="ar-tab-panel" id="ar-panel-{{ table.key }}" data-report-panel="{{ table.key }}" aria-labelledby="ar-tab-{{ table.key }}">
+          <div class="ar-section-heading"><div><h3>{{ table.title }}</h3><p>{% if table.key=='sales' %}Fulfilled orders you personally handled. Returns alone do not claim the original sale.{% elif table.key=='orders' %}Orders you created as counter sales, approved, rejected or fulfilled. Each order appears once.{% elif table.key=='returns' %}Your recorded reviews, decisions, authorizations and additional-payment verification.{% else %}Your refund work and outcomes linked to your handled return cases. The transfer processor is shown separately.{% endif %}</p></div></div>
+          {% include 'portals/reports/_table.html' %}
+          <label class="ar-notes-label" for="ar-notes-{{ table.key }}">{{ table.title }} notes <span>Optional</span><textarea id="ar-notes-{{ table.key }}" name="notes_{{ table.key }}" rows="3" maxlength="2000" placeholder="Add context or explain exceptions…">{{ draft_section_notes.get(table.key,'') }}</textarea></label>
+        </section>{% endfor %}
+      </section>
+      <section class="ar-surface ar-submit-section"><div><h2>Ready to send?</h2><p>The Owner will receive the complete report. All figures, case outcomes and notes are frozen at submission.</p></div><label class="ar-notes-label" for="ar-overall-notes">Report notes <span>Optional</span><textarea id="ar-overall-notes" name="notes" rows="4" maxlength="4000" placeholder="Summarize the period, explain issues, or highlight follow-up work…">{{ draft_notes }}</textarea></label><div class="ar-submit-footer"><p><i data-lucide="lock-keyhole" aria-hidden="true"></i>Only your recorded work is included. No reseller-submitted reports.</p><button class="button primary" type="submit" data-keep-label="true" data-submit-report><i data-lucide="send" aria-hidden="true"></i>Submit to Owner</button></div></section>
+    </form>
+  {% else %}<section class="ar-surface ar-start-state"><span class="ar-start-icon"><i data-lucide="notebook-tabs" aria-hidden="true"></i></span><h2>A clear record of your work</h2><p>Choose dates and generate a preview. Review each section, add your notes, then send one combined report to the Owner.</p><div><span><i data-lucide="shopping-bag" aria-hidden="true"></i>Sales</span><span><i data-lucide="clipboard-list" aria-hidden="true"></i>Orders</span><span><i data-lucide="package-check" aria-hidden="true"></i>Returns</span><span><i data-lucide="receipt-text" aria-hidden="true"></i>Refunds</span></div></section>{% endif %}
+  {% else %}
+    <section class="ar-surface ar-history"><div class="ar-section-heading"><div><span class="eyebrow">Submitted to the Owner</span><h2>Your report archive</h2><p>Open, download or print an exact submitted activity report.</p></div></div>
+      <form class="ar-history-filter" method="get"><input type="hidden" name="view" value="history"><label for="ar-search">Search reports<input id="ar-search" name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Report number or notes"></label><button class="button subtle" type="submit" data-keep-label="true">Search</button></form>
+      <div class="ar-history-list">{% for report in sales_reports %}<article class="ar-history-card"><header><div><span class="eyebrow">{{ 'Sales activity report' if report.activity_snapshot else 'Legacy sales report' }}</span><h3>Report #{{ report.sales_report_id }}</h3><p>{{ report.period_start|nice_date }} – {{ report.period_end|nice_date }}</p><small>Submitted {{ report.submitted_at|nice_date }}</small></div><div class="ar-history-value"><span>Retained sales</span><strong>{{ report.total_sales|currency if not report.reconciliation_required else 'Requires reconciliation' }}</strong><small>{{ report.orders_handled if report.activity_snapshot else report.total_orders }} {{ 'orders handled' if report.activity_snapshot else 'orders with retained sales' }}</small></div></header>
+          {% if report.activity_snapshot %}<div class="ar-history-actions"><a class="button primary" href="/portal/{{ role_key }}/reports/{{ report.sales_report_id }}">View report</a>{% with document=report.activity_snapshot %}{% include 'portals/reports/_downloads.html' %}{% endwith %}</div>{% else %}<details class="ar-legacy-details"><summary>View legacy sales details</summary><p class="ar-explainer">This report predates combined activity reporting. Personal action and return details were not captured.</p>{% include 'portals/_report_refund_breakdown.html' %}<p>{{ report.notes or 'No notes recorded.' }}</p></details>{% endif %}
+        </article>{% else %}<p class="ar-empty" role="status">No submitted reports found. Prepare a report to start your archive.</p>{% endfor %}</div>
+      {% if sales_reports_page.pagination.total_pages>1 %}<nav class="pagination" aria-label="Report pages">{% if sales_reports_page.pagination.has_prev %}<a href="?view=history&q={{ sales_reports_page.filters.q|urlencode }}&page={{ sales_reports_page.pagination.page-1 }}">Previous</a>{% endif %}<span>Page {{ sales_reports_page.pagination.page }} of {{ sales_reports_page.pagination.total_pages }}</span>{% if sales_reports_page.pagination.has_next %}<a href="?view=history&q={{ sales_reports_page.filters.q|urlencode }}&page={{ sales_reports_page.pagination.page+1 }}">Next</a>{% endif %}</nav>{% endif %}
+    </section>
+  {% endif %}
+</div>

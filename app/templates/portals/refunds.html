@@ -1,13 +1,15 @@
 <section class="refund-workspace refund-theme-business" data-refund-workspace>
+  {% if not refund_read_only %}
   <header class="refund-hero">
     <div>
       <span class="eyebrow">Manual payment resolution</span>
       <h2>{{ 'Sales Refunds' if refund_read_only else 'Refunds' }}</h2>
-      <p>{{ 'View refund progress for your assigned orders.' if refund_read_only else ('Review every refund case and its audit trail.' if role_key == 'owner' else 'Process refund cases assigned to you.') }}</p>
+      <p>{{ 'Review money refunds and product return requests for your assigned orders.' if refund_read_only else ('Review every refund case and its audit trail.' if role_key == 'owner' else 'Process refund cases assigned to you.') }}</p>
     </div>
     <div class="refund-hero-note"><i data-lucide="shield-check"></i><span><strong>{{ 'View settlement progress' if refund_read_only else 'Recorded, not gateway-verified' }}</strong><small>{{ 'Supervisors record transfers. Follow approvals, received items, and settlement here.' if refund_read_only else 'Complete a case only after the transfer is actually sent.' }}</small></span></div>
   </header>
-  <p class="hint"><a href="/portal/{{ role_key }}/returns">Open return review and replacements</a> &middot; Product returns use Inventory verification and Sales confirmation before this existing transfer workflow. Paid-order cancellation refunds retain their direct payment-refund process.</p>
+  <p class="hint"><a href="/portal/{{ role_key }}/{{ 'refunds?view=returns' if refunds_returns_workspace|default(false) else 'returns' }}">Open return review and replacements</a> &middot; Product returns use Inventory verification and Sales confirmation before this existing transfer workflow. Paid-order cancellation refunds retain their direct payment-refund process.</p>
+  {% endif %}
 
   <div class="refund-status-strip" aria-label="Refund totals">
     {% for status in refund_statuses %}
@@ -60,7 +62,7 @@
         <div>
           <span class="eyebrow">Order-linked refund thread</span>
           <h3>Order #{{ selected_refund.order_id }} &middot; Refund #{{ selected_refund.order_refund_id }}</h3>
-          {% if selected_refund.return_id %}<a href="/portal/{{ role_key }}/returns?case={{ selected_refund.return_id }}">Open return #{{ selected_refund.return_id }}</a>{% endif %}
+          {% if selected_refund.return_id %}<a href="/portal/{{ role_key }}/{{ 'refunds?view=returns&case=' if refunds_returns_workspace|default(false) else 'returns?case=' }}{{ selected_refund.return_id }}">Open return #{{ selected_refund.return_id }}</a>{% endif %}
           <p>{{ selected_refund.business_name or selected_refund.reseller_name or 'Reseller' }} &middot; {{ selected_refund.refund_type }}</p><a href="/portal/{{ role_key }}/orders?q={{ selected_refund.order_id }}">Open original sale #{{ selected_refund.order_id }}</a>
         </div>
         <span class="refund-badge large {{ selected_refund.status }}">{{ 'Refund pending' if selected_refund.status == 'pending' else 'Processing refund' if selected_refund.status == 'processing' else 'Refund completed' if selected_refund.status == 'completed' else 'Refund failed' }}</span>

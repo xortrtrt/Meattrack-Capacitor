@@ -17,3 +17,10 @@ app/static/uploads/profiles/
 .DS_Store
 .idea/
 .vscode/
+
+# Obsidian per-device workspace and recovery state (shared settings stay tracked).
+.obsidian/workspace*.json
+.obsidian/cache/
+.obsidian/plugins/
+.obsidian/appearance.json
+.trash/

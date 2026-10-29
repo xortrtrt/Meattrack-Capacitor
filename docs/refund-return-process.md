@@ -4,11 +4,9 @@
 
 The three portal views are linked stages of the existing refund workflow, not
 separate financial ledgers. Reseller uses the **My Returns** tab in **Order History**
-(`/portal/reseller/history?view=returns`) to track requests. A **Request a return / refund**
-button opens an order picker and request form in a modal. Original return URLs redirect
+(`/portal/reseller/history?view=returns`) to track requests. An eligible fulfilled order opens its return request form in a modal. Original return URLs redirect
 to this tab, preserving order and return links. The separate sidebar entry is removed;
-Sales uses **Return Review and Settlement** to approve and confirm proceeding;
-Inventory receives and verifies stock. All retain the same return and order IDs.
+Sales uses **Refunds & returns** to review requests; Inventory compares approved products and proof, then records a complete match or reports a mismatch. All retain the same return and order IDs.
 Existing `order_refunds`, attempts, proofs, references, processor permissions,
 and report snapshots remain the monetary source of truth. Pure replacements
 create no zero-value refund; only a cash amount owed creates a refund obligation.
@@ -23,28 +21,36 @@ timestamps require Sales verification. An already submitted request can still be
 reviewed, received, and settled afterward; an identical retry returns its original
 case without creating a new request. Cancellation refunds keep their existing rules.
 
-After Sales approves a request, Inventory records each physical delivery into
-**Non-sellable Returned Goods**. Returned packs never increase sellable batches,
-available-to-order balances, or replacement availability. Original batch, line,
-location, receipt, receiver, and custody movements remain linked. Disposal is
-separate from financial settlement and never erases this history.
+After Sales approves a request, Inventory compares the whole approved product list,
+original batches, quantities, and supporting photos against the goods returned.
+The modal presents two receipt outcomes:
 
-Final Inventory verification requires all approved packs and reconciled custody.
-It sends **Returned goods complete—Sales confirmation required** to the assigned
-active Sales reviewer; missing or inactive assignments notify Owner. Replayed
-verification requests do not duplicate receipts, events, or notifications.
+- **Everything is received and matches**: confirm the complete return. One transaction
+  records all outstanding approved goods, verifies traceable custody, and clears the
+  current Sales-approved resolution. There is no partial-quantity input, manual holding
+  location, second verification click, or additional Sales confirmation for this path.
+- **Products are missing or do not match**: describe the missing products or proof/batch
+  mismatch. Sales is notified, the case requires review, and replacement remains blocked.
+  No partial receipt is accepted. After Sales resolves the difference, Inventory checks
+  the revised approved request again. An inactive Sales assignment falls back to Owner.
 
-Sales must record **Proceed with refund** or **Proceed with replacement** after
-verification. The server derives the stored resolution and amount; a submitted
-amount cannot override them. Refund obligations remain visible before this
-confirmation, but existing refund processors cannot start or complete them.
-Supervisor/Owner still record transfers and proof in the existing Refunds page.
-Sales confirmation notifies the assigned processor that the linked refund can
-continue. Paid cancellation refunds have no return case and keep their existing
-direct payment-refund path.
+The holding location is automatically **Discarded inventory**. Returned packs never
+increase sellable batches, available-to-order balances, or replacement availability.
+Original batch, order line, receipt, receiver, and custody movements remain linked.
+The fixed location is a non-sellable classification; physical disposal is still a
+separate recorded action. Existing receipt history is preserved.
 
-For replacements, both Sales confirmation and customer acceptance are required
-before stock reservation. New quotations revoke confirmation and acceptance.
+A complete-match event records the actual Inventory reviewer. The existing Sales
+approver and current quote revision supply the authorization; it does not invent a
+new manual Sales action. Replayed decisions do not duplicate receipts or notifications.
+Legacy receipt/verification primitives and the explicit Sales confirmation action
+remain available for reconciling older records. Supervisor/Owner still record actual
+transfers and proof in the existing Refunds page. Paid cancellation refunds have no
+return case and retain their direct payment-refund path.
+
+For replacements, cleared Sales approval and customer acceptance are required
+before stock reservation. New quotations revoke clearance and acceptance; Inventory
+must confirm the complete match against the revised approval again.
 The Inventory and Sales pages distinguish **reserved batches** from **released
 batches**, showing batch codes, expiration dates, and quantities. Release checks
 current eligibility and financial clearance, deducts those batches, and records
@@ -54,8 +60,8 @@ without warehouse locations, staff audit notes, or company financial totals.
 
 Migration **036** adds Sales authorization metadata and direct movement links for
 new releases. Existing completed cases remain terminal without invented approvals
-or movement history. Unfinished cases require Sales confirmation before further
-settlement. Apply 036 before running this application revision; update both fresh
+or movement history. Unfinished cases require valid Sales authorization before further settlement,
+which a complete matching receipt now clears under the current Sales approval. Apply 036 before running this application revision; update both fresh
 schema and migration-based installations. The authorization action is
 `POST /portal/{role_key}/returns/actions/proceed` with `return_id`, `remarks`, and
 an idempotent `operation_key`.
@@ -70,7 +76,7 @@ different records and must not be counted interchangeably.
 | Unpaid cancellation | Reseller cancels an eligible unpaid order; release reserved stock. | No collection, sale, or refund. |
 | Paid order cancelled before approval | Assigned Sales rejects the pending order, records the reason, and confirms whether money was received. | Confirmed money received creates one full-payment refund obligation. The rejected order never contributes fulfilled sales. |
 | Rejected order without money received | Sales records payment not received. Submitted screenshots alone do not establish receipt of money. | No refund obligation or confirmed collection. |
-| Refund for fulfilled goods | Reseller selects original fulfilled delivery allocations; Sales approves; Inventory records receipt and separately verifies all goods. | Refund equals the approved quantities at their original purchase prices. |
+| Refund for fulfilled goods | Reseller selects original fulfilled delivery allocations; Sales approves; Inventory confirms a complete proof/quantity/batch match in one receipt decision. | Refund equals the approved quantities at their original purchase prices. |
 | Equal-value replacement | Complete return approval and verification; reseller accepts the current quote; Inventory reserves and releases valid stock. | Return credit covers replacement value; no new sale, payment, or refund. |
 | Cheaper replacement | Follow the replacement process and release the accepted goods. | One refund obligation for return credit minus replacement total. |
 | Dearer replacement | Follow the replacement process; upload proof and have Sales verify the exact extra amount before release. | Record a separate additional collection; no second ordinary sale. |
