@@ -1,0 +1,1003 @@
+erDiagram
+
+    DEPARTMENTS {
+        bigint department_id PK
+        text department_name UK
+        text description
+        timestamptz created_at
+    }
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email
+        text password_hash
+        text profile_image_path
+        numeric profile_image_position_x
+        numeric profile_image_position_y
+        numeric profile_image_scale
+        text team_leader_role
+        boolean is_active
+        text activation_status
+        timestamptz activated_at
+        timestamptz created_at
+    }
+
+    ACTIVITY_LOGS {
+        bigint activity_log_id PK
+        bigint account_id FK
+        text action
+        text entity_type
+        bigint entity_id
+        timestamptz created_at
+        text actor_role
+        text reason
+        jsonb before_state
+        jsonb after_state
+        text outcome
+        text request_id
+        text source_key
+    }
+
+    INQUIRIES {
+        bigint inquiry_id PK
+        text name
+        text contact_number
+        text email
+        text business_name
+        text message
+        text rejection_reason
+        text status
+        bigint assigned_team_leader_account_id FK
+        bigint reviewed_by_account_id FK
+        timestamptz reviewed_at
+        timestamptz follow_up_sent_at
+        timestamptz created_at
+        uuid chat_conversation_id FK, UK
+    }
+
+    RESELLERS {
+        bigint reseller_id PK
+        bigint inquiry_id FK, UK
+        text business_name
+        text contact_person
+        text email
+        text contact_number
+        text address
+        text reseller_status
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz approved_at
+        timestamptz created_at
+    }
+
+    INVENTORY_ITEMS {
+        bigint item_id PK
+        text item_type
+        text category
+        text name
+        text description
+        text unit
+        numeric base_price
+        numeric quantity_available
+        numeric pack_size
+        text pack_size_unit
+        text pack_content_status
+        boolean is_active
+        timestamptz created_at
+    }
+
+    INVENTORY_BATCHES {
+        bigint batch_id PK
+        bigint item_id FK
+        text batch_code UK
+        text source_type
+        numeric quantity_received
+        numeric quantity_available
+        text unit
+        date received_date
+        date expiry_date
+        text quality_status
+        timestamptz created_at
+    }
+
+    PRODUCT_RECIPES {
+        bigint recipe_id PK
+        bigint product_item_id FK
+        bigint material_item_id FK
+        numeric quantity_required
+        text unit
+    }
+
+    ORDERS {
+        bigint order_id PK
+        text order_type
+        bigint reseller_id FK
+        bigint created_by_account_id FK
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz approved_at
+        timestamptz order_date
+        text status
+        timestamptz fulfilled_at
+        numeric total_amount
+        text notes
+        text rejection_reason
+        boolean rejection_payment_received
+        text cancellation_reason
+        timestamptz cancelled_at
+        text payment_transaction_number
+        text payment_transaction_key
+        timestamptz payment_paid_at
+        numeric payment_amount
+        numeric payment_ocr_confidence
+        text payment_extraction_method
+        timestamptz payment_confirmed_at
+        text payment_ocr_engine
+        timestamptz payment_due_at
+        timestamptz expired_at
+    }
+
+    ORDER_ITEMS {
+        bigint order_item_id PK
+        bigint order_id FK
+        bigint product_id FK
+        numeric quantity
+        text unit
+        numeric unit_price
+        numeric line_total
+    }
+
+    ORDER_STOCK_RESERVATIONS {
+        bigint order_id PK, FK
+        bigint product_id PK, FK
+        numeric quantity
+        timestamptz reserved_at
+    }
+
+    ORDER_PAYMENT_PROOFS {
+        bigint order_payment_proof_id PK
+        bigint order_id FK
+        bigint uploaded_by_account_id FK
+        text filename
+        text content_type
+        bytea content
+        integer size_bytes
+        text checksum_sha256
+        timestamptz uploaded_at
+    }
+
+    ORDER_REFUNDS {
+        bigint order_refund_id PK
+        bigint order_id FK
+        numeric amount
+        char currency
+        text status
+        bigint requested_by_account_id FK
+        bigint assigned_supervisor_account_id FK
+        bigint processing_by_account_id FK
+        timestamptz requested_at
+        timestamptz processing_started_at
+        timestamptz completed_at
+        timestamptz failed_at
+        timestamptz updated_at
+        bigint return_id FK, UK
+        boolean payment_review_required
+    }
+
+    ORDER_REFUND_ATTEMPTS {
+        bigint order_refund_attempt_id PK
+        bigint order_refund_id FK
+        integer attempt_number
+        text status
+        bigint processor_account_id FK
+        text refund_method
+        text refund_transaction_number
+        text refund_transaction_key UK
+        timestamptz transferred_at
+        text internal_note
+        text failure_reason
+        timestamptz started_at
+        timestamptz completed_at
+        timestamptz failed_at
+        numeric transfer_amount
+        text receipt_extraction_method
+        numeric receipt_ocr_confidence
+        text receipt_ocr_engine
+    }
+
+    ORDER_REFUND_PROOFS {
+        bigint order_refund_proof_id PK
+        bigint order_refund_attempt_id FK, UK
+        bigint uploaded_by_account_id FK
+        text filename
+        text content_type
+        bytea content
+        integer size_bytes
+        char checksum_sha256
+        timestamptz uploaded_at
+    }
+
+    ORDER_REFUND_MESSAGES {
+        bigint order_refund_message_id PK
+        bigint order_refund_id FK
+        bigint sender_account_id FK
+        text sender_role
+        text message
+        timestamptz created_at
+        text message_kind
+        text system_event_key UK
+    }
+
+    RESELLER_CART_ITEMS {
+        bigint cart_item_id PK
+        bigint account_id FK
+        bigint product_id FK
+        numeric quantity
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    SALES_REPORTS {
+        bigint sales_report_id PK
+        text report_source
+        bigint submitted_by_account_id FK
+        bigint reseller_id FK
+        bigint department_id FK
+        date period_start
+        date period_end
+        numeric total_sales
+        integer total_orders
+        text notes
+        timestamptz submitted_at
+        smallint refund_separation_version
+    }
+
+    SALES_REPORT_ITEMS {
+        bigint sales_report_item_id PK
+        bigint sales_report_id FK
+        bigint product_id FK
+        numeric quantity_sold
+        text unit
+        numeric unit_price
+        numeric line_total
+    }
+
+    SALES_REPORT_ATTACHMENTS {
+        bigint sales_report_attachment_id PK
+        bigint sales_report_id FK
+        text filename
+        text content_type
+        bytea content
+        integer size_bytes
+        text checksum_sha256
+        timestamptz uploaded_at
+    }
+
+    ALERTS {
+        bigint alert_id PK
+        text alert_type
+        text severity
+        bigint product_id FK
+        bigint product_batch_id FK
+        bigint raw_material_id FK
+        text message
+        text status
+        timestamptz triggered_at
+    }
+
+    FORECAST_RUNS {
+        bigint forecast_run_id PK
+        bigint run_by_account_id FK
+        text model_name
+        date input_period_start
+        date input_period_end
+        integer forecast_horizon_days
+        text status
+        timestamptz queued_at
+        timestamptz started_at
+        timestamptz completed_at
+        integer attempt_count
+        timestamptz next_attempt_at
+        timestamptz locked_at
+        text last_error
+        integer total_products
+        integer processed_products
+        jsonb configuration
+        text notes
+        bigint retry_of_forecast_run_id FK, UK
+        timestamptz cancel_requested_at
+    }
+
+    FORECAST_PRODUCT_SUMMARIES {
+        bigint forecast_product_summary_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+        text method
+        text diagnostic_status
+        text diagnostic_message
+        integer history_days
+        integer nonzero_days
+        text score_metric
+        numeric backtest_score
+        jsonb candidate_scores
+        numeric forecast_total
+        numeric confidence_lower_total
+        numeric confidence_upper_total
+        numeric usable_stock
+        numeric production_gap
+        timestamptz created_at
+    }
+
+    FORECAST_RESULTS {
+        bigint forecast_result_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+        date forecast_date
+        numeric predicted_quantity
+        numeric confidence_lower
+        numeric confidence_upper
+        timestamptz created_at
+    }
+
+    USER_CONSENTS {
+        bigint user_consent_id PK
+        bigint account_id FK
+        text policy_version
+        text consent_source
+        text provider
+        timestamptz accepted_at
+    }
+
+    ACCOUNT_PASSWORD_OTPS {
+        bigint account_password_otp_id PK
+        bigint account_id FK
+        text otp_hash
+        text pending_password_hash
+        timestamptz expires_at
+        timestamptz consumed_at
+        timestamptz created_at
+    }
+
+    ACCOUNT_LOGIN_OTPS {
+        bigint account_login_otp_id PK
+        bigint account_id FK
+        text otp_hash
+        timestamptz expires_at
+        timestamptz consumed_at
+        timestamptz created_at
+    }
+
+    NOTIFICATIONS {
+        bigint notification_id PK
+        bigint recipient_account_id FK
+        text recipient_role
+        text category
+        text severity
+        text title
+        text message
+        text target_url
+        text source_type
+        bigint source_id
+        text dedupe_key UK
+        timestamptz read_at
+        timestamptz created_at
+    }
+
+    ORDER_SYSTEM_MESSAGES {
+        bigint order_system_message_id PK
+        bigint reseller_account_id FK
+        bigint order_id FK
+        text event_type
+        text title
+        text message
+        text rejection_reason
+        text dedupe_key UK
+        bigint order_refund_attempt_id FK
+        timestamptz read_at
+        timestamptz created_at
+    }
+
+    NOTIFICATION_RECIPIENTS {
+        bigint notification_id PK, FK
+        bigint account_id PK, FK
+        timestamptz read_at
+    }
+
+    WEB_SESSIONS {
+        char token_hash PK
+        bigint account_id FK
+        jsonb data
+        timestamptz created_at
+        timestamptz updated_at
+        timestamptz expires_at
+    }
+
+    SECURITY_EVENTS {
+        bigint security_event_id PK
+        text event_type
+        text subject_key
+        boolean succeeded
+        timestamptz created_at
+    }
+
+    ACCOUNT_ACTIVATION_TOKENS {
+        bigint activation_token_id PK
+        bigint account_id FK
+        char token_hash UK
+        text purpose
+        timestamptz expires_at
+        timestamptz consumed_at
+        timestamptz created_at
+    }
+
+    NOTIFICATION_OUTBOX {
+        bigint outbox_id PK
+        text event_type
+        jsonb payload
+        text dedupe_key UK
+        integer attempt_count
+        timestamptz next_attempt_at
+        timestamptz locked_at
+        timestamptz sent_at
+        text last_error
+        timestamptz created_at
+    }
+
+    INVENTORY_MOVEMENTS {
+        bigint movement_id PK
+        bigint item_id FK
+        bigint affected_batch_id FK
+        bigint production_batch_id FK
+        bigint order_id FK
+        text movement_type
+        numeric quantity_delta
+        text unit
+        numeric balance_before
+        numeric balance_after
+        bigint actor_account_id FK
+        text actor_name
+        text note
+        timestamptz created_at
+    }
+
+    CHAT_CONVERSATIONS {
+        uuid conversation_id PK
+        text display_name
+        text status
+        text escalation_reason
+        bigint assigned_team_leader_account_id FK
+        text fallback_contact_type
+        text fallback_contact
+        timestamptz privacy_consent_at
+        timestamptz queued_at
+        timestamptz claimed_at
+        timestamptz last_visitor_at
+        timestamptz last_leader_at
+        timestamptz visitor_typing_until
+        timestamptz leader_typing_until
+        timestamptz inquiry_form_requested_at
+        timestamptz closed_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    CHAT_MESSAGES {
+        bigint chat_message_id PK
+        uuid conversation_id FK
+        uuid client_message_id
+        text sender_type
+        bigint sender_account_id FK
+        text content
+        text publication_status
+        integer publish_attempts
+        text last_publish_error
+        timestamptz published_at
+        timestamptz created_at
+    }
+
+    RESELLER_CONVERSATIONS {
+        bigint conversation_id PK
+        bigint reseller_account_id FK
+        bigint team_leader_account_id FK
+        timestamptz last_message_at
+        timestamptz reseller_deleted_at
+        timestamptz team_leader_deleted_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    RESELLER_MESSAGES {
+        bigint reseller_message_id PK
+        bigint conversation_id FK
+        uuid client_message_id
+        bigint sender_account_id FK
+        text content
+        timestamptz read_at
+        timestamptz created_at
+        bigint return_id FK
+        integer attachment_count
+    }
+
+    CHAT_SERVICE_RATINGS {
+        uuid conversation_id PK, FK
+        bigint team_leader_account_id FK
+        smallint rating
+        timestamptz created_at
+    }
+
+    TEAM_LEADER_PRESENCE {
+        bigint account_id PK, FK
+        text availability
+        uuid active_conversation_id FK
+        timestamptz heartbeat_at
+        timestamptz updated_at
+    }
+
+    RATE_LIMIT_BUCKETS {
+        text event_type PK
+        text subject_hash PK
+        integer window_seconds PK
+        timestamptz bucket_started_at PK
+        integer request_count
+        timestamptz expires_at
+    }
+
+    OWNER_STEP_UP_CHALLENGES {
+        bigint owner_step_up_challenge_id PK
+        bigint account_id FK
+        text otp_hash
+        text action_scope
+        integer attempt_count
+        timestamptz expires_at
+        timestamptz consumed_at
+        timestamptz created_at
+    }
+
+    BUSINESS_SETTINGS {
+        text setting_key PK
+        jsonb setting_value
+        bigint updated_by_account_id FK
+        timestamptz updated_at
+    }
+
+    SYSTEM_STATUS_REPORTS {
+        text component PK
+        text status
+        text detail
+        jsonb metadata
+        timestamptz checked_at
+    }
+
+    FULFILLMENT_ALLOCATIONS {
+        bigint allocation_id PK
+        bigint order_item_id FK
+        bigint batch_id FK
+        numeric quantity
+        bigint verified_by_account_id FK
+        text verification_note
+    }
+
+    PRODUCT_RETURNS {
+        bigint return_id PK
+        bigint order_id FK
+        text resolution
+        text status
+        text remarks
+        bigint requested_by_account_id FK
+        bigint approved_by_account_id FK
+        numeric credit
+        integer quote_revision
+        integer accepted_revision
+        numeric replacement_total
+        bigint payment_verified_by_account_id FK
+        timestamptz payment_verified_at
+        text payment_reference UK
+        numeric payment_amount
+        timestamptz replacement_released_at
+        timestamptz verified_at
+        timestamptz created_at
+        timestamptz completed_at
+        timestamptz updated_at
+        uuid operation_key UK
+        bigint verified_by_account_id FK
+        text verification_remarks
+        text request_hash
+        bigint settlement_authorized_by_account_id FK
+        timestamptz settlement_authorized_at
+        integer settlement_authorized_quote_revision
+        bigint processing_supervisor_account_id FK
+        timestamptz handed_off_at
+        smallint replacement_workflow_version
+        timestamptz replacement_prepared_at
+        bigint replacement_prepared_by_account_id FK
+        timestamptz replacement_delivered_at
+        bigint replacement_delivered_by_account_id FK
+        jsonb replacement_payment_details
+    }
+
+    PRODUCT_RETURN_LINES {
+        bigint return_line_id PK
+        bigint return_id FK
+        bigint allocation_id FK
+        numeric quantity
+        numeric received_quantity
+        numeric unit_price
+    }
+
+    PRODUCT_RETURN_EVENTS {
+        bigint event_id PK
+        bigint return_id FK
+        bigint actor_account_id FK
+        text action
+        text remarks
+        timestamptz created_at
+        uuid operation_key UK
+        bigint refund_id FK
+        bigint refund_attempt_id FK
+        numeric amount
+        text request_hash
+        text customer_message
+    }
+
+    REPLACEMENT_QUOTE_LINES {
+        bigint quote_line_id PK
+        bigint return_id FK
+        integer revision
+        bigint product_id FK
+        numeric quantity
+        numeric unit_price
+        numeric line_total
+        jsonb pricing_components
+    }
+
+    REPLACEMENT_STOCK_RESERVATIONS {
+        bigint return_id PK, FK
+        bigint batch_id PK, FK
+        numeric quantity
+    }
+
+    REPLACEMENT_RELEASES {
+        bigint release_id PK
+        bigint return_id FK
+        bigint batch_id FK
+        numeric quantity
+        bigint released_by_account_id FK
+        timestamptz created_at
+        bigint inventory_movement_id FK, UK
+    }
+
+    RETURN_ATTACHMENTS {
+        bigint attachment_id PK
+        bigint return_id FK
+        text purpose
+        integer revision
+        text filename
+        text content_type
+        bytea content
+        integer size_bytes
+        text checksum_sha256
+        bigint uploaded_by_account_id FK
+        timestamptz created_at
+    }
+
+    EXPIRED_PULLOUTS {
+        bigint pullout_id PK
+        bigint batch_id FK, UK
+        timestamptz created_at
+    }
+
+    EXPIRED_HOLDINGS {
+        bigint holding_id PK
+        bigint product_id FK
+        bigint batch_id FK
+        bigint return_line_id FK
+        text source
+        text source_batch_code
+        date expiry_date
+        numeric quantity_received
+        numeric quantity_remaining
+        text location
+        bigint created_by_account_id FK
+        timestamptz created_at
+    }
+
+    EXPIRED_STOCK_MOVEMENTS {
+        bigint movement_id PK
+        bigint holding_id FK
+        text action
+        numeric quantity
+        bigint actor_account_id FK
+        text remarks
+        text disposal_method
+        uuid operation_key UK
+        timestamptz created_at
+    }
+
+    PRODUCT_RETURN_RECEIPTS {
+        bigint receipt_id PK
+        bigint return_id FK
+        uuid operation_key UK
+        text request_hash
+        bigint received_by_account_id FK
+        text location
+        text remarks
+        timestamptz received_at
+    }
+
+    PRODUCT_RETURN_RECEIPT_LINES {
+        bigint receipt_line_id PK
+        bigint receipt_id FK
+        bigint return_line_id FK
+        bigint holding_id FK, UK
+        bigint movement_id FK, UK
+        numeric quantity
+    }
+
+    REFUND_OPERATIONS {
+        uuid operation_key PK
+        bigint refund_id FK
+        bigint actor_account_id FK
+        text action
+        text request_hash
+        bigint attempt_id FK
+        timestamptz created_at
+    }
+
+    SALES_REPORT_ORDERS {
+        bigint sales_report_id PK, FK
+        bigint order_id PK, FK
+        numeric gross_sales
+        numeric refunded_at_submission
+    }
+
+    SALES_REPORT_REFUNDS {
+        bigint sales_report_id PK, FK
+        bigint order_refund_id PK, FK
+        numeric amount
+    }
+
+    SALES_REPORT_ACTIVITY_SNAPSHOTS {
+        bigint sales_report_id PK, FK
+        bigint author_account_id FK
+        uuid submission_key UK
+        smallint schema_version
+        timestamptz captured_at
+        jsonb payload
+    }
+
+    RETURN_OFFER_SNAPSHOTS {
+        bigint return_id PK, FK
+        integer revision PK
+        numeric credit
+        numeric replacement_total
+        jsonb returned_items
+        jsonb replacement_items
+        boolean is_baseline
+        timestamptz created_at
+    }
+
+    RETURN_CUSTOMER_FOLLOWUPS {
+        bigint followup_id PK
+        bigint return_id FK
+        bigint reported_by_account_id FK
+        uuid report_key UK
+        text message
+        text status
+        bigint resolved_by_account_id FK
+        text resolution_message
+        timestamptz created_at
+        timestamptz resolved_at
+    }
+
+    RETURN_FOLLOWUP_MESSAGES {
+        bigint followup_id PK, FK
+        uuid client_message_id PK
+        text content
+        bigint reseller_message_id FK
+        timestamptz created_at
+    }
+
+    ORDER_RESERVATION_EVENTS {
+        bigint reservation_event_id PK
+        bigint order_id FK
+        bigint product_id FK
+        numeric quantity_delta
+        text action
+        bigint actor_account_id FK
+        timestamptz created_at
+    }
+
+    RESELLER_MESSAGE_ATTACHMENTS {
+        bigint attachment_id PK
+        bigint reseller_message_id FK
+        text filename
+        text content_type
+        bytea content
+        integer size_bytes
+        char checksum_sha256
+    }
+
+    REFUND_MESSAGE_READS {
+        bigint order_refund_id PK, FK
+        bigint account_id PK, FK
+        bigint last_message_id
+        timestamptz read_at
+    }
+
+    RESELLER_ORDER_RECEIPTS {
+        bigint order_id PK, FK
+        bigint account_id FK
+        timestamptz received_at
+    }
+
+    RETURN_CONVERSATION_MESSAGES {
+        bigint message_id PK
+        bigint return_id FK
+        bigint sender_account_id FK
+        uuid client_message_id
+        text content
+        timestamptz created_at
+    }
+
+    RETURN_CONVERSATION_READS {
+        bigint return_id PK, FK
+        bigint account_id PK, FK
+        bigint last_message_id
+    }
+
+    SCHEMA_MIGRATIONS {
+        text version PK
+        text checksum_sha256
+        timestamptz applied_at
+    }
+
+    ACCOUNTS |o..o{ ACTIVITY_LOGS : "account_id"
+    ACCOUNTS |o..o{ INQUIRIES : "assigned_team_leader_account_id"
+    ACCOUNTS |o..o{ INQUIRIES : "reviewed_by_account_id"
+    INQUIRIES |o..o| RESELLERS : "inquiry_id"
+    ACCOUNTS |o..o{ RESELLERS : "team_leader_account_id"
+    ACCOUNTS |o..o{ RESELLERS : "approved_by_account_id"
+    RESELLERS |o..o{ ACCOUNTS : "reseller_id"
+    INVENTORY_ITEMS ||..o{ INVENTORY_BATCHES : "item_id"
+    INVENTORY_ITEMS ||..o{ PRODUCT_RECIPES : "product_item_id"
+    INVENTORY_ITEMS ||..o{ PRODUCT_RECIPES : "material_item_id"
+    RESELLERS |o..o{ ORDERS : "reseller_id"
+    ACCOUNTS |o..o{ ORDERS : "created_by_account_id"
+    ACCOUNTS |o..o{ ORDERS : "team_leader_account_id"
+    ACCOUNTS |o..o{ ORDERS : "approved_by_account_id"
+    ORDERS ||..o{ ORDER_ITEMS : "order_id"
+    INVENTORY_ITEMS ||..o{ ORDER_ITEMS : "product_id"
+    ORDERS ||--o{ ORDER_STOCK_RESERVATIONS : "order_id"
+    INVENTORY_ITEMS ||--o{ ORDER_STOCK_RESERVATIONS : "product_id"
+    ORDERS ||..o{ ORDER_PAYMENT_PROOFS : "order_id"
+    ACCOUNTS |o..o{ ORDER_PAYMENT_PROOFS : "uploaded_by_account_id"
+    ORDERS ||..o{ ORDER_REFUNDS : "order_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "requested_by_account_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "assigned_supervisor_account_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "processing_by_account_id"
+    ORDER_REFUNDS ||..o{ ORDER_REFUND_ATTEMPTS : "order_refund_id"
+    ACCOUNTS ||..o{ ORDER_REFUND_ATTEMPTS : "processor_account_id"
+    ORDER_REFUND_ATTEMPTS ||..o| ORDER_REFUND_PROOFS : "order_refund_attempt_id"
+    ACCOUNTS |o..o{ ORDER_REFUND_PROOFS : "uploaded_by_account_id"
+    ORDER_REFUNDS ||..o{ ORDER_REFUND_MESSAGES : "order_refund_id"
+    ACCOUNTS ||..o{ ORDER_REFUND_MESSAGES : "sender_account_id"
+    ACCOUNTS ||..o{ RESELLER_CART_ITEMS : "account_id"
+    INVENTORY_ITEMS ||..o{ RESELLER_CART_ITEMS : "product_id"
+    ACCOUNTS |o..o{ SALES_REPORTS : "submitted_by_account_id"
+    RESELLERS |o..o{ SALES_REPORTS : "reseller_id"
+    DEPARTMENTS |o..o{ SALES_REPORTS : "department_id"
+    SALES_REPORTS ||..o{ SALES_REPORT_ITEMS : "sales_report_id"
+    INVENTORY_ITEMS ||..o{ SALES_REPORT_ITEMS : "product_id"
+    SALES_REPORTS ||..o{ SALES_REPORT_ATTACHMENTS : "sales_report_id"
+    INVENTORY_ITEMS |o..o{ ALERTS : "product_id"
+    INVENTORY_BATCHES |o..o{ ALERTS : "product_batch_id"
+    INVENTORY_ITEMS |o..o{ ALERTS : "raw_material_id"
+    ACCOUNTS |o..o{ FORECAST_RUNS : "run_by_account_id"
+    FORECAST_RUNS ||..o{ FORECAST_PRODUCT_SUMMARIES : "forecast_run_id"
+    INVENTORY_ITEMS ||..o{ FORECAST_PRODUCT_SUMMARIES : "product_id"
+    FORECAST_RUNS ||..o{ FORECAST_RESULTS : "forecast_run_id"
+    INVENTORY_ITEMS ||..o{ FORECAST_RESULTS : "product_id"
+    ACCOUNTS ||..o{ USER_CONSENTS : "account_id"
+    ACCOUNTS ||..o{ ACCOUNT_PASSWORD_OTPS : "account_id"
+    ACCOUNTS ||..o{ ACCOUNT_LOGIN_OTPS : "account_id"
+    ACCOUNTS |o..o{ NOTIFICATIONS : "recipient_account_id"
+    ACCOUNTS ||..o{ ORDER_SYSTEM_MESSAGES : "reseller_account_id"
+    ORDERS ||..o{ ORDER_SYSTEM_MESSAGES : "order_id"
+    ORDER_REFUND_ATTEMPTS |o..o{ ORDER_SYSTEM_MESSAGES : "order_refund_attempt_id"
+    NOTIFICATIONS ||--o{ NOTIFICATION_RECIPIENTS : "notification_id"
+    ACCOUNTS ||--o{ NOTIFICATION_RECIPIENTS : "account_id"
+    ACCOUNTS |o..o{ WEB_SESSIONS : "account_id"
+    ACCOUNTS ||..o{ ACCOUNT_ACTIVATION_TOKENS : "account_id"
+    INVENTORY_ITEMS ||..o{ INVENTORY_MOVEMENTS : "item_id"
+    INVENTORY_BATCHES |o..o{ INVENTORY_MOVEMENTS : "affected_batch_id"
+    INVENTORY_BATCHES |o..o{ INVENTORY_MOVEMENTS : "production_batch_id"
+    ORDERS |o..o{ INVENTORY_MOVEMENTS : "order_id"
+    ACCOUNTS |o..o{ INVENTORY_MOVEMENTS : "actor_account_id"
+    ACCOUNTS |o..o{ CHAT_CONVERSATIONS : "assigned_team_leader_account_id"
+    CHAT_CONVERSATIONS ||..o{ CHAT_MESSAGES : "conversation_id"
+    ACCOUNTS |o..o{ CHAT_MESSAGES : "sender_account_id"
+    ACCOUNTS ||..o{ RESELLER_CONVERSATIONS : "reseller_account_id"
+    ACCOUNTS ||..o{ RESELLER_CONVERSATIONS : "team_leader_account_id"
+    RESELLER_CONVERSATIONS ||..o{ RESELLER_MESSAGES : "conversation_id"
+    ACCOUNTS ||..o{ RESELLER_MESSAGES : "sender_account_id"
+    CHAT_CONVERSATIONS ||--o| CHAT_SERVICE_RATINGS : "conversation_id"
+    ACCOUNTS ||..o{ CHAT_SERVICE_RATINGS : "team_leader_account_id"
+    ACCOUNTS ||--o| TEAM_LEADER_PRESENCE : "account_id"
+    CHAT_CONVERSATIONS |o..o{ TEAM_LEADER_PRESENCE : "active_conversation_id"
+    CHAT_CONVERSATIONS |o..o| INQUIRIES : "chat_conversation_id"
+    ACCOUNTS ||..o{ OWNER_STEP_UP_CHALLENGES : "account_id"
+    ACCOUNTS |o..o{ BUSINESS_SETTINGS : "updated_by_account_id"
+    FORECAST_RUNS |o..o| FORECAST_RUNS : "retry_of_forecast_run_id"
+    ORDER_ITEMS ||..o{ FULFILLMENT_ALLOCATIONS : "order_item_id"
+    INVENTORY_BATCHES ||..o{ FULFILLMENT_ALLOCATIONS : "batch_id"
+    ACCOUNTS |o..o{ FULFILLMENT_ALLOCATIONS : "verified_by_account_id"
+    ORDERS ||..o{ PRODUCT_RETURNS : "order_id"
+    ACCOUNTS ||..o{ PRODUCT_RETURNS : "requested_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "approved_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "payment_verified_by_account_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_LINES : "return_id"
+    FULFILLMENT_ALLOCATIONS ||..o{ PRODUCT_RETURN_LINES : "allocation_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_EVENTS : "return_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURN_EVENTS : "actor_account_id"
+    PRODUCT_RETURNS ||..o{ REPLACEMENT_QUOTE_LINES : "return_id"
+    INVENTORY_ITEMS ||..o{ REPLACEMENT_QUOTE_LINES : "product_id"
+    PRODUCT_RETURNS ||--o{ REPLACEMENT_STOCK_RESERVATIONS : "return_id"
+    INVENTORY_BATCHES ||--o{ REPLACEMENT_STOCK_RESERVATIONS : "batch_id"
+    PRODUCT_RETURNS ||..o{ REPLACEMENT_RELEASES : "return_id"
+    INVENTORY_BATCHES ||..o{ REPLACEMENT_RELEASES : "batch_id"
+    ACCOUNTS ||..o{ REPLACEMENT_RELEASES : "released_by_account_id"
+    PRODUCT_RETURNS ||..o{ RETURN_ATTACHMENTS : "return_id"
+    ACCOUNTS ||..o{ RETURN_ATTACHMENTS : "uploaded_by_account_id"
+    INVENTORY_BATCHES ||..o| EXPIRED_PULLOUTS : "batch_id"
+    INVENTORY_ITEMS ||..o{ EXPIRED_HOLDINGS : "product_id"
+    INVENTORY_BATCHES |o..o{ EXPIRED_HOLDINGS : "batch_id"
+    PRODUCT_RETURN_LINES |o..o{ EXPIRED_HOLDINGS : "return_line_id"
+    ACCOUNTS ||..o{ EXPIRED_HOLDINGS : "created_by_account_id"
+    EXPIRED_HOLDINGS ||..o{ EXPIRED_STOCK_MOVEMENTS : "holding_id"
+    ACCOUNTS ||..o{ EXPIRED_STOCK_MOVEMENTS : "actor_account_id"
+    PRODUCT_RETURNS |o..o| ORDER_REFUNDS : "return_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "verified_by_account_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_RECEIPTS : "return_id"
+    ACCOUNTS ||..o{ PRODUCT_RETURN_RECEIPTS : "received_by_account_id"
+    PRODUCT_RETURN_RECEIPTS ||..o{ PRODUCT_RETURN_RECEIPT_LINES : "receipt_id"
+    PRODUCT_RETURN_LINES ||..o{ PRODUCT_RETURN_RECEIPT_LINES : "return_line_id"
+    EXPIRED_HOLDINGS ||..o| PRODUCT_RETURN_RECEIPT_LINES : "holding_id"
+    EXPIRED_STOCK_MOVEMENTS ||..o| PRODUCT_RETURN_RECEIPT_LINES : "movement_id"
+    ORDER_REFUNDS |o..o{ PRODUCT_RETURN_EVENTS : "refund_id"
+    ORDER_REFUND_ATTEMPTS |o..o{ PRODUCT_RETURN_EVENTS : "refund_attempt_id"
+    ORDER_REFUNDS ||..o{ REFUND_OPERATIONS : "refund_id"
+    ACCOUNTS ||..o{ REFUND_OPERATIONS : "actor_account_id"
+    ORDER_REFUND_ATTEMPTS ||..o{ REFUND_OPERATIONS : "attempt_id"
+    SALES_REPORTS ||--o{ SALES_REPORT_ORDERS : "sales_report_id"
+    ORDERS ||--o{ SALES_REPORT_ORDERS : "order_id"
+    SALES_REPORTS ||--o{ SALES_REPORT_REFUNDS : "sales_report_id"
+    ORDER_REFUNDS ||--o{ SALES_REPORT_REFUNDS : "order_refund_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "settlement_authorized_by_account_id"
+    INVENTORY_MOVEMENTS |o..o| REPLACEMENT_RELEASES : "inventory_movement_id"
+    SALES_REPORTS ||--o| SALES_REPORT_ACTIVITY_SNAPSHOTS : "sales_report_id"
+    ACCOUNTS ||..o{ SALES_REPORT_ACTIVITY_SNAPSHOTS : "author_account_id"
+    PRODUCT_RETURNS ||--o{ RETURN_OFFER_SNAPSHOTS : "return_id"
+    PRODUCT_RETURNS |o..o{ RESELLER_MESSAGES : "return_id"
+    PRODUCT_RETURNS ||..o{ RETURN_CUSTOMER_FOLLOWUPS : "return_id"
+    ACCOUNTS ||..o{ RETURN_CUSTOMER_FOLLOWUPS : "reported_by_account_id"
+    ACCOUNTS |o..o{ RETURN_CUSTOMER_FOLLOWUPS : "resolved_by_account_id"
+    RETURN_CUSTOMER_FOLLOWUPS ||--o{ RETURN_FOLLOWUP_MESSAGES : "followup_id"
+    RESELLER_MESSAGES |o..o{ RETURN_FOLLOWUP_MESSAGES : "reseller_message_id"
+    ORDERS ||..o{ ORDER_RESERVATION_EVENTS : "order_id"
+    INVENTORY_ITEMS ||..o{ ORDER_RESERVATION_EVENTS : "product_id"
+    ACCOUNTS |o..o{ ORDER_RESERVATION_EVENTS : "actor_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "processing_supervisor_account_id"
+    RESELLER_MESSAGES ||..o{ RESELLER_MESSAGE_ATTACHMENTS : "reseller_message_id"
+    ORDER_REFUNDS ||--o{ REFUND_MESSAGE_READS : "order_refund_id"
+    ACCOUNTS ||--o{ REFUND_MESSAGE_READS : "account_id"
+    ORDERS ||--o| RESELLER_ORDER_RECEIPTS : "order_id"
+    ACCOUNTS ||..o{ RESELLER_ORDER_RECEIPTS : "account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_prepared_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_delivered_by_account_id"
+    PRODUCT_RETURNS ||..o{ RETURN_CONVERSATION_MESSAGES : "return_id"
+    ACCOUNTS |o..o{ RETURN_CONVERSATION_MESSAGES : "sender_account_id"
+    PRODUCT_RETURNS ||--o{ RETURN_CONVERSATION_READS : "return_id"
+    ACCOUNTS ||--o{ RETURN_CONVERSATION_READS : "account_id"

@@ -1,0 +1,168 @@
+/* Owner workspace: existing Rubik typography and brand gold, quiet business surfaces. */
+.role-owner {
+  --owner-canvas: #f2f5f7;
+  --owner-surface: #ffffff;
+  --owner-ink: #1b242c;
+  --owner-muted: #56646e;
+  --owner-line: #dce2e6;
+  --owner-accent: #876a0e;
+  --owner-danger: #9c3734;
+  --owner-space: clamp(18px, 2.4vw, 30px);
+  --text: var(--owner-ink);
+  --text-light: var(--owner-muted);
+  --border: var(--owner-line);
+  --surface: var(--owner-surface);
+  --surface-muted: var(--owner-canvas);
+  --background: var(--owner-canvas);
+  color: var(--owner-ink);
+  background: var(--owner-canvas);
+  grid-template-columns: 250px minmax(0, 1fr);
+}
+.role-owner .portal-main { background: var(--owner-canvas); padding: 30px clamp(18px, 3vw, 48px) 56px; }
+.role-owner .portal-sidebar { padding: 22px 16px; gap: 18px; background: var(--primary); border-right: 0; }
+.role-owner .portal-brand { padding-inline: 6px; }
+.role-owner .portal-nav { gap: 4px; }
+.role-owner .portal-nav-group-label { margin: 18px 12px 6px; font-size: .6875rem; letter-spacing: .1em; }
+.role-owner .portal-nav a { min-height: 46px; border-radius: 8px; font-size: .8125rem; font-weight: 500; }
+.role-owner .portal-nav a.active { background: var(--gold); color: var(--primary); font-weight: 600; }
+.role-owner .portal-nav a:not(.active):hover { background: #292821; color: #fff; }
+.role-owner .owner-profile-link { color: #fff; padding: 6px 0; }
+.role-owner .owner-profile-link > small { display: flex; align-items: center; gap: 8px; }
+.role-owner .owner-profile-link svg { height: 14px; width: 14px; }
+.role-owner .owner-workspace { display: grid; gap: 24px; max-width: 1600px; min-width: 0; margin-inline: auto; outline: none; }
+.role-owner .owner-workspace-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-top: 5px; }
+.role-owner .owner-workspace-kicker { display: flex; flex-wrap: wrap; gap: 10px; color: var(--owner-muted); font-size: .75rem; font-weight: 500; }
+.role-owner .owner-workspace-kicker > span { color: var(--owner-accent); }
+.role-owner .owner-workspace-heading h2 { margin: 8px 0; color: var(--owner-ink); font-size: clamp(1.6rem, 2.7vw, 2.25rem); font-weight: 600; letter-spacing: -.045em; line-height: 1.2; }
+.role-owner .owner-workspace-heading p { margin: 0; max-width: 76ch; color: var(--owner-muted); font-size: .875rem; line-height: 1.65; }
+.role-owner .owner-workspace-date { flex-shrink: 0; display: flex; gap: 10px; align-items: flex-start; padding-top: 8px; font-size: .8125rem; font-weight: 500; }
+.role-owner .owner-workspace-date > svg { width: 18px; height: 18px; color: var(--owner-accent); margin-top: 2px; }
+.role-owner .owner-workspace-date small { display: block; color: var(--owner-muted); font-size: .6875rem; font-weight: 400; }
+.role-owner .owner-workspace-tabs { display: flex; gap: 8px; overflow-x: auto; min-width: 0; border-bottom: 1px solid var(--owner-line); padding-bottom: 8px; }
+.role-owner .owner-workspace-tabs a { display: inline-flex; align-items: center; flex-shrink: 0; min-height: 44px; padding: 9px 14px; color: var(--owner-muted); border: 1px solid transparent; border-radius: 8px; font-size: .8125rem; font-weight: 500; }
+.role-owner .owner-workspace-tabs a.is-current { color: var(--owner-ink); background: var(--owner-surface); border-color: var(--owner-line); box-shadow: inset 0 -2px var(--gold); }
+.role-owner .owner-workspace-tabs a:hover { color: var(--owner-ink); background: var(--owner-surface); }
+.role-owner .owner-workspace :is(a, button, summary, input, select, textarea):focus-visible { outline: 3px solid var(--owner-accent); outline-offset: 3px; }
+.owner-skip-link { position: fixed; top: -100px; left: 16px; z-index: 200; padding: 14px 20px; background: #fff; color: #1b242c; border: 2px solid #876a0e; }
+.owner-skip-link:focus { top: 12px; }
+.role-owner .owner-page { gap: 24px; animation: none; }
+.role-owner .owner-page .panel { background: var(--owner-surface); border-color: var(--owner-line); border-radius: 12px; box-shadow: none; }
+.role-owner .owner-workspace .owner-page :is(.panel-heading, .owner-resellers-hero, .owner-orders-hero) h2 { font-size: 1.125rem; line-height: 1.45; letter-spacing: -.02em; }
+.role-owner .owner-workspace .owner-page .panel-heading { padding-block: 22px; }
+.role-owner .owner-workspace .owner-page .panel-heading > div > :is(p, .hint) { font-size: .8125rem; }
+.role-owner .owner-return-scope { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.role-owner .owner-return-scope > p { flex-basis: 100%; margin: 0; }
+.role-owner .owner-workspace .lifecycle-hero { padding: 22px; border-color: var(--owner-line); border-top: 2px solid var(--gold); background: var(--owner-surface); }
+.role-owner .owner-workspace .lifecycle-hero h2 { font-size: 1.25rem; }
+.role-owner .owner-workspace .lifecycle-hero p { font-size: .8125rem; }
+.role-owner .owner-surface { min-width: 0; overflow: hidden; background: var(--owner-surface); border: 1px solid var(--owner-line); border-radius: 12px; padding: var(--owner-space); }
+.role-owner .owner-surface-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.role-owner .owner-surface-heading > div { min-width: 0; flex: 1 1 200px; }
+.role-owner .owner-section-label { color: var(--owner-accent); font-size: .6875rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.role-owner .owner-surface-heading h3 { margin: 4px 0 0; font-size: 1.125rem; font-weight: 600; line-height: 1.45; letter-spacing: -.02em; }
+.role-owner .owner-surface-heading p { margin: 8px 0 0; max-width: 70ch; color: var(--owner-muted); font-size: .8125rem; }
+.role-owner .owner-surface-heading > a, .role-owner .owner-surface-footer { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; color: var(--owner-accent); font-size: .75rem; font-weight: 500; }
+.role-owner .owner-surface-heading > a svg, .role-owner .owner-surface-footer svg { width: 16px; height: 16px; }
+.role-owner .owner-brief-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--owner-line); border-radius: 12px; overflow: hidden; background: var(--owner-surface); }
+.role-owner .owner-brief-metric { display: flex; flex-direction: column; min-width: 0; padding: 24px 20px 14px; border-right: 1px solid var(--owner-line); }
+.role-owner .owner-brief-metric:last-child { border-right: 0; }
+.role-owner .owner-brief-metric.is-financial { border-top: 3px solid var(--gold); padding-top: 21px; background: linear-gradient(120deg, #fcfaf0, var(--owner-surface)); }
+.role-owner .owner-brief-metric > span { color: var(--owner-muted); font-size: .75rem; font-weight: 500; min-height: 2.8em; }
+.role-owner .owner-brief-metric > strong { margin: 10px 0 12px; font-size: clamp(1.3rem, 2vw, 2rem); font-weight: 600; line-height: 1.25; letter-spacing: -.04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.role-owner .owner-brief-metric em { color: var(--owner-muted); font-size: .8125rem; font-weight: 400; font-style: normal; letter-spacing: 0; }
+.role-owner .owner-brief-metric > small { color: var(--owner-muted); font-size: .75rem; line-height: 1.6; }
+.role-owner .owner-brief-metric > a { display: inline-flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 16px; min-height: 44px; color: var(--owner-accent); font-size: .75rem; font-weight: 500; }
+.role-owner .owner-brief-metric > a svg { width: 14px; height: 14px; }
+.role-owner .owner-brief-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; }
+.role-owner .owner-attention-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 16px; align-items: center; gap: 14px; min-height: 80px; padding: 16px 0; border-top: 1px solid var(--owner-line); color: var(--owner-ink); }
+.role-owner .owner-attention-row:first-child { border-top: 0; }
+.role-owner .owner-row-icon { width: 34px; height: 34px; display: grid; place-items: center; background: var(--owner-canvas); border-radius: 8px; color: var(--owner-accent); }
+.role-owner .owner-row-icon svg { width: 18px; height: 18px; }
+.role-owner .owner-attention-row > svg { width: 16px; height: 16px; color: var(--owner-muted); }
+.role-owner :is(.owner-attention-row, .owner-pipeline-row, .owner-detail-row) strong { display: block; font-size: .8125rem; font-weight: 500; }
+.role-owner :is(.owner-attention-row, .owner-pipeline-row, .owner-detail-row) small { display: block; margin-top: 4px; color: var(--owner-muted); font-size: .75rem; line-height: 1.6; }
+.role-owner .owner-attention-row b { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.role-owner :is(.owner-attention-row, .owner-pipeline-row, .owner-detail-row):hover { background: var(--owner-canvas); }
+.role-owner .owner-pipeline-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 16px; align-items: center; gap: 16px; border-bottom: 1px solid var(--owner-line); padding: 20px 0; color: var(--owner-ink); }
+.role-owner .owner-pipeline-row b { font-size: 1.5rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.role-owner .owner-pipeline-row > svg { height: 16px; width: 16px; color: var(--owner-muted); }
+.role-owner .owner-caption { color: var(--owner-muted); font-size: .75rem; margin: 18px 0 0; line-height: 1.7; }
+.role-owner .owner-empty { display: grid; justify-items: start; gap: 8px; padding: 20px 0; }
+.role-owner .owner-empty > svg { width: 26px; height: 26px; color: var(--owner-accent); margin-bottom: 4px; }
+.role-owner .owner-empty > strong { font-size: .875rem; font-weight: 500; }
+.role-owner .owner-empty > p { margin: 0; color: var(--owner-muted); font-size: .8125rem; }
+.role-owner .owner-empty > a { display: flex; align-items: center; min-height: 44px; font-size: .8125rem; color: var(--owner-accent); }
+.role-owner .owner-review-note, .role-owner .owner-context-note { display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 16px; background: #fcf6e5; border-radius: 8px; color: #604e13; font-size: .8125rem; }
+.role-owner .owner-review-note { margin-top: 18px; }
+.role-owner .owner-review-note p { margin: 0; }
+.role-owner :is(.owner-review-note, .owner-context-note) > svg { flex-shrink: 0; width: 18px; height: 18px; margin-top: 3px; }
+.role-owner .owner-trend .owner-sales-chart { height: 270px; background: var(--owner-surface); border: 0; padding: 0; }
+.role-owner .owner-trend-summary { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; font-size: .75rem; color: var(--owner-muted); margin: 0 0 24px; }
+.role-owner .owner-trend-summary > strong { color: var(--owner-ink); font-size: 1.5rem; font-weight: 500; letter-spacing: -.03em; }
+.role-owner .owner-sales-period-form { flex-wrap: wrap; margin: 0; align-items: end; }
+.role-owner .owner-sales-period-form .button { font-size: .75rem; min-height: 44px; }
+.role-owner .owner-chart-data { border-top: 1px solid var(--owner-line); margin-top: 20px; padding-top: 8px; }
+.role-owner .owner-chart-data > summary { min-height: 44px; display: list-item; align-content: center; color: var(--owner-muted); font-size: .75rem; cursor: pointer; }
+.role-owner .owner-detail-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding: 18px 0; color: var(--owner-ink); border-top: 1px solid var(--owner-line); }
+.role-owner .owner-detail-row > span { min-width: 0; overflow-wrap: anywhere; }
+.role-owner .owner-detail-row > span:last-child { text-align: right; }
+.role-owner .owner-detail-row b { font-size: .8125rem; font-weight: 500; }
+.role-owner .owner-detail-row .owner-danger-text { color: var(--owner-danger); }
+.role-owner .owner-surface-footer { margin-top: 18px; border-top: 1px solid var(--owner-line); padding-top: 14px; width: 100%; }
+.role-owner .owner-money-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; gap: 24px; }
+.role-owner .owner-money-grid > div { border-left: 2px solid var(--owner-line); padding-left: 14px; }
+.role-owner .owner-money-grid dt { color: var(--owner-muted); font-size: .75rem; }
+.role-owner .owner-money-grid dd { margin: 6px 0 0; font-size: 1rem; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.role-owner .owner-queue-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.role-owner .owner-queue-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 20px; min-width: 0; border: 1px solid var(--owner-line); border-radius: 8px; color: var(--owner-ink); transition: border-color 150ms ease, background-color 150ms ease; }
+.role-owner .owner-queue-card:hover { border-color: var(--owner-accent); background: #fcfaf0; }
+.role-owner .owner-queue-card > span { font-size: .8125rem; font-weight: 500; }
+.role-owner .owner-queue-card > strong { grid-row: 2; font-size: 1.75rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.role-owner .owner-queue-card > small { grid-column: 1 / -1; grid-row: 3; color: var(--owner-muted); font-size: .75rem; }
+.role-owner .owner-queue-card > svg { grid-column: 2; grid-row: 1; width: 18px; height: 18px; color: var(--owner-accent); }
+.role-owner .owner-surface .table-wrap { max-width: 100%; overflow-x: auto; }
+.role-owner .owner-surface table { width: 100%; }
+.role-owner .owner-surface th { background: var(--owner-canvas); color: var(--owner-muted); font-size: .6875rem; font-weight: 500; text-transform: none; white-space: nowrap; }
+.role-owner .owner-surface td { font-size: .8125rem; }
+.role-owner .owner-surface td > small { display: block; color: var(--owner-muted); font-size: .75rem; }
+.role-owner .owner-stock-summary { background: var(--owner-canvas); }
+.role-owner .owner-stock-summary > div { background: var(--owner-surface); }
+@media (max-width: 1180px) {
+  .role-owner .owner-brief-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-owner .owner-brief-metric:nth-child(2) { border-right: 0; }
+  .role-owner .owner-brief-metric:nth-child(n+3) { border-top: 1px solid var(--owner-line); }
+  .role-owner .owner-brief-grid { grid-template-columns: minmax(0, 1fr); }
+  .role-owner .owner-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-owner .owner-money-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .role-owner { display: block; padding-bottom: env(safe-area-inset-bottom); }
+  .role-owner .portal-main { padding: 0 20px 32px; }
+  .role-owner .portal-main > .portal-topbar { background: var(--owner-canvas); margin: 0 -20px; padding-inline: 20px; }
+  .role-owner .owner-workspace { gap: 20px; }
+  .role-owner .owner-workspace-heading { padding-top: 8px; }
+  .role-owner .owner-workspace-date { display: none; }
+}
+@media (max-width: 560px) {
+  .role-owner .portal-main { padding-inline: 14px; }
+  .role-owner .portal-main > .portal-topbar { margin-inline: -14px; padding-inline: 14px; }
+  .role-owner .owner-workspace-heading h2 { font-size: 1.65rem; }
+  .role-owner .owner-brief-metric { padding: 18px 14px 10px; }
+  .role-owner .owner-brief-metric.is-financial { padding-top: 15px; }
+  .role-owner .owner-brief-metric > strong { font-size: 1.35rem; }
+  .role-owner .owner-brief-metric > a { align-items: flex-start; }
+  .role-owner .owner-queue-grid { grid-template-columns: minmax(0, 1fr); }
+  .role-owner .owner-queue-card { grid-template-columns: minmax(0, 1fr) auto; padding: 16px; }
+  .role-owner .owner-queue-card > strong { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .role-owner .owner-queue-card > svg { display: none; }
+  .role-owner .owner-queue-card > small { grid-column: 1; grid-row: 2; }
+  .role-owner .owner-attention-row { grid-template-columns: minmax(0, 1fr) auto 16px; gap: 10px; }
+  .role-owner .owner-attention-row > .owner-row-icon { display: none; }
+  .role-owner .owner-money-grid { gap: 20px 12px; }
+  .role-owner .owner-money-grid dd { font-size: .875rem; }
+  .role-owner .owner-surface-heading > a { padding: 0; }
+  .role-owner .owner-trend .owner-sales-chart { height: 220px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .role-owner .owner-workspace *, .role-owner .owner-workspace *::before, .role-owner .owner-workspace *::after { animation: none; transition: none; scroll-behavior: auto; }
+}

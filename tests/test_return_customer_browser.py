@@ -33,8 +33,8 @@ def test_sales_and_reseller_tasks_chat_and_acknowledgment(lifecycle, monkeypatch
 
     def as_role(role):
         session.clear()
-        session.update(account_id=d[role], role_key="reseller" if role == "reseller" else "team-leader",
-                       team_leader_role="sales" if role == "sales" else None, csrf_token="customer-browser-token",
+        session.update(account_id=d[role], role_key="reseller" if role == "reseller" else "sales-supervisor" if role=="supervisor" else "team-leader",
+                       team_leader_role="sales-supervisor" if role=="supervisor" else "sales" if role == "sales" else None, csrf_token="customer-browser-token",
                        portal_expires_at=int(business_now().timestamp()) + 900)
 
     with TestClient(main.app, base_url="http://return-customer.test") as client, sync_playwright() as p:
@@ -82,10 +82,10 @@ def test_sales_and_reseller_tasks_chat_and_acknowledgment(lifecycle, monkeypatch
         page.screenshot(path=str(output / "chat-draft.png"), full_page=True)
         draft.fill("One replacement pack arrived with damaged packaging")
         page.get_by_role("button", name="Send message", exact=True).click()
-        expect(page.locator("[data-return-chat-notice]")).to_contain_text("saved in Sales")
+        expect(page.locator("[data-return-chat-notice]")).to_contain_text("saved for Supervisor/Owner")
         assert fetch_one("SELECT COUNT(*) n FROM return_customer_followups WHERE status='open'")["n"] == 1
-        as_role("sales")
-        page.goto(f"http://return-customer.test/portal/team-leader/refunds?view=returns&case={case}", wait_until="networkidle")
+        as_role("supervisor")
+        page.goto(f"http://return-customer.test/portal/sales-supervisor/returns?case={case}", wait_until="networkidle")
         dialog = page.get_by_role("dialog", name=f"Return #{case}", exact=True)
         expect(dialog.locator("[data-return-next-step]")).to_contain_text("resolve the reseller’s reported issue")
         expect(dialog).to_contain_text("One replacement pack arrived with damaged packaging")
@@ -129,7 +129,7 @@ def test_revised_offers_payment_proof_and_unused_credit_are_clear(lifecycle, mon
             case = create_case(d, "replace")
             returns.review_product_return(case, d["sales"], True, "Approved the original products")
             returns.accept_replacement_quote(case, d["reseller"], 1)
-            returns.review_product_return(case, d["sales"], True, "Revised the replacement selection", [(substitute(price), 1)])
+            returns.review_product_return(case, d["supervisor"], True, "Revised the replacement selection", [(substitute(price), 1)])
             for width in (375, 1440):
                 page.set_viewport_size({"width": width, "height": 1000})
                 page.goto(f"http://offer.test/portal/reseller/history?view=returns&case={case}", wait_until="networkidle")

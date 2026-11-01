@@ -1,0 +1,165 @@
+erDiagram
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email
+        text team_leader_role
+        boolean is_active
+    }
+
+    DEPARTMENTS {
+        bigint department_id PK
+        text department_name UK
+    }
+
+    RESELLERS {
+        bigint reseller_id PK
+        bigint inquiry_id FK, UK
+        text business_name
+        text email
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+    }
+
+    ORDERS {
+        bigint order_id PK
+        text order_type
+        bigint reseller_id FK
+        bigint created_by_account_id FK
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz order_date
+        text status
+        timestamptz fulfilled_at
+        numeric total_amount
+    }
+
+    ORDER_REFUNDS {
+        bigint order_refund_id PK
+        bigint order_id FK
+        numeric amount
+        char currency
+        text status
+        bigint requested_by_account_id FK
+        bigint assigned_supervisor_account_id FK
+        bigint processing_by_account_id FK
+        bigint return_id FK, UK
+    }
+
+    INVENTORY_ITEMS {
+        bigint item_id PK
+        text item_type
+        text name
+        text unit
+        numeric base_price
+        numeric quantity_available
+    }
+
+    SALES_REPORTS {
+        bigint sales_report_id PK
+        text report_source
+        bigint submitted_by_account_id FK
+        bigint reseller_id FK
+        bigint department_id FK
+        date period_start
+        date period_end
+        numeric total_sales
+        integer total_orders
+    }
+
+    SALES_REPORT_ITEMS {
+        bigint sales_report_item_id PK
+        bigint sales_report_id FK
+        bigint product_id FK
+        text unit
+        numeric unit_price
+        numeric line_total
+    }
+
+    SALES_REPORT_ATTACHMENTS {
+        bigint sales_report_attachment_id PK
+        bigint sales_report_id FK
+        bytea content
+    }
+
+    SALES_REPORT_ORDERS {
+        bigint sales_report_id PK, FK
+        bigint order_id PK, FK
+    }
+
+    SALES_REPORT_REFUNDS {
+        bigint sales_report_id PK, FK
+        bigint order_refund_id PK, FK
+        numeric amount
+    }
+
+    SALES_REPORT_ACTIVITY_SNAPSHOTS {
+        bigint sales_report_id PK, FK
+        bigint author_account_id FK
+        uuid submission_key UK
+        smallint schema_version
+        jsonb payload
+    }
+
+    FORECAST_RUNS {
+        bigint forecast_run_id PK
+        bigint run_by_account_id FK
+        text model_name
+        integer forecast_horizon_days
+        text status
+        integer attempt_count
+        timestamptz next_attempt_at
+        bigint retry_of_forecast_run_id FK, UK
+    }
+
+    FORECAST_PRODUCT_SUMMARIES {
+        bigint forecast_product_summary_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+        text method
+        text diagnostic_status
+        numeric forecast_total
+        numeric usable_stock
+        numeric production_gap
+    }
+
+    FORECAST_RESULTS {
+        bigint forecast_result_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+        date forecast_date
+        numeric predicted_quantity
+    }
+
+    ACCOUNTS |o..o{ RESELLERS : "team_leader_account_id"
+    ACCOUNTS |o..o{ RESELLERS : "approved_by_account_id"
+    RESELLERS |o..o{ ACCOUNTS : "reseller_id"
+    RESELLERS |o..o{ ORDERS : "reseller_id"
+    ACCOUNTS |o..o{ ORDERS : "created_by_account_id"
+    ACCOUNTS |o..o{ ORDERS : "team_leader_account_id"
+    ACCOUNTS |o..o{ ORDERS : "approved_by_account_id"
+    ORDERS ||..o{ ORDER_REFUNDS : "order_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "requested_by_account_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "assigned_supervisor_account_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "processing_by_account_id"
+    ACCOUNTS |o..o{ SALES_REPORTS : "submitted_by_account_id"
+    RESELLERS |o..o{ SALES_REPORTS : "reseller_id"
+    DEPARTMENTS |o..o{ SALES_REPORTS : "department_id"
+    SALES_REPORTS ||..o{ SALES_REPORT_ITEMS : "sales_report_id"
+    INVENTORY_ITEMS ||..o{ SALES_REPORT_ITEMS : "product_id"
+    SALES_REPORTS ||..o{ SALES_REPORT_ATTACHMENTS : "sales_report_id"
+    ACCOUNTS |o..o{ FORECAST_RUNS : "run_by_account_id"
+    FORECAST_RUNS ||..o{ FORECAST_PRODUCT_SUMMARIES : "forecast_run_id"
+    INVENTORY_ITEMS ||..o{ FORECAST_PRODUCT_SUMMARIES : "product_id"
+    FORECAST_RUNS ||..o{ FORECAST_RESULTS : "forecast_run_id"
+    INVENTORY_ITEMS ||..o{ FORECAST_RESULTS : "product_id"
+    FORECAST_RUNS |o..o| FORECAST_RUNS : "retry_of_forecast_run_id"
+    SALES_REPORTS ||--o{ SALES_REPORT_ORDERS : "sales_report_id"
+    ORDERS ||--o{ SALES_REPORT_ORDERS : "order_id"
+    SALES_REPORTS ||--o{ SALES_REPORT_REFUNDS : "sales_report_id"
+    ORDER_REFUNDS ||--o{ SALES_REPORT_REFUNDS : "order_refund_id"
+    SALES_REPORTS ||--o| SALES_REPORT_ACTIVITY_SNAPSHOTS : "sales_report_id"
+    ACCOUNTS ||..o{ SALES_REPORT_ACTIVITY_SNAPSHOTS : "author_account_id"

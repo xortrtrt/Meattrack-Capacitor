@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app import main
 from app.database import fetch_one
 from app.repositories import product_returns as returns
+from app.repositories import replacement_workflow
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
 from test_product_lifecycle import lifecycle, supporting_photo  # noqa: F401
 from test_return_request_options import sign_in
@@ -21,6 +22,15 @@ def test_new_requests_reject_missing_empty_invalid_and_excess_photos(lifecycle, 
     photo = supporting_photo()
     data = dict(order_id=d["order"], allocation_id=d["allocation"], quantity=2,
                 resolution=resolution, remarks="Supporting photo of the issue for Sales review", operation_key=str(uuid4()))
+    if resolution == "replace":
+        comparison = replacement_workflow.preview(
+            d["order"], d["reseller"], [(d["allocation"], 2)], [(d["product"], 2)]
+        )
+        data.update(
+            replacement_product_id=d["product"],
+            replacement_quantity=2,
+            comparison_token=comparison["token"],
+        )
     invalid_uploads = [
         None,
         {"evidence": ("empty.png", b"", "image/png")},

@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, database, operations]
-verified: 2026-10-28
+verified: 2026-10-30
 ---
 # Database and operations
 
@@ -47,6 +47,21 @@ docker compose exec app python tools/migrate_database.py
 ```
 
 Development uses app loopback port 8000 and database loopback port 55433.
+Both Compose definitions make the application and worker depend directly on a
+healthy database as well as successful migrations. PostgreSQL has a two-minute
+health-check start period and a two-minute shutdown grace period to accommodate
+crash recovery and clean checkpoints. Docker Desktop starting existing containers
+does not enforce Compose dependency readiness; temporary database connection
+failures therefore return HTTP 503 with `Retry-After` through application middleware,
+including session loading and saving. Writes are not automatically retried.
+
+If PostgreSQL reports that it is starting up, allow recovery to finish. Start with
+`docker compose up -d --wait --wait-timeout 300 db`, then bring up the application
+and worker through Compose. Do not repeatedly interrupt recovery or delete the
+data volume. Checked on 2026-10-30 against `compose.yml`, `compose.prod.yml`,
+`app/application.py`, and `tests/test_database_concurrency.py`. See [[Architecture]]
+and [[Testing and Change Impact]].
+
 Production uses `compose.prod.yml`, an application/worker pair, private PostgreSQL,
 host Nginx, and HTTPS. Schema readiness must precede compatible app/worker startup.
 The Sales authorization flow requires migration 036. The combined
@@ -93,3 +108,56 @@ Sources: [database guide](../../database/README.md),
 [baseline](../../database/schema.sql), [migration runner](../../tools/migrate_database.py),
 [local Compose](../../compose.yml), [production Compose](../../compose.prod.yml),
 [deployment guide](../../README.md), [Sales authorization migration](../../database/migrations/036_return_sales_authorization.sql).
+
+## Portal upgrade: migrations 040–042
+
+Run `python tools/preflight_portal_upgrade.py` before the upgrade. It is read-only
+and returns a failure exit code with affected order IDs when pending/approved
+reseller payments are insufficient. An Owner must reconcile those records before
+migration 040 can succeed; historical fulfilled orders and completed refunds are
+not rewritten. Do not replace payment values with order totals to pass preflight.
+
+Pause application and worker writes, apply ordered migrations, then start the
+compatible application and worker. Migration 040 removes unpaid holds and records
+reservation snapshots/releases. Migration 041 transfers accepted unfinished cases
+to Supervisor/Owner and queues participant notifications without rewriting custody
+or approval history. Migration 042 adds private message attachments, refund read
+cursors, and transfer-recognition metadata/amount validation. Fresh installations
+use the matching baseline. Applied older migration files remain unchanged.
+
+The checked-in Nginx request limit is 35 MB to admit a 30 MB message plus multipart
+fields; deploy/reload that configuration with the application. Backups must include
+private attachment tables. The explicit reset utility's reviewed table list now
+includes reservation events, message attachments, and refund read cursors; this
+change does not run that destructive utility. See [[Orders and Inventory]],
+[[Returns and Financials]], and [[Background Work and Integrations]].
+
+Sources checked 2026-10-29: migrations 040–042, `database/schema.sql`,
+`tools/preflight_portal_upgrade.py`, `tools/reset_operational_data.py`,
+`deploy/nginx/meattrack.conf`. No production deployment is established by this note.
+
+Local verification on 2026-10-30: the read-only preflight passed, the local Compose
+application and worker were stopped, migrations 040–042 were applied with
+`tools/migrate_database.py`, and both services resumed successfully. This records
+the local development upgrade only; the Contabo deployment and host Nginx reload
+remain separate operations. See [[Testing and Change Impact]] for regression
+coverage.
+
+Migration 043 adds immutable reseller order-receipt acknowledgements independently
+of fulfillment and financial records; fresh schema installations include it. It was
+applied to the local database on 2026-10-30 with application/worker writes paused,
+then both services resumed. Apply it before code that reads order receipt state.
+`tools/reset_operational_data.py` includes the receipt table in its reviewed list;
+the reset utility was not run. See [[Orders and Inventory]] and [[Decisions]].
+
+## Replacement upgrade: migration 044
+
+[[Replacement Workflow]] requires migration 044 before compatible app/worker code.
+It adds versioned replacement metadata/pricing components, append-only case messages,
+and read cursors. Existing returns remain version 1; the new reseller replacement
+submission opts into version 2. Baseline/schema and the reset tool's reviewed list
+include these additions; the destructive reset was not run. On 2026-10-30 the local
+loopback development target was verified, app/worker writes were paused, 044 applied
+successfully, and both local services restarted. No production upgrade is established.
+Sources: `database/migrations/044_replacement_workflow.sql`, `database/schema.sql`,
+`tools/migrate_database.py`, `tools/reset_operational_data.py`.

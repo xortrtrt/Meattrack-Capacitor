@@ -87,7 +87,7 @@ def test_stale_modal_cannot_bypass_deadline_but_existing_request_and_replay_cont
         tracked = client.get(f"/portal/reseller/history?view=returns&case={case}")
         assert tracked.status_code == 200 and f'data-return-dialog="{case}"' in tracked.text
         history = client.get("/portal/reseller/history?view=fulfilled")
-        assert "5-day return/refund/replacement request window has closed" in history.text
+        assert ">Details</a>" in history.text
         assert "Return / Refund / Replace</a>" not in history.text
     returns.review_product_return(case, d["sales"], True, "Review continues after the request deadline")
     receive(d, case, authorize=False)

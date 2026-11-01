@@ -10,6 +10,7 @@ from .accounts import reseller_account_profile
 from .inventory import _apply_fefo_allocations, _inventory_actor_name, _plan_fefo_allocations
 from .notifications import _create_notification_cursor, _create_order_system_message_cursor
 from .superuser import business_setting
+from .processing_assignment import supervisor_for_case
 
 
 class ConfirmedPayment(TypedDict):
@@ -21,6 +22,18 @@ class ConfirmedPayment(TypedDict):
     extraction_method: str
     confirmed_at: datetime
     ocr_engine: str
+
+
+def require_sufficient_order_payment(amount: object, total: object) -> None:
+    try:
+        paid = Decimal(str(amount))
+        required = Decimal(str(total))
+    except (ArithmeticError, ValueError):
+        raise ValueError("Enter a valid payment amount.")
+    if not paid.is_finite() or paid <= 0 or paid > Decimal("9999999999.99") or not required.is_finite() or paid.as_tuple().exponent < -2:
+        raise ValueError("Enter a valid payment amount with at most two decimal places.")
+    if paid < required:
+        raise ValueError(f"Payment must cover PHP {required:,.2f}. Shortfall: PHP {required-paid:,.2f}.")
 
 
 RESELLER_ORDER_CANCELLATION_REASONS = (
@@ -43,11 +56,14 @@ def list_orders(
     page: int | None = None,
     page_size: int = 10,
     sort: str = "",
+    exclude_to_pay: bool = False,
 ) -> list[dict]:
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
     where = []
     params: list[object] = []
+    if exclude_to_pay:
+        where.append("o.status <> 'to_pay'")
     if order_type:
         where.append("o.order_type = %s")
         params.append(order_type)
@@ -94,10 +110,12 @@ def list_orders(
     order_sql = safe_sort_sql(sort, ORDER_SORTS, ORDER_SORTS["newest"])
     orders = clean_row(fetch_all(f"""
         SELECT o.order_id, o.order_type, o.reseller_id,
+               ARRAY(SELECT pr.return_id FROM product_returns pr WHERE pr.order_id=o.order_id ORDER BY pr.return_id DESC) return_case_ids,
                COALESCE(r.business_name, 'Retail counter') AS reseller,
                o.team_leader_account_id,
                tl.name AS team_leader_name,
                o.status, o.order_date, o.fulfilled_at, o.total_amount, o.notes,
+               receipt.received_at AS order_received_at,
                o.cancellation_reason, o.cancelled_at,
                o.payment_transaction_number, o.payment_paid_at, o.payment_amount,
                o.payment_ocr_confidence, o.payment_extraction_method,
@@ -107,6 +125,7 @@ def list_orders(
         FROM orders o
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
         LEFT JOIN accounts tl ON tl.account_id = o.team_leader_account_id
+        LEFT JOIN reseller_order_receipts receipt ON receipt.order_id=o.order_id
         LEFT JOIN (SELECT order_id,
             CASE WHEN bool_or(status='processing') THEN 'processing'
                  WHEN bool_or(status='pending') THEN 'pending'
@@ -422,7 +441,8 @@ def submit_order_payment(
         with get_transaction_cursor() as cur:
             cur.execute(
                 """
-                SELECT o.order_id, o.status, o.payment_due_at, o.reseller_id,
+                SELECT o.order_id, o.status, o.payment_due_at, o.reseller_id, o.total_amount,
+                       o.payment_transaction_key, o.payment_amount,
                        o.team_leader_account_id, o.created_by_account_id,
                        r.business_name
                 FROM orders o
@@ -438,6 +458,12 @@ def submit_order_payment(
             if not order:
                 raise ValueError("Order was not found.")
             if order["status"] != "to_pay":
+                if (order["status"] in {"pending", "approved", "fulfilled", "rejected"}
+                    and order.get("payment_transaction_key") == payment_details["transaction_key"]
+                    and order.get("payment_amount") == payment_details["payment_amount"]):
+                    cur.execute("SELECT checksum_sha256 FROM order_payment_proofs WHERE order_id=%s", (order_id,))
+                    if {r["checksum_sha256"] for r in cur.fetchall()} == {a["checksum_sha256"] for a in attachments}:
+                        return clean_row(dict(order))
                 raise ValueError("This order is no longer awaiting payment.")
             if order["payment_due_at"] is None or order["payment_due_at"] <= business_now():
                 cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
@@ -459,6 +485,17 @@ def submit_order_payment(
                 )
                 expired = True
             else:
+                require_sufficient_order_payment(payment_details["payment_amount"], order["total_amount"])
+                cur.execute("SELECT set_config('meattrack.actor_account_id',%s,true)", (str(account_id),))
+                cur.execute("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=%s GROUP BY product_id ORDER BY product_id", (order_id,))
+                quantities = {r["product_id"]: Decimal(r["quantity"]) for r in cur.fetchall()}
+                shortage = False
+                try:
+                    _plan_fefo_allocations(cur, quantities, reservation_order_id=order_id)
+                except ValueError as exc:
+                    if not str(exc).startswith("Not enough "):
+                        raise
+                    shortage = True
                 cur.execute(
                     """
                     SELECT 1 FROM orders
@@ -475,7 +512,8 @@ def submit_order_payment(
                 cur.execute(
                     """
                     UPDATE orders
-                    SET status = 'pending',
+                    SET status = %s,
+                        rejection_reason = %s,
                         payment_transaction_number = %s,
                         payment_transaction_key = %s,
                         payment_paid_at = %s,
@@ -488,6 +526,8 @@ def submit_order_payment(
                     RETURNING order_id, status, payment_due_at, total_amount;
                     """,
                     (
+                        'rejected' if shortage else 'pending',
+                        'Stock unavailable after payment submission.' if shortage else None,
                         payment_details["transaction_number"], payment_details["transaction_key"],
                         payment_details["paid_at"], payment_details["payment_amount"],
                         payment_details["ocr_confidence"], payment_details["extraction_method"],
@@ -495,17 +535,40 @@ def submit_order_payment(
                     ),
                 )
                 result = dict(cur.fetchone())
+                if shortage:
+                    supervisor_id = supervisor_for_case(cur, order["team_leader_account_id"])
+                    cur.execute("""INSERT INTO order_refunds(order_id,amount,requested_by_account_id,
+                        assigned_supervisor_account_id,payment_review_required) VALUES(%s,%s,%s,%s,true)
+                        RETURNING order_refund_id""", (order_id,payment_details["payment_amount"],account_id,supervisor_id))
+                    refund_id = cur.fetchone()["order_refund_id"]
+                    _create_notification_cursor(cur,recipient_account_id=supervisor_id,
+                        recipient_role=None if supervisor_id else "owner",category="order",severity="warning",
+                        title="Stock shortage — verify payment for refund",
+                        message=f"Order #{order_id} could not reserve stock. Verify receipt of funds before refunding.",
+                        target_url=f"/portal/{'sales-supervisor' if supervisor_id else 'owner'}/refunds?refund={refund_id}",
+                        source_type="order_refunds",source_id=refund_id,dedupe_key=f"shortage-refund-{order_id}")
+                    _create_order_system_message_cursor(cur,reseller_account_id=account_id,order_id=order_id,
+                        event_type="rejected",title="Stock unavailable — payment review queued",
+                        message="The remaining stock was taken before your payment was submitted. Your order was rejected. Supervisor/Owner will verify your payment and arrange its refund.",
+                        rejection_reason="Stock unavailable after payment submission.",dedupe_key=f"shortage-rejected-{order_id}")
+                    _create_notification_cursor(cur,recipient_account_id=account_id,category="order",severity="warning",
+                        title="Order rejected — refund review queued",message=f"Order #{order_id} could not reserve stock. Your payment evidence has been sent for refund review.",
+                        target_url=f"/portal/reseller/inbox?refund={refund_id}",source_type="order_refunds",source_id=refund_id,
+                        dedupe_key=f"shortage-reseller-{order_id}")
+                else:
+                    _reserve_order_stock_cursor(cur, order_id, quantities)
                 _add_log_cursor(
                     cur, actor_account_id=account_id, action="submitted_order_payment",
                     entity_type="orders", entity_id=order_id,
                 )
-                _create_notification_cursor(
-                    cur, recipient_account_id=order["team_leader_account_id"], category="order", severity="warning",
-                    title="Pending reseller order",
-                    message=f"Order #{order_id} from {order['business_name']} was paid and needs review.",
-                    target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
-                    dedupe_key=f"reseller-order-{order_id}",
-                )
+                if not shortage:
+                    _create_notification_cursor(
+                        cur, recipient_account_id=order["team_leader_account_id"], category="order", severity="warning",
+                        title="Pending reseller order",
+                        message=f"Order #{order_id} from {order['business_name']} submitted payment and needs review.",
+                        target_url="/portal/team-leader/orders", source_type="orders", source_id=order_id,
+                        dedupe_key=f"reseller-order-{order_id}",
+                    )
     except psycopg2.Error as exc:
         message = str(exc)
         if "already been used" in message or "ux_orders_reseller_payment_transaction" in message:
@@ -514,6 +577,25 @@ def submit_order_payment(
     if expired:
         raise ValueError("The 15-minute payment window expired. This order was released and cannot be paid.")
     return clean_row(result)
+
+
+def acknowledge_order_received(account_id: int, order_id: int) -> None:
+    """Record receipt once; fulfillment and its five-day return clock remain intact."""
+    with get_transaction_cursor() as cur:
+        cur.execute(
+            """SELECT o.order_id FROM orders o JOIN accounts a ON a.account_id=o.created_by_account_id
+            WHERE o.order_id=%s AND o.created_by_account_id=%s AND o.order_type='reseller'
+              AND o.status='fulfilled' AND a.account_type='reseller' AND a.is_active FOR UPDATE OF o""",
+            (order_id, account_id),
+        )
+        if not cur.fetchone():
+            raise ValueError("Only your completed orders can be marked received.")
+        cur.execute(
+            """INSERT INTO reseller_order_receipts(order_id,account_id) VALUES(%s,%s)
+            ON CONFLICT(order_id) DO NOTHING RETURNING order_id""", (order_id, account_id),
+        )
+        if cur.fetchone():
+            _add_log_cursor(cur,actor_account_id=account_id,action="acknowledged_order_received",entity_type="orders",entity_id=order_id)
 
 
 def get_order_payment_proof(proof_id: int, account_id: int | None, role_key: str | None) -> dict | None:
@@ -543,6 +625,14 @@ def get_order_payment_proof(proof_id: int, account_id: int | None, role_key: str
         return clean_row(proof)
     if role_key in {"team-leader", "sales-supervisor"} and account_id == proof["team_leader_account_id"]:
         return clean_row(proof)
+    if role_key in {"team-leader", "sales-supervisor"} and account_id is not None:
+        processor_access = fetch_one("""SELECT 1 FROM order_refunds f JOIN accounts a ON a.account_id=%s
+            WHERE f.order_id=%s AND a.is_active AND a.account_type='team_leader'
+              AND a.team_leader_role='sales-supervisor'
+              AND (f.assigned_supervisor_account_id=%s OR (f.assigned_supervisor_account_id IS NULL AND f.status IN ('pending','failed')))
+            LIMIT 1""", (account_id,proof["order_id"],account_id))
+        if processor_access:
+            return clean_row(proof)
     return None
 
 
@@ -612,6 +702,7 @@ def count_orders(
     status: str = "",
     team_leader_account_id: int | None = None,
     reseller_account_id: int | None = None,
+    exclude_to_pay: bool = False,
 ) -> int:
     if order_type not in {None, "reseller", "walk_in"}:
         raise ValueError("order_type must be reseller, walk_in, or None")
@@ -628,6 +719,8 @@ def count_orders(
     """
     where = []
     params: list[object] = []
+    if exclude_to_pay:
+        where.append("o.status <> 'to_pay'")
     if order_type:
         where.append("o.order_type = %s")
         params.append(order_type)
@@ -784,7 +877,7 @@ def _require_reseller_quantity_available(product: dict | None, quantity: Decimal
     if quantity > available:
         raise ValueError(
             f"Only {display_decimal(available)} packs of {product['name']} are currently available. "
-            "Some stock may already be reserved by orders awaiting payment."
+            "Some stock may already be reserved by paid orders."
         )
 
 
@@ -1058,9 +1151,6 @@ def create_order_from_items(
                 VALUES (%s, %s, %s, %s, %s);
             """, (order_id, product_id, quantity, unit, unit_price))
 
-        if role == "reseller":
-            _reserve_order_stock_cursor(cur, order_id, quantities)
-
         if role != "reseller":
             allocations = _plan_fefo_allocations(cur, quantities)
             _apply_fefo_allocations(
@@ -1178,6 +1268,9 @@ def decide_order(
             leader = cur.fetchone()
             leader_id = leader["account_id"] if leader else None
         actor_name = _inventory_actor_name(cur, leader_id)
+        cur.execute("SELECT set_config('meattrack.actor_account_id',%s,true)", (str(leader_id or ''),))
+        if decision in {"approve", "fulfill"}:
+            require_sufficient_order_payment(ord_res.get("payment_amount"), ord_res["total_amount"])
 
         if decision == "approve":
             if ord_res["status"] != "pending":
@@ -1274,6 +1367,7 @@ def decide_order(
                 actor_account_id=leader_id,
                 actor_name=actor_name,
             )
+            cur.execute("SELECT set_config('meattrack.reservation_reason','fulfilled',true)")
             cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
             cur.execute("""
                 UPDATE orders
@@ -1399,4 +1493,4 @@ def decide_order(
     return True
 
 
-__all__ = ['RESELLER_ORDER_CANCELLATION_REASONS', 'list_orders', 'add_order_payment_proofs', 'submit_order_payment', 'cancel_reseller_order', 'expire_unpaid_orders', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', 'reseller_order_confirmation', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']
+__all__ = ['acknowledge_order_received', 'RESELLER_ORDER_CANCELLATION_REASONS', 'list_orders', 'add_order_payment_proofs', 'submit_order_payment', 'cancel_reseller_order', 'expire_unpaid_orders', 'get_order_payment_proof', 'reseller_most_bought_products', 'reseller_sales_series', 'count_orders', 'product_by_id', 'list_reseller_cart_items', 'reseller_cart_count', 'reseller_order_confirmation', '_reseller_available_product', '_require_reseller_quantity_available', 'add_reseller_cart_item', 'update_reseller_cart_item', 'remove_reseller_cart_item', 'clear_reseller_cart', 'create_order_from_items', 'create_order', 'checkout_reseller_cart', 'decide_order']

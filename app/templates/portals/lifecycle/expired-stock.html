@@ -8,7 +8,7 @@
   </header>
 {%- endmacro %}
 <section class="panel lifecycle-workspace lifecycle-expired-page">
-  <header class="lifecycle-hero"><div class="lifecycle-hero-copy"><span class="lifecycle-hero-icon"><i data-lucide="archive" aria-hidden="true"></i></span><div><span class="eyebrow">Inventory custody</span><h2>Expired stock</h2><p>Account for every pack, from pull-out to disposal.</p></div></div><span class="lifecycle-hero-note"><i data-lucide="shield-check" aria-hidden="true"></i>Separated from sellable stock</span></header>
+  <header class="lifecycle-hero"><div class="lifecycle-hero-copy"><span class="lifecycle-hero-icon"><i data-lucide="archive" aria-hidden="true"></i></span><div><span class="eyebrow">Inventory custody</span><h2>Pull-outs and non-sellable goods</h2><p>Track expired-stock pull-outs and returned goods in separate non-sellable custody records.</p></div></div><span class="lifecycle-hero-note"><i data-lucide="shield-check" aria-hidden="true"></i>Separated from sellable stock</span></header>
   <div class="lifecycle-metrics lifecycle-metrics--custody">
     {{ metric('Awaiting pull-out',pullouts|sum(attribute='quantity_available'),'package-minus',tone='danger') }}
     {{ metric('In expired holding',holdings|sum(attribute='quantity_remaining'),'archive',tone='warning') }}

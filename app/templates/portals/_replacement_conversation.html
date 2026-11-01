@@ -1,0 +1,33 @@
+{% from 'portals/_replacement_thread_rows.html' import participant_avatar with context %}
+{% set other_name = replacement_chat.processor_name if role_key == 'reseller' else replacement_chat.reseller_name %}
+<section class="sales-reseller-messenger replacement-conversation" data-replacement-conversation data-role="{{ role_key }}" data-return-id="{{ replacement_chat.return_id }}" data-actor="{{ replacement_chat_actor }}" aria-label="Replacement conversation">
+  <header class="replacement-workspace-heading">
+    <div><span class="eyebrow">Messages</span><h2>Replacement conversations</h2><p>Keep your return, replacement, and delivery updates together.</p></div>
+    <a class="button subtle" href="/portal/{{ role_key }}/{{ 'inbox' if role_key == 'reseller' else 'messages' }}"><i data-lucide="arrow-left" aria-hidden="true"></i>Back to messages</a>
+  </header>
+  <div class="sales-message-layout replacement-message-layout">
+    <aside class="sales-message-rail replacement-message-rail" id="replacement-conversations" aria-label="Replacement conversations">
+      <header><div><span class="eyebrow">Conversations</span><h3>Your replacements</h3></div><span class="replacement-thread-count">{{ replacement_threads|length }}</span></header>
+      <nav class="sales-message-list" aria-label="Choose a replacement conversation">{% include 'portals/_replacement_thread_rows.html' %}</nav>
+    </aside>
+    <section class="sales-message-stage replacement-message-stage" aria-label="Replacement #{{ replacement_chat.return_id }}">
+      <header class="sales-message-thread-head replacement-thread-head">
+        <button class="replacement-list-back" type="button" data-replacement-list-toggle aria-controls="replacement-conversations" aria-expanded="false" aria-label="Show replacement conversations"><i data-lucide="arrow-left" aria-hidden="true"></i></button>
+        {{ participant_avatar(replacement_chat) }}
+        <div class="replacement-participant"><h3>{{ other_name }}</h3><small>{{ 'Assigned Supervisor' if role_key == 'reseller' else 'Reseller' }} · Replacement #{{ replacement_chat.return_id }}</small></div>
+      </header>
+      <div class="replacement-case-context">
+        <span><i data-lucide="package-open" aria-hidden="true"></i>Order #{{ replacement_chat.order_id }}<span class="replacement-case-status">{{ replacement_chat.status|replace('_',' ')|title }}</span></span>
+        <a href="/portal/{{ role_key }}/{{ 'history?view=returns&' if role_key == 'reseller' else 'returns?' }}case={{ replacement_chat.return_id }}">Open return details<i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+      </div>
+      <div class="reseller-chat-messages sales-message-feed replacement-message-log" data-replacement-message-log role="log" aria-label="Replacement messages" aria-live="polite" aria-relevant="additions" aria-busy="true" tabindex="0"><p class="replacement-message-empty" data-replacement-message-loading>Loading messages…</p></div>
+      <div class="replacement-message-feedback" hidden><p data-replacement-message-error role="status"></p><button type="button" data-replacement-retry hidden>Retry loading</button></div>
+      <form class="reseller-chat-composer" data-replacement-message-form>
+        <label class="sr-only" for="replacement-message">Message</label>
+        <textarea id="replacement-message" name="content" required minlength="1" maxlength="1000" rows="1" placeholder="Write a message…" aria-describedby="replacement-composer-help"></textarea>
+        <button class="button primary" type="submit"><span class="sr-only">Send message</span><i data-lucide="send" aria-hidden="true"></i></button>
+      </form>
+      <p class="replacement-composer-help" id="replacement-composer-help">Photos and payment evidence are in return details.<span>Enter to send · Shift + Enter for a new line</span></p>
+    </section>
+  </div>
+</section>

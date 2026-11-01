@@ -1,0 +1,6 @@
+{% if replacement_threads|default([]) %}
+<section class="sales-reseller-messenger replacement-conversation-index" aria-label="Replacement conversations">
+  <header><div><span class="eyebrow">Returns &amp; replacements</span><h3>Replacement conversations</h3><p class="hint">Follow up with your {{ 'Supervisor' if role_key == 'reseller' else 'reseller' }} about a replacement request.</p></div><span class="replacement-thread-count">{{ replacement_threads|length }}</span></header>
+  <nav class="replacement-thread-links" aria-label="Choose a replacement conversation">{% include 'portals/_replacement_thread_rows.html' %}</nav>
+</section>
+{% endif %}

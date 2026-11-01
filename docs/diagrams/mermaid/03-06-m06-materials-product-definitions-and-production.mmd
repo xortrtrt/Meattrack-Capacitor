@@ -1,0 +1,21 @@
+flowchart TD
+    A([Inventory or authorized Owner]) --> B{Operation}
+    B -->|Raw material receipt| C[Validate material, positive quantity and supported unit]
+    C --> D[Lock and increase material balance]
+    D --> E[Append raw-receipt movement and activity]
+    B -->|Product definition| F[Validate finished product, pack information and recipe components]
+    F --> G[Save inventory item and product recipes]
+    B -->|Production| H[Validate batch code, whole packs and dates]
+    H --> I[Load recipe; lock raw material rows]
+    I --> J[Calculate material requirements per produced pack]
+    J --> K{Recipe, units and balances sufficient?}
+    K -->|No| X[Reject and roll back]
+    K -->|Yes| L[Create approved finished-product batch]
+    L --> M[Deduct raw materials]
+    M --> N[Append consumption and production-output movements]
+    N --> O[Create expiry alert if near configured threshold]
+    B -->|Owner price update| R[Validate price and update product catalog]
+    E --> S([Updated inventory and audit history])
+    G --> S
+    O --> S
+    R --> S

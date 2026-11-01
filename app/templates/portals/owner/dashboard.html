@@ -1,114 +1,65 @@
-<div class="owner-page owner-dashboard-page">
-<section class="owner-signal-strip" aria-label="Business overview">
-  <div>
-    <span>Fulfilled sales</span
-    ><strong>{{ metrics.fulfilled_sales|currency }}</strong
-    ><small>All-time fulfilled orders</small>
-  </div>
-  <div>
-    <span>Pending orders</span
-    ><strong>{{ metrics.pending_reseller_orders }}</strong
-    ><small>Awaiting team leader review</small>
-  </div>
-  <div>
-    <span>Active resellers</span><strong>{{ metrics.active_resellers }}</strong
-    ><small>Approved reseller accounts</small>
-  </div>
-  <div>
-    <span>Available stock</span
-    ><strong>{{ metrics.total_available|number }}</strong
-    ><small>Approved finished packs</small>
-  </div>
-</section>
-
-<section class="owner-dashboard-grid">
-  <article class="panel owner-sales-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>Sales trend</h2>
-        <span class="hint">Fulfilled reseller sales for the selected period.</span>
-      </div>
-      <form
-        class="owner-sales-period-form"
-        method="get"
-        data-owner-sales-form
-        data-owner-sales-url="/portal/owner/dashboard/sales-chart"
-      >
-        <label>
-          View
-          <select name="sales_period">
-            {% for value, label in owner_sales_period_options %}
-            <option value="{{ value }}" {{ 'selected' if owner_sales_period == value else '' }}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <a href="/portal/owner/reports">Reports</a>
-      </form>
-    </div>
-    <p class="hint" data-owner-sales-summary aria-live="polite"><strong data-owner-sales-total>{{ owner_sales_chart_total|currency }}</strong> · Fulfilled orders: <span data-owner-sales-orders>{{ owner_sales_chart_orders|number }}</span> · <span data-owner-sales-start>{{ owner_sales_chart_range.start }}</span> to <span data-owner-sales-end>{{ owner_sales_chart_range.end }}</span></p>
-    <script type="application/json" data-owner-sales-json>
-      {{ owner_sales_chart|tojson }}
-    </script>
-    <div class="owner-sales-chart">
-      <canvas
-        data-owner-sales-chart
-        aria-label="Owner sales trend chart"
-        role="img"
-      ></canvas>
-    </div>
-  </article>
-
-  <article class="panel owner-top-products-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>Most bought products</h2>
-      </div>
-    </div>
-    <div class="owner-product-rank-list">
-      {% for product in top_products %}
-      <div class="owner-product-rank">
-        <span>{{ loop.index }}</span>
-        <div>
-          <strong>{{ product.name }}</strong>
-          <small
-            >{{ product.total_quantity|number }} {{ product.unit }} · {{
-            product.total_amount|currency }}</small
-          >
-        </div>
-      </div>
-      {% else %}
-      <p class="hint">No reseller purchases yet.</p>
+{% set business = business|default({}) %}
+{% set stock = stock|default({'counts':{},'batches':[],'near_days':14}) %}
+{% set money = settlement_summary|default({}) %}
+<div class="owner-page owner-brief">
+  <section class="owner-brief-metrics" aria-label="Business measures">
+    <article class="owner-brief-metric is-financial"><span>Retained sales</span><strong>{{ money.get('retained_sales',0)|currency }}</strong><small>All-time fulfilled sales less completed sales refunds</small><a href="#owner-money">Understand the totals <i data-lucide="arrow-down" aria-hidden="true"></i></a></article>
+    <article class="owner-brief-metric"><span>Pending refund obligations</span><strong>{{ money.get('pending_refunds',0)|currency }}</strong><small>Not yet deducted from completed totals</small><a href="/portal/owner/refunds">Review refunds <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></article>
+    <article class="owner-brief-metric"><span>Available finished stock</span><strong>{{ stock.counts.get('available',0)|number }} <em>packs</em></strong><small>Eligible batches after order and replacement holds</small><a href="/portal/owner/inventory">Inspect inventory <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></article>
+    <article class="owner-brief-metric"><span>Active resellers</span><strong>{{ business.get('active_resellers',0)|number }}</strong><small>{{ business.get('unassigned_resellers',0)|number }} without an active Sales assignment</small><a href="/portal/owner/resellers?status=active">View reseller network <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></article>
+  </section>
+  <div class="owner-brief-grid">
+    <section class="owner-surface owner-attention" aria-labelledby="owner-attention-title">
+      <header class="owner-surface-heading"><div><span class="owner-section-label">Owner attention</span><h3 id="owner-attention-title">Where to step in</h3></div><a href="/portal/owner/operations">All work queues <i data-lucide="arrow-right" aria-hidden="true"></i></a></header>
+      <div class="owner-attention-list">
+      {% set exceptions = [
+        ('failed_refunds','Failed refund attempts','Preserved attempts waiting for a processor to retry.','refunds?status=failed','badge-dollar-sign'),
+        ('return_mismatches','Return receipt mismatches','Sales and Inventory need to agree on the corrected request.','returns?status=discrepancy','package-x'),
+        ('owner_returns','Accepted returns needing an Owner','The assigned Supervisor is missing or no longer available.','returns?owner_only=1','user-round-cog'),
+        ('owner_refunds','Refunds without an active Supervisor','Review assignment and current processing responsibility.','refunds','wallet-cards'),
+        ('unassigned_inquiries','Inquiries without active Sales coverage','An Owner can review the application and record a decision.','inquiries','user-check'),
+        ('unassigned_resellers','Resellers without active Sales coverage','Restore an assignment so new work reaches the right person.','resellers?status=active','users')
+      ] %}
+      {% set attention = namespace(found=false) %}
+      {% for key,label,description,path,icon in exceptions if business.get(key,0) %}
+        {% set attention.found = true %}<a class="owner-attention-row" href="/portal/owner/{{ path }}"><span class="owner-row-icon"><i data-lucide="{{ icon }}" aria-hidden="true"></i></span><span><strong>{{ label }}</strong><small>{{ description }}</small></span><b>{{ business[key]|number }}</b><i data-lucide="chevron-right" aria-hidden="true"></i></a>
       {% endfor %}
-    </div>
-  </article>
-</section>
-
-<section aria-label="Demand forecast">
-  <article class="panel owner-forecast-panel">
-    <div class="panel-heading">
-      <div>
-        <h2>Upcoming demand</h2>
-        <span class="hint"
-          >Latest forecast results that should guide production planning.</span
-        >
+      {% if not attention.found %}<div class="owner-empty"><i data-lucide="circle-check" aria-hidden="true"></i><strong>No Owner exceptions in these queues</strong><p>Check the work queues to follow routine Sales and Inventory activity.</p><a href="/portal/owner/operations">View work queues</a></div>{% endif %}
       </div>
-      <a href="/portal/owner/forecasts">View all</a>
-    </div>
-    <div class="owner-forecast-list">
-      {% for forecast in forecasts %}
-      <div class="owner-forecast-item">
-        <div>
-          <strong>{{ forecast.product }}</strong>
-          <small>{{ forecast.forecast_date|nice_date }}</small>
-        </div>
-        <span>{% if forecast.forecast_total is not none %}{{ forecast.forecast_total|number }} packs · gap {{ forecast.production_gap|number }}{% else %}Manual review{% endif %}</span>
-        <em>{{ forecast.confidence }}</em>
-      </div>
-      {% else %}
-      <p class="hint">No forecast results yet.</p>
+      {% if money.get('reconciliation_count',0) %}<div class="owner-review-note" role="status"><i data-lucide="triangle-alert" aria-hidden="true"></i><p><strong>{{ money.reconciliation_count }} order(s) need financial reconciliation.</strong> Review the source balances below before relying on the totals.</p></div>{% endif %}
+    </section>
+    <section class="owner-surface owner-flow-summary" aria-labelledby="owner-pipeline-title">
+      <header class="owner-surface-heading"><div><span class="owner-section-label">Order pipeline</span><h3 id="owner-pipeline-title">From payment to delivery</h3></div></header>
+      {% for key,label,description,status in [('unpaid_orders','Awaiting payment','No stock held','to_pay'),('paid_review','Paid, awaiting review','Sales checks the payment','pending'),('ready_fulfillment','Approved for fulfillment','Delivery still outstanding','approved')] %}
+      <a class="owner-pipeline-row" href="/portal/owner/orders?status={{ status }}"><span><strong>{{ label }}</strong><small>{{ description }}</small></span><b>{{ business.get(key,0)|number }}</b><i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
       {% endfor %}
-    </div>
-  </article>
-
-</section>
+      <p class="owner-caption">These are current reseller order counts, not sales revenue.</p>
+    </section>
+  </div>
+  <section class="owner-surface owner-trend" aria-labelledby="owner-trend-title">
+    <header class="owner-surface-heading"><div><span class="owner-section-label">Sales performance</span><h3 id="owner-trend-title">Fulfilled reseller sales</h3><p>Gross order value by fulfillment date. Refunds and walk-in sales are excluded from this chart.</p></div>
+      <form class="owner-sales-period-form" method="get" data-owner-sales-form data-owner-sales-url="/portal/owner/dashboard/sales-chart"><label>Chart period<select name="sales_period">{% for value,label in owner_sales_period_options %}<option value="{{ value }}" {{ 'selected' if owner_sales_period==value else '' }}>{{ label }}</option>{% endfor %}</select></label><button class="button subtle" type="submit">Update chart</button></form>
+    </header>
+    <p class="owner-trend-summary" data-owner-sales-summary aria-live="polite"><strong data-owner-sales-total>{{ owner_sales_chart_total|currency }}</strong><span><span data-owner-sales-orders>{{ owner_sales_chart_orders|number }}</span> fulfilled orders</span><span><span data-owner-sales-start>{{ owner_sales_chart_range.start }}</span> to <span data-owner-sales-end>{{ owner_sales_chart_range.end }}</span></span></p>
+    <script type="application/json" data-owner-sales-json>{{ owner_sales_chart|tojson }}</script>
+    <div class="owner-sales-chart"><canvas data-owner-sales-chart aria-label="Fulfilled reseller gross sales by period" role="img"></canvas></div>
+    <details class="owner-chart-data"><summary>View chart data as a table</summary><div class="table-wrap"><table><thead><tr><th>Period</th><th>Gross sales</th><th>Orders</th></tr></thead><tbody data-owner-sales-table>{% for row in owner_sales_chart %}<tr><td>{{ row.label }}</td><td>{{ row.sales|currency }}</td><td>{{ row.orders|number }}</td></tr>{% endfor %}</tbody></table></div></details>
+  </section>
+  <div class="owner-brief-grid">
+    <section class="owner-surface" aria-labelledby="owner-expiry-title">
+      <header class="owner-surface-heading"><div><span class="owner-section-label">Stock exposure</span><h3 id="owner-expiry-title">Expiry needs attention</h3><p>{{ stock.counts.get('expired',0)|number }} expired packs in warehouse · {{ stock.counts.get('expiring',0)|number }} packs expire within {{ stock.near_days }} days</p></div><a href="/portal/owner/expired-stock">Manage expired stock <i data-lucide="arrow-right" aria-hidden="true"></i></a></header>
+      {% for batch in stock.batches %}<a class="owner-detail-row" href="/portal/owner/product-details?product_id={{ batch.product_id }}"><span><strong>{{ batch.name }}</strong><small>{{ batch.batch_code }} · {{ batch.expiry_date|nice_date }}</small></span><span><b>{{ batch.quantity|number }} packs</b><small class="{{ 'owner-danger-text' if batch.expired else '' }}">{{ 'Expired · pull-out needed' if batch.expired else 'Expiring soon' }}</small></span></a>{% else %}<div class="owner-empty"><i data-lucide="package-check" aria-hidden="true"></i><strong>No batches within the warning window</strong><p>Review available stock and production readiness in Inventory.</p></div>{% endfor %}
+    </section>
+    <section class="owner-surface" aria-labelledby="owner-reports-title">
+      <header class="owner-surface-heading"><div><span class="owner-section-label">Reporting inbox</span><h3 id="owner-reports-title">Latest Sales submissions</h3><p>Frozen activity reports, not a second sales ledger.</p></div><a href="/portal/owner/reports">All reports <i data-lucide="arrow-right" aria-hidden="true"></i></a></header>
+      {% for report in recent_reports|default([]) %}<a class="owner-detail-row" href="{{ '/portal/owner/reports/' ~ report.sales_report_id if report.activity_snapshot else '/portal/owner/reports?q=' ~ report.sales_report_id }}"><span><strong>{{ report.submitted_by }}</strong><small>{{ report.period_start|nice_date }} – {{ report.period_end|nice_date }}</small></span><span><b>Report #{{ report.sales_report_id }}</b><small>{{ 'Saved activity report' if report.activity_snapshot else 'Legacy report' }}</small></span></a>{% else %}<div class="owner-empty"><i data-lucide="file-text" aria-hidden="true"></i><strong>No Sales reports submitted yet</strong><p>Submitted reports appear here with their reporting period and author.</p></div>{% endfor %}
+      <a class="owner-surface-footer" href="/portal/owner/forecasts">Plan the next production run <i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+    </section>
+  </div>
+  <section class="owner-surface" id="owner-money" aria-labelledby="owner-money-title">
+    <header class="owner-surface-heading"><div><span class="owner-section-label">Financial context · all time</span><h3 id="owner-money-title">Sales and money collected</h3><p>Across accessible orders, including walk-in sales. Pending refunds remain obligations until completed.</p></div><a href="/portal/owner/refunds">Refund records <i data-lucide="arrow-right" aria-hidden="true"></i></a></header>
+    <dl class="owner-money-grid">{% for label,key in [('Original fulfilled sales','original_sales'),('Retained sales','retained_sales'),('Confirmed original collections','original_collections'),('Additional collections','additional_collections'),('All completed refunds','completed_refunds'),('Net collections','net_collections'),('Pending obligations','pending_refunds'),('Completed cancellation refunds','cancellation_refunds')] %}<div><dt>{{ label }}</dt><dd>{{ money.get(key,0)|currency }}</dd></div>{% endfor %}</dl>
+    <p class="owner-caption">Retained sales deduct completed refunds against fulfilled sales. Net collections = original collections + additional collections − all completed refunds, including cancellation refunds.</p>
+    {% if money.get('source_orders') %}<details class="owner-chart-data"><summary>Inspect recent financial source orders</summary><div class="table-wrap"><table><thead><tr><th>Order</th><th>Status</th><th>Original collections</th><th>Completed refunds</th><th>Net collections</th></tr></thead><tbody>{% for order in money.source_orders %}<tr><td>#{{ order.order_id }}</td><td>{{ order.status.replace('_',' ')|title }}</td><td>{{ order.original_collections|currency }}</td><td>{{ order.completed_refunds|currency }}</td><td>{{ order.net_collections|currency }}</td></tr>{% endfor %}</tbody></table></div><p class="owner-caption">Most recent 20 orders with financial activity. Walk-in source orders are included in totals but are outside the reseller Orders workspace.</p></details>{% endif %}
+  </section>
 </div>

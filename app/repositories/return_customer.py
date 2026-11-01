@@ -15,7 +15,7 @@ def snapshot_offer(cur, return_id: int) -> None:
           JOIN order_items oi USING(order_item_id) JOIN inventory_items i ON i.item_id=oi.product_id
           JOIN inventory_batches b USING(batch_id) WHERE l.return_id=r.return_id),'[]'::jsonb),
         COALESCE((SELECT jsonb_agg(jsonb_build_object('product_id',q.product_id,'name',i.name,
-          'quantity',q.quantity,'unit_price',q.unit_price,'line_total',q.line_total) ORDER BY q.product_id)
+          'quantity',q.quantity,'unit_price',q.unit_price,'line_total',q.line_total,'pricing_components',q.pricing_components) ORDER BY q.product_id)
           FROM replacement_quote_lines q JOIN inventory_items i ON i.item_id=q.product_id
           WHERE q.return_id=r.return_id AND q.revision=r.quote_revision),'[]'::jsonb)
         FROM product_returns r WHERE r.return_id=%s AND r.resolution='replace' AND r.quote_revision>0
@@ -83,7 +83,7 @@ def report_followup(cur, case: dict, actor_id: int, content: str, key: str) -> t
     followup_id = row["followup_id"]
     cur.execute("INSERT INTO return_followup_messages(followup_id,client_message_id,content) VALUES(%s,%s,%s)", (followup_id, key, content))
     _event(cur, case, actor_id, "customer_issue_reported", "Reseller reported a replacement issue: " + content,
-           customer_message="Your replacement issue was sent to Sales for follow-up.")
+           customer_message="Your replacement issue was sent to Supervisor/Owner for follow-up.")
     return followup_id, True
 
 

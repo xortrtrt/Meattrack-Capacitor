@@ -167,6 +167,7 @@ def get_order_refund(refund_id: int, role_key: str, account_id: int | None) -> d
     if not row:
         return None
     result = clean_row(row)
+    result["original_payment_proofs"] = clean_row(fetch_all("SELECT order_payment_proof_id,filename FROM order_payment_proofs WHERE order_id=%s ORDER BY order_payment_proof_id",(result["order_id"],)))
     result["attempts"] = clean_row(fetch_all(
         """
         SELECT a.*, processor.name AS processor_name,
@@ -181,7 +182,7 @@ def get_order_refund(refund_id: int, role_key: str, account_id: int | None) -> d
     ))
     result["messages"] = clean_row(fetch_all(
         """
-        SELECT m.order_refund_message_id, m.order_refund_id, m.sender_account_id,
+        SELECT m.order_refund_message_id, m.order_refund_id, m.sender_account_id,m.message_kind,
                m.sender_role, m.message, m.created_at, sender.name AS sender_name
         FROM order_refund_messages m
         JOIN accounts sender ON sender.account_id = m.sender_account_id
@@ -213,15 +214,20 @@ def list_reseller_refund_conversations(account_id: int | None) -> list[dict]:
         return []
     conversations = clean_row(fetch_all(
         """
-        SELECT r.order_refund_id, r.order_id, r.status, r.amount, r.currency,
+        SELECT r.order_refund_id, r.order_id, r.status, r.amount, r.currency,r.requested_at,
                r.assigned_supervisor_account_id, supervisor.name AS assigned_supervisor_name,
+               processor.name AS processor_name,processor.profile_image_path AS processor_profile_image_path,
+               processor.profile_image_position_x AS processor_profile_image_position_x,
+               processor.profile_image_position_y AS processor_profile_image_position_y,
+               processor.profile_image_scale AS processor_profile_image_scale,
                MAX(m.created_at) AS latest_message_at
         FROM order_refunds r
         JOIN orders o ON o.order_id = r.order_id
         LEFT JOIN accounts supervisor ON supervisor.account_id = r.assigned_supervisor_account_id
+        LEFT JOIN accounts processor ON processor.account_id=COALESCE(r.processing_by_account_id,r.assigned_supervisor_account_id)
         LEFT JOIN order_refund_messages m ON m.order_refund_id = r.order_refund_id
         WHERE o.created_by_account_id = %s
-        GROUP BY r.order_refund_id, supervisor.name
+        GROUP BY r.order_refund_id, supervisor.name,processor.account_id
         ORDER BY COALESCE(MAX(m.created_at), r.requested_at) DESC;
         """,
         (account_id,),
@@ -231,7 +237,7 @@ def list_reseller_refund_conversations(account_id: int | None) -> list[dict]:
     by_refund = {int(item["order_refund_id"]): item for item in conversations}
     rows = clean_row(fetch_all(
         """
-        SELECT m.order_refund_message_id, m.order_refund_id, m.sender_account_id,
+        SELECT m.order_refund_message_id, m.order_refund_id, m.sender_account_id,m.message_kind,
                m.sender_role, m.message, m.created_at, sender.name AS sender_name
         FROM order_refund_messages m
         JOIN order_refunds r ON r.order_refund_id = m.order_refund_id
@@ -467,6 +473,29 @@ def _publish_refund_event(
     )
 
 
+def confirm_shortage_payment(refund_id: int, actor_id: int, role_key: str) -> None:
+    with get_transaction_cursor() as cur:
+        refund = _locked_refund(cur,refund_id)
+        if not refund:
+            raise ValueError("Refund case was not found.")
+        from .product_returns import _actor
+        if _actor(cur,actor_id,{"owner","sales-supervisor"}) != role_key:
+            raise ValueError("Your authenticated role cannot process this refund.")
+        if role_key == "sales-supervisor" and refund.get("assigned_supervisor_account_id") is None:
+            cur.execute("UPDATE order_refunds SET assigned_supervisor_account_id=%s WHERE order_refund_id=%s",(actor_id,refund_id))
+            refund["assigned_supervisor_account_id"] = actor_id
+        _authorize_refund(refund,actor_id,role_key)
+        if not refund.get("payment_review_required"):
+            return
+        if refund["status"] != "pending" or refund.get("return_id"):
+            raise ValueError("This refund is not awaiting original-payment verification.")
+        cur.execute("UPDATE orders SET rejection_payment_received=true WHERE order_id=%s AND status='rejected'",(refund["order_id"],))
+        cur.execute("UPDATE order_refunds SET payment_review_required=false,updated_at=now() WHERE order_refund_id=%s",(refund_id,))
+        _add_log_cursor(cur,actor_account_id=actor_id,action="verified_shortage_payment_received",entity_type="order_refunds",entity_id=refund_id)
+        _publish_refund_event(cur,refund,event_type="refund_pending",title="Payment verified — refund pending",
+            message=f"Your payment for Order #{refund['order_id']} was received. Your refund is now awaiting processing.",dedupe_key=f"shortage-payment-verified-{refund_id}")
+
+
 def start_order_refund(refund_id: int, actor_id: int, role_key: str, operation_key: str | None = None) -> int:
     with get_transaction_cursor() as cur:
         refund = _locked_refund(cur, refund_id)
@@ -585,6 +614,8 @@ def complete_order_refund(
     internal_note: str = "",
     proof: dict | None = None,
     operation_key: str | None = None,
+    transfer_amount: object = None,
+    receipt_details: dict | None = None,
 ) -> None:
     method = _clean_text(refund_method, "Refund method", 2, 100)
     reference, reference_key = _normalize_reference(transaction_reference)
@@ -598,13 +629,21 @@ def complete_order_refund(
     note = _clean_text(internal_note, "Settlement remarks", 5, 1000)
     if not proof:
         raise ValueError("Attach transfer proof before completing the refund.")
-    request_hash = fingerprint(refund_id,actor_id,method,reference_key,transferred_at.isoformat(),note,proof["checksum_sha256"])
+    try:
+        confirmed_amount = Decimal(str(transfer_amount))
+    except (ArithmeticError,ValueError):
+        raise ValueError("Confirm the amount transferred from the refund receipt.")
+    if not confirmed_amount.is_finite() or confirmed_amount <= 0:
+        raise ValueError("Confirm a valid amount transferred from the refund receipt.")
+    request_hash = fingerprint(refund_id,actor_id,method,reference_key,transferred_at.isoformat(),note,proof["checksum_sha256"],f"{confirmed_amount:.2f}")
     try:
         with get_transaction_cursor() as cur:
             refund = _locked_refund(cur, refund_id)
             if not refund:
                 raise ValueError("Refund case was not found.")
             _authorize_refund(refund, actor_id, role_key)
+            if confirmed_amount != refund["amount"]:
+                raise ValueError(f"Transfer amount must equal the refund due: PHP {refund['amount']:,.2f}.")
             from .product_returns import _actor
             if _actor(cur,actor_id,{"owner", "sales-supervisor"}) != role_key:
                 raise ValueError("Your authenticated role cannot process this refund.")
@@ -636,10 +675,13 @@ def complete_order_refund(
                 UPDATE order_refund_attempts
                 SET status = 'completed', refund_method = %s, refund_transaction_number = %s,
                     refund_transaction_key = %s, transferred_at = %s, internal_note = %s,
-                    completed_at = %s
+                    completed_at = %s, transfer_amount=%s,receipt_extraction_method=%s,
+                    receipt_ocr_confidence=%s,receipt_ocr_engine=%s
                 WHERE order_refund_attempt_id = %s;
                 """,
-                (method, reference, reference_key, transferred_at, note, now, attempt["order_refund_attempt_id"]),
+                (method, reference, reference_key, transferred_at, note, now,confirmed_amount,
+                 (receipt_details or {}).get("extraction_method","manual_confirmed"),
+                 (receipt_details or {}).get("ocr_confidence"),(receipt_details or {}).get("ocr_engine"),attempt["order_refund_attempt_id"]),
             )
             if proof:
                 cur.execute(
@@ -663,6 +705,11 @@ def complete_order_refund(
                 from .product_returns import _complete_if_ready
                 _complete_if_ready(cur, refund["return_id"])
             amount = Decimal(str(refund["amount"]))
+            cur.execute("""INSERT INTO order_refund_messages(order_refund_id,sender_account_id,sender_role,message,message_kind,system_event_key)
+                VALUES(%s,%s,%s,%s,'system',%s) ON CONFLICT(system_event_key) DO NOTHING""",
+                (refund_id,actor_id,role_key,
+                 f"Thank you for your patience. Your refund of ₱{amount:,.2f} for Order #{refund['order_id']} has been completed. Reference: {reference}. This conversation is now closed. You can review the details anytime in your Inbox.",
+                 f"refund-completed-{refund_id}"))
             _publish_refund_event(
                 cur, refund, event_type="refund_completed", title="Refund completed",
                 message=f"PHP {amount:,.2f} was refunded for Order #{refund['order_id']}. Reference: {reference}",
@@ -720,11 +767,8 @@ def take_over_order_refund(refund_id: int, owner_account_id: int) -> int:
 
 
 def get_order_refund_proof(proof_id: int, role_key: str, account_id: int | None) -> dict | None:
-    if account_id is None or role_key not in {"owner", "sales-supervisor", "reseller", "team-leader"}:
+    if account_id is None or role_key not in {"owner", "sales-supervisor", "reseller"}:
         return None
-    if role_key == "team-leader":
-        scope, params = _refund_scope(role_key,account_id)
-        return fetch_one("SELECT p.* FROM order_refund_proofs p JOIN order_refund_attempts a USING(order_refund_attempt_id) JOIN order_refunds r USING(order_refund_id) WHERE p.order_refund_proof_id=%s " + scope, (proof_id,*params))
     access = "o.created_by_account_id = %s" if role_key == "reseller" else (
         "r.assigned_supervisor_account_id = %s" if role_key == "sales-supervisor" else "%s IS NOT NULL"
     )
@@ -747,4 +791,5 @@ __all__ = [
     "take_over_order_refund", "get_order_refund_proof", "list_reseller_refund_conversations",
     "send_order_refund_message", "list_order_refund_messages",
     "refund_financial_summary",
+    "confirm_shortage_payment",
 ]

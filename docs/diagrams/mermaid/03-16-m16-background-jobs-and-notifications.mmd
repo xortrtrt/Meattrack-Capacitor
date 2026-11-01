@@ -1,0 +1,22 @@
+flowchart TD
+    A([Worker loop]) --> B{Maintenance interval due?}
+    B -->|Yes| C[Queue due inquiry follow-ups and scan batch expiry]
+    C --> D[Clean sessions and old security data; maintain chat]
+    D --> E[Recover stale forecast runs and write system status]
+    B -->|No| F[Expire unpaid orders]
+    E --> F
+    F --> G[Claim due email outbox item under lock]
+    G --> H{Item available?}
+    H -->|Yes| I[Send activation, reset, rejection or inquiry-update email]
+    I --> J{Delivery succeeds?}
+    J -->|Yes| K[Mark sent and release lock]
+    J -->|No| L[Record error, attempt count and exponential retry time]
+    K --> G
+    L --> G
+    H -->|No| M[Claim and process one forecast run]
+    M --> N[Retry failed public live-chat publications]
+    N --> O[Pause until next fast cycle]
+    O --> A
+    P[Business action] --> Q[Create in-portal notification and recipient state]
+    Q --> R[Authorized user reads or opens notification]
+    R --> S[Persist recipient read state]

@@ -1,0 +1,14 @@
+flowchart TD
+    A([Authorized user opens dashboard]) --> B[Resolve role and current assignment scope]
+    B --> C{Portal view}
+    C -->|Owner| D[Aggregate business sales, collections, obligations, stock and work queues]
+    C -->|Sales or Supervisor| E[Aggregate assigned orders, reseller work and personal or team activity]
+    C -->|Inventory| F[Aggregate products, batches, availability, movements and expiry]
+    C -->|Reseller| G[Aggregate own orders, cart and inbox state]
+    D --> H[Apply requested dates, search, filters and pagination]
+    E --> H
+    F --> H
+    G --> H
+    H --> I[Render Jinja2 workspace and chart data]
+    I --> J[Open linked order, stock, return, report or account module]
+    J --> K([Target module enforces its own action permissions])

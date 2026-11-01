@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app import repositories as data
 from app import receipt_ocr
-from app.business_time import business_today
+from app.business_time import business_today, business_now
 from app.portals import shared
 from app.repositories.product_returns import return_request_window
 
@@ -178,6 +178,8 @@ def history_context(request: Request) -> dict:
     if account_id is not None:
         data.expire_unpaid_orders(account_id=account_id)
     history_view = request.query_params.get("view", "all").strip().lower()
+    if history_view == "completed":
+        history_view = "fulfilled"
     if history_view not in {
         "all", "to_pay", "pending", "approved", "fulfilled", "refunded", "cancelled",
     }:
@@ -240,6 +242,14 @@ def _group_order_system_messages(
         if item["created_at"] > conversation["latest"]["created_at"]:
             conversation["latest"] = item
 
+    for order_id,refunds in refunds_by_order.items():
+        key=f"order-{order_id}"
+        if key not in conversations:
+            selected=next((r for r in refunds if r["order_refund_id"]==selected_refund_id),refunds[0])
+            latest={"created_at":selected.get("latest_message_at") or selected.get("requested_at") or business_now(),
+                    "title":"Refund conversation","message":"Open the conversation to view the latest refund progress."}
+            conversations[key]={"key":key,"order_id":order_id,"latest":latest,"messages":[],"unread_count":0,
+                                "severity":"info","refunds":refunds,"refund":selected}
     grouped = list(conversations.values())
     for conversation in grouped:
         conversation["messages"].sort(key=lambda item: item["created_at"])
@@ -467,7 +477,7 @@ async def reseller_order_payment(
             payment_amount,
             payment_details_confirmed == "yes",
         )
-        await run_in_threadpool(data.submit_order_payment, account_id, order_id, attachments, payment_details)
+        result = await run_in_threadpool(data.submit_order_payment, account_id, order_id, attachments, payment_details)
     except ValueError as exc:
         if wants_json:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
@@ -475,12 +485,29 @@ async def reseller_order_payment(
             shared.safe_portal_path("reseller", "history", view="to_pay", error=str(exc))
         )
     redirect_url = shared.safe_portal_path(
-        "reseller", "history", view="pending",
-        message=f"Payment for order #{order_id} was submitted for approval.",
+        "reseller", "history", view="all" if result.get("status") == "rejected" else "pending",
+        message=(f"Order #{order_id} could not reserve stock. Your payment was sent for refund review."
+                 if result.get("status") == "rejected" else f"Payment for order #{order_id} was submitted for approval."),
     )
     if wants_json:
         return JSONResponse({"ok": True, "redirect_url": redirect_url})
     return shared.redirect_to(redirect_url)
+
+
+@router.post("/portal/reseller/orders/{order_id}/received")
+def reseller_order_received(request: Request, order_id: int):
+    guard = shared.require_portal_session(request, "reseller")
+    if guard:
+        return guard
+    account_id = shared.session_account_id(request)
+    if account_id is None:
+        return shared.redirect_to("/login")
+    try:
+        data.acknowledge_order_received(account_id, order_id)
+    except ValueError as exc:
+        return shared.redirect_to(shared.safe_portal_path("reseller","history",error=str(exc)))
+    return shared.redirect_to(shared.safe_portal_path("reseller","history",view="fulfilled",
+        message=f"Order #{order_id} marked received. Eligible returns remain available within 5 days of completion."))
 
 
 @router.post("/portal/reseller/orders/{order_id}/cancel")

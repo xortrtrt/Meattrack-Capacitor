@@ -1,10 +1,15 @@
 {% extends "portals/base.html" %}
 
 {% block portal_content %}
+<div class="owner-workspace" id="owner-workspace" tabindex="-1">
+{% include 'portals/owner/_workspace_header.html' %}
+{% if section == 'returns' %}<nav class="owner-return-scope" aria-label="Return responsibility"><a class="button {{ 'primary' if request.query_params.get('owner_only') != '1' else 'subtle' }}" href="/portal/owner/returns">All return cases</a><a class="button {{ 'primary' if request.query_params.get('owner_only') == '1' else 'subtle' }}" href="/portal/owner/returns?owner_only=1">Needs Owner coverage</a>{% if request.query_params.get('owner_only') == '1' %}<p class="hint">Accepted cases without an active Supervisor, including open replacement follow-ups.</p>{% endif %}</nav>{% endif %}
 {% if section in ["returns", "expired-stock", "product-details"] %}
   {% include "portals/lifecycle/" ~ section ~ ".html" %}
 {% elif section == "dashboard" %}
   {% include "portals/owner/dashboard.html" %}
+{% elif section == "operations" %}
+  {% include "portals/owner/operations.html" %}
 {% elif section == "orders" %}
   {% include "portals/owner/orders.html" %}
 {% elif section in ["inventory", "batches", "movements", "resellers"] %}
@@ -19,13 +24,16 @@
   {% include "portals/refunds.html" %}
 {% elif section == "accounts" %}
   {% include "portals/owner/users_access.html" %}
+{% elif section == "messages" %}
+  {% if replacement_chat %}{% include 'portals/_replacement_conversation.html' %}{% else %}{% include 'portals/_replacement_conversation_links.html' %}{% endif %}
 {% elif section == "profile" %}
   {% include "portals/owner/profile.html" %}
 {% elif section == "verify" %}
   {% include "portals/owner/verify.html" %}
 {% elif section == "notifications" %}
   {% include "portals/notifications.html" %}
-{% elif section in ["operations", "inquiries", "orders", "inventory", "materials", "batches", "movements", "alerts", "resellers", "settings"] %}
-  {% include "portals/owner/superuser.html" %}
+{% elif section in ["inquiries", "materials", "alerts", "settings"] %}
+  {% include "portals/owner/" ~ section ~ ".html" %}
 {% endif %}
+</div>
 {% endblock %}

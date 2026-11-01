@@ -1,0 +1,36 @@
+{% set descriptions = {
+  'dashboard': 'Business results, stock exposure, and the decisions that need your attention.',
+  'operations': 'Follow work across Sales, Inventory, and refund processors. Step in where responsibility is missing.',
+  'orders': 'Track payment, approval, and delivery. Use an Owner override when an assigned team needs intervention.',
+  'inquiries': 'Review prospective resellers and record an application decision.',
+  'returns': 'Follow returned goods, replacement decisions, and settlement clearance.',
+  'refunds': 'Verify obligations and record completed transfers with supporting evidence.',
+  'inventory': 'Review sellable stock and production readiness across the business.',
+  'materials': 'Inspect material quantities in their own units and record incoming deliveries.',
+  'batches': 'Trace finished stock by batch, production date, and expiry.',
+  'movements': 'Follow physical stock and reservations. Corrections preserve the original ledger.',
+  'expired-stock': 'Track expired-stock pull-outs and returned goods in separate non-sellable custody records.',
+  'alerts': 'Review stock warnings and document how each exception was handled.',
+  'products': 'Set product prices. Existing orders retain their recorded purchase values.',
+  'resellers': 'Review the reseller network and maintain Sales assignments.',
+  'accounts': 'Manage account access, team roles, and safe handover of active work.',
+  'reports': 'Review submitted Sales activity. Each new report preserves its values at submission.',
+  'forecasts': 'Turn recorded demand and usable stock into a production planning reference.',
+  'settings': 'Set business defaults, warning windows, and public contact information.',
+  'profile': 'Manage your profile and verify changes to your password.',
+  'notifications': 'Open business updates and continue in the relevant workspace.',
+  'product-details': 'Inspect the batches, reservations, and history behind a product balance.'
+} %}
+<header class="owner-workspace-heading">
+  <div>
+    <span class="owner-workspace-kicker">Batangas Premium <span aria-hidden="true">/</span> Owner workspace</span>
+    <h2>{{ {'dashboard':'Business overview', 'orders':'Orders & inquiries', 'returns':'Returns & refunds', 'inventory':'Inventory'}.get(section, section_title) }}</h2>
+    <p>{{ descriptions.get(section, '') }}</p>
+  </div>
+  <div class="owner-workspace-date"><i data-lucide="calendar-days" aria-hidden="true"></i><span>{{ business_today().strftime('%d %b %Y') }}<small>Asia/Manila</small></span></div>
+</header>
+{% if owner_workspace.tabs %}
+<nav class="owner-workspace-tabs" aria-label="Workspace sections">
+  {% for slug, label in owner_workspace.tabs %}<a href="/portal/owner/{{ slug }}" class="{{ 'is-current' if section == slug else '' }}" {% if section == slug %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+{% endif %}

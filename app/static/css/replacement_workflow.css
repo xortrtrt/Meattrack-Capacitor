@@ -1,0 +1,64 @@
+.portal-body .replacement-comparison-record,.portal-body .replacement-conversation-index { background:var(--surface,#fff); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:20px; min-width:0; }
+.replacement-comparison-record h4 { margin:0 0 10px; }
+.replacement-checkout form { display:grid; gap:14px; }
+.replacement-checkout label { display:grid; gap:6px; }
+.portal-body .replacement-conversation { min-width:0; margin-bottom:20px; }
+.replacement-workspace-heading,.replacement-conversation-index > header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+.replacement-workspace-heading h2,.replacement-conversation-index h3 { margin:4px 0 6px; color:var(--inbox-ink); }
+.replacement-workspace-heading p,.replacement-conversation-index .hint { margin:0; color:var(--text-light); font-size:.8rem; line-height:1.5; }
+.replacement-workspace-heading .button { gap:7px; }
+.replacement-workspace-heading svg { width:16px; height:16px; }
+.replacement-thread-count { display:grid; place-items:center; flex-shrink:0; min-width:28px; height:28px; padding:0 7px; border-radius:50%; background:var(--inbox-mint); color:var(--inbox-green); font-size:.75rem; font-weight:800; }
+.replacement-thread-links { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:12px; }
+.replacement-thread-links .sales-message-row { border-right:1px solid var(--border); }
+.replacement-conversation .sales-message-row,.replacement-conversation-index .sales-message-row { text-decoration:none; grid-template-columns:40px minmax(0,1fr) auto; min-height:88px; }
+.replacement-row-reference { color:var(--text-light); font-size:.63rem; line-height:1.5; }
+.replacement-message-rail .sales-message-list { max-height:650px; }
+.replacement-message-stage { grid-template-rows:auto auto minmax(280px,1fr) auto auto auto; align-content:start; }
+.replacement-thread-head { min-width:0; }
+.replacement-thread-head .replacement-participant { min-width:0; }
+.replacement-participant h3 { overflow-wrap:anywhere; }
+.replacement-case-context { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 14px; padding:11px 18px; border-bottom:1px solid var(--border); background:var(--inbox-paper,#fffcf4); color:var(--inbox-ink); font-size:.68rem; }
+.replacement-case-context > span,.replacement-case-context a { display:inline-flex; align-items:center; flex-wrap:wrap; gap:7px; }
+.replacement-case-context svg { width:15px; height:15px; flex-shrink:0; }
+.replacement-case-context a { min-height:32px; color:var(--inbox-green); font-weight:800; text-decoration:underline; text-underline-offset:3px; }
+.replacement-case-status { padding:4px 8px; border-radius:999px; background:var(--inbox-mint); color:var(--inbox-green); font-size:.61rem; font-weight:800; }
+.replacement-message-log { min-width:0; min-height:300px; height:clamp(300px,46vh,480px); max-height:none; overscroll-behavior:contain; }
+.replacement-message-log .reseller-chat-message { min-width:0; max-width:min(85%,480px); }
+.replacement-message-log .reseller-chat-message p { white-space:pre-wrap; }
+.replacement-message-log .reseller-chat-message.is-system { max-width:95%; }
+.replacement-message-empty { justify-self:center; align-self:center; padding:28px 18px; color:var(--text-light); font-size:.8rem; text-align:center; line-height:1.6; }
+.replacement-message-feedback { padding:9px 16px; border-top:1px solid var(--border); background:#fff5df; color:#794b1c; font-size:.75rem; line-height:1.5; }
+.replacement-message-feedback[hidden],.replacement-conversation [hidden] { display:none !important; }
+.replacement-message-feedback p { margin:0; }
+.replacement-message-feedback button { min-height:36px; padding:4px 0; border:0; background:transparent; color:inherit; text-decoration:underline; font:inherit; font-weight:800; cursor:pointer; }
+.replacement-conversation .reseller-chat-composer textarea { min-width:0; }
+.replacement-composer-help { display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; margin:0; padding:0 14px 12px; background:#fff; color:var(--text-light); font-size:.61rem; line-height:1.6; }
+.replacement-list-back { display:none; }
+@media(max-width:760px) {
+  .replacement-message-layout { display:block; min-height:0; }
+  .replacement-message-rail { display:none; border-right:0; }
+  .replacement-conversation.is-list-open .replacement-message-rail { display:block; }
+  .replacement-conversation.is-list-open .replacement-message-stage { display:none; }
+  .replacement-message-stage { display:grid; }
+  .replacement-list-back { display:grid; place-items:center; flex:0 0 40px; width:40px; height:40px; border:1px solid var(--border); border-radius:10px; background:#fff; color:var(--inbox-ink); cursor:pointer; }
+  .replacement-list-back svg { width:18px; height:18px; }
+  .replacement-thread-head { padding:12px 10px; gap:8px; }
+  .replacement-thread-head .internal-person-avatar { width:34px; height:34px; }
+  .replacement-case-context { padding:9px 12px; }
+  .replacement-message-log { height:clamp(280px,44svh,440px); min-height:280px; padding:14px 12px; }
+  .replacement-message-log .reseller-chat-message { max-width:92%; }
+  .replacement-conversation .reseller-chat-composer textarea { font-size:16px; }
+  .replacement-composer-help > span { display:none; }
+}
+.replacement-selection { padding:18px; border:1px solid var(--border); border-radius:12px; }
+.replacement-selection[hidden] { display:none; }
+.replacement-product-picker { display:grid; gap:10px; }
+.replacement-product-picker > label { display:grid; grid-template-columns:minmax(0,1fr) 90px; gap:12px; align-items:center; padding:10px; border-bottom:1px solid var(--border); }
+.replacement-product-picker small { display:block; color:var(--text-light); }
+.replacement-progress { padding:12px 16px; border-left:3px solid var(--gold); background:var(--surface-muted); }
+.replacement-checkout .replacement-check { display:flex; align-items:flex-start; gap:10px; }
+.replacement-check input { width:20px; height:20px; min-height:20px; flex-shrink:0; }
+.replacement-comparison-record .table-wrap { max-width:100%; overflow:auto; }
+.replacement-conversation :is(a,button,textarea,[role="log"]):focus-visible,.replacement-selection :is(input,button):focus-visible { outline:3px solid var(--gold-deep); outline-offset:3px; }
+@media(max-width:600px) { .portal-body :is(.replacement-conversation-index,.replacement-comparison-record) { padding:14px; } }

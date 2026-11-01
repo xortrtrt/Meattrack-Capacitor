@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MEATTRACK · System diagrams</title>
+<style>
+:root{color-scheme:light;font:16px/1.6 system-ui,sans-serif;background:#f2f3f2;color:#202722}
+body{max-width:1440px;margin:0 auto;padding:32px 24px 72px}header{border-top:5px solid #38634a;padding:20px 0}
+.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:#47634e;font-weight:700}
+h1{font-size:clamp(28px,4vw,44px);line-height:1.15;margin:10px 0}h2{font-size:25px;margin-top:44px}
+a{color:#215b38;text-underline-offset:3px}nav{display:flex;flex-wrap:wrap;gap:12px 24px;padding:16px 0;border-block:1px solid #ced6cf}
+.meta{color:#526054;max-width:980px}.links{font-size:14px;margin:0 20px 18px}
+details{background:white;border:1px solid #d2d9d3;border-radius:8px;margin:14px 0;overflow:hidden}
+summary{cursor:pointer;padding:18px 20px;font-weight:650}summary:hover{background:#f4f7f3}
+.diagram{padding:16px;border-top:1px solid #e2e7e2;overflow:auto;background:white}
+img{display:block;width:100%;height:auto;min-width:700px}footer{border-top:1px solid #ced6cf;margin-top:48px;padding-top:18px;color:#526054}
+@media(max-width:700px){body{padding-inline:14px}.diagram{padding:8px}summary{padding:14px}}
+@media print{nav,.links{display:none}body{background:white}details{break-inside:avoid}img{min-width:0}section{break-before:page}}
+</style></head><body>
+<header><div class="eyebrow">MEATTRACK / Source-derived documentation</div>
+<h1>Framework, architecture, workflows &amp; data</h1>
+<p class="meta">42 Mermaid diagrams · Reviewed 31 October 2026 · Local source through migration 044</p>
+<p class="meta">Expand a diagram to inspect it. Open the full SVG for large architecture and database views. Explanations, source references and scope are in the linked Markdown documents.</p></header>
+<nav><a href="#01">Conceptual framework and IPO</a><a href="#02">System architecture</a><a href="#03">Module and portal flowcharts</a><a href="#erd">Entity-relationship diagrams</a></nav><section id="01"><h2>Conceptual framework and IPO</h2><details open>
+<summary>Conceptual framework</summary>
+<p class="links"><a href="rendered/01-01-conceptual-framework.svg" target="_blank">Open full SVG</a> · <a href="mermaid/01-01-conceptual-framework.mmd">Mermaid source</a> · <a href="01-conceptual-framework.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/01-01-conceptual-framework.svg" alt="Conceptual framework"></div>
+</details><details open>
+<summary>Input-process-output model</summary>
+<p class="links"><a href="rendered/01-02-input-process-output-model.svg" target="_blank">Open full SVG</a> · <a href="mermaid/01-02-input-process-output-model.mmd">Mermaid source</a> · <a href="01-conceptual-framework.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/01-02-input-process-output-model.svg" alt="Input-process-output model"></div>
+</details><details >
+<summary>Cross-cutting controls</summary>
+<p class="links"><a href="rendered/01-03-cross-cutting-controls.svg" target="_blank">Open full SVG</a> · <a href="mermaid/01-03-cross-cutting-controls.mmd">Mermaid source</a> · <a href="01-conceptual-framework.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/01-03-cross-cutting-controls.svg" alt="Cross-cutting controls"></div>
+</details></section><section id="02"><h2>System architecture</h2><details >
+<summary>Level 1: system context</summary>
+<p class="links"><a href="rendered/02-01-level-1-system-context.svg" target="_blank">Open full SVG</a> · <a href="mermaid/02-01-level-1-system-context.mmd">Mermaid source</a> · <a href="02-system-architecture.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/02-01-level-1-system-context.svg" alt="Level 1: system context"></div>
+</details><details >
+<summary>Level 2: runtime containers</summary>
+<p class="links"><a href="rendered/02-02-level-2-runtime-containers.svg" target="_blank">Open full SVG</a> · <a href="mermaid/02-02-level-2-runtime-containers.mmd">Mermaid source</a> · <a href="02-system-architecture.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/02-02-level-2-runtime-containers.svg" alt="Level 2: runtime containers"></div>
+</details><details >
+<summary>Level 3: web and worker components</summary>
+<p class="links"><a href="rendered/02-03-level-3-web-and-worker-components.svg" target="_blank">Open full SVG</a> · <a href="mermaid/02-03-level-3-web-and-worker-components.mmd">Mermaid source</a> · <a href="02-system-architecture.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/02-03-level-3-web-and-worker-components.svg" alt="Level 3: web and worker components"></div>
+</details><details >
+<summary>Level 4: representative transaction detail</summary>
+<p class="links"><a href="rendered/02-04-level-4-representative-transaction-detail.svg" target="_blank">Open full SVG</a> · <a href="mermaid/02-04-level-4-representative-transaction-detail.mmd">Mermaid source</a> · <a href="02-system-architecture.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/02-04-level-4-representative-transaction-detail.svg" alt="Level 4: representative transaction detail"></div>
+</details><details >
+<summary>Logical layers and request path</summary>
+<p class="links"><a href="rendered/02-05-logical-layers-and-request-path.svg" target="_blank">Open full SVG</a> · <a href="mermaid/02-05-logical-layers-and-request-path.mmd">Mermaid source</a> · <a href="02-system-architecture.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/02-05-logical-layers-and-request-path.svg" alt="Logical layers and request path"></div>
+</details><details >
+<summary>Deployment view from checked-in production configuration</summary>
+<p class="links"><a href="rendered/02-06-deployment-view-from-checked-in-production-configuration.svg" target="_blank">Open full SVG</a> · <a href="mermaid/02-06-deployment-view-from-checked-in-production-configuration.mmd">Mermaid source</a> · <a href="02-system-architecture.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/02-06-deployment-view-from-checked-in-production-configuration.svg" alt="Deployment view from checked-in production configuration"></div>
+</details></section><section id="03"><h2>Module and portal flowcharts</h2><details >
+<summary>M01 — Authentication and access</summary>
+<p class="links"><a href="rendered/03-01-m01-authentication-and-access.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-01-m01-authentication-and-access.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-01-m01-authentication-and-access.svg" alt="M01 — Authentication and access"></div>
+</details><details >
+<summary>M02 — Public catalog and chatbot</summary>
+<p class="links"><a href="rendered/03-02-m02-public-catalog-and-chatbot.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-02-m02-public-catalog-and-chatbot.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-02-m02-public-catalog-and-chatbot.svg" alt="M02 — Public catalog and chatbot"></div>
+</details><details >
+<summary>M03 — Inquiry review and reseller onboarding</summary>
+<p class="links"><a href="rendered/03-03-m03-inquiry-review-and-reseller-onboarding.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-03-m03-inquiry-review-and-reseller-onboarding.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-03-m03-inquiry-review-and-reseller-onboarding.svg" alt="M03 — Inquiry review and reseller onboarding"></div>
+</details><details >
+<summary>M04 — Reseller cart, payment and order fulfillment</summary>
+<p class="links"><a href="rendered/03-04-m04-reseller-cart-payment-and-order-fulfillment.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-04-m04-reseller-cart-payment-and-order-fulfillment.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-04-m04-reseller-cart-payment-and-order-fulfillment.svg" alt="M04 — Reseller cart, payment and order fulfillment"></div>
+</details><details >
+<summary>M05 — Counter sales</summary>
+<p class="links"><a href="rendered/03-05-m05-counter-sales.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-05-m05-counter-sales.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-05-m05-counter-sales.svg" alt="M05 — Counter sales"></div>
+</details><details >
+<summary>M06 — Materials, product definitions and production</summary>
+<p class="links"><a href="rendered/03-06-m06-materials-product-definitions-and-production.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-06-m06-materials-product-definitions-and-production.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-06-m06-materials-product-definitions-and-production.svg" alt="M06 — Materials, product definitions and production"></div>
+</details><details >
+<summary>M07 — Expiry, pull-outs and disposal</summary>
+<p class="links"><a href="rendered/03-07-m07-expiry-pull-outs-and-disposal.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-07-m07-expiry-pull-outs-and-disposal.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-07-m07-expiry-pull-outs-and-disposal.svg" alt="M07 — Expiry, pull-outs and disposal"></div>
+</details><details >
+<summary>M08 — Product returns, refund-only requests and version-1 replacement cases</summary>
+<p class="links"><a href="rendered/03-08-m08-product-returns-refund-only-requests-and-version-1-replacement-cases.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-08-m08-product-returns-refund-only-requests-and-version-1-replacement-cases.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-08-m08-product-returns-refund-only-requests-and-version-1-replacement-cases.svg" alt="M08 — Product returns, refund-only requests and version-1 replacement cases"></div>
+</details><details >
+<summary>M09 — Version-2 replacement workflow</summary>
+<p class="links"><a href="rendered/03-09-m09-version-2-replacement-workflow.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-09-m09-version-2-replacement-workflow.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-09-m09-version-2-replacement-workflow.svg" alt="M09 — Version-2 replacement workflow"></div>
+</details><details >
+<summary>M10 — Manual money refunds</summary>
+<p class="links"><a href="rendered/03-10-m10-manual-money-refunds.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-10-m10-manual-money-refunds.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-10-m10-manual-money-refunds.svg" alt="M10 — Manual money refunds"></div>
+</details><details >
+<summary>M11 — Sales activity reporting and exports</summary>
+<p class="links"><a href="rendered/03-11-m11-sales-activity-reporting-and-exports.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-11-m11-sales-activity-reporting-and-exports.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-11-m11-sales-activity-reporting-and-exports.svg" alt="M11 — Sales activity reporting and exports"></div>
+</details><details >
+<summary>M12 — Demand forecasting</summary>
+<p class="links"><a href="rendered/03-12-m12-demand-forecasting.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-12-m12-demand-forecasting.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-12-m12-demand-forecasting.svg" alt="M12 — Demand forecasting"></div>
+</details><details >
+<summary>M13 — Public live chat</summary>
+<p class="links"><a href="rendered/03-13-m13-public-live-chat.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-13-m13-public-live-chat.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-13-m13-public-live-chat.svg" alt="M13 — Public live chat"></div>
+</details><details >
+<summary>M14 — Private conversations and unread state</summary>
+<p class="links"><a href="rendered/03-14-m14-private-conversations-and-unread-state.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-14-m14-private-conversations-and-unread-state.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-14-m14-private-conversations-and-unread-state.svg" alt="M14 — Private conversations and unread state"></div>
+</details><details >
+<summary>M15 — Owner administration and handover</summary>
+<p class="links"><a href="rendered/03-15-m15-owner-administration-and-handover.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-15-m15-owner-administration-and-handover.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-15-m15-owner-administration-and-handover.svg" alt="M15 — Owner administration and handover"></div>
+</details><details >
+<summary>M16 — Background jobs and notifications</summary>
+<p class="links"><a href="rendered/03-16-m16-background-jobs-and-notifications.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-16-m16-background-jobs-and-notifications.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-16-m16-background-jobs-and-notifications.svg" alt="M16 — Background jobs and notifications"></div>
+</details><details >
+<summary>M17 — Dashboards and operational monitoring</summary>
+<p class="links"><a href="rendered/03-17-m17-dashboards-and-operational-monitoring.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-17-m17-dashboards-and-operational-monitoring.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-17-m17-dashboards-and-operational-monitoring.svg" alt="M17 — Dashboards and operational monitoring"></div>
+</details><details >
+<summary>M18 — Profile and account recovery</summary>
+<p class="links"><a href="rendered/03-18-m18-profile-and-account-recovery.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-18-m18-profile-and-account-recovery.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-18-m18-profile-and-account-recovery.svg" alt="M18 — Profile and account recovery"></div>
+</details><details >
+<summary>Role-oriented portal summary: Owner</summary>
+<p class="links"><a href="rendered/03-19-role-oriented-portal-summary-owner.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-19-role-oriented-portal-summary-owner.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-19-role-oriented-portal-summary-owner.svg" alt="Role-oriented portal summary: Owner"></div>
+</details><details >
+<summary>Role-oriented portal summary: Sales and Supervisor</summary>
+<p class="links"><a href="rendered/03-20-role-oriented-portal-summary-sales-and-supervisor.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-20-role-oriented-portal-summary-sales-and-supervisor.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-20-role-oriented-portal-summary-sales-and-supervisor.svg" alt="Role-oriented portal summary: Sales and Supervisor"></div>
+</details><details >
+<summary>Role-oriented portal summary: Inventory</summary>
+<p class="links"><a href="rendered/03-21-role-oriented-portal-summary-inventory.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-21-role-oriented-portal-summary-inventory.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-21-role-oriented-portal-summary-inventory.svg" alt="Role-oriented portal summary: Inventory"></div>
+</details><details >
+<summary>Role-oriented portal summary: Reseller</summary>
+<p class="links"><a href="rendered/03-22-role-oriented-portal-summary-reseller.svg" target="_blank">Open full SVG</a> · <a href="mermaid/03-22-role-oriented-portal-summary-reseller.mmd">Mermaid source</a> · <a href="03-module-flowcharts.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/03-22-role-oriented-portal-summary-reseller.svg" alt="Role-oriented portal summary: Reseller"></div>
+</details></section><section id="erd"><h2>Entity-relationship diagrams</h2><details >
+<summary>Business-core ERD</summary>
+<p class="links"><a href="rendered/erd-core.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-core.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-core.svg" alt="Business-core ERD"></div>
+</details><details >
+<summary>Identity, onboarding and sessions</summary>
+<p class="links"><a href="rendered/erd-identity.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-identity.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-identity.svg" alt="Identity, onboarding and sessions"></div>
+</details><details >
+<summary>Cart, orders, payment and fulfillment</summary>
+<p class="links"><a href="rendered/erd-orders.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-orders.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-orders.svg" alt="Cart, orders, payment and fulfillment"></div>
+</details><details >
+<summary>Production, stock and non-sellable custody</summary>
+<p class="links"><a href="rendered/erd-inventory.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-inventory.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-inventory.svg" alt="Production, stock and non-sellable custody"></div>
+</details><details >
+<summary>Return cases, receipt trace and customer follow-ups</summary>
+<p class="links"><a href="rendered/erd-returns.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-returns.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-returns.svg" alt="Return cases, receipt trace and customer follow-ups"></div>
+</details><details >
+<summary>Replacement quotations, preparation, release and messages</summary>
+<p class="links"><a href="rendered/erd-replacement.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-replacement.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-replacement.svg" alt="Replacement quotations, preparation, release and messages"></div>
+</details><details >
+<summary>Refund obligations, transfer attempts and evidence</summary>
+<p class="links"><a href="rendered/erd-refunds.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-refunds.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-refunds.svg" alt="Refund obligations, transfer attempts and evidence"></div>
+</details><details >
+<summary>Reports and forecasting</summary>
+<p class="links"><a href="rendered/erd-reporting.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-reporting.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-reporting.svg" alt="Reports and forecasting"></div>
+</details><details >
+<summary>Public chat, internal conversations and notifications</summary>
+<p class="links"><a href="rendered/erd-messaging.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-messaging.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-messaging.svg" alt="Public chat, internal conversations and notifications"></div>
+</details><details >
+<summary>Operational settings, delivery and migration metadata</summary>
+<p class="links"><a href="rendered/erd-operations.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-operations.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-operations.svg" alt="Operational settings, delivery and migration metadata"></div>
+</details><details >
+<summary>Complete physical schema: 72 tables</summary>
+<p class="links"><a href="rendered/erd-full-schema.svg" target="_blank">Open full SVG</a> · <a href="mermaid/erd-full-schema.mmd">Mermaid source</a> · <a href="04-entity-relationship-diagrams.md">Explanation and sources</a></p>
+<div class="diagram"><img loading="lazy" src="rendered/erd-full-schema.svg" alt="Complete physical schema: 72 tables"></div>
+</details></section>
+<footer>Full ERD: 71 baseline tables plus migration metadata; 638 columns and 147 declared foreign keys.
+<a href="README.md">Documentation index</a>. This is a local source/configuration analysis, not a live deployment inspection.</footer>
+</body></html>

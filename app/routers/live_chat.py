@@ -5,6 +5,10 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
+from pydantic import ValidationError
+from app import internal_conversation_media, conversation_notifications
 from pydantic import BaseModel, Field
 
 from app import live_chat
@@ -27,7 +31,7 @@ router = APIRouter()
 
 
 class ResellerMessagePayload(BaseModel):
-    message: str = Field(min_length=1, max_length=500)
+    message: str = Field(default="", max_length=500)
     client_message_id: uuid.UUID
     return_id: int | None = Field(default=None, gt=0)
     report_issue: bool = False
@@ -354,27 +358,44 @@ def reseller_inbox_workspace(request: Request, after_id: int = 0):
     return reseller_messaging.reseller_workspace(account_id, after_id=after_id)
 
 
+async def _internal_message_payload(request: Request) -> tuple[ResellerMessagePayload,list[dict]]:
+    try:
+        if request.headers.get("content-type","").startswith("multipart/form-data"):
+            form = await request.form(max_files=3,max_fields=10)
+            payload = ResellerMessagePayload.model_validate(dict(form))
+            attachments = await internal_conversation_media.parse_attachments([f for f in form.getlist("attachments") if isinstance(f,UploadFile)])
+        else:
+            payload = ResellerMessagePayload.model_validate(await request.json())
+            attachments = []
+    except (ValidationError,ValueError) as exc:
+        raise HTTPException(400,detail="Check your message and attachments. " + str(exc)) from exc
+    return payload,attachments
+
+
+class MessageReadPayload(BaseModel):
+    through_id: int = Field(default=0,ge=0,le=9223372036854775807)
+
+
 @router.post("/api/portal/reseller/inbox/messages")
-def reseller_inbox_send(request: Request, payload: ResellerMessagePayload):
+async def reseller_inbox_send(request: Request):
     account_id = _reseller_message_account(request)
+    payload,attachments = await _internal_message_payload(request)
     try:
         enforce_live_message(request, account_id=account_id)
-        if payload.return_id or payload.report_issue:
-            message = reseller_messaging.send_from_reseller(account_id, str(payload.client_message_id), payload.message,
-                return_id=payload.return_id, report_issue=payload.report_issue)
-        else:
-            message = reseller_messaging.send_from_reseller(account_id, str(payload.client_message_id), payload.message)
+        message = await run_in_threadpool(reseller_messaging.send_from_reseller,account_id,
+            str(payload.client_message_id),payload.message,return_id=payload.return_id,
+            report_issue=payload.report_issue,attachments=attachments)
     except RateLimitExceeded as exc:
         return rate_limit_response(exc)
     except ValueError as exc:
-        return JSONResponse({"error": "message_failed", "message": str(exc)}, status_code=400)
-    return {"message": None, **message} if message.get("followup_saved") else {"message": message}
+        return JSONResponse({"error":"message_failed","message":str(exc)},status_code=400)
+    return {"message":None,**message} if message.get("followup_saved") else {"message":message}
 
 
 @router.post("/api/portal/reseller/inbox/read")
-def reseller_inbox_read(request: Request):
+def reseller_inbox_read(request: Request, payload: MessageReadPayload):
     account_id = _reseller_message_account(request)
-    return {"read_count": reseller_messaging.mark_read_for_reseller(account_id)}
+    return {"read_count": reseller_messaging.mark_read_for_reseller(account_id,payload.through_id)}
 
 
 @router.delete("/api/portal/reseller/inbox")
@@ -399,31 +420,28 @@ def sales_reseller_thread(request: Request, reseller_account_id: int, after_id: 
 
 
 @router.post("/api/portal/live-chat/resellers/{reseller_account_id}/messages")
-def sales_reseller_send(request: Request, reseller_account_id: int, payload: ResellerMessagePayload):
+async def sales_reseller_send(request: Request, reseller_account_id: int):
     account_id = _sales_live_account(request)
+    payload,attachments = await _internal_message_payload(request)
     try:
         if payload.report_issue:
             raise ValueError("Only the reseller can report a replacement issue.")
         enforce_live_message(request, account_id=account_id)
-        message = reseller_messaging.send_from_leader(
-            account_id,
-            reseller_account_id,
-            str(payload.client_message_id),
-            payload.message,
-            **({"return_id": payload.return_id} if payload.return_id else {}),
-        )
+        message = await run_in_threadpool(reseller_messaging.send_from_leader,account_id,
+            reseller_account_id,str(payload.client_message_id),payload.message,
+            return_id=payload.return_id,attachments=attachments)
     except RateLimitExceeded as exc:
         return rate_limit_response(exc)
     except ValueError as exc:
-        return JSONResponse({"error": "message_failed", "message": str(exc)}, status_code=400)
-    return {"message": message}
+        return JSONResponse({"error":"message_failed","message":str(exc)},status_code=400)
+    return {"message":message}
 
 
 @router.post("/api/portal/live-chat/resellers/{reseller_account_id}/read")
-def sales_reseller_read(request: Request, reseller_account_id: int):
+def sales_reseller_read(request: Request, reseller_account_id: int, payload: MessageReadPayload):
     account_id = _sales_live_account(request)
     try:
-        return {"read_count": reseller_messaging.mark_read_for_leader(account_id, reseller_account_id)}
+        return {"read_count": reseller_messaging.mark_read_for_leader(account_id,reseller_account_id,payload.through_id)}
     except ValueError as exc:
         return JSONResponse({"error": "conversation_unavailable", "message": str(exc)}, status_code=404)
 
@@ -553,3 +571,21 @@ async def portal_live_chat_inquiry_form(request: Request, conversation_id: str):
 
 
 
+
+
+@router.get("/api/portal/conversations/unread")
+def internal_unread(request: Request):
+    role_key = request.session.get("role_key")
+    account_id = _reseller_message_account(request) if role_key == "reseller" else _sales_live_account(request)
+    return JSONResponse(conversation_notifications.unread_summary(account_id,str(role_key)),headers={"Cache-Control":"no-store"})
+
+
+@router.get("/portal/conversation-attachments/{attachment_id}")
+async def internal_attachment(request: Request, attachment_id: int):
+    role_key = request.session.get("role_key")
+    account_id = _reseller_message_account(request) if role_key == "reseller" else _sales_live_account(request)
+    try:
+        attachment = await run_in_threadpool(reseller_messaging.get_attachment,account_id,str(role_key),attachment_id)
+    except ValueError as exc:
+        raise HTTPException(404,detail="Attachment not found.") from exc
+    return internal_conversation_media.attachment_response(request,attachment)

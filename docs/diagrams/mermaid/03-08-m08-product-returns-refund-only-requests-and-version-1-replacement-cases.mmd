@@ -1,0 +1,32 @@
+flowchart TD
+    A([Reseller opens own fulfilled order]) --> B{Within 120 hours and traceable unclaimed allocations?}
+    B -->|No| X[Block new request and explain reason]
+    B -->|Yes| C[Select returned packs, outcome, reason and 1-3 photos]
+    C --> D{New replacement with selected products?}
+    D -->|Yes| V2[Use version-2 replacement module M09]
+    D -->|No: refund-only or existing version-1 case| E[Save submitted case linked to original allocations]
+    E --> F[Assigned Sales reviews new request]
+    F --> G{Accept?}
+    G -->|No| H[Reject with reseller-visible explanation]
+    G -->|Yes| I[Record approval and hand off to Supervisor or Owner]
+    I --> J[Inventory compares actual goods to current approved request]
+    J --> K{Complete match?}
+    K -->|No| L[Record discrepancy; block settlement]
+    L --> M[Supervisor or Owner resolves mismatch and revises within claim bounds]
+    M --> J
+    K -->|Yes| N[Atomically record complete non-sellable custody and verification]
+    N --> O[Clear recorded approval for settlement]
+    O --> P{Resolution}
+    P -->|Refund| Q[Create or reconcile refund obligation]
+    Q --> RF[Manual refund module M10]
+    P -->|Version-1 replacement| R[Reseller accepts current quote; Inventory reserves eligible FEFO stock]
+    R --> S{Higher replacement value?}
+    S -->|Yes| T[Upload top-up proof; authorized processor verifies exact collection]
+    S -->|No| U[Inventory releases replacement]
+    T --> U
+    U --> W{Lower replacement value?}
+    W -->|Yes| RF
+    W -->|No| Y[Check completion requirements]
+    RF --> Y
+    Y --> Z([Complete case when custody and required settlement reconcile])
+    Z --> AA[Separate reseller acknowledgement or reported follow-up]

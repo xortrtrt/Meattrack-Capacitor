@@ -119,6 +119,16 @@ def experience(case: dict) -> dict:
         sales_description = "The reseller must accept the current offer." if reseller_action == "accept" else "Valid stock is reserved. Waiting for the reseller’s additional-payment proof."
     elif not sales_action and owner == "Reseller / Inventory":
         sales_description = "Waiting for the reseller to return the approved goods and Inventory to check the complete receipt."
+    if case.get("handed_off_at") and owner == "Sales":
+        owner = "Supervisor / Owner"
+    if case.get("handed_off_at"):
+        reseller_title = reseller_title.replace("Sales", "Supervisor/Owner")
+        description = description.replace("Sales", "Supervisor/Owner")
+        sales_description = sales_description.replace("Sales", "Supervisor/Owner")
     return {"queue": queue, "owner": owner, "replacement_progress": product, "financial_progress": money,
             "progress_label": f"{product} · {money}", "sales": {"title": sales_title, "action": sales_action, "description": sales_description},
             "reseller": {"title": reseller_title, "action": reseller_action, "description": description}, "description": description}
+
+
+def assigned_leader_queue_sql() -> str:
+    return f"CASE WHEN r.handed_off_at IS NOT NULL THEN CASE WHEN r.status IN ('completed','rejected') AND NOT EXISTS(SELECT 1 FROM return_customer_followups tf WHERE tf.return_id=r.return_id AND tf.status='open') THEN 'completed' ELSE 'waiting' END ELSE ({QUEUE_SQL}) END"

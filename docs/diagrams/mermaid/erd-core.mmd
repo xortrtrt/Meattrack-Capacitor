@@ -1,0 +1,111 @@
+erDiagram
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+    }
+
+    INQUIRIES {
+        bigint inquiry_id PK
+        text status
+    }
+
+    RESELLERS {
+        bigint reseller_id PK
+        bigint inquiry_id FK, UK
+        text business_name
+    }
+
+    INVENTORY_ITEMS {
+        bigint item_id PK
+        text item_type
+        text name
+    }
+
+    INVENTORY_BATCHES {
+        bigint batch_id PK
+        bigint item_id FK
+        date expiry_date
+    }
+
+    PRODUCT_RECIPES {
+        bigint recipe_id PK
+        bigint product_item_id FK
+        bigint material_item_id FK
+    }
+
+    ORDERS {
+        bigint order_id PK
+        bigint reseller_id FK
+        text status
+    }
+
+    ORDER_ITEMS {
+        bigint order_item_id PK
+        bigint order_id FK
+        bigint product_id FK
+        numeric quantity
+    }
+
+    FULFILLMENT_ALLOCATIONS {
+        bigint allocation_id PK
+        bigint order_item_id FK
+        bigint batch_id FK
+    }
+
+    PRODUCT_RETURNS {
+        bigint return_id PK
+        bigint order_id FK
+        text resolution
+    }
+
+    PRODUCT_RETURN_LINES {
+        bigint return_line_id PK
+        bigint return_id FK
+        bigint allocation_id FK
+    }
+
+    ORDER_REFUNDS {
+        bigint order_refund_id PK
+        bigint order_id FK
+        numeric amount
+        bigint return_id FK, UK
+    }
+
+    SALES_REPORTS {
+        bigint sales_report_id PK
+        bigint reseller_id FK
+    }
+
+    FORECAST_RUNS {
+        bigint forecast_run_id PK
+        text status
+        bigint retry_of_forecast_run_id FK, UK
+    }
+
+    FORECAST_RESULTS {
+        bigint forecast_result_id PK
+        bigint forecast_run_id FK
+        bigint product_id FK
+    }
+
+    INQUIRIES |o..o| RESELLERS : "inquiry_id"
+    RESELLERS |o..o{ ACCOUNTS : "reseller_id"
+    INVENTORY_ITEMS ||..o{ INVENTORY_BATCHES : "item_id"
+    INVENTORY_ITEMS ||..o{ PRODUCT_RECIPES : "product_item_id"
+    INVENTORY_ITEMS ||..o{ PRODUCT_RECIPES : "material_item_id"
+    RESELLERS |o..o{ ORDERS : "reseller_id"
+    ORDERS ||..o{ ORDER_ITEMS : "order_id"
+    INVENTORY_ITEMS ||..o{ ORDER_ITEMS : "product_id"
+    ORDERS ||..o{ ORDER_REFUNDS : "order_id"
+    RESELLERS |o..o{ SALES_REPORTS : "reseller_id"
+    FORECAST_RUNS ||..o{ FORECAST_RESULTS : "forecast_run_id"
+    INVENTORY_ITEMS ||..o{ FORECAST_RESULTS : "product_id"
+    FORECAST_RUNS |o..o| FORECAST_RUNS : "retry_of_forecast_run_id"
+    ORDER_ITEMS ||..o{ FULFILLMENT_ALLOCATIONS : "order_item_id"
+    INVENTORY_BATCHES ||..o{ FULFILLMENT_ALLOCATIONS : "batch_id"
+    ORDERS ||..o{ PRODUCT_RETURNS : "order_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_LINES : "return_id"
+    FULFILLMENT_ALLOCATIONS ||..o{ PRODUCT_RETURN_LINES : "allocation_id"
+    PRODUCT_RETURNS |o..o| ORDER_REFUNDS : "return_id"

@@ -308,12 +308,17 @@ def update_team_leader_account_role(account_id: int, team_leader_role: str, acto
     if team_leader_role not in {"sales", "sales-supervisor", "inventory"}:
         raise ValueError("Select a valid team leader role.")
     with get_transaction_cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext('meattrack-owner-account-admin'));")
         cur.execute(
             "SELECT account_id FROM accounts WHERE account_id = %s AND account_type = 'team_leader' FOR UPDATE;",
             (account_id,),
         )
         if not cur.fetchone():
             raise ValueError("Only team leader accounts can change team leader roles.")
+        if team_leader_role != "sales-supervisor":
+            from .superuser import _processing_workload
+            if any(_processing_workload(cur, account_id).values()):
+                raise ValueError("Transfer active return and refund responsibilities before removing Supervisor access.")
         if team_leader_role == "inventory":
             cur.execute(
                 """

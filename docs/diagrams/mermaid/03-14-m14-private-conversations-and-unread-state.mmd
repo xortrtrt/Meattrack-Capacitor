@@ -1,0 +1,20 @@
+flowchart TD
+    A([User opens Inbox or staff Messages]) --> B[Load only currently authorized threads]
+    B --> C{Conversation type}
+    C -->|Sales and reseller| D[Check assigned leader and reseller participants]
+    C -->|Refund| E[Check processor or reseller permissions and refund status]
+    C -->|Version-2 replacement| F[Check case reseller, current Supervisor or Owner]
+    D --> G[Load persisted messages and current read cursor]
+    E --> G
+    F --> G
+    G --> H{Send reply?}
+    H -->|Yes| I[Validate text, client UUID and allowed media]
+    I --> J[Recheck assignment and case state; persist or return matching retry]
+    J --> K[Refresh visible thread and unread summary]
+    H -->|No| K
+    K --> L{Actual messages displayed in visible thread?}
+    L -->|Yes| M[Advance read cursor only to displayed messages]
+    L -->|No| N[Leave hidden messages unread]
+    M --> O[Poll active thread and update conversation badges]
+    N --> O
+    O --> H

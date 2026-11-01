@@ -1,0 +1,41 @@
+flowchart TD
+    A([Reseller selects eligible original packs and photos]) --> B[Choose replacement products and whole-pack quantities]
+    B --> C[Server calculates original-price return credit and replacement pricing components]
+    C --> D[Review signed account-bound comparison]
+    D --> E[Revalidate and submit immutable comparison revision]
+    E --> F[Assign Supervisor directly, with Owner fallback; create private case conversation]
+    F --> G{Supervisor approves?}
+    G -->|No| H[Decline with public explanation; case chat becomes read-only]
+    G -->|Change before paid or released| I[Publish revised comparison and require reseller acceptance]
+    I --> G
+    G -->|Yes| J[Notify Inventory for complete receipt]
+    J --> K{Actual goods fully match current approval?}
+    K -->|No| L[Record mismatch; Supervisor resolves or revises comparison]
+    L --> I
+    K -->|Yes| M[Record non-sellable custody, verification and approval clearance]
+    M --> N{Current comparison accepted?}
+    N -->|No| O[Wait for reseller acceptance]
+    O --> N
+    N -->|Yes| P{Replacement value exceeds return credit?}
+    P -->|Yes| Q[Reseller submits exact top-up with scanned and confirmed receipt]
+    Q --> R[Supervisor confirms actual received funds and matching reference]
+    P -->|No| S[Inventory prepares eligible FEFO stock]
+    R --> S
+    S --> T{Valid stock available?}
+    T -->|No| U[Wait for valid restock; preserve selection and verified payment]
+    U --> S
+    T -->|Yes| V[Reserve batches, mark ready and notify processor; no physical deduction]
+    V --> W[Inventory revalidates and confirms warehouse release]
+    W --> X{Stock, expiry, reservation and financial checks pass?}
+    X -->|No| U
+    X -->|Yes| Y[Deduct stock once; append release and movement; clear holds]
+    Y --> Z[Supervisor or Owner records delivery]
+    Y --> AA{Replacement cheaper than credit?}
+    AA -->|Yes| AB[Complete difference refund through M10]
+    AA -->|No| AC[No difference refund required]
+    Z --> AD{Delivery and all required settlement complete?}
+    AB --> AD
+    AC --> AD
+    AD -->|No| AE[Keep case awaiting remaining work]
+    AE --> AD
+    AD -->|Yes| AF([Complete replacement case])

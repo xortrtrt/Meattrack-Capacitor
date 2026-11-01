@@ -1,0 +1,18 @@
+flowchart TD
+    A([Account holder or authorized administrator]) --> B{Requested operation}
+    B -->|Profile details| C[Validate own editable fields and update profile]
+    B -->|Profile photo| D[Validate image, save file and crop settings]
+    B -->|Change own password| E[Validate current password and new password]
+    E --> F[Create password-change OTP and send email]
+    F --> G{Code valid and unexpired?}
+    G -->|No| H[Reject confirmation]
+    G -->|Yes| I[Apply password update and session handling]
+    B -->|Administrator-forced reset| J[Authorize managed account and required reason]
+    J --> K[Queue password-reset activation link]
+    K --> L[Account holder validates token and sets password]
+    B -->|Resend activation| M[Create or refresh allowed activation and queue delivery]
+    C --> N([Saved result and relevant activity history])
+    D --> N
+    I --> N
+    L --> N
+    M --> N

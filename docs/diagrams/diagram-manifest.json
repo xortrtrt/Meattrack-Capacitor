@@ -1,0 +1,212 @@
+[
+  {
+    "name": "01-01-conceptual-framework",
+    "title": "Conceptual framework",
+    "document": "01-conceptual-framework.md"
+  },
+  {
+    "name": "01-02-input-process-output-model",
+    "title": "Input-process-output model",
+    "document": "01-conceptual-framework.md"
+  },
+  {
+    "name": "01-03-cross-cutting-controls",
+    "title": "Cross-cutting controls",
+    "document": "01-conceptual-framework.md"
+  },
+  {
+    "name": "02-01-level-1-system-context",
+    "title": "Level 1: system context",
+    "document": "02-system-architecture.md"
+  },
+  {
+    "name": "02-02-level-2-runtime-containers",
+    "title": "Level 2: runtime containers",
+    "document": "02-system-architecture.md"
+  },
+  {
+    "name": "02-03-level-3-web-and-worker-components",
+    "title": "Level 3: web and worker components",
+    "document": "02-system-architecture.md"
+  },
+  {
+    "name": "02-04-level-4-representative-transaction-detail",
+    "title": "Level 4: representative transaction detail",
+    "document": "02-system-architecture.md"
+  },
+  {
+    "name": "02-05-logical-layers-and-request-path",
+    "title": "Logical layers and request path",
+    "document": "02-system-architecture.md"
+  },
+  {
+    "name": "02-06-deployment-view-from-checked-in-production-configuration",
+    "title": "Deployment view from checked-in production configuration",
+    "document": "02-system-architecture.md"
+  },
+  {
+    "name": "03-01-m01-authentication-and-access",
+    "title": "M01 \u2014 Authentication and access",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-02-m02-public-catalog-and-chatbot",
+    "title": "M02 \u2014 Public catalog and chatbot",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-03-m03-inquiry-review-and-reseller-onboarding",
+    "title": "M03 \u2014 Inquiry review and reseller onboarding",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-04-m04-reseller-cart-payment-and-order-fulfillment",
+    "title": "M04 \u2014 Reseller cart, payment and order fulfillment",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-05-m05-counter-sales",
+    "title": "M05 \u2014 Counter sales",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-06-m06-materials-product-definitions-and-production",
+    "title": "M06 \u2014 Materials, product definitions and production",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-07-m07-expiry-pull-outs-and-disposal",
+    "title": "M07 \u2014 Expiry, pull-outs and disposal",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-08-m08-product-returns-refund-only-requests-and-version-1-replacement-cases",
+    "title": "M08 \u2014 Product returns, refund-only requests and version-1 replacement cases",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-09-m09-version-2-replacement-workflow",
+    "title": "M09 \u2014 Version-2 replacement workflow",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-10-m10-manual-money-refunds",
+    "title": "M10 \u2014 Manual money refunds",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-11-m11-sales-activity-reporting-and-exports",
+    "title": "M11 \u2014 Sales activity reporting and exports",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-12-m12-demand-forecasting",
+    "title": "M12 \u2014 Demand forecasting",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-13-m13-public-live-chat",
+    "title": "M13 \u2014 Public live chat",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-14-m14-private-conversations-and-unread-state",
+    "title": "M14 \u2014 Private conversations and unread state",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-15-m15-owner-administration-and-handover",
+    "title": "M15 \u2014 Owner administration and handover",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-16-m16-background-jobs-and-notifications",
+    "title": "M16 \u2014 Background jobs and notifications",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-17-m17-dashboards-and-operational-monitoring",
+    "title": "M17 \u2014 Dashboards and operational monitoring",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-18-m18-profile-and-account-recovery",
+    "title": "M18 \u2014 Profile and account recovery",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-19-role-oriented-portal-summary-owner",
+    "title": "Role-oriented portal summary: Owner",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-20-role-oriented-portal-summary-sales-and-supervisor",
+    "title": "Role-oriented portal summary: Sales and Supervisor",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-21-role-oriented-portal-summary-inventory",
+    "title": "Role-oriented portal summary: Inventory",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "03-22-role-oriented-portal-summary-reseller",
+    "title": "Role-oriented portal summary: Reseller",
+    "document": "03-module-flowcharts.md"
+  },
+  {
+    "name": "erd-core",
+    "title": "Business-core ERD",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-identity",
+    "title": "Identity, onboarding and sessions",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-orders",
+    "title": "Cart, orders, payment and fulfillment",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-inventory",
+    "title": "Production, stock and non-sellable custody",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-returns",
+    "title": "Return cases, receipt trace and customer follow-ups",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-replacement",
+    "title": "Replacement quotations, preparation, release and messages",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-refunds",
+    "title": "Refund obligations, transfer attempts and evidence",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-reporting",
+    "title": "Reports and forecasting",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-messaging",
+    "title": "Public chat, internal conversations and notifications",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-operations",
+    "title": "Operational settings, delivery and migration metadata",
+    "document": "04-entity-relationship-diagrams.md"
+  },
+  {
+    "name": "erd-full-schema",
+    "title": "Complete physical schema: 72 tables",
+    "document": "04-entity-relationship-diagrams.md"
+  }
+]

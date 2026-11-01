@@ -1,0 +1,22 @@
+flowchart TB
+    B[Browser: HTML, CSS and vanilla JavaScript]
+    N[Nginx: HTTPS reverse proxy]
+    subgraph MT[MEATTRACK runtime]
+        APP[FastAPI web process: routes, portals and repositories]
+        WORKER[Python background worker: durable jobs and maintenance]
+        DB[(PostgreSQL 16: business data, sessions, evidence and job state)]
+        FILES[(Profile image upload volume)]
+    end
+    B <-->|HTTPS page requests and JSON polling| N
+    N <-->|Loopback HTTP| APP
+    APP <-->|Pooled SQL reads and transactions| DB
+    WORKER <-->|Claim, update and complete persisted work| DB
+    APP <-->|Profile image files| FILES
+    APP -->|Login and password-change OTP email| MAIL[Configured email provider]
+    WORKER -->|Queued activation, reset and inquiry emails| MAIL
+    APP <-->|Publish events and issue scoped access| ABLY[Ably]
+    WORKER -->|Retry failed public-chat publication| ABLY
+    B <-->|Public live-chat events| ABLY
+    APP -.->|Optional chatbot completion| AI[OpenRouter]
+    WORKER --> MODEL[Local forecasting libraries: Prophet, pandas and baselines]
+    APP --> OCR[Local receipt OCR: Tesseract and Pillow]

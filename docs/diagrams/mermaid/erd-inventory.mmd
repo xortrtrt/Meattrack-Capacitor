@@ -1,0 +1,120 @@
+erDiagram
+
+    INVENTORY_ITEMS {
+        bigint item_id PK
+        text item_type
+        text name
+        text unit
+        numeric base_price
+        numeric quantity_available
+    }
+
+    INVENTORY_BATCHES {
+        bigint batch_id PK
+        bigint item_id FK
+        text batch_code UK
+        numeric quantity_available
+        text unit
+        date expiry_date
+        text quality_status
+    }
+
+    PRODUCT_RECIPES {
+        bigint recipe_id PK
+        bigint product_item_id FK
+        bigint material_item_id FK
+        numeric quantity_required
+        text unit
+    }
+
+    INVENTORY_MOVEMENTS {
+        bigint movement_id PK
+        bigint item_id FK
+        bigint affected_batch_id FK
+        bigint production_batch_id FK
+        bigint order_id FK
+        numeric quantity_delta
+        text unit
+        bigint actor_account_id FK
+    }
+
+    EXPIRED_PULLOUTS {
+        bigint pullout_id PK
+        bigint batch_id FK, UK
+    }
+
+    EXPIRED_HOLDINGS {
+        bigint holding_id PK
+        bigint product_id FK
+        bigint batch_id FK
+        bigint return_line_id FK
+        text source
+        date expiry_date
+        numeric quantity_remaining
+        text location
+        bigint created_by_account_id FK
+    }
+
+    EXPIRED_STOCK_MOVEMENTS {
+        bigint movement_id PK
+        bigint holding_id FK
+        text action
+        numeric quantity
+        bigint actor_account_id FK
+        uuid operation_key UK
+    }
+
+    PRODUCT_RETURN_LINES {
+        bigint return_line_id PK
+        bigint return_id FK
+        bigint allocation_id FK
+        numeric quantity
+        numeric received_quantity
+        numeric unit_price
+    }
+
+    PRODUCT_RETURN_RECEIPTS {
+        bigint receipt_id PK
+        bigint return_id FK
+        uuid operation_key UK
+        bigint received_by_account_id FK
+        text location
+    }
+
+    PRODUCT_RETURN_RECEIPT_LINES {
+        bigint receipt_line_id PK
+        bigint receipt_id FK
+        bigint return_line_id FK
+        bigint holding_id FK, UK
+        bigint movement_id FK, UK
+        numeric quantity
+    }
+
+    ALERTS {
+        bigint alert_id PK
+        text severity
+        bigint product_id FK
+        bigint product_batch_id FK
+        bigint raw_material_id FK
+        text message
+        text status
+    }
+
+    INVENTORY_ITEMS ||..o{ INVENTORY_BATCHES : "item_id"
+    INVENTORY_ITEMS ||..o{ PRODUCT_RECIPES : "product_item_id"
+    INVENTORY_ITEMS ||..o{ PRODUCT_RECIPES : "material_item_id"
+    INVENTORY_ITEMS |o..o{ ALERTS : "product_id"
+    INVENTORY_BATCHES |o..o{ ALERTS : "product_batch_id"
+    INVENTORY_ITEMS |o..o{ ALERTS : "raw_material_id"
+    INVENTORY_ITEMS ||..o{ INVENTORY_MOVEMENTS : "item_id"
+    INVENTORY_BATCHES |o..o{ INVENTORY_MOVEMENTS : "affected_batch_id"
+    INVENTORY_BATCHES |o..o{ INVENTORY_MOVEMENTS : "production_batch_id"
+    INVENTORY_BATCHES ||..o| EXPIRED_PULLOUTS : "batch_id"
+    INVENTORY_ITEMS ||..o{ EXPIRED_HOLDINGS : "product_id"
+    INVENTORY_BATCHES |o..o{ EXPIRED_HOLDINGS : "batch_id"
+    PRODUCT_RETURN_LINES |o..o{ EXPIRED_HOLDINGS : "return_line_id"
+    EXPIRED_HOLDINGS ||..o{ EXPIRED_STOCK_MOVEMENTS : "holding_id"
+    PRODUCT_RETURN_RECEIPTS ||..o{ PRODUCT_RETURN_RECEIPT_LINES : "receipt_id"
+    PRODUCT_RETURN_LINES ||..o{ PRODUCT_RETURN_RECEIPT_LINES : "return_line_id"
+    EXPIRED_HOLDINGS ||..o| PRODUCT_RETURN_RECEIPT_LINES : "holding_id"
+    EXPIRED_STOCK_MOVEMENTS ||..o| PRODUCT_RETURN_RECEIPT_LINES : "movement_id"

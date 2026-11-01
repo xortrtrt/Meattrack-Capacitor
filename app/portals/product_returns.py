@@ -5,7 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse
 from psycopg2.errors import UniqueViolation
 from starlette.concurrency import run_in_threadpool
 
@@ -13,12 +13,86 @@ from app.capabilities import capability_role_key, require_capability
 from app.database import fetch_all, fetch_one
 from app.repositories import product_returns as returns
 from app.repositories import return_customer
+from app.repositories import replacement_workflow, replacement_messages
+from app import receipt_ocr
 from app.return_experience import QUEUES, normalize_queue
 from app.repositories.inventory import list_products
 from app.inventory_measurements import parse_whole_packs
 from app.portals import shared
 
 router = APIRouter()
+
+
+@router.post("/portal/reseller/returns/replacement-preview")
+async def replacement_preview(request: Request):
+    guard = await run_in_threadpool(_guard,request,"reseller","returns.create")
+    if guard:
+        return guard
+    form = await request.form()
+    try:
+        return await run_in_threadpool(replacement_workflow.preview,int(str(form.get("order_id","0"))),
+            shared.session_account_id(request),_pairs(form,"allocation_id","quantity"),
+            _pairs(form,"replacement_product_id","replacement_quantity"))
+    except ValueError as exc:
+        return JSONResponse({"error":str(exc)},status_code=400)
+
+
+@router.post("/portal/reseller/returns/{return_id}/receipt-scan")
+async def replacement_receipt_scan(request: Request, return_id: int):
+    guard = await run_in_threadpool(_guard,request,"reseller","returns.create")
+    if guard:
+        return guard
+    actor = shared.session_account_id(request)
+    try:
+        case = await run_in_threadpool(returns.get_product_return,return_id,actor)
+        if case.get("replacement_workflow_version")!=2 or not case["sales_authorized"] or not case["verified_at"] or case["payment_verified_at"]:
+            raise ValueError("Complete receipt and approval are required before payment.")
+        form = await request.form()
+        attachments = await shared.parse_payment_proof_attachments([u for u in form.getlist("payment_proofs") if getattr(u,"filename","")])
+        if not attachments:
+            raise ValueError("Choose a payment receipt screenshot.")
+        scan = await run_in_threadpool(receipt_ocr.scan_payment_proofs,attachments)
+        scan["scan_token"] = receipt_ocr.create_scan_token(actor,attachments,scan,context=f"replacement:{return_id}")
+        return JSONResponse(scan,headers={"Cache-Control":"no-store"})
+    except ValueError as exc:
+        return JSONResponse({"error":str(exc)},status_code=400)
+
+
+@router.get("/api/portal/{role_key}/returns/{return_id}/messages")
+async def replacement_conversation(request: Request, role_key: str, return_id: int, after_id: int = 0):
+    guard = await run_in_threadpool(_guard,request,role_key,"returns.view")
+    if guard:
+        return guard
+    try:
+        return await run_in_threadpool(replacement_messages.messages,return_id,shared.session_account_id(request),after_id)
+    except ValueError:
+        raise HTTPException(404,detail="Replacement conversation unavailable.") from None
+
+
+@router.post("/api/portal/{role_key}/returns/{return_id}/messages")
+async def replacement_conversation_send(request: Request, role_key: str, return_id: int):
+    guard = await run_in_threadpool(_guard,request,role_key,"returns.view")
+    if guard:
+        return guard
+    form = await request.form()
+    try:
+        return await run_in_threadpool(replacement_messages.send,return_id,shared.session_account_id(request),
+            str(form.get("content","")),str(form.get("client_message_id","")))
+    except ValueError as exc:
+        return JSONResponse({"error":str(exc)},status_code=400)
+
+
+@router.post("/api/portal/{role_key}/returns/{return_id}/read")
+async def replacement_conversation_read(request: Request, role_key: str, return_id: int):
+    guard = await run_in_threadpool(_guard,request,role_key,"returns.view")
+    if guard:
+        return guard
+    try:
+        payload = await request.json()
+        unread = await run_in_threadpool(replacement_messages.mark_read,return_id,shared.session_account_id(request),int(payload.get("through_id",0)))
+    except (ValueError,TypeError):
+        raise HTTPException(404) from None
+    return {"ok":True,"unread_count":unread}
 
 
 def _guard(request: Request, role_key: str, capability: str):
@@ -37,6 +111,10 @@ def _returns_context(request: Request) -> dict:
     inventory_only = role == "team-leader:inventory"
     queue = normalize_queue(request.query_params.get("queue")) if role == "team-leader:sales" else None
     case_options = {"queue": queue} if queue is not None else {}
+    if role == "owner" and request.query_params.get("owner_only") == "1":
+        case_options["owner_only"] = True
+    if role == "reseller" and request.query_params.get("source_order"):
+        case_options["order_id"] = shared.optional_positive_id(request.query_params.get("source_order")) or 0
     cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""),page=shared.requested_page(request.query_params.get("page")),reconciliation_only=request.query_params.get("reconciliation")=="1", **case_options)
     case_id = shared.optional_positive_id(request.query_params.get("case"))
     selected = None
@@ -68,7 +146,11 @@ def _returns_context(request: Request) -> dict:
         ):
             legacy_batches.setdefault(batch["item_id"], []).append(batch)
     can_review = role in {"owner", "team-leader:sales", "sales-supervisor"}
-    if can_review and selected and role != "owner" and selected["team_leader_account_id"] != actor_id:
+    if can_review and selected and role != "owner" and (
+        (role == "team-leader:sales" and selected.get("handed_off_at")) or
+        (role == "sales-supervisor" and selected.get("handed_off_at") and selected.get("processing_supervisor_account_id") != actor_id) or
+        (selected["team_leader_account_id"] != actor_id and selected.get("processing_supervisor_account_id") != actor_id)
+    ):
         can_review = False
     return {
         "return_queue": queue,
@@ -80,10 +162,10 @@ def _returns_context(request: Request) -> dict:
         "return_order_id": order_id,
         "return_order": return_order,
         "returnable_batches": [row for row in available_returns if row["returnable_quantity"] > 0],
-        "replacement_products": list_products(active_only=True) if can_review else [],
+        "replacement_products": list_products(active_only=True) if can_review or role=="reseller" else [],
         "return_inventory_only": inventory_only,
         "return_inventory_summary": returns.inventory_return_totals(actor_id) if inventory_only else {},
-        "return_summary": returns.return_settlement_totals(actor_id) if role in {"owner", "team-leader:sales", "sales-supervisor"} else {},
+        "return_summary": returns.return_settlement_totals(actor_id) if role in {"team-leader:sales", "sales-supervisor"} else {},
         "operation_key": lambda: str(uuid4()),
         "return_is_reseller": role == "reseller",
         "return_can_review": can_review,
@@ -198,7 +280,7 @@ def return_action_page(request: Request, role_key: str, action: str):
     sales_workspace = role_key == "team-leader" and shared.session_team_leader_role(request) == "sales"
     if "/refunds/returns/actions/" in request.url.path and not sales_workspace:
         raise HTTPException(404)
-    destination = "history" if role_key == "reseller" else "refunds" if sales_workspace else "returns"
+    destination = "history" if role_key == "reseller" else "returns"
     case_id = shared.optional_positive_id(request.query_params.get("case"))
     params = {"case": str(case_id)} if case_id else {}
     if role_key == "reseller" or sales_workspace:
@@ -230,6 +312,7 @@ async def return_action(request: Request, role_key: str, action: str):
         "inspect": "returns.receive",
         "acknowledge-replacement": "returns.create",
         "resolve-issue": "returns.review",
+        "delivered": "returns.authorize",
     }
     if action not in capabilities:
         raise HTTPException(404)
@@ -241,9 +324,11 @@ async def return_action(request: Request, role_key: str, action: str):
     return_id = shared.optional_positive_id(str(form.get("return_id", "")))
     params = {"case": str(return_id)} if return_id else {}
     sales_workspace = role_key == "team-leader" and shared.session_team_leader_role(request) == "sales"
-    destination = "history" if role_key == "reseller" else "refunds" if sales_workspace else "returns"
+    destination = "history" if role_key == "reseller" else "returns"
     try:
-        if action == "acknowledge-replacement":
+        if action == "delivered":
+            await run_in_threadpool(replacement_workflow.deliver,return_id,actor_id,str(form.get("remarks","")))
+        elif action == "acknowledge-replacement":
             await run_in_threadpool(return_customer.acknowledge_replacement, return_id, actor_id)
         elif action == "resolve-issue":
             await run_in_threadpool(return_customer.resolve_followup, return_id, actor_id,
@@ -262,6 +347,8 @@ async def return_action(request: Request, role_key: str, action: str):
                 str(form.get("remarks", "")),
                 attachments,
                 str(form.get("operation_key", "")) or None,
+                **({"replacement_items":_pairs(form,"replacement_product_id","replacement_quantity"),
+                    "comparison_token":str(form.get("comparison_token",""))} if form.get("resolution")=="replace" else {}),
             )
             params = {"case": str(return_id)}
         elif action == "proceed":
@@ -309,14 +396,22 @@ async def return_action(request: Request, role_key: str, action: str):
         elif action == "accept":
             await run_in_threadpool(returns.accept_replacement_quote, return_id, actor_id, int(str(form.get("revision", "0"))))
         elif action == "reserve":
-            await run_in_threadpool(returns.reserve_replacement, return_id, actor_id, str(form.get("remarks", "")))
+            ready = await run_in_threadpool(returns.reserve_replacement, return_id, actor_id, str(form.get("remarks", "")))
+            if ready is False:
+                return shared.redirect_to(shared.safe_portal_path(role_key,destination,case=str(return_id),message="Waiting for valid stock. The accepted selection and verified payment are preserved."))
         elif action == "release":
             await run_in_threadpool(returns.release_replacement, return_id, actor_id, str(form.get("remarks", "")))
         elif action == "payment":
             attachments = await shared.parse_payment_proof_attachments(
                 [u for u in form.getlist("payment_proofs") if getattr(u, "filename", "")]
             )
-            await run_in_threadpool(returns.record_return_payment, return_id, actor_id, attachments)
+            case = await run_in_threadpool(returns.get_product_return,return_id,actor_id)
+            details = None
+            if case.get("replacement_workflow_version")==2:
+                details = receipt_ocr.confirmed_payment_details(actor_id,attachments,str(form.get("receipt_scan_token","")),
+                    str(form.get("transaction_number","")),str(form.get("payment_date","")),str(form.get("payment_time","")),
+                    str(form.get("payment_amount","")),form.get("payment_details_confirmed")=="yes",context=f"replacement:{return_id}")
+            await run_in_threadpool(returns.record_return_payment, return_id, actor_id, attachments, **({"payment_details":details} if details else {}))
         elif action == "verify-payment":
             await run_in_threadpool(
                 returns.verify_return_payment,
@@ -325,6 +420,7 @@ async def return_action(request: Request, role_key: str, action: str):
                 str(form.get("reference", "")),
                 str(form.get("amount", "")),
                 str(form.get("remarks", "")),
+                funds_received=form.get("funds_received")=="yes",
             )
         elif action == "legacy":
             await run_in_threadpool(
@@ -347,7 +443,7 @@ async def return_action(request: Request, role_key: str, action: str):
         if capability_role_key(request) == "team-leader:inventory" and any(
             word in error.lower() for word in ("payment", "refund", "credit", "price", "quote")
         ):
-            error = "Sales clearance is required. Ask the assigned Sales Leader to review this return before stock release."
+            error = "Supervisor/Owner clearance is required. Ask the assigned processor to review this return before stock release."
         return shared.redirect_to(shared.safe_portal_path(role_key, destination,
             error=error, **({"view": "returns", **params} if role_key == "reseller" or sales_workspace else params)))
     return shared.redirect_to(shared.safe_portal_path(role_key, destination,

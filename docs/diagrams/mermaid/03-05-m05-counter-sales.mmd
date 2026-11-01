@@ -1,0 +1,11 @@
+flowchart TD
+    A([Sales or Supervisor records counter sale]) --> B[Choose product, whole packs and notes]
+    B --> C[Validate active product and calculate server price]
+    C --> D[Begin transaction; plan FEFO allocation under locks]
+    D --> E{Enough eligible unreserved stock?}
+    E -->|No| F[Return error and roll back]
+    E -->|Yes| G[Create walk_in order and order lines]
+    G --> H[Deduct batches and record allocations and sale movements]
+    H --> I[Mark fulfilled in the same transaction]
+    I --> J[Record actor activity and commit]
+    J --> K([Sale available to dashboards, reports and forecasting])

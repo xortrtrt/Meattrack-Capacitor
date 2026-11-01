@@ -8,13 +8,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
-from starlette.datastructures import URL
 
 from app import repositories as data
-from app import owner_recovery
-from app.business_time import business_now, business_today
+from app.business_time import business_today
 from app.capabilities import require_capability
-from app.emailer import send_owner_step_up_otp
 from app.portals import shared
 
 
@@ -44,33 +41,13 @@ def manageable_account_types(role_key: str) -> tuple[str, ...]:
 
 
 def owner_step_up_active(request: Request) -> bool:
-    try:
-        return int(request.session.get("owner_step_up_until") or 0) > int(business_now().timestamp())
-    except (TypeError, ValueError):
-        return False
+    # Kept for older templates; signed-in owners no longer need an action OTP.
+    return request.session.get("role_key") == "owner" and shared.session_account_id(request) is not None
 
 
 def require_owner_step_up(request: Request, return_section: str, *, draft_fields: dict | None = None) -> object | None:
     require_capability(request, "security.step_up", "owner")
-    if owner_step_up_active(request):
-        return None
-    owner_recovery.capture(request, return_section, draft_fields)
-    account_id = shared.session_account_id(request)
-    if account_id is not None:
-        data.record_owner_audit(
-            account_id,
-            "owner_step_up_required",
-            "owner_security",
-            reason="Sensitive action was blocked pending owner verification",
-            after_state={"return_section": return_section},
-            outcome="failure",
-        )
-    return shared.redirect_to(shared.safe_portal_path(
-        "owner",
-        "verify",
-        error="Verify your identity before performing this sensitive action.",
-        return_to=return_section,
-    ))
+    return None
 
 
 def add_months(value: date, months: int) -> date:
@@ -244,9 +221,10 @@ def accounts_page(request: Request, page_size: int = 10) -> dict:
 def dashboard_context(request: Request) -> dict:
     chart_context = owner_sales_chart_context(request)
     context = {
-        "metrics": data.current_metrics(),
-        "forecasts": data.list_forecasts(limit=3),
-        "top_products": data.reseller_most_bought_products(limit=5),
+        "business": data.owner_business_snapshot(),
+        "stock": data.owner_stock_snapshot(),
+        "settlement_summary": data.settlement_summary(shared.session_account_id(request)),
+        "recent_reports": data.list_sales_reports(report_source="team_leader", limit=3),
     }
     context.update(chart_context)
     return context
@@ -263,7 +241,7 @@ def reports_context(request: Request) -> dict:
     page_number = data.pagination_meta(total, shared.positive_int(request.query_params.get("page"), maximum=2147483647), 10)["page"]
     items = data.list_sales_reports(report_source="team_leader", q=filters["q"], page=page_number, page_size=10, sort=filters["sort"])
     page = shared.paged(items, total, page_number, 10, q=filters["q"], sort=filters["sort"])
-    return {"sales_reports_page": page, "sales_reports": page["items"],"settlement_summary":data.settlement_summary(shared.session_account_id(request))}
+    return {"sales_reports_page": page, "sales_reports": page["items"]}
 
 
 def forecasts_context(request: Request) -> dict:
@@ -290,10 +268,8 @@ def accounts_context(request: Request) -> dict:
 
 def operations_context(request: Request) -> dict:
     return {
-        "operations_summary": data.owner_operations_summary(),
-        "recent_orders": data.list_orders(order_type="reseller", limit=8),
-        "recent_inquiries": data.list_inquiries(limit=8),
-        "alerts": data.list_alerts()[:8],
+        "business": data.owner_business_snapshot(),
+        "stock": data.owner_stock_snapshot(),
         "team_workload": data.list_team_workload(),
     }
 
@@ -309,8 +285,12 @@ def orders_context(request: Request) -> dict:
 
 
 def inventory_context(request: Request) -> dict:
+    page = shared.product_page(request, active_only=True)
     return {
-        "products": data.list_products(page=1, page_size=50),
+        "products_page": page,
+        "products": page["items"],
+        "production_products": data.list_products(active_only=True),
+        "stock": data.owner_stock_snapshot(),
         "raw_materials": data.list_raw_materials(),
         "product_recipes": data.list_product_recipes(),
         "alerts": data.list_alerts(),
@@ -342,7 +322,7 @@ def batches_context(request: Request) -> dict:
 
 def movements_context(request: Request) -> dict:
     filters = shared.portal_filters(request)
-    category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales", "corrections"} else ""
+    category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales", "corrections", "reservations"} else ""
     total = data.count_inventory_movements(q=filters["q"], category=category)
     filters["page"] = shared.clamp_page(total, filters["page"], 10)
     items = data.list_inventory_movements(
@@ -351,8 +331,8 @@ def movements_context(request: Request) -> dict:
     return {
         "movements_page": shared.paged(items, total, filters["page"], 10, q=filters["q"], type=category, sort=filters["sort"]),
         "movements": items,
-        "inventory_items": data.list_inventory_items(page=1, page_size=250),
-        "inventory_batches": data.list_inventory_batches(page=1, page_size=250),
+        "inventory_items": data.list_inventory_items(),
+        "inventory_batches": data.list_inventory_batches(),
     }
 
 
@@ -394,6 +374,7 @@ def profile_context(request: Request) -> dict:
 
 
 SECTION_LOADERS = {
+    ("owner", "messages"): lambda request: {},
     ("owner", "dashboard"): dashboard_context,
     ("owner", "operations"): operations_context,
     ("owner", "inquiries"): inquiries_context,
@@ -674,48 +655,12 @@ async def owner_forecast_status(request: Request, forecast_run_id: int):
 @router.post("/portal/owner/verify/step-up/request")
 def owner_step_up_request(request: Request):
     guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "security.step_up", "owner")
-    account_id = shared.session_account_id(request)
-    if account_id is None:
-        return shared.redirect_to(shared.safe_portal_path("owner", "verify", error="Your session expired."))
-    try:
-        challenge = data.request_owner_step_up(account_id)
-        sent, message = send_owner_step_up_otp(
-            to_email=challenge["email"], name=challenge["name"], otp_code=challenge["otp_code"]
-        )
-        if not sent:
-            data.cancel_owner_step_up(account_id, challenge["challenge_id"])
-            raise ValueError(message)
-        request.session["owner_step_up_challenge_id"] = challenge["challenge_id"]
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "verify", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path(
-        "owner", "verify", challenge="1", message="A 6-digit verification code was sent to your email."
-    ))
+    return guard or shared.redirect_to(shared.safe_portal_path("owner", "dashboard", message="Owner actions no longer require an email verification code."))
 
 
 @router.post("/portal/owner/verify/step-up/confirm")
-def owner_step_up_confirm(request: Request, otp_code: Annotated[str, Form()]):
-    guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "security.step_up", "owner")
-    account_id = shared.session_account_id(request)
-    challenge_id = request.session.get("owner_step_up_challenge_id")
-    try:
-        if account_id is None or challenge_id is None:
-            raise ValueError("Request a new verification code.")
-        data.confirm_owner_step_up(account_id, int(challenge_id), otp_code)
-    except (TypeError, ValueError) as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "verify", challenge="1", error=str(exc)))
-    request.session.pop("owner_step_up_challenge_id", None)
-    request.session["owner_step_up_until"] = int((business_now() + timedelta(minutes=10)).timestamp())
-    destination = owner_recovery.complete(request)
-    return shared.redirect_to(str(URL(destination).include_query_params(
-        message="Verification complete—review and submit your action."
-    )))
+def owner_step_up_confirm(request: Request, otp_code: str = Form("")):
+    return owner_step_up_request(request)
 
 
 @router.post("/portal/owner/accounts/{account_id}/status")

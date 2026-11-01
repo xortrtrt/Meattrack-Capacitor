@@ -1,0 +1,38 @@
+<div class="owner-page owner-superuser-page">
+  <section class="panel owner-settings-panel">
+    <div class="panel-heading"><div><span class="eyebrow">Business controls</span><h2>Operational defaults</h2><p class="hint">Manage payment timing, stock warnings, and public contact details.</p></div></div>
+    <form class="form-panel bare owner-settings-form" action="/portal/owner/settings" method="post">
+      <fieldset class="owner-settings-group">
+        <legend><i data-lucide="sliders-horizontal" aria-hidden="true"></i> Orders & planning</legend>
+        <p class="hint">Defaults used for new orders and forecast runs.</p>
+        <div class="owner-form-grid">
+          <label>Payment window (minutes)<input required type="number" min="1" max="1440" name="order_payment_window_minutes" value="{{ business_settings['order.payment_window_minutes'] }}"></label>
+          <label>Default forecast horizon (days)<input required type="number" min="1" max="365" name="forecast_default_horizon_days" value="{{ business_settings['forecast.default_horizon_days'] }}"></label>
+        </div>
+      </fieldset>
+      <fieldset class="owner-settings-group">
+        <legend><i data-lucide="package-search" aria-hidden="true"></i> Inventory & alerts</legend>
+        <p class="hint">Choose when expiring stock needs attention.</p>
+        <div class="owner-form-grid">
+          <label>Near-expiry warning (days)<input required type="number" min="14" max="90" name="near_expiry_days" value="{{ business_settings['inventory.near_expiry_days'] }}"></label>
+          <label>Critical expiry (days)<input required type="number" min="0" max="90" name="critical_expiry_days" value="{{ business_settings['inventory.critical_expiry_days'] }}"></label>
+          <label class="owner-checkbox owner-field-wide"><input type="checkbox" name="owner_critical_alerts" value="true" {{ 'checked' if business_settings['notifications.owner_critical_alerts'] else '' }}> Notify owners about critical alerts</label>
+        </div>
+      </fieldset>
+      <fieldset class="owner-settings-group">
+        <legend><i data-lucide="store" aria-hidden="true"></i> Business contact</legend>
+        <p class="hint">Public details customers can use to reach the business.</p>
+        <div class="owner-form-grid">
+          <label>Email<input type="email" name="contact_email" autocomplete="email" value="{{ business_settings['business.contact_email'] }}"></label>
+          <label>Phone<input type="tel" name="contact_phone" autocomplete="tel" value="{{ business_settings['business.contact_phone'] }}"></label>
+          <label class="owner-field-wide">Business hours<input name="business_hours" placeholder="e.g. Monday–Saturday, 8:00 AM–5:00 PM" value="{{ business_settings['business.hours'] }}"></label>
+          <label class="owner-field-wide">Address<textarea name="contact_address" autocomplete="street-address">{{ business_settings['business.contact_address'] }}</textarea></label>
+        </div>
+      </fieldset>
+      <div class="owner-form-footer">
+        <label>Reason for change<textarea required minlength="5" maxlength="500" name="reason" placeholder="Explain what is changing and why"></textarea></label>
+        <div class="owner-form-submit"><span class="hint"><i data-lucide="shield-check" aria-hidden="true"></i> Changes are recorded with your account and reason.</span><button class="button primary" type="submit"><i data-lucide="save" aria-hidden="true"></i> Save business settings</button></div>
+      </div>
+    </form>
+  </section>
+</div>

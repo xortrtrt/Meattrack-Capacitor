@@ -1,0 +1,173 @@
+{
+  "renderer": "@mermaid-js/mermaid-cli",
+  "results": [
+    {
+      "name": "01-01-conceptual-framework",
+      "ok": true
+    },
+    {
+      "name": "01-03-cross-cutting-controls",
+      "ok": true
+    },
+    {
+      "name": "02-01-level-1-system-context",
+      "ok": true
+    },
+    {
+      "name": "02-02-level-2-runtime-containers",
+      "ok": true
+    },
+    {
+      "name": "02-03-level-3-web-and-worker-components",
+      "ok": true
+    },
+    {
+      "name": "02-04-level-4-representative-transaction-detail",
+      "ok": true
+    },
+    {
+      "name": "02-05-logical-layers-and-request-path",
+      "ok": true
+    },
+    {
+      "name": "02-06-deployment-view-from-checked-in-production-configuration",
+      "ok": true
+    },
+    {
+      "name": "03-01-m01-authentication-and-access",
+      "ok": true
+    },
+    {
+      "name": "03-02-m02-public-catalog-and-chatbot",
+      "ok": true
+    },
+    {
+      "name": "03-04-m04-reseller-cart-payment-and-order-fulfillment",
+      "ok": true
+    },
+    {
+      "name": "03-05-m05-counter-sales",
+      "ok": true
+    },
+    {
+      "name": "03-06-m06-materials-product-definitions-and-production",
+      "ok": true
+    },
+    {
+      "name": "03-07-m07-expiry-pull-outs-and-disposal",
+      "ok": true
+    },
+    {
+      "name": "03-08-m08-product-returns-refund-only-requests-and-version-1-replacement-cases",
+      "ok": true
+    },
+    {
+      "name": "03-09-m09-version-2-replacement-workflow",
+      "ok": true
+    },
+    {
+      "name": "03-10-m10-manual-money-refunds",
+      "ok": true
+    },
+    {
+      "name": "03-11-m11-sales-activity-reporting-and-exports",
+      "ok": true
+    },
+    {
+      "name": "03-12-m12-demand-forecasting",
+      "ok": true
+    },
+    {
+      "name": "03-13-m13-public-live-chat",
+      "ok": true
+    },
+    {
+      "name": "03-14-m14-private-conversations-and-unread-state",
+      "ok": true
+    },
+    {
+      "name": "03-15-m15-owner-administration-and-handover",
+      "ok": true
+    },
+    {
+      "name": "03-16-m16-background-jobs-and-notifications",
+      "ok": true
+    },
+    {
+      "name": "03-17-m17-dashboards-and-operational-monitoring",
+      "ok": true
+    },
+    {
+      "name": "03-18-m18-profile-and-account-recovery",
+      "ok": true
+    },
+    {
+      "name": "03-19-role-oriented-portal-summary-owner",
+      "ok": true
+    },
+    {
+      "name": "03-20-role-oriented-portal-summary-sales-and-supervisor",
+      "ok": true
+    },
+    {
+      "name": "03-21-role-oriented-portal-summary-inventory",
+      "ok": true
+    },
+    {
+      "name": "03-22-role-oriented-portal-summary-reseller",
+      "ok": true
+    },
+    {
+      "name": "01-02-input-process-output-model",
+      "ok": true
+    },
+    {
+      "name": "erd-identity",
+      "ok": true
+    },
+    {
+      "name": "erd-orders",
+      "ok": true
+    },
+    {
+      "name": "erd-inventory",
+      "ok": true
+    },
+    {
+      "name": "erd-returns",
+      "ok": true
+    },
+    {
+      "name": "erd-replacement",
+      "ok": true
+    },
+    {
+      "name": "erd-refunds",
+      "ok": true
+    },
+    {
+      "name": "erd-reporting",
+      "ok": true
+    },
+    {
+      "name": "erd-messaging",
+      "ok": true
+    },
+    {
+      "name": "erd-operations",
+      "ok": true
+    },
+    {
+      "name": "erd-full-schema",
+      "ok": true
+    },
+    {
+      "name": "03-03-m03-inquiry-review-and-reseller-onboarding",
+      "ok": true
+    },
+    {
+      "name": "erd-core",
+      "ok": true
+    }
+  ]
+}

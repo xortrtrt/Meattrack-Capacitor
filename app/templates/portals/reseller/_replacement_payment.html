@@ -1,0 +1,12 @@
+<section class="return-tracking-section replacement-checkout"><h4>Replacement payment</h4><p>Complete return receipt is confirmed. Pay only the additional amount shown in the recorded comparison. Preparation starts after the Supervisor verifies funds.</p>
+<form class="lifecycle-form" data-replacement-payment data-return-id="{{ case.return_id }}" enctype="multipart/form-data" method="post" action="{{ action_base }}payment">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="return_id" value="{{ case.return_id }}"><input type="hidden" name="receipt_scan_token" value="">
+  <strong>Additional amount: {{ case.additional_due|currency }}</strong>
+  <label>Payment receipt<input required type="file" name="payment_proofs" accept="image/jpeg,image/png,image/webp"></label>
+  <p data-replacement-scan-status role="status">Choose a receipt to recognize its details, then check or correct each field.</p>
+  <label>Transaction reference<input required name="transaction_number" maxlength="100"></label>
+  <label>Payment date<input required type="date" name="payment_date"></label><label>Payment time<input required type="time" name="payment_time"></label>
+  <label>Amount paid<input required type="number" step="0.01" min="0.01" name="payment_amount" value="{{ case.additional_due }}"></label>
+  <label class="replacement-check"><input required type="checkbox" name="payment_details_confirmed" value="yes"> I checked that these details match my payment receipt.</label>
+  <button class="button" type="submit">Submit additional payment</button>
+</form></section>

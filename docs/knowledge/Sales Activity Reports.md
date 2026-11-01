@@ -1,14 +1,21 @@
 ---
 tags: [meattrack, reports, sales]
-verified: 2026-10-29
+verified: 2026-10-30
 ---
 # Sales activity reports
 
-Sales prepares one combined report for the Owner: Sales, Orders, Returns and
+Sales prepares one combined report for the Owner: Orders, Sales, Returns and
 Refunds. Reseller-submitted reports are excluded. The report workspace has
 Prepare report and Submitted reports views, with preview, optional overall and
 section notes, CSV by section, a five-sheet Excel workbook, and an A4 print view.
 There is no cumulative financial totals panel on the Sales report page.
+The preview tabs, print sections, CSV choices, and Excel sheets follow that order
+(after Summary where present). Orders is the initial preview tab. This changes
+presentation without rewriting submitted report values or attribution rules.
+Checked 2026-10-30 against `app/report_documents.py`,
+`app/repositories/activity_reports.py`, `app/templates/portals/reports/`,
+`app/templates/portals/team-leader/reports.html`, and
+`tests/test_activity_reports_browser.py`.
 
 ## Selection and attribution
 
@@ -58,3 +65,14 @@ Sources: `app/repositories/activity_reports.py`, `app/portals/activity_reports.p
 `app/templates/portals/team-leader/reports.html`, and
 `database/migrations/037_sales_activity_reports.sql`.
 Related: [[Architecture]], [[Database and Operations]], [[Testing and Change Impact]].
+
+The 2026-10-30 [[Owner Portal]] gives submitted reports a dedicated inbox; cumulative
+business financial context has moved to Overview. The Owner summary CSV is explicitly
+an all-Sales-record export, independent of page filters, restricted to team-leader
+report sources. New saved documents and legacy financial behavior are preserved.
+Sources: `app/portals/owner.py`, `app/repositories/superuser.py`,
+`app/templates/portals/owner/reports.html`.
+
+Supervisor `replacement_delivered` events qualify as personal return work for
+version-2 [[Replacement Workflow]], without claiming an ordinary sale or altering
+already saved report snapshots. Source: `app/repositories/activity_reports.py`.

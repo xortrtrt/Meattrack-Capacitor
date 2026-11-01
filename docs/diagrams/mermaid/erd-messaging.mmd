@@ -1,0 +1,153 @@
+erDiagram
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email
+        text team_leader_role
+        boolean is_active
+    }
+
+    CHAT_CONVERSATIONS {
+        uuid conversation_id PK
+        text status
+        bigint assigned_team_leader_account_id FK
+    }
+
+    CHAT_MESSAGES {
+        bigint chat_message_id PK
+        uuid conversation_id FK
+        bigint sender_account_id FK
+        text content
+        text publication_status
+    }
+
+    CHAT_SERVICE_RATINGS {
+        uuid conversation_id PK, FK
+        bigint team_leader_account_id FK
+    }
+
+    TEAM_LEADER_PRESENCE {
+        bigint account_id PK, FK
+        uuid active_conversation_id FK
+    }
+
+    RESELLER_CONVERSATIONS {
+        bigint conversation_id PK
+        bigint reseller_account_id FK
+        bigint team_leader_account_id FK
+    }
+
+    RESELLER_MESSAGES {
+        bigint reseller_message_id PK
+        bigint conversation_id FK
+        bigint sender_account_id FK
+        text content
+        bigint return_id FK
+    }
+
+    RESELLER_MESSAGE_ATTACHMENTS {
+        bigint attachment_id PK
+        bigint reseller_message_id FK
+        bytea content
+    }
+
+    PRODUCT_RETURNS {
+        bigint return_id PK
+        bigint order_id FK
+        text resolution
+        text status
+        bigint requested_by_account_id FK
+        bigint approved_by_account_id FK
+        numeric credit
+        integer quote_revision
+        integer accepted_revision
+        bigint payment_verified_by_account_id FK
+        text payment_reference UK
+        uuid operation_key UK
+        bigint verified_by_account_id FK
+        bigint settlement_authorized_by_account_id FK
+        bigint processing_supervisor_account_id FK
+        bigint replacement_prepared_by_account_id FK
+        bigint replacement_delivered_by_account_id FK
+    }
+
+    NOTIFICATIONS {
+        bigint notification_id PK
+        bigint recipient_account_id FK
+        text severity
+        text message
+        text dedupe_key UK
+    }
+
+    NOTIFICATION_RECIPIENTS {
+        bigint notification_id PK, FK
+        bigint account_id PK, FK
+    }
+
+    ORDER_SYSTEM_MESSAGES {
+        bigint order_system_message_id PK
+        bigint reseller_account_id FK
+        bigint order_id FK
+        text event_type
+        text message
+        text dedupe_key UK
+        bigint order_refund_attempt_id FK
+    }
+
+    ORDERS {
+        bigint order_id PK
+        text order_type
+        bigint reseller_id FK
+        bigint created_by_account_id FK
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz order_date
+        text status
+        timestamptz fulfilled_at
+        numeric total_amount
+    }
+
+    ORDER_REFUND_ATTEMPTS {
+        bigint order_refund_attempt_id PK
+        bigint order_refund_id FK
+        integer attempt_number
+        text status
+        bigint processor_account_id FK
+        text refund_transaction_key UK
+    }
+
+    ACCOUNTS |o..o{ ORDERS : "created_by_account_id"
+    ACCOUNTS |o..o{ ORDERS : "team_leader_account_id"
+    ACCOUNTS |o..o{ ORDERS : "approved_by_account_id"
+    ACCOUNTS ||..o{ ORDER_REFUND_ATTEMPTS : "processor_account_id"
+    ACCOUNTS |o..o{ NOTIFICATIONS : "recipient_account_id"
+    ACCOUNTS ||..o{ ORDER_SYSTEM_MESSAGES : "reseller_account_id"
+    ORDERS ||..o{ ORDER_SYSTEM_MESSAGES : "order_id"
+    ORDER_REFUND_ATTEMPTS |o..o{ ORDER_SYSTEM_MESSAGES : "order_refund_attempt_id"
+    NOTIFICATIONS ||--o{ NOTIFICATION_RECIPIENTS : "notification_id"
+    ACCOUNTS ||--o{ NOTIFICATION_RECIPIENTS : "account_id"
+    ACCOUNTS |o..o{ CHAT_CONVERSATIONS : "assigned_team_leader_account_id"
+    CHAT_CONVERSATIONS ||..o{ CHAT_MESSAGES : "conversation_id"
+    ACCOUNTS |o..o{ CHAT_MESSAGES : "sender_account_id"
+    ACCOUNTS ||..o{ RESELLER_CONVERSATIONS : "reseller_account_id"
+    ACCOUNTS ||..o{ RESELLER_CONVERSATIONS : "team_leader_account_id"
+    RESELLER_CONVERSATIONS ||..o{ RESELLER_MESSAGES : "conversation_id"
+    ACCOUNTS ||..o{ RESELLER_MESSAGES : "sender_account_id"
+    CHAT_CONVERSATIONS ||--o| CHAT_SERVICE_RATINGS : "conversation_id"
+    ACCOUNTS ||..o{ CHAT_SERVICE_RATINGS : "team_leader_account_id"
+    ACCOUNTS ||--o| TEAM_LEADER_PRESENCE : "account_id"
+    CHAT_CONVERSATIONS |o..o{ TEAM_LEADER_PRESENCE : "active_conversation_id"
+    ORDERS ||..o{ PRODUCT_RETURNS : "order_id"
+    ACCOUNTS ||..o{ PRODUCT_RETURNS : "requested_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "approved_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "payment_verified_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "verified_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "settlement_authorized_by_account_id"
+    PRODUCT_RETURNS |o..o{ RESELLER_MESSAGES : "return_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "processing_supervisor_account_id"
+    RESELLER_MESSAGES ||..o{ RESELLER_MESSAGE_ATTACHMENTS : "reseller_message_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_prepared_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_delivered_by_account_id"

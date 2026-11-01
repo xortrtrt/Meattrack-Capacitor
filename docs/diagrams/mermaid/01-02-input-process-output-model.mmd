@@ -1,0 +1,11 @@
+flowchart LR
+    subgraph INPUT[INPUT]
+        A["Account details and consent<br/>Reseller inquiries<br/>Orders and payment evidence<br/>Materials, recipes and batch dates<br/>Return evidence and product choices<br/>Sales history and planning parameters"]
+    end
+    subgraph PROCESS[PROCESS]
+        B["Authenticate and authorize<br/>Review and activate accounts<br/>Process orders and verify payment<br/>Produce goods and allocate FEFO stock<br/>Verify custody and settle returns<br/>Record activity, report and forecast"]
+    end
+    subgraph OUTPUT[OUTPUT]
+        C["Activated and assigned accounts<br/>Inquiry and order decisions<br/>Fulfillment and receipt records<br/>Stock balances, movements and alerts<br/>Replacement and refund outcomes<br/>Saved reports, exports and forecasts"]
+    end
+    A --> B --> C

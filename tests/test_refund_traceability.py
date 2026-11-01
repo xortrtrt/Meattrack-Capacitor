@@ -40,6 +40,7 @@ def test_return_operation_replay_rejects_changed_claim(lifecycle):  # noqa: F811
 
 def transfer(d, refund, **overrides):
     args = dict(
+        transfer_amount=fetch_one("SELECT amount FROM order_refunds WHERE order_refund_id=%s",(refund,))["amount"],
         refund_method="Simulated bank transfer",
         transaction_reference="SIM" + uuid4().hex,
         transferred_at=business_now() - timedelta(seconds=1),
@@ -81,7 +82,7 @@ def test_receipt_is_separate_from_final_verification_and_replays(lifecycle):  # 
     )
     with pytest.raises(ValueError):
         returns.review_product_return(
-            case, d["sales"], True, "Cannot change verified quantities", revised_quantities=[(line, 1)]
+            case, d["supervisor"], True, "Cannot change verified quantities", revised_quantities=[(line, 1)]
         )
 
 
@@ -172,7 +173,7 @@ def test_sales_visibility_scope_proofs_and_http_mutations(lifecycle, monkeypatch
     assert data["return_case"]["verified_by_account_id"] == d["inventory"]
     assert "internal_note" not in data["attempts"][0]
     proof = data["attempts"][0]["proof_id"]
-    assert repositories.get_order_refund_proof(proof, "team-leader", d["sales"])
+    assert repositories.get_order_refund_proof(proof, "team-leader", d["sales"]) is None
     assert repositories.get_order_refund_proof(proof, "team-leader", d["inventory"]) is None
     assert repositories.get_order_refund(refund, "team-leader", d["inventory"]) is None
     with get_transaction_cursor() as cur:
@@ -194,7 +195,8 @@ def test_sales_visibility_scope_proofs_and_http_mutations(lifecycle, monkeypatch
     with TestClient(main.app) as client:
         response = client.get(f"/portal/team-leader/refunds?refund={refund}")
         assert response.status_code == 200, response.text[:1000]
-        assert 'aria-label="Refund and return views"' in response.text and "Receipt #" in response.text
+        assert "Tracking with Supervisor/Owner" in response.text
+        assert 'aria-label="Refund and return views"' not in response.text
         assert 'class="refund-hero"' not in response.text
         assert "Open return review and replacements" not in response.text
         assert "SIMULATED transfer checked against ledger" not in response.text
@@ -212,7 +214,7 @@ def test_sales_visibility_scope_proofs_and_http_mutations(lifecycle, monkeypatch
                 },
             )
             assert response.status_code in {403, 404}, (action, response.status_code, response.text)
-        assert client.get(f"/portal/refund-proofs/{proof}").status_code == 200
+        assert client.get(f"/portal/refund-proofs/{proof}").status_code == 404
         session["account_id"] = other_sales
         assert client.get(f"/portal/team-leader/refunds?refund={refund}").status_code == 404
         assert client.get(f"/portal/refund-proofs/{proof}").status_code == 404
@@ -234,10 +236,11 @@ def test_concurrent_verification_and_completion_deduct_once(lifecycle):  # noqa:
         ]
         for f in futures:
             f.result(timeout=10)
-    returns.authorize_return_settlement(case, d["sales"], "Sales confirms verified concurrent receipts", str(uuid4()))
+    returns.authorize_return_settlement(case, d["supervisor"], "Sales confirms verified concurrent receipts", str(uuid4()))
     refund = returns.get_product_return(case, d["sales"])["refund"]["order_refund_id"]
     repositories.start_order_refund(refund, d["supervisor"], "sales-supervisor")
     args = dict(
+        transfer_amount=fetch_one("SELECT amount FROM order_refunds WHERE order_refund_id=%s", (refund,))["amount"],
         refund_method="Simulated bank",
         transaction_reference="SIM" + uuid4().hex,
         transferred_at=business_now() - timedelta(seconds=1),

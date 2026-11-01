@@ -24,7 +24,7 @@ def approved(d, resolution="refund", replacements=None):
 
 
 def confirm(d, case, key=None):
-    returns.authorize_return_settlement(case, d["sales"], "Sales confirms the approved resolution after complete receipt", key or str(uuid4()))
+    returns.authorize_return_settlement(case, d["supervisor"], "Sales confirms the approved resolution after complete receipt", key or str(uuid4()))
 
 
 def test_complete_receipts_notify_sales_once_and_unlock_existing_refund_only_after_confirmation(lifecycle):  # noqa: F811
@@ -43,7 +43,7 @@ def test_complete_receipts_notify_sales_once_and_unlock_existing_refund_only_aft
         returns.verify_product_return(case, d["inventory"], "Both approved packs received and segregated", key)
     notices = fetch_all("""SELECT n.* FROM notifications n JOIN notification_recipients nr USING(notification_id)
         WHERE n.source_type='product_returns' AND n.source_id=%s AND nr.account_id=%s
-        AND n.title='Returned goods complete—Sales confirmation required'""", (case, d["sales"]))
+        AND n.title='Returned goods complete—Supervisor confirmation required'""", (case, d["supervisor"]))
     assert len(notices) == 1 and f"case={case}" in notices[0]["target_url"]
     sales = returns.get_product_return(case, d["sales"])
     refund = sales["refund"]["order_refund_id"]
@@ -105,7 +105,7 @@ def test_quote_edit_revokes_sales_confirmation_and_old_operation_cannot_reauthor
     confirm(d, case, key)
     returns.accept_replacement_quote(case, d["reseller"], 1)
     returns.reserve_replacement(case, d["inventory"], "Reserved first accepted revision")
-    returns.review_product_return(case, d["sales"], True, "New selection requires renewed Sales confirmation", [(substitute(200), 1)])
+    returns.review_product_return(case, d["supervisor"], True, "New selection requires renewed Sales confirmation", [(substitute(200), 1)])
     changed = returns.get_product_return(case, d["sales"])
     assert not changed["sales_authorized"] and changed["settlement_authorized_at"] is None
     assert not changed["reserved_batches"] and changed["accepted_revision"] is None
@@ -122,11 +122,11 @@ def test_missing_sales_handoff_recipient_falls_back_to_owner(lifecycle):  # noqa
     case = approved(d)
     receive(d, case, verify=False)
     with get_transaction_cursor() as cur:
-        cur.execute("UPDATE accounts SET is_active=false WHERE account_id=%s", (d["sales"],))
+        cur.execute("UPDATE accounts SET is_active=false WHERE account_id=%s", (d["supervisor"],))
     returns.verify_product_return(case, d["inventory"], "All returned goods received and verified", str(uuid4()))
     owner_notice = fetch_one("""SELECT n.target_url FROM notifications n JOIN notification_recipients nr USING(notification_id)
         WHERE n.source_type='product_returns' AND n.source_id=%s AND nr.account_id=%s
-        AND n.title='Returned goods complete—Sales assignment requires attention'""", (case, d["owner"]))
+        AND n.title='Returned goods complete—Supervisor confirmation required'""", (case, d["owner"]))
     assert f"case={case}" in owner_notice["target_url"]
     with pytest.raises(ValueError, match="cannot perform"):
         confirm(d, case)
@@ -150,13 +150,13 @@ def test_distinct_pages_and_server_permissions_link_to_existing_refund(lifecycle
             response = client.get(f"/portal/{prefix}/returns?case={case}")
             assert response.status_code == 200, response.text[:1000]
             if role == "reseller":
-                assert "My Returns" in response.text and "Awaiting Sales confirmation" in response.text
+                assert "My Returns" in response.text and "Awaiting Supervisor/Owner confirmation" in response.text
                 assert "Original sales" not in response.text and "Holding #" not in response.text
                 assert "Sales confirmation remarks" not in response.text
             elif role == "inventory":
                 assert "Batch and custody records" in response.text and "PHP" not in response.text
             else:
-                assert "Return Review and Settlement" in response.text and "Proceed with refund" in response.text
+                assert "Return Review and Settlement" in response.text and "Proceed with refund" not in response.text
                 assert "Open existing refund workflow" not in response.text
                 assert 'class="returns-case-dialog sales-return-dialog"' in response.text
                 assert "Supporting photos" in response.text
@@ -166,7 +166,7 @@ def test_distinct_pages_and_server_permissions_link_to_existing_refund(lifecycle
                 assert denied.status_code in {403, 404}
         response = client.post("/portal/team-leader/returns/actions/proceed", data={"return_id": case,
             "remarks": "Confirmed the verified items and refund value", "operation_key": str(uuid4())})
-        assert response.status_code == 200 and returns.get_product_return(case, d["sales"])["sales_authorized"]
+        assert response.status_code == 403 and not returns.get_product_return(case, d["sales"])["sales_authorized"]
 
 
 def test_migration_replay_preserves_completed_history_without_fictional_authorization(lifecycle):  # noqa: F811
@@ -229,12 +229,13 @@ def test_customer_view_keeps_internal_audit_notes_private_and_rejects_other_acco
     secret = "INTERNAL_TREASURY_SECRET reviewed by Sales only"
     returns.review_product_return(case, d["sales"], True, secret)
     receive(d, case, authorize=False)
-    returns.authorize_return_settlement(case, d["sales"], secret, str(uuid4()))
+    returns.authorize_return_settlement(case, d["supervisor"], secret, str(uuid4()))
     customer = returns.get_product_return(case, d["reseller"])
     assert secret not in str(customer)
     assert not {"receipt_lines", "receipts", "custody_movements", "reconciliation_flags",
                 "settlement_authorized_by_account_id", "request_hash", "reserved_batches"}.intersection(customer)
-    assert secret in str(returns.get_product_return(case, d["sales"])["events"])
+    assert secret not in str(returns.get_product_return(case, d["sales"])["events"])
+    assert secret in str(returns.get_product_return(case,d["supervisor"])["events"])
     assert secret not in str(repositories.list_notification_history(d["reseller"]))
     with get_transaction_cursor() as cur:
         cur.execute("""INSERT INTO accounts(account_type,reseller_id,name,email,password_hash)

@@ -6,7 +6,7 @@ The three portal views are linked stages of the existing refund workflow, not
 separate financial ledgers. Reseller uses the **My Returns** tab in **Order History**
 (`/portal/reseller/history?view=returns`) to track requests. An eligible fulfilled order opens its return request form in a modal. Original return URLs redirect
 to this tab, preserving order and return links. The separate sidebar entry is removed;
-Sales uses **Refunds & returns** to review requests; Inventory compares approved products and proof, then records a complete match or reports a mismatch. All retain the same return and order IDs.
+Sales uses **Returns & tracking** for initial review and assigned tracking; Inventory compares approved products and proof, then records a complete match or reports a mismatch. All retain the same return and order IDs.
 Existing `order_refunds`, attempts, proofs, references, processor permissions,
 and report snapshots remain the monetary source of truth. Pure replacements
 create no zero-value refund; only a cash amount owed creates a refund obligation.
@@ -21,7 +21,13 @@ timestamps require Sales verification. An already submitted request can still be
 reviewed, received, and settled afterward; an identical retry returns its original
 case without creating a new request. Cancellation refunds keep their existing rules.
 
-After Sales approves a request, Inventory compares the whole approved product list,
+Acceptance automatically hands the case to a named Supervisor, with Owner fallback,
+and notifies the reseller. The assigned Sales Leader can track accepted cases but
+cannot revise offers, resolve discrepancies/follow-ups, verify replacement top-ups,
+or authorize settlement. Rejection closes the request with a public explanation.
+Migration 041 applies this handoff to existing accepted unfinished cases as well.
+
+After Sales accepts a request, Inventory compares the whole approved product list,
 original batches, quantities, and supporting photos against the goods returned.
 The modal presents two receipt outcomes:
 
@@ -30,9 +36,9 @@ The modal presents two receipt outcomes:
   current Sales-approved resolution. There is no partial-quantity input, manual holding
   location, second verification click, or additional Sales confirmation for this path.
 - **Products are missing or do not match**: describe the missing products or proof/batch
-  mismatch. Sales is notified, the case requires review, and replacement remains blocked.
-  No partial receipt is accepted. After Sales resolves the difference, Inventory checks
-  the revised approved request again. An inactive Sales assignment falls back to Owner.
+  mismatch. Supervisor/Owner is notified, the case requires review, and replacement remains blocked.
+  No partial receipt is accepted. After Supervisor/Owner resolves the difference, Inventory checks
+  the revised approved request again. An unavailable assigned processor falls back to Owner.
 
 The holding location is automatically **Discarded inventory**. Returned packs never
 increase sellable batches, available-to-order balances, or replacement availability.
@@ -177,7 +183,9 @@ rather than assigning a historical verifier.
 
 ## Release verification
 
-Apply migration 035 before using this application revision. Fresh databases use
+Apply migrations through 042 before using this application revision; run the read-only
+`python tools/preflight_portal_upgrade.py` first, then pause application/worker writes
+for the ordered migration. Migration 035 remains the financial-alignment foundation. Fresh databases use
 the matching baseline schema. The migration is additive except for strengthening
 the refund source immutability function; it does not rewrite monetary history.
 It can be replayed without changing balances. No migration is applied to the
@@ -199,3 +207,25 @@ value or profit. A latest-20-order source breakdown identifies each contributing
 order and flags recorded payments below approved/fulfilled order values for
 review. It never replaces a payment amount with an order total or infers an
 actual debt from a possible payment-entry/OCR discrepancy.
+
+## Payment and conversation upgrade (2026-10-29)
+
+Unpaid orders no longer reserve stock. A payment must cover the server-recorded
+order total before the order advances and stock is reserved. Payment-time stock
+shortages reject the order into Supervisor/Owner payment verification and refund
+review, without claiming receipt of money from a screenshot alone. Fulfillment
+records physical stock once and clears the paid reservation; availability does
+not decrease again. Reservation and release events appear in Inventory Logs.
+
+Supervisor/Owner refund transfer forms scan receipts with the same OCR engine as
+order payments. Scans bind to the actor, case and proof; corrected, explicitly
+confirmed transfer amounts must equal the refund due. Completion adds a thank-you
+message with the recorded amount/reference and closes the conversation read-only.
+Internal leader–reseller chats support private photos/videos and unread badges;
+public Live Chat is unchanged. Owner actions use the signed-in session without an
+extra email code; account and password verification remain in place.
+
+For the current role boundaries and migration procedure, see
+`docs/knowledge/Roles and Access.md`, `docs/knowledge/Returns and Financials.md`,
+and `docs/knowledge/Database and Operations.md`. Source changes are not proof of
+production deployment.

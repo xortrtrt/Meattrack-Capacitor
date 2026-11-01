@@ -51,7 +51,7 @@
     const role = conversation.dataset.refundRole;
     const mine = item.sender_role === role;
     const resellerView = role === "reseller";
-    const scrollTarget = resellerView ? conversation : list;
+    const scrollTarget = list;
     const stickToBottom = mine || (
       scrollTarget.scrollHeight - scrollTarget.scrollTop - scrollTarget.clientHeight < 80
     );
@@ -74,12 +74,13 @@
     time.dateTime = item.created_at || "";
     time.textContent = messageTime(item.created_at);
     row.append(meta, body, time);
+    row.classList.toggle("is-system",item.message_kind==="system");
     list.append(row);
     if (stickToBottom) scrollTarget.scrollTop = scrollTarget.scrollHeight;
   }
 
   function isVisible(conversation) {
-    return !conversation.hidden && !conversation.parentElement?.closest("[hidden]");
+    return !document.hidden && !conversation.hidden && !conversation.parentElement?.closest("[hidden]") && conversation.getClientRects().length>0;
   }
 
   async function refreshConversation(conversation) {
@@ -93,6 +94,19 @@
         `/api/portal/${encodeURIComponent(role)}/refunds/${encodeURIComponent(refundId)}/messages?after_id=${lastMessageId(conversation)}`,
       );
       (result.messages || []).forEach((item) => appendMessage(conversation, item));
+      if (result.status === "completed") {
+        conversation.querySelector("[data-refund-message-form]")?.remove();
+        if (!conversation.querySelector("[data-conversation-closed]")) {
+          const closed=document.createElement("p");closed.dataset.conversationClosed="";
+          closed.textContent="Refund completed · Conversation closed";closed.setAttribute("role","status");conversation.append(closed);
+        }
+      }
+      const through=lastMessageId(conversation);
+      if (through && isVisible(conversation) && Number(conversation.dataset.readThrough||0)<through) {
+        await api(`/api/portal/${role}/refunds/${refundId}/read`,{method:"POST",body:JSON.stringify({through_id:through})});
+        conversation.dataset.readThrough=String(through);
+        window.refreshConversationBadges?.();
+      }
     } finally {
       delete conversation.dataset.refundRefreshing;
     }
@@ -155,6 +169,41 @@
     document.addEventListener("refund:conversation-visible", refreshVisibleConversations);
   }
 
+  async function scanReceipt(form) {
+    const fileInput=form.querySelector('[name="proof"]');
+    const file=fileInput?.files[0];
+    const status=form.querySelector('[data-refund-scan-status]');
+    const token=form.querySelector('[name="receipt_scan_token"]');
+    const confirmed=form.querySelector('[name="payment_details_confirmed"]');
+    token.value="";confirmed.checked=false;
+    if (!file) {status.textContent="Choose a refund screenshot first.";return;}
+    const button=form.querySelector('[data-refund-scan]');
+    button.disabled=true;
+    status.textContent="Reading transfer receipt…";
+    const body=new FormData();body.append("proof",file);
+    try {
+      const response=await fetch(form.dataset.scanUrl,{method:"POST",headers:{"X-CSRF-Token":csrfToken},body});
+      const result=await response.json();
+      if (!response.ok) throw new Error(result.message||result.detail||"The receipt could not be read.");
+      if (fileInput.files[0]!==file) return;
+      token.value=result.scan_token;
+      form.querySelector('[name="transaction_reference"]').value=result.transaction_number||"";
+      form.querySelector('[name="transferred_at"]').value=result.payment_date&&result.payment_time?`${result.payment_date}T${result.payment_time}`:"";
+      form.querySelector('[name="transfer_amount"]').value=result.payment_amount||"";
+      status.textContent=(result.warnings||[]).join(" ")||"Receipt read. Check the extracted details and correct any mistakes before confirming.";
+    } catch(error) {status.textContent=error.message;}
+    finally {button.disabled=false;}
+  }
+  document.addEventListener("change",event=>{
+    const form=event.target.closest('[data-refund-receipt-form]');
+    if (!form) return;
+    if (event.target.name==="proof") scanReceipt(form);
+    if (event.target.matches('[data-refund-extracted]')) form.querySelector('[name="payment_details_confirmed"]').checked=false;
+  });
+  document.addEventListener("click",event=>{
+    const button=event.target.closest('[data-refund-scan]');
+    if(button)scanReceipt(button.closest('form'));
+  });
   refreshVisibleConversations();
   const refreshTimer = window.setInterval(refreshVisibleConversations, 3000);
   window.addEventListener("pagehide", () => window.clearInterval(refreshTimer), { once: true });

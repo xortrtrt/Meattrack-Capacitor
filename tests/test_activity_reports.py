@@ -100,7 +100,7 @@ def test_csv_and_excel_match_snapshot_and_neutralize_formula_text(lifecycle):  #
     payload = reports.with_notes(build(d), '=HYPERLINK("invalid")', {"sales": "+unexpected formula"})
     payload["sales"][0]["customer"] = "  =1+1"
     workbook = load_workbook(BytesIO(excel_document(payload)))
-    assert workbook.sheetnames == ["Summary", "Sales", "Orders", "Returns", "Refunds"]
+    assert workbook.sheetnames == ["Summary", "Orders", "Sales", "Returns", "Refunds"]
     for section in reports.SECTIONS:
         csv_rows = list(csv.DictReader(StringIO(csv_document(payload, section).lstrip("\ufeff"))))
         sheet = workbook[section.title()]
@@ -128,7 +128,7 @@ def test_return_only_handling_does_not_claim_sale_and_partial_full_refunds(lifec
     case = create_case(d, quantity=10)
     product_returns.review_product_return(case, reviewer, True, "Reviewed all returned product packs")
     receive(d, case, quantity=10, authorize=False)
-    product_returns.authorize_return_settlement(case, reviewer, "Proceed after custody verification", str(uuid4()))
+    product_returns.authorize_return_settlement(case, d["supervisor"], "Proceed after custody verification", str(uuid4()))
     complete_refund(d, case)
     payload = reports.build_report(reviewer, business_today(), business_today())
     assert payload["summary"]["gross_sales"] == 0
@@ -165,7 +165,7 @@ def test_failed_and_completed_cancellation_refunds_do_not_reduce_sales(lifecycle
     assert failed["summary"]["retained_sales"] == 1000
     assert failed["refunds"][0]["status"] == "failed"
     repositories.start_order_refund(refund_id, d["supervisor"], "sales-supervisor")
-    repositories.complete_order_refund(refund_id, d["supervisor"], "sales-supervisor", refund_method="Bank transfer",
+    repositories.complete_order_refund(refund_id, d["supervisor"], "sales-supervisor",transfer_amount=100, refund_method="Bank transfer",
         transaction_reference=f"CANCEL{uuid4().hex[:14]}", transferred_at=business_now(),
         internal_note="Cancellation transfer confirmed against ledger", proof=refund_proof())
     completed = build(d)

@@ -64,11 +64,13 @@ def test_prepare_submit_view_export_print_and_owner_access(lifecycle, monkeypatc
         page.wait_for_url("**/reports?**preview=1")
         page.wait_for_load_state("networkidle")
         expect(page.locator('[data-report-metric="retained_sales"]')).to_have_text("PHP 800.00")
-        expect(page.get_by_role("tab", name="Sales 1", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_role("tab", name="Orders 1", exact=True)).to_have_attribute("aria-selected", "true")
+        assert page.locator("[data-report-tab]").evaluate_all("tabs => tabs.map(tab => tab.dataset.reportTab)") == ["orders","sales","returns","refunds"]
         for width in (375, 768, 1100, 1440):
             page.set_viewport_size({"width": width, "height": 1000})
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
             page.screenshot(path=str(output / f"workspace-{width}.png"), full_page=True)
+        page.get_by_role("tab", name="Sales 1", exact=True).click()
         page.get_by_label("Sales notes").fill("Sales reviewed for the period")
         page.get_by_role("tab", name="Sales 1", exact=True).focus()
         page.keyboard.press("End")

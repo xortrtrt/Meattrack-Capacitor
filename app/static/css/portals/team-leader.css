@@ -7041,3 +7041,38 @@
     padding: 0 16px 16px;
   }
 }
+
+/* Operational dashboards share the portal's Rubik, charcoal, and gold identity. */
+.operations-dashboard {--operations-accent:var(--gold-deep);--operations-surface:var(--white);display:grid;gap:24px;max-width:1440px;margin:auto}
+.operations-heading {display:flex;justify-content:space-between;gap:24px;align-items:center;padding:8px 0 12px;border-bottom:3px solid var(--operations-accent)}
+.operations-heading h2 {font-size:clamp(1.6rem,3vw,2.2rem);letter-spacing:-.04em;margin:6px 0 8px;color:var(--text)}
+.operations-heading p,.operations-attention header p {margin:0;color:var(--text-light);line-height:1.6}
+.operations-date {display:grid;grid-template-columns:20px auto;gap:4px 8px;align-items:center;white-space:nowrap;font-size:.85rem;color:var(--text)}
+.operations-date svg {width:18px}.operations-date small {grid-column:2;color:var(--text-light)}
+.operations-attention {background:var(--operations-surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.operations-attention>header {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:24px;border-bottom:1px solid var(--border)}
+.operations-attention h3 {font-size:1.3rem;margin:4px 0 8px}.operations-attention-total {display:grid;text-align:right;color:var(--text-light);font-size:.75rem;white-space:nowrap}
+.operations-attention-total strong {font-size:2rem;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.2}
+.operations-queue {display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.operations-task {display:flex;align-items:center;gap:14px;min-height:94px;padding:20px 24px;text-decoration:none;color:var(--text);border-bottom:1px solid var(--border);transition:background .15s ease}
+.operations-task:nth-child(odd) {border-right:1px solid var(--border)}.operations-task:hover,.operations-task:focus-visible {background:var(--cream)}
+.operations-task:focus-visible {outline:2px solid var(--info);outline-offset:-3px}.operations-task-icon {display:grid;place-items:center;flex:0 0 40px;height:40px;border:1px solid var(--border);border-radius:10px;color:var(--text-light)}
+.operations-task.has-work .operations-task-icon {color:var(--text);background:var(--cream)}.operations-task-icon svg {width:20px;height:20px}
+.operations-task-copy {display:grid;gap:5px;min-width:0;flex:1}.operations-task-copy strong {font-size:.9rem;font-weight:600}.operations-task-copy small {font-size:.75rem;line-height:1.5;color:var(--text-light)}
+.operations-task>b {font-size:1.5rem;min-width:32px;text-align:right;font-variant-numeric:tabular-nums}.operations-task>svg {width:16px;color:var(--text-light)}
+.operations-totals {display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));border:1px solid var(--border);background:var(--operations-surface);border-radius:14px;overflow:hidden}
+.operations-totals>div {display:grid;gap:10px;padding:24px;border-right:1px solid var(--border)}.operations-totals>div:last-child{border-right:0}
+.operations-totals span {color:var(--text-light);font-size:.8rem}.operations-totals strong {font-size:clamp(1.25rem,2.3vw,1.8rem);letter-spacing:-.035em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.operations-totals small {color:var(--text-light);font-size:.72rem;line-height:1.5}
+.operations-columns {display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:24px}.operations-columns .dashboard-ledger {min-width:0;align-self:start}
+.operations-money {margin:0;padding:0 24px 16px}.operations-money>div {display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid var(--border);padding:14px 0;font-size:.8rem}.operations-money dt{color:var(--text-light)}.operations-money dd {margin:0;font-variant-numeric:tabular-nums;text-align:right;font-weight:600;white-space:nowrap}
+.operations-financial-details {padding:0 24px 20px;font-size:.8rem;line-height:1.6}.operations-financial-details summary {cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}.operations-financial-details .operations-money {padding:0}.operations-financial-details p{color:var(--text-light)}
+.operations-activity {list-style:none;margin:0;padding:0 24px 24px}.operations-activity li {display:flex;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--border)}.operations-activity li>div{display:grid;gap:6px}.operations-activity strong{font-size:.85rem}.operations-activity small{font-size:.75rem;color:var(--text-light);line-height:1.5}.operations-activity b{font-variant-numeric:tabular-nums;white-space:nowrap}.operations-empty{color:var(--text-light);padding:16px 24px;line-height:1.6}
+.operations-dashboard .dashboard-ledger>.dashboard-text-link {margin:0 24px 24px;min-height:44px}.operations-dashboard .dashboard-table td{font-size:.82rem}.operations-dashboard .inventory-movement-fallback{display:block}
+@media(max-width:1024px){.operations-columns{grid-template-columns:1fr}.operations-heading{align-items:start}.operations-totals>div{padding:20px}}
+@media(max-width:640px){.operations-dashboard{gap:16px}.operations-heading{flex-direction:column;gap:12px}.operations-date{grid-template-columns:20px auto auto}.operations-date small{grid-column:3}.operations-attention>header{padding:20px}.operations-attention header p{font-size:.85rem}.operations-queue{grid-template-columns:1fr}.operations-task{padding:16px;min-height:90px}.operations-task:nth-child(odd){border-right:0}.operations-totals{grid-template-columns:repeat(2,minmax(0,1fr))}.operations-totals>div{padding:16px;border-bottom:1px solid var(--border)}.operations-totals strong{font-size:1.2rem}.operations-money{padding:0 16px 12px}.operations-task-copy small{font-size:.78rem}.operations-dashboard .dashboard-table-wrap{overflow:auto}.operations-dashboard .dashboard-table{min-width:430px}}
+@media(prefers-reduced-motion:reduce){.operations-task{transition:none}}
+
+.operations-dashboard{min-width:0;max-width:100%}.operations-dashboard .dashboard-table{min-width:0}.operations-dashboard .inventory-movement-fallback{overflow-x:auto;max-width:100%;min-width:0}.operations-dashboard .inventory-movement-chart{min-width:0}
+@media(max-width:640px){.operations-dashboard .dashboard-table{min-width:400px}}
+
+@media(max-width:760px){body .operations-dashboard table.dashboard-table thead{display:table-header-group}body .operations-dashboard table.dashboard-table tbody{display:table-row-group}body .operations-dashboard table.dashboard-table tr{display:table-row}body .operations-dashboard table.dashboard-table th,body .operations-dashboard table.dashboard-table td{display:table-cell}body .operations-dashboard table.dashboard-table td::before{display:none}}

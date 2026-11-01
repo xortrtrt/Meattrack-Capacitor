@@ -1,7 +1,7 @@
 <div class="owner-page owner-orders-page">
   <section class="panel owner-order-ledger">
     <header class="owner-order-ledger-heading">
-      <div><span class="eyebrow">Order desk</span><h2>Reseller order review</h2><p>Review orders across the business. Owner decisions require verification and a recorded reason.</p></div>
+      <div><span class="eyebrow">Order desk</span><h2>Reseller order review</h2><p>Review orders across the business. Owner decisions require a recorded reason.</p></div>
       <div class="owner-order-ledger-count"><strong>{{ orders_page.pagination.total|number if orders_page.pagination is defined else orders|length }}</strong><span>reseller orders</span></div>
     </header>
 
@@ -63,7 +63,7 @@
         {% else %}<div class="owner-order-empty-state"><span><i data-lucide="clipboard-check" aria-hidden="true"></i></span><strong>No reseller orders match these filters.</strong><small>Try another search or status.</small></div>{% endfor %}
       </div>
       <footer class="owner-order-footer">
-        <div><form action="/portal/owner/exports/orders.csv" method="post"><button class="button subtle" type="submit">Export CSV</button></form><a class="button subtle" href="/portal/owner/orders">Clear filters</a></div>
+        <div><form action="/portal/owner/exports/orders.csv" method="post"><button class="button subtle" type="submit">Export all records</button></form><a class="button subtle" href="/portal/owner/orders">Clear filters</a></div>
         {% if orders_page.pagination is defined %}<nav class="pagination owner-order-pagination" aria-label="Reseller order pages">{% if orders_page.pagination.has_prev %}<a href="{{ request.url.include_query_params(page=orders_page.pagination.page - 1) }}">Previous</a>{% endif %}<span>Page {{ orders_page.pagination.page }} of {{ orders_page.pagination.total_pages }}</span>{% if orders_page.pagination.has_next %}<a href="{{ request.url.include_query_params(page=orders_page.pagination.page + 1) }}">Next</a>{% endif %}</nav>{% endif %}
       </footer>
     </div>

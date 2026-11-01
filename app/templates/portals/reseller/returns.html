@@ -5,7 +5,7 @@
     {% if return_cases %}
     <div class="order-card-list">
       {% for case in return_cases %}
-      <details class="order-history-card" id="return-{{ case.return_id }}" {% if loop.first or (return_case and return_case.return_id==case.return_id) %}open{% endif %}>
+      <details class="order-history-card" id="return-{{ case.return_id }}" {% if return_case and return_case.return_id==case.return_id %}open{% endif %}>
         <summary class="order-card-summary">
           <div class="order-card-identity"><span class="order-card-number">Return #{{ case.return_id }}</span><time datetime="{{ case.created_at.isoformat() }}">{{ case.created_at|nice_date }}</time><span class="status-badge lifecycle-status" data-state="{{ case.status }}">{{ case.customer_status_label }}</span></div>
           <div class="order-return-resolution"><i data-lucide="{{ 'package-check' if case.resolution=='replace' else 'badge-dollar-sign' }}" aria-hidden="true"></i><span>{{ 'Replacement' if case.resolution=='replace' else 'Refund' }} requested</span></div>

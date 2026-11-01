@@ -1,0 +1,22 @@
+flowchart TD
+    A([Public visitor]) --> B{Choose activity}
+    B -->|Browse| C[Load active finished products from database]
+    C --> D[Render catalog or best sellers]
+    B -->|Chatbot| E[Validate message and load catalog context]
+    E --> F{Message intent}
+    F -->|Reseller signup| G[Collect and validate lead fields]
+    G --> H[Show summary and request submission confirmation]
+    H --> I[Create inquiry through onboarding module]
+    F -->|Human help| J[Offer live support handoff]
+    J --> K[Collect display name and consent]
+    K --> L[Start public live-chat module]
+    F -->|Catalog or approved local answer| M[Build grounded local reply]
+    F -->|Other supported question| N{Hosted provider configured?}
+    N -->|No| M
+    N -->|Yes| O[Request OpenRouter completion]
+    O --> P{Reply available and grounded?}
+    P -->|No| M
+    P -->|Yes| Q[Return validated reply]
+    M --> Q
+    B -->|Partnership form| R[Validate public inquiry form]
+    R --> I

@@ -1,0 +1,32 @@
+flowchart TD
+    A([Active assigned reseller]) --> B[Select active products and whole-pack quantities]
+    B --> C[Add or update own cart]
+    C --> D[Checkout selected items at server prices]
+    D --> E[Create to_pay order with payment deadline; no stock hold]
+    E --> F{Reseller action or deadline}
+    F -->|Cancel while eligible and unpaid| G[Cancel order and record reason]
+    F -->|Deadline passes| H[Expire unpaid order]
+    F -->|Pay| I[Upload receipt, scan and confirm reference, time and amount]
+    I --> J{Proof, deadline, amount and reference valid?}
+    J -->|No| K[Show validation error]
+    K --> I
+    J -->|Yes| L[Lock order and check eligible stock atomically]
+    L --> M{Enough stock?}
+    M -->|No| N[Reject order; queue refund case requiring funds verification]
+    N --> RF[Manual refund module]
+    M -->|Yes| O[Store payment evidence; reserve all products; set pending]
+    O --> P[Assigned Sales or Owner reviews]
+    P --> Q{Approve or reject?}
+    Q -->|Reject| R[Save reason, received-funds decision and clear holds]
+    R --> S{Funds actually received?}
+    S -->|Yes| RF
+    S -->|No| T([Rejected without refund])
+    Q -->|Approve| U[Set approved]
+    U --> V[Authorized Sales or Owner fulfills using eligible FEFO batches]
+    V --> W{Current stock and payment checks pass?}
+    W -->|No| Y[Block fulfillment until resolved]
+    Y --> V
+    W -->|Yes| Z[Deduct batches, record allocations and movements; clear holds]
+    Z --> AA[Set fulfilled and notify reseller]
+    AA --> AB[Optional immutable order-received acknowledgement]
+    AA --> AC[Eligible return or replacement module within 120 hours]

@@ -1,0 +1,10 @@
+flowchart TB
+    A[User action] --> B[Session and capability checks]
+    B --> C[Ownership and assignment checks]
+    C --> D[Input and business-rule validation]
+    D --> E[Database transaction and stock or case locks]
+    E --> F[Business records and applicable audit or event records]
+    F --> G[Response, in-portal notification or queued delivery]
+    X[CSRF and rate controls where configured] -.-> B
+    Y[Operation keys and unique constraints where implemented] -.-> E
+    Z[Database constraints and immutable ledger guards] -.-> F

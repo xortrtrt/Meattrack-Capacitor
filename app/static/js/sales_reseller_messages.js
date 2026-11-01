@@ -22,12 +22,15 @@
     let canMessage = false;
     let lastMessageId = 0;
     let refreshTimer = null;
+    const media = window.InternalConversationMedia.controls(form);
+    let pendingSend = null;
+    let sending = false;
 
     async function api(url, options = {}) {
         const response = await fetch(url, {
             ...options,
             headers: {
-                ...(options.body ? { "Content-Type": "application/json" } : {}),
+                ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
                 ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
                 ...(options.headers || {}),
             },
@@ -73,11 +76,14 @@
         bubble.textContent = item.content || "";
         const time = document.createElement("time");
         time.textContent = messageTime(item.created_at);
-        row.append(meta, bubble, time);
+        row.append(meta);
+        if (item.content?.trim()) row.append(bubble);
+        window.InternalConversationMedia.renderAttachments(row,item.attachments);
+        row.append(time);
         if (item.return_id) {
             const link = document.createElement("a");
             link.className = "return-chat-reference";
-            link.href = `/portal/team-leader/refunds?view=returns&case=${Number(item.return_id)}`;
+            link.href = `/portal/${location.pathname.includes("sales-supervisor")?"sales-supervisor":"team-leader"}/returns?case=${Number(item.return_id)}`;
             link.textContent = `Return #${item.return_id}`;
             row.prepend(link);
         }
@@ -94,13 +100,13 @@
         button.classList.toggle("is-active", Number(item.reseller_account_id) === activeResellerId);
         const icon = document.createElement("span");
         icon.className = "sales-message-avatar";
-        icon.textContent = String(item.business_name || item.reseller_name || "R").slice(0, 1).toUpperCase();
+        window.InternalConversationMedia.renderAvatar(icon,item,"reseller_");
         const copy = document.createElement("span");
         copy.className = "sales-message-row-copy";
         const name = document.createElement("strong");
         name.textContent = item.business_name || item.reseller_name || "Reseller";
         const preview = document.createElement("small");
-        preview.textContent = item.last_message || "Start a conversation";
+        preview.textContent = item.last_message || (item.last_message_at ? "Attachment" : "Start a conversation");
         copy.append(name, preview);
         button.append(icon, copy);
         if (Number(item.unread_count) > 0) {
@@ -149,21 +155,26 @@
     }
 
     async function openThread(resellerId, reset = false) {
+        if(sending && activeResellerId!==resellerId)return;
         if (reset || activeResellerId !== resellerId) {
             activeResellerId = resellerId;
+            media.clear();
+            pendingSend = null;
             lastMessageId = 0;
             feed.querySelectorAll("[data-message-id]").forEach((node) => node.remove());
         }
         const result = await api(`/api/portal/live-chat/resellers/${resellerId}?after_id=${lastMessageId}`);
+        if (activeResellerId !== resellerId) return;
         const participant = result.participant || {};
         business.textContent = participant.business_name || participant.reseller_name || "Reseller";
         person.textContent = participant.reseller_name || "Registered reseller";
-        avatar.textContent = String(business.textContent).slice(0, 1).toUpperCase();
+        window.InternalConversationMedia.renderAvatar(avatar,participant,"reseller_");
         canMessage = Boolean(result.can_message);
         assignment.textContent = canMessage ? "Assigned to you" : "Previous reseller";
         assignment.classList.toggle("is-previous", !canMessage);
-        input.disabled = !canMessage;
-        sendButton.disabled = !canMessage;
+        input.disabled = !canMessage || sending;
+        sendButton.disabled = !canMessage || sending;
+        media.disable(!canMessage || sending);
         input.placeholder = canMessage ? "Message this reseller…" : "This conversation is read-only";
         const conversation = result.conversation;
         const deletedAt = conversation?.team_leader_deleted_at ? new Date(conversation.team_leader_deleted_at).valueOf() : 0;
@@ -172,12 +183,13 @@
         placeholder.hidden = true;
         thread.hidden = false;
         result.messages.forEach(appendMessage);
-        if (result.messages.some((item) => item.sender_account_type === "reseller" && !item.read_at)) {
+        if (!document.hidden && !thread.hidden && result.messages.some((item) => item.sender_account_type === "reseller" && !item.read_at)) {
             await api(`/api/portal/live-chat/resellers/${resellerId}/read`, {
                 method: "POST",
-                body: JSON.stringify({}),
+                body: JSON.stringify({through_id:lastMessageId}),
             });
         }
+        window.refreshConversationBadges?.();
         list.querySelectorAll("[data-reseller-id]").forEach((row) => {
             row.classList.toggle("is-active", Number(row.dataset.resellerId) === activeResellerId);
         });
@@ -186,22 +198,32 @@
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const content = input.value.trim();
-        if (!content || !activeResellerId || !canMessage) return;
+        if (sending || (!content && !media.hasFiles()) || !activeResellerId || !canMessage) return;
+        sending=true;
+        const signature=media.signature();
+        if (!pendingSend || pendingSend.message!==content || pendingSend.signature!==signature) pendingSend={message:content,client_message_id:messageUuid(),signature};
+        media.disable(true);
+        setStatus(media.hasFiles()?"Uploading attachments…":"Sending message…");
         input.disabled = true;
         sendButton.disabled = true;
         try {
             const result = await api(`/api/portal/live-chat/resellers/${activeResellerId}/messages`, {
                 method: "POST",
-                body: JSON.stringify({ message: content, client_message_id: messageUuid() }),
+                body: media.body({message:pendingSend.message,client_message_id:pendingSend.client_message_id}),
             });
             input.value = "";
+            media.clear();
+            pendingSend=null;
             appendMessage(result.message);
             await refreshConversations();
         } catch (error) {
             setStatus(error.message, "error");
         } finally {
-            input.disabled = !canMessage;
-            sendButton.disabled = !canMessage;
+            sending=false;
+            sendButton.classList.remove("is-loading");
+            input.disabled = !canMessage || sending;
+            sendButton.disabled = !canMessage || sending;
+            media.disable(!canMessage || sending);
             input.focus();
         }
     });
@@ -231,10 +253,11 @@
 
     refreshConversations().then(() => {
         const selected = Number(new URLSearchParams(location.search).get("reseller"));
-        const first = conversations.find(item => Number(item.reseller_account_id) === selected) || conversations[0];
+        const first = conversations.find(item => Number(item.reseller_account_id) === selected);
         if (first) openThread(Number(first.reseller_account_id), true);
     }).catch((error) => setStatus(error.message, "error"));
     refreshTimer = window.setInterval(() => {
+        if (document.hidden) return;
         refreshConversations().then(() => activeResellerId && openThread(activeResellerId)).catch(() => {});
     }, 3000);
     window.addEventListener("pagehide", () => window.clearInterval(refreshTimer), { once: true });

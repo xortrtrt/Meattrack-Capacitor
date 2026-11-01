@@ -1,0 +1,17 @@
+flowchart TD
+    A([Request-time stock check or worker scan]) --> B{Batch expires on or before Manila business date?}
+    B -->|No| C[Remain eligible if approved and available]
+    B -->|Yes| D[Exclude batch from sellable availability immediately]
+    D --> E[Worker marks expiry, synchronizes invalid replacement holds and queues pull-out]
+    E --> F[Create or refresh alert and notify Inventory]
+    F --> G[Inventory records physical pull-out quantity and remarks]
+    G --> H[Deduct warehouse batch once and append pull-out movement]
+    H --> I[Create non-sellable holding at Expired holding]
+    J[Expired goods arriving from outside sellable stock] --> K[Record expired receipt into holding]
+    R[Verified reseller return receipt] --> L[Record return holding at Discarded inventory]
+    I --> M[Non-sellable holdings and custody ledger]
+    K --> M
+    L --> M
+    M --> N[Inventory records disposal quantity, method and remarks]
+    N --> O[Reduce holding balance and append disposal movement]
+    O --> P([Preserved stock and custody trace])

@@ -1,0 +1,23 @@
+flowchart TD
+    A([Owner requests forecast with horizon]) --> B[Validate request and persist queued run]
+    B --> C[Worker atomically claims run]
+    C --> D[Load active products, fulfilled-sales history and usable stock]
+    D --> E[Construct daily series per product]
+    E --> F{Enough history and nonzero demand?}
+    F -->|No| G[Store insufficient-history diagnostic and zero estimates]
+    F -->|Yes| H[Backtest eligible Prophet, seasonal naive, moving average and TSB candidates]
+    H --> I[Choose model using backtest scores or eligible fallback]
+    I --> J{Candidate fit succeeds?}
+    J -->|No| K[Try next candidate or record failed diagnostic]
+    K --> L[Collect product output]
+    J -->|Yes| M[Predict daily demand and bounds where supported]
+    M --> N[Compute forecast total and production gap against usable stock]
+    N --> L
+    G --> L
+    L --> O{More products and no cancellation?}
+    O -->|More products| E
+    O -->|Cancellation| P[Mark run cancelled]
+    O -->|Finished| Q[Persist summaries and daily results atomically]
+    Q --> R[Mark completed or completed_with_warnings; notify Owner]
+    R --> S([Owner reviews forecast and makes production decisions])
+    C -.->|Run-level failure| T[Record error; retry or fail according to run policy]

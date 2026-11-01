@@ -1,0 +1,21 @@
+flowchart TB
+    V[Public visitor or prospective reseller]
+    R[Reseller]
+    S[Sales Team Leader]
+    SS[Sales Supervisor]
+    I[Inventory Team Leader]
+    O[Owner]
+    MT[MEATTRACK web-based business management system]
+    V <-->|Catalog, inquiry, chatbot and live support| MT
+    R <-->|Own orders, payments, returns and messages| MT
+    S <-->|Assigned order review, counter sales and return tracking| MT
+    SS <-->|Onboarding, assigned processing, refunds and delivery| MT
+    I <-->|Materials, production, stock, custody and release| MT
+    O <-->|Oversight, administration, reports and forecasting| MT
+    MT -->|Transactional email| MAIL[Configured email delivery: Brevo in production]
+    MT <-->|Public live-chat event delivery| ABLY[Ably]
+    MT -.->|Optional hosted chatbot requests| AI[OpenRouter]
+    PAY[External bank or payment provider]
+    R -.->|Pays outside MEATTRACK| PAY
+    SS -.->|Checks funds and manually transfers refunds| PAY
+    O -.->|Checks funds and manually transfers refunds| PAY

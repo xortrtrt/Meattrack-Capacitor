@@ -131,11 +131,11 @@ def _seed_fulfillment(
                         payment_extraction_method, payment_confirmed_at, payment_ocr_engine
                     )
                     VALUES ('reseller', %s, %s, %s, 'pending', %s,
-                            %s, %s, now(), 500.00, 0.9, 'ocr_confirmed', now(), 'tesseract-test')
+                            %s, %s, now(), %s, 0.9, 'ocr_confirmed', now(), 'tesseract-test')
                     RETURNING order_id;
                 """, (
                     reseller_id, reseller_account_id, leader_id, quantity * 100,
-                    transaction_key, transaction_key,
+                    transaction_key, transaction_key, max(500,quantity*100),
                 ))
                 order_id = cursor.fetchone()[0]
                 order_ids.append(order_id)
@@ -484,6 +484,7 @@ def test_manual_refund_retry_history_completion_and_proof_access(strict_inventor
         refund_id,
         supervisor_id,
         "sales-supervisor",
+        transfer_amount=500,
         refund_method="GCash",
         transaction_reference="ABC-123-456",
         transferred_at=datetime.now(timezone.utc),
@@ -982,9 +983,9 @@ def test_reseller_cart_and_checkout_reject_quantities_above_current_stock(strict
     second = repositories.add_reseller_cart_item(reseller_account_id, product_id, "2")
     assert second["quantity"] == 5
 
-    with pytest.raises(ValueError, match="Only 5 packs.*reserved by orders awaiting payment"):
+    with pytest.raises(ValueError, match="Only 5 packs.*reserved by paid orders"):
         repositories.add_reseller_cart_item(reseller_account_id, product_id, "1")
-    with pytest.raises(ValueError, match="Only 5 packs.*reserved by orders awaiting payment"):
+    with pytest.raises(ValueError, match="Only 5 packs.*reserved by paid orders"):
         repositories.update_reseller_cart_item(reseller_account_id, product_id, "6")
 
     with psycopg2.connect(strict_inventory_database) as connection:
@@ -994,7 +995,7 @@ def test_reseller_cart_and_checkout_reject_quantities_above_current_stock(strict
                 (batch_ids[0],),
             )
 
-    with pytest.raises(ValueError, match="Only 4 packs.*reserved by orders awaiting payment"):
+    with pytest.raises(ValueError, match="Only 4 packs.*reserved by paid orders"):
         repositories.create_order_from_items(
             "reseller",
             [(product_id, "5")],
@@ -1203,7 +1204,7 @@ def test_unpaid_order_expires_after_fifteen_minutes_and_releases_stock(strict_in
                 "SELECT quantity FROM order_stock_reservations WHERE order_id = %s AND product_id = %s;",
                 (order["order_id"], product_id),
             )
-            assert cursor.fetchone()[0] == 2
+            assert cursor.fetchone() is None
             cursor.execute(
                 """
                 UPDATE orders

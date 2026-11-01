@@ -1,0 +1,21 @@
+flowchart TD
+    A([Visitor accepts live support and data consent]) --> B[Create queued conversation and bind visitor access]
+    B --> C[Notify available Sales Team Leaders]
+    C --> D{Agent claims before timeout?}
+    D -->|No| E[Move to awaiting_contact]
+    E --> F[Validate fallback contact and mark follow_up]
+    D -->|Yes| G[Lock and assign conversation; mark active]
+    G --> H[Validate participant message and save it in PostgreSQL]
+    H --> I[Publish event through Ably]
+    I --> J{Published?}
+    J -->|No| K[Record publication failure for worker retry]
+    K --> L[Participants retain persisted message access]
+    J -->|Yes| L
+    L --> M{Next action}
+    M -->|Continue| H
+    M -->|Transfer| B
+    M -->|Request reseller form| N[Submit inquiry linked to this conversation]
+    N --> H
+    M -->|Close or cancel| O[Record closed or cancelled state]
+    O --> P[Allow eligible post-chat service rating]
+    P --> Q([Retain or clean transcript under retention policy])

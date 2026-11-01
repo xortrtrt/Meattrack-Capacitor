@@ -4,6 +4,7 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    stop_grace_period: 2m
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-MeatTrack Database}"
       POSTGRES_USER: ${POSTGRES_USER:-meattrack}
@@ -15,6 +16,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+      start_period: 2m
     networks:
       - backend
 
@@ -77,6 +79,8 @@ services:
     volumes:
       - profile_uploads:/app/app/static/uploads/profiles
     depends_on:
+      db:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     networks:
@@ -118,6 +122,8 @@ services:
       LIVE_CHAT_RECONNECT_GRACE_SECONDS: ${LIVE_CHAT_RECONNECT_GRACE_SECONDS:-60}
       CHAT_TRANSCRIPT_RETENTION_DAYS: ${CHAT_TRANSCRIPT_RETENTION_DAYS:-30}
     depends_on:
+      db:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     networks:

@@ -1,0 +1,139 @@
+erDiagram
+
+    ORDERS {
+        bigint order_id PK
+        text order_type
+        bigint reseller_id FK
+        bigint created_by_account_id FK
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz order_date
+        text status
+        timestamptz fulfilled_at
+        numeric total_amount
+    }
+
+    PRODUCT_RETURNS {
+        bigint return_id PK
+        bigint order_id FK
+        text resolution
+        text status
+        bigint requested_by_account_id FK
+        bigint approved_by_account_id FK
+        numeric credit
+        integer quote_revision
+        integer accepted_revision
+        bigint payment_verified_by_account_id FK
+        text payment_reference UK
+        uuid operation_key UK
+        bigint verified_by_account_id FK
+        bigint settlement_authorized_by_account_id FK
+        bigint processing_supervisor_account_id FK
+        bigint replacement_prepared_by_account_id FK
+        bigint replacement_delivered_by_account_id FK
+    }
+
+    ORDER_REFUNDS {
+        bigint order_refund_id PK
+        bigint order_id FK
+        numeric amount
+        char currency
+        text status
+        bigint requested_by_account_id FK
+        bigint assigned_supervisor_account_id FK
+        bigint processing_by_account_id FK
+        bigint return_id FK, UK
+    }
+
+    ORDER_REFUND_ATTEMPTS {
+        bigint order_refund_attempt_id PK
+        bigint order_refund_id FK
+        integer attempt_number
+        text status
+        bigint processor_account_id FK
+        text refund_transaction_key UK
+    }
+
+    ORDER_REFUND_PROOFS {
+        bigint order_refund_proof_id PK
+        bigint order_refund_attempt_id FK, UK
+        bigint uploaded_by_account_id FK
+        bytea content
+    }
+
+    REFUND_OPERATIONS {
+        uuid operation_key PK
+        bigint refund_id FK
+        bigint actor_account_id FK
+        text action
+        bigint attempt_id FK
+    }
+
+    ORDER_REFUND_MESSAGES {
+        bigint order_refund_message_id PK
+        bigint order_refund_id FK
+        bigint sender_account_id FK
+        text message
+        text message_kind
+        text system_event_key UK
+    }
+
+    REFUND_MESSAGE_READS {
+        bigint order_refund_id PK, FK
+        bigint account_id PK, FK
+        bigint last_message_id
+    }
+
+    PRODUCT_RETURN_EVENTS {
+        bigint event_id PK
+        bigint return_id FK
+        bigint actor_account_id FK
+        text action
+        uuid operation_key UK
+        bigint refund_id FK
+        bigint refund_attempt_id FK
+        numeric amount
+    }
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email
+        text team_leader_role
+        boolean is_active
+    }
+
+    ACCOUNTS |o..o{ ORDERS : "created_by_account_id"
+    ACCOUNTS |o..o{ ORDERS : "team_leader_account_id"
+    ACCOUNTS |o..o{ ORDERS : "approved_by_account_id"
+    ORDERS ||..o{ ORDER_REFUNDS : "order_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "requested_by_account_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "assigned_supervisor_account_id"
+    ACCOUNTS |o..o{ ORDER_REFUNDS : "processing_by_account_id"
+    ORDER_REFUNDS ||..o{ ORDER_REFUND_ATTEMPTS : "order_refund_id"
+    ACCOUNTS ||..o{ ORDER_REFUND_ATTEMPTS : "processor_account_id"
+    ORDER_REFUND_ATTEMPTS ||..o| ORDER_REFUND_PROOFS : "order_refund_attempt_id"
+    ACCOUNTS |o..o{ ORDER_REFUND_PROOFS : "uploaded_by_account_id"
+    ORDER_REFUNDS ||..o{ ORDER_REFUND_MESSAGES : "order_refund_id"
+    ACCOUNTS ||..o{ ORDER_REFUND_MESSAGES : "sender_account_id"
+    ORDERS ||..o{ PRODUCT_RETURNS : "order_id"
+    ACCOUNTS ||..o{ PRODUCT_RETURNS : "requested_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "approved_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "payment_verified_by_account_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_EVENTS : "return_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURN_EVENTS : "actor_account_id"
+    PRODUCT_RETURNS |o..o| ORDER_REFUNDS : "return_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "verified_by_account_id"
+    ORDER_REFUNDS |o..o{ PRODUCT_RETURN_EVENTS : "refund_id"
+    ORDER_REFUND_ATTEMPTS |o..o{ PRODUCT_RETURN_EVENTS : "refund_attempt_id"
+    ORDER_REFUNDS ||..o{ REFUND_OPERATIONS : "refund_id"
+    ACCOUNTS ||..o{ REFUND_OPERATIONS : "actor_account_id"
+    ORDER_REFUND_ATTEMPTS ||..o{ REFUND_OPERATIONS : "attempt_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "settlement_authorized_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "processing_supervisor_account_id"
+    ORDER_REFUNDS ||--o{ REFUND_MESSAGE_READS : "order_refund_id"
+    ACCOUNTS ||--o{ REFUND_MESSAGE_READS : "account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_prepared_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_delivered_by_account_id"

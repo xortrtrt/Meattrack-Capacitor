@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from psycopg2 import OperationalError
 
 from app import web
 from app.audit_context import begin_audit_context, end_audit_context
@@ -68,6 +69,14 @@ def create_app() -> FastAPI:
             except DatabaseBusyError:
                 # Session loading/saving runs outside route exception handlers.
                 response = database_busy_response()
+            except OperationalError:
+                # Database recovery can also interrupt session loading/saving.
+                # Return a retryable response; never replay a possibly committed write.
+                response = JSONResponse(
+                    {"detail": "The database is temporarily unavailable. Please try again shortly."},
+                    status_code=503,
+                    headers={"Retry-After": "5"},
+                )
         finally:
             end_audit_context(audit_tokens)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -75,7 +84,7 @@ def create_app() -> FastAPI:
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; "
+            "default-src 'self'; media-src 'self' blob:; img-src 'self' data: blob:; font-src 'self' data:; "
             "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
             "connect-src 'self' https://*.ably.io wss://*.ably.io "
             "https://*.ably.net wss://*.ably.net "

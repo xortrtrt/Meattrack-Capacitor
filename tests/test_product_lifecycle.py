@@ -90,7 +90,7 @@ def receive(d, case, quantity=2, *, verify=True, authorize=True):
     if verify and returns.get_product_return(case,d["inventory"])["status"] == "awaiting_inventory_verification":
         returns.verify_product_return(case,d["inventory"],"Final quantities and custody verified",str(uuid4()))
         if authorize:
-            returns.authorize_return_settlement(case,d["sales"],"Sales confirms the verified return resolution",str(uuid4()))
+            returns.authorize_return_settlement(case,d["supervisor"],"Sales confirms the verified return resolution",str(uuid4()))
 
 
 def substitute(price):
@@ -112,6 +112,7 @@ def complete_refund(d, case):
         refund["order_refund_id"],
         d["supervisor"],
         "sales-supervisor",
+        transfer_amount=refund["amount"],
         refund_method="Bank transfer",
         transaction_reference=f"REF{uuid4().hex[:14]}",
         transferred_at=business_now(),
@@ -247,7 +248,7 @@ def test_discrepancy_reapproval_can_reduce_to_received_quantity(lifecycle):
     returns.flag_return_discrepancy(case, d["inventory"], "Only one matching pack delivered")
     line = returns.get_product_return(case, d["sales"])["lines"][0]
     returns.review_product_return(
-        case, d["sales"], True, "Approved corrected one pack claim", revised_quantities=[(line["return_line_id"], 1)], customer_message="Your corrected one-pack return is approved."
+        case, d["supervisor"], True, "Approved corrected one pack claim", revised_quantities=[(line["return_line_id"], 1)], customer_message="Your corrected one-pack return is approved."
     )
     returns.verify_product_return(case,d["inventory"],"Verified corrected approved quantity",str(uuid4()))
     case_data = returns.get_product_return(case, d["reseller"])
@@ -287,7 +288,7 @@ def test_substitute_replacement_settles_difference_and_releases_once(lifecycle, 
         proof, _ = _payment_submission(f"replacement-{case}")
         returns.record_return_payment(case, d["reseller"], proof)
         returns.verify_return_payment(
-            case, d["sales"], f"TOPUP{uuid4().hex[:12]}", extra, "Payment screenshot and transfer matched"
+            case, d["supervisor"], f"TOPUP{uuid4().hex[:12]}", extra, "Payment screenshot and transfer matched"
         )
     returns.release_replacement(case, d["inventory"], "Replacement physically handed over")
     returns.release_replacement(case, d["inventory"], "Repeated release confirmation")
@@ -308,7 +309,7 @@ def test_quote_revision_invalidates_acceptance_and_reservation(lifecycle):
     receive(d, case)
     returns.accept_replacement_quote(case, d["reseller"], 1)
     returns.reserve_replacement(case, d["inventory"], "Reserved two valid replacement packs")
-    returns.review_product_return(case, d["sales"], True, "Revised substitute quote", [(substitute(250), 1)])
+    returns.review_product_return(case, d["supervisor"], True, "Revised substitute quote", [(substitute(250), 1)])
     case_data = returns.get_product_return(case, d["reseller"])
     assert (
         case_data["quote_revision"] == 2
@@ -441,11 +442,11 @@ def test_expiry_flags_orders_when_other_reservations_exhaust_remaining_stock(str
         strict_inventory_database, batch_quantities=[5, 5], order_quantities=[4, 4]
     )
     with get_transaction_cursor() as cur:
-        cur.execute("UPDATE inventory_batches SET expiry_date=%s WHERE batch_id=%s;", (business_today(), batches[0]))
         for order in orders:
             cur.execute(
                 "INSERT INTO order_stock_reservations(order_id,product_id,quantity) VALUES(%s,%s,4);", (order, product)
             )
+        cur.execute("UPDATE inventory_batches SET expiry_date=%s WHERE batch_id=%s;", (business_today(), batches[0]))
     worker.scan_batch_expiry()
     warnings = fetch_all("SELECT dedupe_key FROM notifications WHERE title='Order needs stock review';")
     assert len(warnings) == 2
@@ -503,7 +504,7 @@ def test_new_portal_pages_render_with_scoped_sessions(lifecycle, monkeypatch):
         with TestClient(main.app) as client:
             for path in paths:
                 response = client.get(path, follow_redirects=False)
-                if path.startswith(f"/portal/{role}/returns") and (role == "reseller" or specialization == "sales"):
+                if path.startswith(f"/portal/{role}/returns") and role == "reseller":
                     assert response.status_code == 303
                     response = client.get(response.headers["location"])
                 assert response.status_code == 200, response.text[:1000]

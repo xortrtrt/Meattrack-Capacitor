@@ -7,6 +7,7 @@ from threading import Event
 
 from fastapi import Request
 from fastapi.testclient import TestClient
+from psycopg2 import OperationalError
 import httpx
 import pytest
 
@@ -130,6 +131,42 @@ def test_busy_database_returns_503_even_during_session_io(monkeypatch, stage):
     assert response.headers["retry-after"] == "2"
     assert response.json() == {"detail": "The service is busy. Please try again shortly."}
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.parametrize("stage", ["route", "session_load", "session_save"])
+def test_database_recovery_returns_retryable_503_and_recovers(monkeypatch, stage):
+    unavailable = True
+
+    def during_recovery(*args):
+        if unavailable:
+            raise OperationalError("Private database host: the database system is starting up")
+        return {} if stage == "session_load" else None
+
+    if stage == "session_load":
+        monkeypatch.setattr(web_sessions, "_load_session", during_recovery)
+    if stage == "session_save":
+        monkeypatch.setattr(web_sessions, "_persist_session", during_recovery)
+    app = create_app()
+
+    @app.get("/test-recovery")
+    async def endpoint(request: Request):
+        if stage == "route":
+            during_recovery()
+        request.session["changed"] = True
+        return {"ok": True}
+
+    with TestClient(app) as client:
+        response = client.get("/test-recovery")
+        assert response.status_code == 503
+        assert response.headers["retry-after"] == "5"
+        assert response.json() == {
+            "detail": "The database is temporarily unavailable. Please try again shortly."
+        }
+        assert "Private database host" not in response.text
+        assert "set-cookie" not in response.headers
+        assert response.headers["x-content-type-options"] == "nosniff"
+        unavailable = False
+        assert client.get("/test-recovery").status_code == 200
 
 
 @pytest.mark.parametrize("kind", ["refund", "return", "expired", "session"])

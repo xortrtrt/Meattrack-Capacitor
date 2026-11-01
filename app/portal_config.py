@@ -58,43 +58,57 @@ portal_nav = {
         ("reports", "Reports", "file-text"),
     ],
     "owner": [
-        ("dashboard", "Dashboard", "layout-dashboard"),
-        ("operations", "Operations", "activity"),
-        ("inquiries", "Inquiries", "user-check"),
-        ("orders", "Orders", "clipboard-check"),
+        ("dashboard", "Overview", "layout-dashboard"),
+        ("orders", "Orders & inquiries", "clipboard-check"),
+        ("returns", "Returns & refunds", "package-check"),
         ("inventory", "Inventory", "boxes"),
-        ("materials", "Materials", "beef"),
-        ("batches", "Batches", "package-check"),
-        ("expired-stock", "Expired Stock", "archive"),
-        ("movements", "Movements", "arrow-left-right"),
-        ("alerts", "Alerts", "triangle-alert"),
-        ("products", "Products & Prices", "tags"),
-        ("reports", "Reports", "bar-chart-3"),
-        ("forecasts", "Forecasts", "line-chart"),
-        ("refunds", "Refunds", "badge-dollar-sign"),
-        ("accounts", "Users & Access", "shield-check"),
         ("resellers", "Resellers", "users"),
-        ("settings", "Settings", "settings"),
-        ("returns", "Product Returns", "package-check"),
-        ("profile", "Profile", "user-cog"),
+        ("reports", "Sales reports", "bar-chart-3"),
+        ("forecasts", "Demand planning", "line-chart"),
+        ("accounts", "People & access", "shield-check"),
+        ("settings", "Business settings", "settings"),
     ],
 }
 
 
 owner_nav_groups = (
-    ("Overview", ("dashboard", "operations")),
-    ("Sales operations", ("inquiries", "orders", "returns", "refunds")),
-    ("Inventory", ("inventory", "materials", "batches", "movements", "expired-stock", "alerts", "products")),
-    ("People", ("accounts", "resellers")),
-    ("Intelligence", ("reports", "forecasts")),
-    ("Preferences", ("settings",)),
-    ("Account", ("profile",)),
+    ("Business", ("dashboard", "orders", "returns", "resellers")),
+    ("Stock & planning", ("inventory", "forecasts")),
+    ("Management", ("reports", "accounts", "settings")),
 )
+
+# Detailed workspaces retain their URLs and authorization, without crowding the sidebar.
+owner_workspace_tabs = (
+    (("dashboard", "Business overview"), ("operations", "Work queues")),
+    (("orders", "Reseller orders"), ("inquiries", "Reseller inquiries")),
+    (("returns", "Product returns"), ("refunds", "Money refunds")),
+    (("inventory", "Stock & production"), ("materials", "Raw materials"),
+     ("batches", "Batches"), ("movements", "Movements"),
+     ("expired-stock", "Pull-outs"), ("alerts", "Alerts"), ("products", "Products & prices")),
+)
+
+
+def owner_workspace_for(section: str) -> dict:
+    for tabs in owner_workspace_tabs:
+        if section in {slug for slug, _label in tabs} or (section == "product-details" and tabs[0][0] == "inventory"):
+            return {"parent": tabs[0][0], "tabs": tabs}
+    return {"parent": section, "tabs": ()}
 
 
 # Workflow pages that are valid portal destinations without appearing in navigation.
 portal_secondary_sections = {
     "owner": {
+        "messages": ("Replacement conversations", "messages-square"),
+        "operations": ("Work queues", "activity"),
+        "inquiries": ("Reseller inquiries", "user-check"),
+        "refunds": ("Money refunds", "badge-dollar-sign"),
+        "materials": ("Raw materials", "beef"),
+        "batches": ("Batches", "package-check"),
+        "movements": ("Movements", "arrow-left-right"),
+        "expired-stock": ("Pull-outs", "archive"),
+        "alerts": ("Alerts", "triangle-alert"),
+        "products": ("Products & prices", "tags"),
+        "profile": ("My profile", "user-cog"),
         "product-details": ("Product details", "package-search"),
         "verify": ("Owner verification", "key-round"),
         "notifications": ("Notifications", "bell"),
@@ -121,7 +135,7 @@ team_leader_nav_by_role = {
         ("raw-materials", "Raw Materials", "beef"),
         ("finished-products", "Finished Products", "package-search"),
         ("batches", "Product Batches", "package-check"),
-        ("expired-stock", "Expired Stock", "archive"),
+        ("expired-stock", "Pull-outs", "archive"),
         ("logs", "Inventory Logs", "scroll-text"),
         ("returns", "Product Returns", "package-check"),
         ("profile", "Profile", "user-cog"),
@@ -133,7 +147,7 @@ team_leader_nav_by_role = {
         ("resellers", "My Resellers", "users"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
-        ("refunds", "Refunds & returns", "badge-dollar-sign"),
+        ("returns", "Returns & tracking", "package-check"),
         ("profile", "Profile", "user-cog"),
     ],
     "sales-supervisor": [
@@ -164,4 +178,4 @@ def default_section_for(role_key: str, team_leader_role: str | None = None) -> s
     return nav[0][0] if nav else roles[role_key]["default_section"]
 
 
-__all__ = ['default_section_for', 'owner_nav_groups', 'portal_nav', 'portal_nav_for', 'portal_secondary_sections', 'roles', 'team_leader_nav_by_role', 'team_leader_role_labels']
+__all__ = ['default_section_for', 'owner_nav_groups', 'owner_workspace_for', 'portal_nav', 'portal_nav_for', 'portal_secondary_sections', 'roles', 'team_leader_nav_by_role', 'team_leader_role_labels']

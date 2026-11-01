@@ -70,7 +70,7 @@ def section_table(payload: dict, section: str) -> dict:
 
 
 def document_context(payload: dict) -> dict:
-    return {"document": payload, "tables": [section_table(payload, s) for s in ("summary", "sales", "orders", "returns", "refunds")],
+    return {"document": payload, "tables": [section_table(payload, s) for s in ("summary", "orders", "sales", "returns", "refunds")],
             "captured_label": local_time(payload["captured_at"]), "submitted_label": local_time(payload.get("submitted_at"))}
 
 
@@ -97,7 +97,7 @@ def excel_document(payload: dict) -> bytes:
 
     workbook = Workbook()
     workbook.remove(workbook.active)
-    for section in ("summary", "sales", "orders", "returns", "refunds"):
+    for section in ("summary", "orders", "sales", "returns", "refunds"):
         table = section_table(payload, section)
         sheet = workbook.create_sheet(table["title"])
         metadata = [f"MEATTRACK · Sales Activity Report · {payload.get('report_id', 'PREVIEW')}",

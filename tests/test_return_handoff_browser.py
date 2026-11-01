@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from playwright.sync_api import expect, sync_playwright
 
-from app import main, web_sessions
+from app import main, web_sessions, receipt_ocr
 from app.business_time import business_now
 from app.database import fetch_one
 from app.repositories import product_returns as returns
@@ -25,6 +25,7 @@ pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 def test_three_portals_continue_existing_refund_and_show_replacement_batches(lifecycle, monkeypatch):  # noqa: F811
     d = lifecycle
     case = approved(d)
+    monkeypatch.setattr(receipt_ocr,"scan_payment_proofs",lambda attachments:dict(transaction_number="REFUND123456",payment_date=business_now().date().isoformat(),payment_time="00:00",payment_amount="200.00",confidence=.9))
     session = {}
     monkeypatch.setattr(web_sessions, "_load_session", lambda token: dict(session))
     monkeypatch.setattr(web_sessions, "_persist_session", lambda *args: None)
@@ -84,6 +85,9 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
         proof = BytesIO()
         Image.new("RGB", (64, 64), (42, 140, 80)).save(proof, format="PNG")
         page.locator('input[name="proof"]').set_input_files({"name": "simulated-transfer.png", "mimeType": "image/png", "buffer": proof.getvalue()})
+        expect(page.locator('input[name="receipt_scan_token"]')).not_to_have_value("")
+        page.locator('input[name="transfer_amount"]').fill("200.00")
+        page.locator('input[name="payment_details_confirmed"]').check()
         page.get_by_role("button", name="Confirm refund completed", exact=True).click()
         page.wait_for_load_state("networkidle")
         assert fetch_one("SELECT status FROM order_refunds WHERE order_refund_id=%s", (refund,))["status"] == "completed"

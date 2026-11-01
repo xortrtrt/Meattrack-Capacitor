@@ -96,7 +96,7 @@
         <article class="refund-event pending"><span><i data-lucide="wallet-cards"></i></span><div><header><strong>Return refund created</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>PHP {{ '%.2f'|format(selected_refund.amount) }} was locked as the approved return refund amount.</p></div></article>
         {% else %}
         <article class="refund-event rejection"><span><i data-lucide="circle-x"></i></span><div><header><strong>Order rejected</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>{{ selected_refund.rejection_reason }}</p></div></article>
-        <article class="refund-event pending"><span><i data-lucide="wallet-cards"></i></span><div><header><strong>Payment received confirmed</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>PHP {{ '%.2f'|format(selected_refund.amount) }} was locked as the full manual refund amount.</p></div></article>
+        <article class="refund-event pending"><span><i data-lucide="wallet-cards"></i></span><div><header><strong>{{ "Payment receipt awaiting verification" if selected_refund.payment_review_required else "Payment received confirmed" }}</strong><time>{{ selected_refund.requested_at|nice_date }}</time></header><p>PHP {{ '%.2f'|format(selected_refund.amount) }} was locked as the full manual refund amount.</p></div></article>
         {% endif %}
         {% for attempt in selected_refund.attempts %}
         <article class="refund-event {{ attempt.status }}">
@@ -114,7 +114,15 @@
       </section>
 
       {% if not refund_read_only %}<section class="refund-actions" aria-label="Refund actions">
-        {% if selected_refund.awaiting_sales_confirmation|default(false) %}
+        {% if selected_refund.payment_review_required %}
+        <form action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/confirm-payment" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <div><strong>Verify original payment first</strong><p>This order was rejected because stock was unavailable. The uploaded receipt alone does not confirm receipt of funds.</p></div>
+          {% for proof in selected_refund.original_payment_proofs %}<p><a href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}" target="_blank" rel="noopener">View {{ proof.filename }}</a></p>{% endfor %}
+          <label><input type="checkbox" name="payment_received" value="yes" required> I checked the payment provider and confirm PHP {{ '%.2f'|format(selected_refund.amount) }} was actually received.</label>
+          <button class="button primary" type="submit">Confirm payment received</button>
+        </form>
+        {% elif selected_refund.awaiting_sales_confirmation|default(false) %}
         <p role="status">Inventory verified the returned goods. Awaiting the assigned Sales Leader's confirmation before this refund can be processed.</p>
         {% elif selected_refund.status == 'pending' %}
         <form action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/start" method="post" data-refund-confirm="Start processing this refund? The case will be claimed by you.">
@@ -171,7 +179,7 @@
           <p class="refund-message-status" data-refund-message-status aria-live="polite"></p>
         </form>
         {% elif selected_refund.status == 'completed' %}
-        <p class="refund-conversation-closed"><i data-lucide="circle-check-big"></i> Refund completed. This conversation is read-only.</p>
+        <p class="refund-conversation-closed" data-conversation-closed><i data-lucide="circle-check-big"></i> Refund completed · Conversation closed</p>
         {% else %}
         <p class="refund-conversation-closed"><i data-lucide="user-round-check"></i> Claim this case before messaging the reseller.</p>
         {% endif %}
@@ -184,14 +192,19 @@
           <div><span class="eyebrow">Manual finance action</span><h4 id="refund-transfer-title">Record external transfer</h4><p>Use this only after the money has actually been sent outside MeatTrack.</p></div>
           <strong>PHP {{ '%.2f'|format(selected_refund.amount) }}</strong>
         </header>
-        <form class="refund-complete-form" action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/complete" method="post" enctype="multipart/form-data" data-refund-confirm="Confirm that the external transfer was actually sent? This will mark the refund completed and notify the reseller.">
+        <form data-refund-receipt-form data-scan-url="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/receipt-scan" class="refund-complete-form" action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/complete" method="post" enctype="multipart/form-data" data-refund-confirm="Confirm that the external transfer was actually sent? This will mark the refund completed and notify the reseller.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="operation_key" value="{{ operation_key() }}">
           <div class="refund-form-grid">
+            <input type="hidden" name="receipt_scan_token">
             <label>Refund method<input name="refund_method" minlength="2" maxlength="100" placeholder="e.g. GCash, bank transfer" required></label>
-            <label>Transaction reference<input name="transaction_reference" maxlength="100" autocomplete="off" required></label>
-            <label>Transfer date and time<input name="transferred_at" type="datetime-local" required></label>
+            <label>Transaction reference<input name="transaction_reference" data-refund-extracted maxlength="100" autocomplete="off" required></label>
+            <label>Transfer date and time<input name="transferred_at" data-refund-extracted type="datetime-local" required></label>
+            <label>Amount transferred <small>Must equal {{ selected_refund.amount|currency }}</small><input name="transfer_amount" data-refund-extracted type="number" min="0.01" step="0.01" required></label>
             <label>Refund screenshot <small>Required · JPG, PNG, WebP · max 5 MB</small><input required name="proof" type="file" accept="image/jpeg,image/png,image/webp"></label>
           </div>
+          <button class="button subtle" type="button" data-refund-scan>Read refund receipt</button>
+          <p class="hint" data-refund-scan-status role="status">Choose a screenshot to read its details, then check them against the receipt.</p>
+          <label><input type="checkbox" name="payment_details_confirmed" value="yes" required> I checked the reference, date, time, and amount against the transfer receipt.</label>
           <label>Settlement remarks <small>Required; visible to refund processors</small><textarea required minlength="5" name="internal_note" maxlength="1000" rows="3"></textarea></label>
           <button class="button primary" type="submit"><i data-lucide="badge-check"></i> Confirm refund completed</button>
         </form>

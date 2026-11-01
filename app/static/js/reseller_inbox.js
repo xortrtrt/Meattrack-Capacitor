@@ -14,6 +14,8 @@
     const returnId = Number(root.dataset.returnId) || null;
     let reportIssue = root.dataset.reportIssue === "1";
     let pendingSend = null;
+    let sending=false;
+    const media=window.InternalConversationMedia.controls(form);
     if (returnId) input.value = reportIssue ? `I have a problem with my replacement for Return #${returnId}: ` : `I need help with Return #${returnId}: `;
     const sendButton = root.querySelector("[data-reseller-chat-send]");
     const inboxTabs = Array.from(root.querySelectorAll("[data-reseller-inbox-tab]"));
@@ -147,7 +149,7 @@
         const response = await fetch(url, {
             ...options,
             headers: {
-                ...(options.body ? { "Content-Type": "application/json" } : {}),
+                ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
                 ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
                 ...(options.headers || {}),
             },
@@ -213,10 +215,11 @@
         }
 
         const unreadIds = (button.dataset.systemUnreadMessageIds || "").split(",").filter(Boolean);
-        if (unreadIds.length) {
+        if (!document.hidden && unreadIds.length) {
             const results = await Promise.allSettled(
                 unreadIds.map((messageId) => api(`/portal/reseller/system-messages/${messageId}/read`, { method: "POST" })),
             );
+            window.refreshConversationBadges?.();
             const readCount = results.filter((result) => result.status === "fulfilled").length;
             if (readCount === unreadIds.length) {
                 button.dataset.systemUnreadMessageIds = "";
@@ -261,7 +264,10 @@
         bubble.textContent = item.content || "";
         const time = document.createElement("time");
         time.textContent = messageTime(item.created_at);
-        row.append(meta, bubble, time);
+        row.append(meta);
+        if (item.content?.trim()) row.append(bubble);
+        window.InternalConversationMedia.renderAttachments(row,item.attachments);
+        row.append(time);
         if (item.return_id) {
             const link = document.createElement("a");
             link.className = "return-chat-reference";
@@ -271,7 +277,7 @@
         }
         messages.append(row);
         lastMessageId = Math.max(lastMessageId, Number(item.reseller_message_id) || 0);
-        conversationPreview.textContent = item.content || "Open conversation";
+        conversationPreview.textContent = item.content || (item.attachments?.length ? "Attachment" : "Open conversation");
         conversationTime.textContent = messageTime(item.created_at);
         messages.scrollTop = messages.scrollHeight;
     }
@@ -301,11 +307,13 @@
         canMessage = Boolean(result.can_message);
         const participantName = participant.team_leader_name || "Sales leader not assigned";
         agentLabels.forEach((label) => { label.textContent = participantName; });
+        root.querySelectorAll("[data-reseller-chat-avatar]").forEach(target => window.InternalConversationMedia.renderAvatar(target,participant,"team_leader_"));
         detail.textContent = canMessage
             ? "Your permanent conversation"
             : "Contact the owner to assign a sales leader";
-        input.disabled = !(canMessage || reportIssue) || openConversationType !== "sales";
-        sendButton.disabled = !(canMessage || reportIssue) || openConversationType !== "sales";
+        input.disabled = sending || !(canMessage || reportIssue) || openConversationType !== "sales";
+        sendButton.disabled = sending || !(canMessage || reportIssue) || openConversationType !== "sales";
+        media.disable(sendButton.disabled);
         conversationButton.disabled = !(canMessage || reportIssue);
         if (!canMessage) conversationPreview.textContent = "Waiting for a sales leader assignment";
         const conversation = result.conversation;
@@ -333,9 +341,10 @@
         if (result.messages.some((item) => item.sender_account_type === "team_leader" && !item.read_at)) {
             hasUnreadMessages = true;
         }
-        if (openConversationType === "sales" && hasUnreadMessages) {
-            await api("/api/portal/reseller/inbox/read", { method: "POST", body: JSON.stringify({}) });
+        if (!document.hidden && openConversationType === "sales" && hasUnreadMessages) {
+            await api("/api/portal/reseller/inbox/read", { method: "POST", body: JSON.stringify({through_id:lastMessageId}) });
             hasUnreadMessages = false;
+            window.refreshConversationBadges?.();
         }
     }
 
@@ -350,10 +359,12 @@
         conversationButton.setAttribute("aria-expanded", "true");
         input.disabled = false;
         sendButton.disabled = false;
-        if (hasUnreadMessages) {
+        media.disable(false);
+        if (!document.hidden && hasUnreadMessages) {
             try {
-                await api("/api/portal/reseller/inbox/read", { method: "POST", body: JSON.stringify({}) });
+                await api("/api/portal/reseller/inbox/read", { method: "POST", body: JSON.stringify({through_id:lastMessageId}) });
                 hasUnreadMessages = false;
+            window.refreshConversationBadges?.();
             } catch (_) {
                 // A later refresh retries read state without interrupting the conversation.
             }
@@ -368,20 +379,26 @@
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const content = input.value.trim();
-        if (!content || (!canMessage && !reportIssue)) return;
-        if (!pendingSend || pendingSend.message !== content) pendingSend = { message: content, client_message_id: messageUuid(), ...(returnId ? {return_id: returnId, report_issue: reportIssue} : {}) };
+        if (sending || (!content && !media.hasFiles()) || (!canMessage && !reportIssue)) return;
+        sending=true;
+        if (!pendingSend || pendingSend.message !== content || pendingSend.signature !== media.signature()) pendingSend = { message: content, signature:media.signature(), client_message_id: messageUuid(), ...(returnId ? {return_id: returnId, report_issue: reportIssue} : {}) };
         input.disabled = true;
         sendButton.disabled = true;
+        media.disable(true);
+        setStatus(media.hasFiles()?"Uploading attachments…":"Sending message…");
         try {
             const result = await api("/api/portal/reseller/inbox/messages", {
                 method: "POST",
-                body: JSON.stringify(pendingSend),
+                body: media.body(pendingSend),
             });
-            input.value = "";
+            if (!result.attachments_not_sent) {
+                input.value = "";
+                media.clear();
+            }
             if (result.message) appendMessage(result.message);
             const note = root.querySelector("[data-return-chat-notice]");
-            if (note) note.textContent = result.warning || (reportIssue ? "Your issue is saved in Sales’ review queue. Inventory and settlement are unchanged." : "Message sent about this return.");
-            pendingSend = null;
+            if (note) note.textContent = result.warning || (reportIssue ? "Your issue is saved for Supervisor/Owner review. Inventory and settlement are unchanged." : "Message sent about this return.");
+            if (!result.attachments_not_sent) pendingSend = null;
             deleteButton.hidden = false;
             setStatus(`${agentLabels[0].textContent} is available`, "live");
         } catch (error) {
@@ -389,8 +406,11 @@
             const note = root.querySelector("[data-return-chat-notice]");
             if (note) note.textContent = error.message;
         } finally {
-            input.disabled = !(canMessage || reportIssue) || openConversationType !== "sales";
-            sendButton.disabled = !(canMessage || reportIssue) || openConversationType !== "sales";
+            sending=false;
+            sendButton.classList.remove("is-loading");
+            input.disabled = sending || !(canMessage || reportIssue) || openConversationType !== "sales";
+            sendButton.disabled = sending || !(canMessage || reportIssue) || openConversationType !== "sales";
+            media.disable(sending || !(canMessage || reportIssue) || openConversationType !== "sales");
             if (openConversationType === "sales") input.focus();
         }
     });
@@ -443,6 +463,6 @@
     }
 
     refreshMessages({ reset: true }).then(() => { if (returnId) return openConversation(); }).catch((error) => setStatus(error.message, "error"));
-    refreshTimer = window.setInterval(() => refreshMessages().catch(() => {}), 3000);
+    refreshTimer = window.setInterval(() => {if(!document.hidden)refreshMessages().catch(() => {});}, 3000);
     window.addEventListener("pagehide", () => window.clearInterval(refreshTimer), { once: true });
 }());

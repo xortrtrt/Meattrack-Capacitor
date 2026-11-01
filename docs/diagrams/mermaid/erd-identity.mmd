@@ -1,0 +1,82 @@
+erDiagram
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email
+        text team_leader_role
+        boolean is_active
+    }
+
+    INQUIRIES {
+        bigint inquiry_id PK
+        text name
+        text email
+        text business_name
+        text message
+        text status
+        bigint assigned_team_leader_account_id FK
+        bigint reviewed_by_account_id FK
+        uuid chat_conversation_id FK, UK
+    }
+
+    RESELLERS {
+        bigint reseller_id PK
+        bigint inquiry_id FK, UK
+        text business_name
+        text email
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+    }
+
+    DEPARTMENTS {
+        bigint department_id PK
+        text department_name UK
+    }
+
+    USER_CONSENTS {
+        bigint user_consent_id PK
+        bigint account_id FK
+    }
+
+    ACCOUNT_ACTIVATION_TOKENS {
+        bigint activation_token_id PK
+        bigint account_id FK
+        char token_hash UK
+    }
+
+    ACCOUNT_LOGIN_OTPS {
+        bigint account_login_otp_id PK
+        bigint account_id FK
+    }
+
+    ACCOUNT_PASSWORD_OTPS {
+        bigint account_password_otp_id PK
+        bigint account_id FK
+    }
+
+    WEB_SESSIONS {
+        char token_hash PK
+        bigint account_id FK
+    }
+
+    ACTIVITY_LOGS {
+        bigint activity_log_id PK
+        bigint account_id FK
+        text action
+    }
+
+    ACCOUNTS |o..o{ ACTIVITY_LOGS : "account_id"
+    ACCOUNTS |o..o{ INQUIRIES : "assigned_team_leader_account_id"
+    ACCOUNTS |o..o{ INQUIRIES : "reviewed_by_account_id"
+    INQUIRIES |o..o| RESELLERS : "inquiry_id"
+    ACCOUNTS |o..o{ RESELLERS : "team_leader_account_id"
+    ACCOUNTS |o..o{ RESELLERS : "approved_by_account_id"
+    RESELLERS |o..o{ ACCOUNTS : "reseller_id"
+    ACCOUNTS ||..o{ USER_CONSENTS : "account_id"
+    ACCOUNTS ||..o{ ACCOUNT_PASSWORD_OTPS : "account_id"
+    ACCOUNTS ||..o{ ACCOUNT_LOGIN_OTPS : "account_id"
+    ACCOUNTS |o..o{ WEB_SESSIONS : "account_id"
+    ACCOUNTS ||..o{ ACCOUNT_ACTIVATION_TOKENS : "account_id"

@@ -1,7 +1,6 @@
 """Sales reviews returns and follows money refunds from one scoped workspace."""
 
 from pathlib import Path
-from html import unescape
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
@@ -10,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app import main, repositories, security_controls, web_sessions
 from app.business_time import business_now
-from app.database import fetch_one, get_transaction_cursor
+from app.database import fetch_one
 from app.portals.shared import notification_target_for
 from app.repositories import product_returns as returns
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
@@ -39,7 +38,7 @@ def test_return_approval_posts_rendered_csrf_and_refresh_recovers(lifecycle, mon
         url = f"/portal/team-leader/refunds?view=returns&case={case}"
         page = client.get(url)
         assert page.status_code == 200
-        forms = re.findall(r'<form[^>]*action="(/portal/team-leader/refunds/returns/actions/[^\"]+)"[^>]*>(.*?)</form>', page.text, re.S)
+        forms = re.findall(r'<form[^>]*action="(/portal/team-leader/returns/actions/[^\"]+)"[^>]*>(.*?)</form>', page.text, re.S)
         assert forms
         for action, markup in forms:
             assert f'name="csrf_token" value="{session["csrf_token"]}"' in markup
@@ -51,8 +50,7 @@ def test_return_approval_posts_rendered_csrf_and_refresh_recovers(lifecycle, mon
             assert returns.get_product_return(case, d["sales"])["status"] == "submitted"
         recovered = client.get(approve_url)
         assert recovered.status_code == 200
-        assert urlsplit(str(recovered.url)).path == "/portal/team-leader/refunds"
-        assert parse_qs(urlsplit(str(recovered.url)).query)["view"] == ["returns"]
+        assert urlsplit(str(recovered.url)).path == "/portal/team-leader/returns"
         assert returns.get_product_return(case, d["sales"])["status"] == "submitted"
         reopened = client.get(approve_url + f"?case={case}")
         assert reopened.status_code == 200
@@ -70,62 +68,24 @@ def test_return_approval_posts_rendered_csrf_and_refresh_recovers(lifecycle, mon
         assert urlsplit(signed_out.headers["location"]).path == "/login"
 
 
-def test_sales_legacy_links_notifications_and_return_actions_use_refunds(lifecycle, monkeypatch):  # noqa: F811
-    d = lifecycle
-    case = create_case(d)
-    sign_in(monkeypatch, d["sales"], "team-leader", "sales")
+def test_sales_legacy_links_redirect_to_initial_review_and_tracking_only(lifecycle,monkeypatch):  # noqa: F811
+    d=lifecycle
+    case=create_case(d)
+    sign_in(monkeypatch,d["sales"],"team-leader","sales")
     with TestClient(main.app) as client:
-        legacy = client.get(f"/portal/team-leader/returns?case={case}&status=submitted", follow_redirects=False)
-        target = urlsplit(legacy.headers["location"])
-        assert legacy.status_code == 303 and target.path == "/portal/team-leader/refunds"
-        assert parse_qs(target.query) == {"view": ["returns"], "case": [str(case)], "status": ["submitted"]}
-        page = client.get(legacy.headers["location"])
-        assert page.status_code == 200
-        nav = page.text.split('id="portal-nav"', 1)[1].split("</nav>", 1)[0]
-        assert "Refunds &amp; returns" in nav and '/portal/team-leader/returns' not in nav
-        assert 'aria-label="Sales return action queues"' in page.text
-        assert "js/product_returns.js" in page.text
-        assert 'action="/portal/team-leader/refunds/returns/actions/approve"' in page.text
-        approved = client.post("/portal/team-leader/refunds/returns/actions/approve", data={
-            "return_id": case, "remarks": "Approved original delivered products after review",
-            "operation_key": str(uuid4()),
-        }, follow_redirects=False)
-        assert approved.status_code == 303
-        assert urlsplit(approved.headers["location"]).path == "/portal/team-leader/refunds"
-        assert parse_qs(urlsplit(approved.headers["location"]).query)["view"] == ["returns"]
-        assert returns.get_product_return(case, d["sales"])["status"] == "awaiting_receipt"
-        blocked = client.post("/portal/team-leader/refunds/returns/actions/proceed", data={
-            "return_id": case, "remarks": "Must wait for Inventory verification", "operation_key": str(uuid4()),
-        }, follow_redirects=False)
-        assert "error" in parse_qs(urlsplit(blocked.headers["location"]).query)
-        receive(d, case, authorize=False)
-        confirmed = client.post("/portal/team-leader/refunds/returns/actions/proceed", data={
-            "return_id": case, "remarks": "Confirmed the complete verified return for settlement",
-            "operation_key": str(uuid4()),
-        })
-        assert confirmed.status_code == 200
-        assert returns.get_product_return(case, d["sales"])["sales_authorized"]
-        refund = fetch_one("SELECT order_refund_id FROM order_refunds WHERE return_id=%s", (case,))["order_refund_id"]
-        money = client.get(f"/portal/team-leader/refunds?refund={refund}")
-        assert money.status_code == 200 and "Receipt #" in money.text
-        assert f'refunds?view=returns&case={case}' in unescape(money.text)
-        assert client.post(f"/portal/team-leader/refunds/{refund}/start").status_code in {403, 404}
-    notice = notification_target_for("team-leader", "sales", f"/portal/team-leader/returns?case={case}")
-    assert urlsplit(notice).path == "/portal/team-leader/refunds"
-    assert parse_qs(urlsplit(notice).query) == {"case": [str(case)], "view": ["returns"]}
-    sign_in(monkeypatch, d["inventory"], "team-leader", "inventory")
-    with TestClient(main.app) as client:
-        assert client.get(f"/portal/team-leader/returns?case={case}").status_code == 200
-        assert client.get("/portal/team-leader/refunds").status_code in {403, 404}
-        assert client.post("/portal/team-leader/refunds/returns/actions/proceed", data={"return_id": case}).status_code in {403, 404}
-    with get_transaction_cursor() as cur:
-        cur.execute("""INSERT INTO accounts(account_type,name,email,password_hash,team_leader_role)
-            VALUES('team_leader','Other sales',%s,'hash','sales') RETURNING account_id""", (uuid4().hex + "@sales.test",))
-        other = cur.fetchone()["account_id"]
-    sign_in(monkeypatch, other, "team-leader", "sales")
-    with TestClient(main.app) as client:
-        assert client.get(f"/portal/team-leader/refunds?view=returns&case={case}").status_code == 404
-        assert client.get(f"/portal/team-leader/refunds?refund={refund}").status_code == 404
+        legacy=client.get(f"/portal/team-leader/refunds?view=returns&case={case}",follow_redirects=False)
+        assert legacy.status_code==303 and urlsplit(legacy.headers["location"]).path=="/portal/team-leader/returns"
+        page=client.get(legacy.headers["location"])
+        nav=page.text.split('id="portal-nav"',1)[1].split("</nav>",1)[0]
+        assert "Returns &amp; tracking" in nav and "/portal/team-leader/refunds" not in nav
+        assert 'action="/portal/team-leader/returns/actions/approve"' in page.text
+        approved=client.post("/portal/team-leader/returns/actions/approve",data={"return_id":case,"remarks":"Accepted original delivered goods after review","operation_key":str(uuid4())})
+        assert approved.status_code==200
+        assert returns.get_product_return(case,d["sales"])["processing_supervisor_account_id"]==d["supervisor"]
+        assert "Tracking with Supervisor/Owner" in approved.text
+        denied=client.post("/portal/team-leader/returns/actions/proceed",data={"return_id":case,"remarks":"A leader cannot authorize after handoff","operation_key":str(uuid4())})
+        assert denied.status_code==403
+    assert notification_target_for("team-leader","sales",f"/portal/team-leader/returns?case={case}")==f"/portal/team-leader/returns?case={case}"
 
 
 @pytest.mark.e2e
@@ -162,38 +122,26 @@ def test_dashboard_separates_completed_pending_and_cancellation_refunds_in_brows
         for width in (375, 768, 1440):
             page.set_viewport_size({"width": width, "height": 1000})
             page.goto("http://sales-workspace.test/portal/team-leader/dashboard", wait_until="networkidle")
-            financials = page.locator(".dashboard-financials")
+            financials = page.locator(".operations-dashboard")
             for label, amount in [("Original fulfilled sales", "PHP 1,000.00"), ("Money refunded", "PHP 800.00"), ("Retained sales", "PHP 800.00")]:
-                expect(financials.locator(".dashboard-financial-totals > div").filter(has=page.get_by_text(label, exact=True)).locator("dd")).to_have_text(amount)
+                expect(financials.locator(".operations-totals > div").filter(has=page.get_by_text(label, exact=True)).locator("strong")).to_have_text(amount)
+            page.get_by_text("Refund breakdown and calculation",exact=True).click()
             for label, amount in [("Cancelled orders", "PHP 600.00"), ("Returned products", "PHP 200.00"), ("Pending refund obligations", "PHP 200.00")]:
-                expect(financials.locator(".dashboard-financial-breakdown dl > div").filter(has=page.get_by_text(label, exact=True)).locator("dd")).to_have_text(amount)
+                expect(financials.locator(".operations-money > div").filter(has=page.get_by_text(label, exact=True)).locator("dd")).to_have_text(amount)
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
             page.screenshot(path=str(output / f"dashboard-{width}.png"), full_page=True)
-            page.get_by_role("link", name="View refunds", exact=True).click()
+            page.get_by_role("link",name="Track assigned returns",exact=True).click()
             page.wait_for_load_state("networkidle")
-            expect(page.locator('.sales-resolution-tabs [aria-current="page"]')).to_have_text("Money refunds")
-            expect(page.locator(".refund-hero")).to_have_count(0)
-            expect(page.get_by_text("Open return review and replacements", exact=True)).to_have_count(0)
-            page.get_by_role("link", name="Product returns", exact=True).click()
+            expect(page.locator('.sales-resolution-tabs')).to_have_count(0)
+            expect(page.locator('.portal-nav a[href$="/refunds"]')).to_have_count(0)
+            page.locator('.return-action-queues a[href*="queue=all"]').click()
             page.wait_for_load_state("networkidle")
-            expect(page.locator('.sales-resolution-tabs [aria-current="page"]')).to_have_text("Product returns")
-            row = page.locator(".sales-return-ledger .lifecycle-case").first
-            rows = page.locator(".sales-return-ledger .lifecycle-case-items")
-            content_width = rows.evaluate("el => el.clientWidth - parseFloat(getComputedStyle(el).paddingLeft) - parseFloat(getComputedStyle(el).paddingRight)")
-            assert abs(row.bounding_box()["width"] - content_width) <= 2
-            page.screenshot(path=str(output / f"returns-{width}.png"), full_page=True)
-            page.get_by_role("combobox", name="Filter by status", exact=True).select_option("completed")
-            page.get_by_role("button", name="Filter", exact=True).click()
-            page.wait_for_load_state("networkidle")
-            assert "view=returns" in page.url and "status=completed" in page.url
             page.locator(f'[data-return-open="{case}"]').click()
             page.wait_for_load_state("networkidle")
-            expect(page.get_by_role("dialog", name=f"Return #{case}", exact=True)).to_be_visible()
+            expect(page.get_by_role("dialog",name=f"Return #{case}",exact=True)).to_be_visible()
+            expect(page.locator('form[action$="/proceed"]')).to_have_count(0)
             page.keyboard.press("Escape")
-            page.get_by_role("link", name="Money refunds", exact=True).click()
-            page.wait_for_load_state("networkidle")
-            expect(page.locator('[data-refund-workspace]')).to_be_visible()
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
-            page.screenshot(path=str(output / f"workspace-{width}.png"), full_page=True)
+            page.screenshot(path=str(output/f"tracking-{width}.png"),full_page=True)
         assert not errors, errors
         browser.close()

@@ -80,20 +80,23 @@ READ_FUNCTIONS = (
     "settlement_summary",
     "list_reseller_refund_conversations",
     "owner_operations_summary",
+    "owner_business_snapshot",
+    "owner_stock_snapshot",
     "business_setting",
 )
 
 EXPECTED_CALLS = {
     ("owner", "dashboard"): {
-        "current_metrics",
-        "list_forecasts",
+        "owner_business_snapshot",
+        "owner_stock_snapshot",
+        "settlement_summary",
+        "list_sales_reports",
         "reseller_sales_series",
-        "reseller_most_bought_products",
         "list_notifications",
         "unread_notification_count",
     },
     ("owner", "products"): {"list_products", "count_products", "list_notifications", "unread_notification_count"},
-    ("owner", "reports"): {"settlement_summary","list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
+    ("owner", "reports"): {"list_sales_reports", "count_sales_reports", "list_notifications", "unread_notification_count"},
     ("owner", "forecasts"): {"list_forecasts", "count_forecasts", "latest_forecast_run", "list_forecast_runs", "business_setting", "list_notifications", "unread_notification_count"},
     ("owner", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "refund_financial_summary", "list_notifications", "unread_notification_count"},
     ("owner", "accounts"): {
@@ -155,7 +158,8 @@ def install_read_spies(monkeypatch):
     for name in READ_FUNCTIONS:
         result = (
             METRICS if name in {"current_metrics", "inventory_stock_metrics"}
-            else {} if name in {"owner_operations_summary","settlement_summary"}
+            else {"counts":{},"batches":[],"near_days":14} if name == "owner_stock_snapshot"
+            else {} if name in {"owner_operations_summary","settlement_summary","owner_business_snapshot"}
             else 7 if name == "business_setting"
             else {"pending": 0, "processing": 0, "completed": 0, "failed": 0} if name == "refund_status_counts"
             else {"pending_amount":0,"completed_amount":0} if name == "refund_financial_summary"
@@ -239,7 +243,7 @@ def test_refund_workspace_renders_order_thread_and_audit_evidence(monkeypatch):
     assert "Conversation" in response.text
     assert "Refund conversation" in response.text
     assert "Please return it through GCash to 09171234567." in response.text
-    assert "This conversation is read-only" in response.text
+    assert "Conversation closed" in response.text
 
     activity_response = TestClient(main.app).get("/portal/owner/refunds?refund=8&pane=activity")
     assert "ABC123456" in activity_response.text
@@ -319,6 +323,8 @@ def test_refund_message_api_refreshes_and_sends_without_redirect(monkeypatch, ro
         "send_order_refund_message",
         lambda *args: send_calls.append(args) or message,
     )
+    from app.portals import refunds as refund_portal
+    monkeypatch.setattr(refund_portal,"fetch_one",lambda *a,**kw:{"status":"processing"})
     client = TestClient(main.app)
 
     refreshed = client.get(f"/api/portal/{role_key}/refunds/8/messages?after_id=11")
@@ -358,6 +364,8 @@ def test_refund_message_form_fallback_does_not_add_success_toast(monkeypatch, ro
 @pytest.mark.parametrize("role_key,section", INVENTORY_EXPECTED_CALLS)
 def test_inventory_team_leader_sections_load_only_inventory_data(monkeypatch, role_key, section):
     calls = install_read_spies(monkeypatch)
+    from app.portals import refunds as refund_portal
+    monkeypatch.setattr(refund_portal,"fetch_one",lambda *a,**kw:{"status":"processing"})
     client = TestClient(main.app)
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "inventory")
@@ -405,7 +413,7 @@ def test_section_filters_are_applied(monkeypatch):
     assert client.get("/portal/team-leader/dashboard").status_code == 200
     assert calls["current_metrics"] == [((), {"team_leader_account_id": None})]
     assert calls["list_inquiries"] == []
-    assert calls["list_orders"] == [((), {"order_type": "reseller", "limit": 5, "team_leader_account_id": None})]
+    assert calls["list_orders"] == [((), {"order_type": "reseller", "limit": 5, "team_leader_account_id": None,"exclude_to_pay":True})]
 
     calls = install_read_spies(monkeypatch)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 17)
@@ -485,7 +493,7 @@ def test_team_leader_order_review_lists_every_order_item(monkeypatch):
     assert "Deli Beef</strong><small>4 packs" in response.text
     assert "Bacon</strong><small>1 pack" in response.text
     assert 'class="sales-order-card"' in response.text
-    assert '<details class="sales-order-card" id="order-26">' in response.text
+    assert '<details class="sales-order-card" id="order-26" ' in response.text
     assert 'id="order-26" open' not in response.text
     assert 'class="sales-order-product-line"' in response.text
     assert "order-review-table" not in response.text
@@ -1028,7 +1036,7 @@ def test_reseller_checkout_page_renders_cart_manifest(monkeypatch):
     assert "15-minute payment window" in response.text
     assert "data-receipt-modal" not in response.text
     assert 'name="payment_amount"' not in response.text
-    assert "Place order and reserve stock" in response.text
+    assert "Place order" in response.text
 
 
 def test_reseller_checkout_post_uses_dedicated_route(monkeypatch):
@@ -1253,9 +1261,9 @@ def test_reseller_checkout_success_prompt_links_to_owned_order(monkeypatch):
     response = TestClient(main.app).get("/portal/reseller/checkout?placed=91")
 
     assert response.status_code == 200
-    assert "Your items are reserved." in response.text
+    assert "Your order is ready for payment." in response.text
     assert "15:00" in response.text
-    assert 'href="/portal/reseller/history?view=to_pay#order-91"' in response.text
+    assert 'href="/portal/reseller/history?view=to_pay&amp;order=91#order-91"' in response.text
 
 
 def test_landing_page_does_not_load_metrics(monkeypatch):
@@ -1816,6 +1824,9 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
     monkeypatch.setattr(repositories, "owner_operations_summary", lambda: {})
+    monkeypatch.setattr(repositories, "owner_business_snapshot", lambda: {})
+    monkeypatch.setattr(repositories, "owner_stock_snapshot", lambda: {"counts": {}, "batches": [], "near_days": 14})
+    monkeypatch.setattr(repositories, "list_sales_reports", lambda **kw: [])
     monkeypatch.setattr(
         repositories,
         "current_metrics",
@@ -1868,11 +1879,11 @@ def test_owner_dashboard_renders_executive_sections(monkeypatch):
 
     assert response.status_code == 200
     assert "Forecast priority" not in response.text
-    assert "Sales trend" in response.text
-    assert "Most bought products" in response.text
+    assert "Fulfilled reseller sales" in response.text
+    assert "Where to step in" in response.text
     assert "Stock pulse" not in response.text
-    assert "Upcoming demand" in response.text
-    assert 'aria-label="Business overview"' in response.text
+    assert "Latest Sales submissions" in response.text
+    assert 'aria-label="Business measures"' in response.text
     assert "owner-command-grid" not in response.text
     assert "/portal/owner/conversations" not in response.text
     assert "data-owner-sales-summary" in response.text
@@ -1939,6 +1950,9 @@ def test_owner_dashboard_sales_chart_uses_continuous_line_series(monkeypatch):
     monkeypatch.setattr(repositories, "list_forecasts", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "reseller_most_bought_products", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "owner_operations_summary", lambda: {})
+    monkeypatch.setattr(repositories, "owner_business_snapshot", lambda: {})
+    monkeypatch.setattr(repositories, "owner_stock_snapshot", lambda: {"counts": {}, "batches": [], "near_days": 14})
+    monkeypatch.setattr(repositories, "list_sales_reports", lambda **kw: [])
     monkeypatch.setattr(
         repositories,
         "reseller_sales_series",
@@ -1947,7 +1961,7 @@ def test_owner_dashboard_sales_chart_uses_continuous_line_series(monkeypatch):
         ],
     )
 
-    context = owner_portal.dashboard_context(None)
+    context = owner_portal.owner_sales_chart_context(None)
 
     assert len(context["owner_sales_chart"]) == 31
     assert context["owner_sales_chart"][-1]["sales"] == 700
@@ -1991,7 +2005,7 @@ def test_inventory_dashboard_renders_product_movement_chart(monkeypatch):
     response = client.get("/portal/team-leader/dashboard")
 
     assert response.status_code == 200
-    assert "Product movement analytics" in response.text
+    assert "Product movement" in response.text
     assert "data-inventory-movement-chart" in response.text
     assert "Tocino Ala Eh" in response.text
     assert "Recent inventory logs" not in response.text
@@ -2013,10 +2027,10 @@ def test_team_leader_dashboard_uses_priority_led_workspace():
     base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
     css = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
 
-    assert "dashboard-command" in template
-    assert "dashboard-brief" in template
-    assert "dashboard-signal-strip" in template
-    assert "dashboard-workspace" in template
+    assert "operations-attention" in template
+    assert "operations-heading" in template
+    assert "operations-totals" in template
+    assert "operations-columns" in template
     assert "dashboard-ledger" in template
     assert "metric-card" not in template
     assert 'section-{{ section }}' in base_template
@@ -2244,8 +2258,8 @@ def test_owner_pages_use_workflow_specific_modern_layouts():
     }
     css = open("app/static/css/portals/owner.css", encoding="utf-8").read()
 
-    assert "owner-dashboard-page" in templates["dashboard"]
-    assert "owner-signal-strip" in templates["dashboard"]
+    assert "owner-brief" in templates["dashboard"]
+    assert "owner-brief-metrics" in templates["dashboard"]
     assert "metric-card" not in templates["dashboard"]
     assert "owner-products-page" in templates["products"]
     assert "owner-workspace-surface" in templates["products"]

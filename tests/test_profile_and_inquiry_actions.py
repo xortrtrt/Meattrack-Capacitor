@@ -683,7 +683,7 @@ def test_order_approval_requires_payment_proof(monkeypatch):
                     "order_id": 7,
                     "order_type": "reseller",
                     "status": "pending",
-                    "created_by_account_id": 9,
+                    "created_by_account_id": 9, "total_amount":100, "payment_amount":100,
                 }
             elif "account_type = 'team_leader'" in query:
                 self.result = {"account_id": 4}

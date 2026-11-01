@@ -1,0 +1,134 @@
+erDiagram
+
+    PRODUCT_RETURNS {
+        bigint return_id PK
+        bigint order_id FK
+        text resolution
+        text status
+        bigint requested_by_account_id FK
+        bigint approved_by_account_id FK
+        numeric credit
+        integer quote_revision
+        integer accepted_revision
+        bigint payment_verified_by_account_id FK
+        text payment_reference UK
+        uuid operation_key UK
+        bigint verified_by_account_id FK
+        bigint settlement_authorized_by_account_id FK
+        bigint processing_supervisor_account_id FK
+        bigint replacement_prepared_by_account_id FK
+        bigint replacement_delivered_by_account_id FK
+    }
+
+    INVENTORY_ITEMS {
+        bigint item_id PK
+        text item_type
+        text name
+        text unit
+        numeric base_price
+        numeric quantity_available
+    }
+
+    INVENTORY_BATCHES {
+        bigint batch_id PK
+        bigint item_id FK
+        text batch_code UK
+        numeric quantity_available
+        text unit
+        date expiry_date
+        text quality_status
+    }
+
+    REPLACEMENT_QUOTE_LINES {
+        bigint quote_line_id PK
+        bigint return_id FK
+        integer revision
+        bigint product_id FK
+        numeric quantity
+        numeric unit_price
+        numeric line_total
+        jsonb pricing_components
+    }
+
+    RETURN_OFFER_SNAPSHOTS {
+        bigint return_id PK, FK
+        integer revision PK
+        numeric credit
+        numeric replacement_total
+    }
+
+    REPLACEMENT_STOCK_RESERVATIONS {
+        bigint return_id PK, FK
+        bigint batch_id PK, FK
+        numeric quantity
+    }
+
+    REPLACEMENT_RELEASES {
+        bigint release_id PK
+        bigint return_id FK
+        bigint batch_id FK
+        numeric quantity
+        bigint released_by_account_id FK
+        bigint inventory_movement_id FK, UK
+    }
+
+    INVENTORY_MOVEMENTS {
+        bigint movement_id PK
+        bigint item_id FK
+        bigint affected_batch_id FK
+        bigint production_batch_id FK
+        bigint order_id FK
+        numeric quantity_delta
+        text unit
+        bigint actor_account_id FK
+    }
+
+    RETURN_CONVERSATION_MESSAGES {
+        bigint message_id PK
+        bigint return_id FK
+        bigint sender_account_id FK
+        text content
+    }
+
+    RETURN_CONVERSATION_READS {
+        bigint return_id PK, FK
+        bigint account_id PK, FK
+        bigint last_message_id
+    }
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email
+        text team_leader_role
+        boolean is_active
+    }
+
+    INVENTORY_ITEMS ||..o{ INVENTORY_BATCHES : "item_id"
+    INVENTORY_ITEMS ||..o{ INVENTORY_MOVEMENTS : "item_id"
+    INVENTORY_BATCHES |o..o{ INVENTORY_MOVEMENTS : "affected_batch_id"
+    INVENTORY_BATCHES |o..o{ INVENTORY_MOVEMENTS : "production_batch_id"
+    ACCOUNTS |o..o{ INVENTORY_MOVEMENTS : "actor_account_id"
+    ACCOUNTS ||..o{ PRODUCT_RETURNS : "requested_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "approved_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "payment_verified_by_account_id"
+    PRODUCT_RETURNS ||..o{ REPLACEMENT_QUOTE_LINES : "return_id"
+    INVENTORY_ITEMS ||..o{ REPLACEMENT_QUOTE_LINES : "product_id"
+    PRODUCT_RETURNS ||--o{ REPLACEMENT_STOCK_RESERVATIONS : "return_id"
+    INVENTORY_BATCHES ||--o{ REPLACEMENT_STOCK_RESERVATIONS : "batch_id"
+    PRODUCT_RETURNS ||..o{ REPLACEMENT_RELEASES : "return_id"
+    INVENTORY_BATCHES ||..o{ REPLACEMENT_RELEASES : "batch_id"
+    ACCOUNTS ||..o{ REPLACEMENT_RELEASES : "released_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "verified_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "settlement_authorized_by_account_id"
+    INVENTORY_MOVEMENTS |o..o| REPLACEMENT_RELEASES : "inventory_movement_id"
+    PRODUCT_RETURNS ||--o{ RETURN_OFFER_SNAPSHOTS : "return_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "processing_supervisor_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_prepared_by_account_id"
+    ACCOUNTS |o..o{ PRODUCT_RETURNS : "replacement_delivered_by_account_id"
+    PRODUCT_RETURNS ||..o{ RETURN_CONVERSATION_MESSAGES : "return_id"
+    ACCOUNTS |o..o{ RETURN_CONVERSATION_MESSAGES : "sender_account_id"
+    PRODUCT_RETURNS ||--o{ RETURN_CONVERSATION_READS : "return_id"
+    ACCOUNTS ||--o{ RETURN_CONVERSATION_READS : "account_id"

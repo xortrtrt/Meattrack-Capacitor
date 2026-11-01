@@ -22,12 +22,11 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
         "resellers.manage",
     }),
     "team-leader:sales": frozenset({
-        "refunds.view_assigned",
         "conversations.manage",
         "notifications.view",
         "operations.view_team",
         "orders.manage_assigned",
-        "returns.view", "returns.review", "returns.authorize",
+        "returns.view", "returns.review",
         "profile.manage_own",
         "reports.view_assigned",
         "resellers.view_assigned",
@@ -61,7 +60,6 @@ PORTAL_SECTION_CAPABILITIES = {
         "profile": "profile.manage_own", "notifications": "notifications.view",
     },
     "team-leader:sales": {
-        "refunds": "refunds.view_assigned",
         "returns": "returns.view",
         "dashboard": "operations.view_team", "live-chat": "conversations.manage",
         "messages": "conversations.manage", "resellers": "resellers.view_assigned",
@@ -85,6 +83,7 @@ PORTAL_SECTION_CAPABILITIES = {
 }
 
 OWNER_SECTION_CAPABILITIES = {
+    "messages": "conversations.manage",
     "returns": "returns.view", "expired-stock": "inventory.view_all", "product-details": "inventory.view_all",
     "dashboard": "operations.view",
     "operations": "operations.view",

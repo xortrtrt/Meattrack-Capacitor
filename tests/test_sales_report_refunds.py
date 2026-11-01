@@ -28,7 +28,7 @@ def test_replacement_difference_separated_and_topup_not_ordinary_sales(lifecycle
     if price > 100:
         returns.record_return_payment(case, d["reseller"], [refund_proof()])
         returns.verify_return_payment(
-            case, d["sales"], "SIM" + uuid4().hex, "50", "SIMULATED additional payment confirmed"
+            case, d["supervisor"], "SIM" + uuid4().hex, "50", "SIMULATED additional payment confirmed"
         )
     returns.release_replacement(case, d["inventory"], "Released the verified replacement once")
     if refunded:
@@ -147,6 +147,7 @@ def test_snapshot_and_concurrent_refund_are_consistent(lifecycle):  # noqa: F811
             refund,
             d["supervisor"],
             "sales-supervisor",
+            transfer_amount=200,
             refund_method="SIMULATED bank",
             transaction_reference="SIM" + uuid4().hex,
             transferred_at=business_now(),

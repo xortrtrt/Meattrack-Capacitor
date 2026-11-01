@@ -1,0 +1,24 @@
+flowchart TB
+    USER[User browser] -->|HTTPS| NGINX
+    subgraph VPS[Contabo VPS: provider confirmed in project knowledge]
+        NGINX[Host Nginx and TLS configuration]
+        subgraph COMPOSE[Docker Compose services]
+            APP[app: FastAPI / Uvicorn]
+            WORKER[worker: python -m app.worker]
+            MIGRATE[migrate: one-shot schema upgrade]
+            PG[(db: PostgreSQL 16)]
+        end
+        DATA[(postgres_data persistent volume)]
+        PROFILE[(profile_uploads persistent volume)]
+        NGINX -->|127.0.0.1:8000| APP
+        APP -->|Private backend network| PG
+        WORKER -->|Private backend network| PG
+        MIGRATE -->|Apply SQL and checksum history| PG
+        PG --- DATA
+        APP --- PROFILE
+        PG -.->|Healthy database required| MIGRATE
+        MIGRATE -.->|Successful completion required| APP
+        MIGRATE -.->|Successful completion required| WORKER
+    end
+    APP --> EXT[Configured external providers]
+    WORKER --> EXT

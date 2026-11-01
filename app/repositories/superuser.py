@@ -222,6 +222,19 @@ def confirm_owner_step_up(account_id: int, challenge_id: int, otp_code: str) -> 
         raise ValueError(error_message)
 
 
+def _processing_workload(cur, account_id: int) -> dict[str, int]:
+    """Accepted returns include post-release follow-ups; a processor is distinct from an assignee."""
+    cur.execute("""SELECT
+        (SELECT COUNT(*) FROM product_returns r WHERE r.processing_supervisor_account_id=%s
+          AND (r.status NOT IN ('completed','rejected') OR EXISTS(
+            SELECT 1 FROM return_customer_followups f WHERE f.return_id=r.return_id AND f.status='open'))) return_cases,
+        (SELECT COUNT(*) FROM order_refunds WHERE assigned_supervisor_account_id=%s
+          AND status IN ('pending','processing','failed')) refund_assignments,
+        (SELECT COUNT(*) FROM order_refunds WHERE processing_by_account_id=%s AND status='processing') active_transfers
+    """, (account_id, account_id, account_id))
+    return {key: int(value or 0) for key, value in cur.fetchone().items()}
+
+
 def set_account_active(account_id: int, active: bool, actor_account_id: int, reason: str) -> dict:
     clean_reason = " ".join(reason.strip().split())
     if len(clean_reason) < 5 or len(clean_reason) > 500:
@@ -258,6 +271,7 @@ def set_account_active(account_id: int, active: bool, actor_account_id: int, rea
                 (account_id, account_id, account_id, account_id, account_id),
             )
             workload = dict(cur.fetchone())
+            workload.update(_processing_workload(cur, account_id))
             if any(int(value) for value in workload.values()):
                 summary = ", ".join(f"{value} {key}" for key, value in workload.items() if int(value))
                 raise ValueError(f"Transfer this team leader's active work before deactivation: {summary}.")
@@ -363,6 +377,12 @@ def transfer_team_leader_work(
         if not cur.fetchone()["is_active"]:
             raise ValueError("The destination team leader must be active.")
 
+        processing = _processing_workload(cur, from_account_id)
+        if processing["active_transfers"]:
+            raise ValueError("Finish active refund transfers or have an Owner take them over before transferring work.")
+        if (processing["return_cases"] or processing["refund_assignments"]) and destination["team_leader_role"] != "sales-supervisor":
+            raise ValueError("Choose an active Sales Supervisor to receive return processing and refund responsibilities.")
+
         updates = (
             ("resellers", "team_leader_account_id", "reseller_status IN ('pending','active','suspended')"),
             ("inquiries", "assigned_team_leader_account_id", "status IN ('pending','assigned','contacted')"),
@@ -377,6 +397,22 @@ def transfer_team_leader_work(
                 (to_account_id, from_account_id),
             )
             counts[table] = cur.rowcount
+        cur.execute("""UPDATE product_returns r SET processing_supervisor_account_id=%s,updated_at=now()
+            WHERE processing_supervisor_account_id=%s AND (status NOT IN ('completed','rejected') OR EXISTS(
+                SELECT 1 FROM return_customer_followups f WHERE f.return_id=r.return_id AND f.status='open'))
+            RETURNING return_id;""", (to_account_id, from_account_id))
+        transferred_returns = [int(row["return_id"]) for row in cur.fetchall()]
+        counts["product_returns"] = len(transferred_returns)
+        from .notifications import _create_notification_cursor
+        for return_id in transferred_returns:
+            cur.execute("""INSERT INTO product_return_events(return_id,actor_account_id,action,remarks,customer_message)
+                VALUES(%s,%s,'processing_reassigned',%s,'Your return is now handled by another Supervisor.');""",
+                (return_id, actor_account_id, f"Owner transferred processing to account #{to_account_id}. {clean_reason}"))
+            _create_notification_cursor(cur, recipient_account_id=to_account_id,
+                category="return", title="Return processing transferred to you",
+                message=f"Review return #{return_id} and its current approvals, custody, and follow-ups.",
+                target_url=f"/portal/sales-supervisor/returns?case={return_id}",
+                source_type="product_returns", source_id=return_id)
         cur.execute(
             "UPDATE team_leader_presence SET active_conversation_id = NULL, availability = 'offline', updated_at = now() WHERE account_id = %s;",
             (from_account_id,),
@@ -681,6 +717,9 @@ def list_team_workload() -> list[dict]:
                     AND o.status IN ('to_pay','pending','approved')) AS open_orders,
                (SELECT COUNT(*) FROM order_refunds rf WHERE rf.assigned_supervisor_account_id = a.account_id
                     AND rf.status IN ('pending','processing','failed')) AS open_refunds,
+               (SELECT COUNT(*) FROM product_returns r WHERE r.processing_supervisor_account_id=a.account_id
+                    AND (r.status NOT IN ('completed','rejected') OR EXISTS(SELECT 1 FROM return_customer_followups f
+                         WHERE f.return_id=r.return_id AND f.status='open'))) AS open_returns,
                (SELECT COUNT(*) FROM chat_conversations c WHERE c.assigned_team_leader_account_id = a.account_id
                     AND c.status IN ('queued','active','awaiting_contact','follow_up')) AS open_conversations
         FROM accounts a
@@ -864,7 +903,8 @@ def owner_export_rows(resource: str) -> list[dict]:
                    CASE WHEN x.sales_report_id IS NOT NULL THEN sr.total_orders ELSE b.retained_orders END retained_orders,
                    CASE WHEN x.sales_report_id IS NOT NULL THEN false ELSE b.reconciliation_required END reconciliation_required,sr.notes,sr.submitted_at
             FROM sales_reports sr LEFT JOIN sales_report_balances b USING(sales_report_id)
-            LEFT JOIN sales_report_activity_snapshots x USING(sales_report_id) ORDER BY sr.sales_report_id;
+            LEFT JOIN sales_report_activity_snapshots x USING(sales_report_id)
+            WHERE sr.report_source='team_leader' ORDER BY sr.sales_report_id;
         """,
         "forecasts": """
             SELECT forecast_run_id, run_by_account_id, model_name, input_period_start,

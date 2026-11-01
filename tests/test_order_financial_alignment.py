@@ -43,7 +43,7 @@ def paid_pending_order(d, amount=600):
 def settle(d, refund):
     repositories.start_order_refund(refund, d["supervisor"], "sales-supervisor")
     repositories.complete_order_refund(
-        refund, d["supervisor"], "sales-supervisor", refund_method="Simulated bank transfer",
+        refund, d["supervisor"], "sales-supervisor",transfer_amount=fetch_one("SELECT amount FROM order_refunds WHERE order_refund_id=%s",(refund,))["amount"], refund_method="Simulated bank transfer",
         transaction_reference="REF" + uuid4().hex, transferred_at=business_now(),
         internal_note="Simulated transfer matched to the original collection", proof=refund_proof(),
     )
@@ -75,7 +75,7 @@ def test_all_collection_and_refund_types_reconcile_without_counting_replacement_
     complete_refund(d, cheaper)
     dearer = replacement(d, 250)
     returns.record_return_payment(dearer, d["reseller"], [refund_proof()])
-    returns.verify_return_payment(dearer, d["sales"], "TOPUP" + uuid4().hex, 50, "Confirmed the additional collection")
+    returns.verify_return_payment(dearer, d["supervisor"], "TOPUP" + uuid4().hex, 50, "Confirmed the additional collection")
     returns.release_replacement(dearer, d["inventory"], "Released the paid replacement")
     with get_transaction_cursor() as cur:
         cur.execute("INSERT INTO orders(order_type,created_by_account_id,status,total_amount) VALUES('walk_in',%s,'fulfilled',700);",
@@ -128,7 +128,7 @@ def test_corrupted_quote_or_collection_cannot_release_stock(lifecycle, field, va
     d = lifecycle
     case = replacement(d, 250)
     returns.record_return_payment(case, d["reseller"], [refund_proof()])
-    returns.verify_return_payment(case, d["sales"], "TOPUP" + uuid4().hex, 50, "Confirmed the exact additional collection")
+    returns.verify_return_payment(case, d["supervisor"], "TOPUP" + uuid4().hex, 50, "Confirmed the exact additional collection")
     with get_transaction_cursor() as cur:
         # Field names come only from this parametrization.
         cur.execute(f"UPDATE product_returns SET {field}=%s WHERE return_id=%s", (value, case))
@@ -154,7 +154,7 @@ def test_verified_extra_collection_requires_its_payment_proof_at_release(lifecyc
     d = lifecycle
     case = replacement(d, 250)
     returns.record_return_payment(case, d["reseller"], [refund_proof()])
-    returns.verify_return_payment(case, d["sales"], "TOPUP" + uuid4().hex, 50, "Verified additional collection")
+    returns.verify_return_payment(case, d["supervisor"], "TOPUP" + uuid4().hex, 50, "Verified additional collection")
     with get_transaction_cursor() as cur:
         cur.execute("DELETE FROM return_attachments WHERE return_id=%s AND purpose='payment'", (case,))
     with pytest.raises(ValueError, match="missing its current payment proof"):
@@ -207,7 +207,7 @@ def test_original_collection_cannot_reuse_replacement_reference_or_proof(lifecyc
     proof = refund_proof()
     returns.record_return_payment(case, d["reseller"], [proof])
     reference = "TOPUP" + uuid4().hex.upper()
-    returns.verify_return_payment(case, d["sales"], reference, 50, "Verified replacement collection reference")
+    returns.verify_return_payment(case, d["supervisor"], reference, 50, "Verified replacement collection reference")
     order = paid_pending_order(d)
     with pytest.raises(psycopg2.errors.UniqueViolation, match="another collection ledger"):
         with get_transaction_cursor() as cur:
@@ -253,7 +253,7 @@ def test_concurrent_original_and_replacement_collections_cannot_share_reference(
                     cur.execute("UPDATE orders SET payment_transaction_number=%s,payment_transaction_key=%s WHERE order_id=%s",
                                 (reference, reference, order))
             else:
-                returns.verify_return_payment(case, d["sales"], reference, 50, "Simulated concurrent collection")
+                returns.verify_return_payment(case, d["supervisor"], reference, 50, "Simulated concurrent collection")
             return True
         except (ValueError, psycopg2.errors.UniqueViolation):
             return False

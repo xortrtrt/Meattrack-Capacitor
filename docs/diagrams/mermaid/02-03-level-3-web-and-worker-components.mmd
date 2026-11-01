@@ -1,0 +1,48 @@
+flowchart TB
+    UI[Jinja2 templates and static JavaScript]
+    GUARD[Session middleware, CSRF, capabilities and ownership scope]
+    subgraph WEB[FastAPI web application]
+        PUB[Public, auth, chatbot and live-chat routers]
+        PORTAL[Owner, team-leader, reseller, return, refund and report handlers]
+        AUTH[Account, consent and session operations]
+        ORDER[Cart, order and reservation repository]
+        STOCK[Inventory products, materials, FEFO and movement repositories]
+        RETURN[Returns, replacement workflow and custody repositories]
+        MONEY[Refund repository and integrity checks]
+        REPORT[Reporting, saved documents and Owner insights]
+        CHAT[Public chat, reseller messaging and case conversations]
+        FC[Forecast queue and run repository]
+        DATA[Database connection pool and transaction helpers]
+    end
+    UI <-->|Forms and fetch requests| GUARD
+    GUARD --> PUB
+    GUARD --> PORTAL
+    PUB --> AUTH
+    PUB --> CHAT
+    PUB --> ORDER
+    PORTAL --> AUTH
+    PORTAL --> ORDER
+    PORTAL --> STOCK
+    PORTAL --> RETURN
+    PORTAL --> MONEY
+    PORTAL --> REPORT
+    PORTAL --> CHAT
+    PORTAL --> FC
+    ORDER --> STOCK
+    RETURN --> STOCK
+    RETURN --> MONEY
+    REPORT --> MONEY
+    AUTH --> DATA
+    ORDER --> DATA
+    STOCK --> DATA
+    RETURN --> DATA
+    MONEY --> DATA
+    REPORT --> DATA
+    CHAT --> DATA
+    FC --> DATA
+    DATA <--> DB[(PostgreSQL)]
+    WORKER[Worker orchestration] --> FC
+    WORKER --> ORDER
+    WORKER --> CHAT
+    WORKER --> MAINT[Outbox, expiry, cleanup and system-status operations]
+    MAINT --> DATA

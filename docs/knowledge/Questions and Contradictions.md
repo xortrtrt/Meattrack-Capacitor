@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, questions, documentation]
-verified: 2026-10-28
+verified: 2026-10-30
 ---
 # Questions and contradictions
 
@@ -9,10 +9,12 @@ setup does not change application policy or rewrite older guides.
 
 | Observation | Current evidence | How to handle it |
 | --- | --- | --- |
+| `database/meattrack_erd.mmd` is an older partial ERD, including an overly restrictive reseller/account link | Current baseline has 71 tables; `accounts.reseller_id` is nullable and non-unique; the migration runner adds one metadata table | Use the current Mermaid pack in [[System Diagrams]] and verify final CREATE/ALTER/index definitions for schema work |
 | Earlier README deployment heading named Hostinger | Project owner confirmed Contabo VPS on 2026-10-29; README corrected | Use Contabo for hosting references; expiry remains unverified. See [[Database and Operations]] |
 | `docs/product-lifecycle.md` says return photos are optional | `docs/refund-return-process.md` and `app/repositories/product_returns.py` require evidence for new requests | Use current required-evidence behavior; preserve old cases |
+| Older notes describe unpaid stock holds and a combined Sales money-refund workspace | User-directed migrations 040–042 introduce paid-only reservations, processor handoff, and internal media/read cursors | Follow [[Orders and Inventory]], [[Returns and Financials]], and [[Roles and Access]]; verify deployment separately |
 | Earlier guides and migration 036 describe a separate Sales confirmation after Inventory verification | The 2026-10-29 user-directed complete-match receipt now clears the existing Sales approval atomically; historical reconciliation can still use manual confirmation | Require current Sales approval, complete verified custody, accepted selection, and payment clearance; see [[Returns and Financials]] and [[Decisions]] |
-| `docs/HANDOFF.md` lists 33 migrations and historical Git/deployment status | Local source has migrations through 036 | Read actual migration records and verify server revision for deployment work |
+| `docs/HANDOFF.md` lists 33 migrations and historical Git/deployment status | Local source has migrations through 044; the local development database has applied them | Read actual migration records and verify server revision for deployment work |
 | README quick start enables local security controls, while its closing security note says local controls are off by default | Actual behavior depends on `app/config.py`, Compose values, and environment | Inspect relevant runtime settings before explaining defaults |
 
 Related: [[Returns and Financials]], [[Roles and Access]], [[Database and Operations]],

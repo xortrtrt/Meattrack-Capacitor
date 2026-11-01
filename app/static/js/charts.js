@@ -244,6 +244,18 @@
                 }
                 payload.textContent = JSON.stringify(rows);
                 renderChart(rows);
+                const table = document.querySelector('[data-owner-sales-table]');
+                if (table) {
+                    table.replaceChildren(...rows.map((row) => {
+                        const tr = document.createElement('tr');
+                        [row.label, formatMoney(row.sales), formatQuantity(row.orders)].forEach((value) => {
+                            const cell = document.createElement('td');
+                            cell.textContent = value;
+                            tr.appendChild(cell);
+                        });
+                        return tr;
+                    }));
+                }
                 const summary = document.querySelector("[data-owner-sales-summary]");
                 if (summary) {
                     summary.querySelector("[data-owner-sales-total]").textContent = formatMoney(data.total);

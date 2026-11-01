@@ -75,13 +75,11 @@ def test_business_settings_reject_invalid_values_before_database_access(values, 
         superuser.update_business_settings(values, 1, "Owner governance update")
 
 
-def test_owner_step_up_window_expires_server_side(monkeypatch):
-    now = owner_portal.business_now()
-    active = SimpleNamespace(session={"owner_step_up_until": int(now.timestamp()) + 30})
-    expired = SimpleNamespace(session={"owner_step_up_until": int(now.timestamp()) - 1})
+def test_owner_actions_do_not_depend_on_old_step_up_expiry(monkeypatch):
+    request=SimpleNamespace(session={"role_key":"owner","account_id":1,"owner_step_up_until":0})
+    assert owner_portal.owner_step_up_active(request)
+    assert owner_portal.require_owner_step_up(request,"products") is None
 
-    assert owner_portal.owner_step_up_active(active)
-    assert not owner_portal.owner_step_up_active(expired)
 
 
 def test_csv_cells_are_guarded_against_spreadsheet_formula_execution():

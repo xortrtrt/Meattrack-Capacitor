@@ -1,0 +1,16 @@
+{% macro participant_avatar(thread) -%}
+  {% set prefix = 'processor_' if role_key == 'reseller' else 'reseller_' %}
+  <span class="sales-message-avatar internal-person-avatar">
+    {% if thread[prefix ~ 'profile_image_path'] %}
+    <img src="{{ url_for('static',path=thread[prefix ~ 'profile_image_path']) }}" alt="" style="object-position:{{ thread[prefix ~ 'profile_image_position_x']|default(50) }}% {{ thread[prefix ~ 'profile_image_position_y']|default(50) }}%;transform:scale({{ thread[prefix ~ 'profile_image_scale']|default(1) }})">
+    {% else %}<i data-lucide="user-round" aria-hidden="true"></i>{% endif %}
+  </span>
+{%- endmacro %}
+{% for thread in replacement_threads %}
+  {% set selected = replacement_chat|default(none) and replacement_chat.return_id == thread.return_id %}
+  <a class="sales-message-row{{ ' is-active' if selected else '' }}" href="?replacement={{ thread.return_id }}"{% if selected %} aria-current="page"{% endif %} data-replacement-thread-id="{{ thread.return_id }}">
+    {{ participant_avatar(thread) }}
+    <span class="sales-message-row-copy"><strong>{{ thread.processor_name if role_key == 'reseller' else thread.reseller_name }}</strong><span class="replacement-row-reference">Replacement #{{ thread.return_id }} · Order #{{ thread.order_id }}</span><small data-replacement-thread-preview>{{ thread.last_message or 'Start a conversation' }}</small></span>
+    {% if thread.unread_count %}<b data-replacement-thread-unread aria-label="{{ thread.unread_count }} unread messages">{{ '99+' if thread.unread_count > 99 else thread.unread_count }}</b>{% endif %}
+  </a>
+{% endfor %}

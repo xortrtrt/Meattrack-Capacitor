@@ -20,9 +20,9 @@ from ._shared import _add_log_cursor
 from .notifications import _create_notification_cursor
 
 ORDER_ACTIONS = ("created_walk_in_sale", "approved_reseller_order", "rejected_reseller_order", "fulfilled_reseller_order")
-RETURN_ACTIONS = ("sales_approved", "rejected", "settlement_authorized", "payment_verified")
+RETURN_ACTIONS = ("sales_approved", "rejected", "settlement_authorized", "payment_verified", "replacement_delivered")
 REFUND_ACTIONS = ("sent_refund_conversation_message", "started_manual_refund", "failed_manual_refund", "completed_manual_refund", "took_over_manual_refund")
-SECTIONS = ("summary", "sales", "orders", "returns", "refunds")
+SECTIONS = ("summary", "orders", "sales", "returns", "refunds")
 
 
 def _jsonable(value):

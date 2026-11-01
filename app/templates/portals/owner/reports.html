@@ -1,7 +1,6 @@
-{% include 'portals/_settlement_summary.html' %}
 <div class="owner-page owner-reports-page owner-directory-page">
   <section class="panel owner-workspace-surface">
-    <header class="panel-heading"><div><span class="eyebrow">Sales reporting</span><h2>Sales leader reports</h2><p class="hint">Open a submitted activity report to review its frozen sales, orders, returns and refund outcomes. Earlier sales reports remain labelled as legacy reports.</p></div><form action="/portal/owner/exports/reports.csv" method="post"><button class="button subtle" type="submit">Export summary CSV</button></form></header>
+    <header class="panel-heading"><div><span class="eyebrow">Sales reporting</span><h2>Sales leader reports</h2><p class="hint">Open a submitted activity report to review its frozen sales, orders, returns and refund outcomes. Earlier sales reports remain labelled as legacy reports.</p></div><form action="/portal/owner/exports/reports.csv" method="post"><button class="button subtle" type="submit">Export all Sales summaries</button></form></header>
     <form class="filter-bar owner-directory-filters" method="get">
       <label>Search reports<input name="q" value="{{ sales_reports_page.filters.q }}" placeholder="Report number, submitted by, or notes"></label>
       <label>Sort<select name="sort">{% for value, label in [('', 'Newest'), ('period_desc', 'Latest period'), ('sales_desc', 'Sales high–low'), ('orders_desc', 'Orders high–low'), ('oldest', 'Oldest')] %}<option value="{{ value }}" {{ 'selected' if sales_reports_page.filters.sort == value else '' }}>{{ label }}</option>{% endfor %}</select></label>

@@ -4,6 +4,7 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    stop_grace_period: 2m
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-MeatTrack Database}"
       POSTGRES_USER: ${POSTGRES_USER:-meattrack}
@@ -18,6 +19,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+      start_period: 2m
 
   mail-capture:
     build: .
@@ -90,6 +92,8 @@ services:
     volumes:
       - .:/app
     depends_on:
+      db:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
       mail-capture:
@@ -132,6 +136,8 @@ services:
     volumes:
       - .:/app
     depends_on:
+      db:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
       mail-capture:

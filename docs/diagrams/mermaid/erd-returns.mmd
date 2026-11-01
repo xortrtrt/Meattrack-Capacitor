@@ -1,0 +1,174 @@
+erDiagram
+
+    ORDERS {
+        bigint order_id PK
+        text order_type
+        bigint reseller_id FK
+        bigint created_by_account_id FK
+        bigint team_leader_account_id FK
+        bigint approved_by_account_id FK
+        timestamptz order_date
+        text status
+        timestamptz fulfilled_at
+        numeric total_amount
+    }
+
+    ORDER_ITEMS {
+        bigint order_item_id PK
+        bigint order_id FK
+        bigint product_id FK
+        numeric quantity
+        text unit
+        numeric unit_price
+        numeric line_total
+    }
+
+    INVENTORY_BATCHES {
+        bigint batch_id PK
+        bigint item_id FK
+        text batch_code UK
+        numeric quantity_available
+        text unit
+        date expiry_date
+        text quality_status
+    }
+
+    FULFILLMENT_ALLOCATIONS {
+        bigint allocation_id PK
+        bigint order_item_id FK
+        bigint batch_id FK
+        numeric quantity
+        bigint verified_by_account_id FK
+    }
+
+    PRODUCT_RETURNS {
+        bigint return_id PK
+        bigint order_id FK
+        text resolution
+        text status
+        bigint requested_by_account_id FK
+        bigint approved_by_account_id FK
+        numeric credit
+        integer quote_revision
+        integer accepted_revision
+        bigint payment_verified_by_account_id FK
+        text payment_reference UK
+        uuid operation_key UK
+        bigint verified_by_account_id FK
+        bigint settlement_authorized_by_account_id FK
+        bigint processing_supervisor_account_id FK
+        bigint replacement_prepared_by_account_id FK
+        bigint replacement_delivered_by_account_id FK
+    }
+
+    PRODUCT_RETURN_LINES {
+        bigint return_line_id PK
+        bigint return_id FK
+        bigint allocation_id FK
+        numeric quantity
+        numeric received_quantity
+        numeric unit_price
+    }
+
+    PRODUCT_RETURN_RECEIPTS {
+        bigint receipt_id PK
+        bigint return_id FK
+        uuid operation_key UK
+        bigint received_by_account_id FK
+        text location
+    }
+
+    PRODUCT_RETURN_RECEIPT_LINES {
+        bigint receipt_line_id PK
+        bigint receipt_id FK
+        bigint return_line_id FK
+        bigint holding_id FK, UK
+        bigint movement_id FK, UK
+        numeric quantity
+    }
+
+    EXPIRED_HOLDINGS {
+        bigint holding_id PK
+        bigint product_id FK
+        bigint batch_id FK
+        bigint return_line_id FK
+        text source
+        date expiry_date
+        numeric quantity_remaining
+        text location
+        bigint created_by_account_id FK
+    }
+
+    EXPIRED_STOCK_MOVEMENTS {
+        bigint movement_id PK
+        bigint holding_id FK
+        text action
+        numeric quantity
+        bigint actor_account_id FK
+        uuid operation_key UK
+    }
+
+    RETURN_ATTACHMENTS {
+        bigint attachment_id PK
+        bigint return_id FK
+        integer revision
+        bytea content
+        bigint uploaded_by_account_id FK
+    }
+
+    PRODUCT_RETURN_EVENTS {
+        bigint event_id PK
+        bigint return_id FK
+        bigint actor_account_id FK
+        text action
+        uuid operation_key UK
+        bigint refund_id FK
+        bigint refund_attempt_id FK
+        numeric amount
+    }
+
+    RETURN_CUSTOMER_FOLLOWUPS {
+        bigint followup_id PK
+        bigint return_id FK
+        bigint reported_by_account_id FK
+        uuid report_key UK
+        text message
+        text status
+        bigint resolved_by_account_id FK
+    }
+
+    RETURN_FOLLOWUP_MESSAGES {
+        bigint followup_id PK, FK
+        uuid client_message_id PK
+        text content
+        bigint reseller_message_id FK
+    }
+
+    RESELLER_MESSAGES {
+        bigint reseller_message_id PK
+        bigint conversation_id FK
+        bigint sender_account_id FK
+        text content
+        bigint return_id FK
+    }
+
+    ORDERS ||..o{ ORDER_ITEMS : "order_id"
+    ORDER_ITEMS ||..o{ FULFILLMENT_ALLOCATIONS : "order_item_id"
+    INVENTORY_BATCHES ||..o{ FULFILLMENT_ALLOCATIONS : "batch_id"
+    ORDERS ||..o{ PRODUCT_RETURNS : "order_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_LINES : "return_id"
+    FULFILLMENT_ALLOCATIONS ||..o{ PRODUCT_RETURN_LINES : "allocation_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_EVENTS : "return_id"
+    PRODUCT_RETURNS ||..o{ RETURN_ATTACHMENTS : "return_id"
+    INVENTORY_BATCHES |o..o{ EXPIRED_HOLDINGS : "batch_id"
+    PRODUCT_RETURN_LINES |o..o{ EXPIRED_HOLDINGS : "return_line_id"
+    EXPIRED_HOLDINGS ||..o{ EXPIRED_STOCK_MOVEMENTS : "holding_id"
+    PRODUCT_RETURNS ||..o{ PRODUCT_RETURN_RECEIPTS : "return_id"
+    PRODUCT_RETURN_RECEIPTS ||..o{ PRODUCT_RETURN_RECEIPT_LINES : "receipt_id"
+    PRODUCT_RETURN_LINES ||..o{ PRODUCT_RETURN_RECEIPT_LINES : "return_line_id"
+    EXPIRED_HOLDINGS ||..o| PRODUCT_RETURN_RECEIPT_LINES : "holding_id"
+    EXPIRED_STOCK_MOVEMENTS ||..o| PRODUCT_RETURN_RECEIPT_LINES : "movement_id"
+    PRODUCT_RETURNS |o..o{ RESELLER_MESSAGES : "return_id"
+    PRODUCT_RETURNS ||..o{ RETURN_CUSTOMER_FOLLOWUPS : "return_id"
+    RETURN_CUSTOMER_FOLLOWUPS ||--o{ RETURN_FOLLOWUP_MESSAGES : "followup_id"
+    RESELLER_MESSAGES |o..o{ RETURN_FOLLOWUP_MESSAGES : "reseller_message_id"

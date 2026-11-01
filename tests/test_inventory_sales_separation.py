@@ -78,7 +78,8 @@ def test_inventory_reads_stock_only_while_sales_retains_same_case_financials(lif
                     assert label not in page.text
                 assert "Batch and custody records" in page.text and "Stock history" in page.text
             else:
-                assert "Original sales" in page.text and "Refund #" in page.text and "PHP 200.00" in page.text
+                assert "Refund #" in page.text and "PHP 200.00" in page.text
+                assert "Open refund workspace" not in page.text
 
 
 def test_inventory_replacement_release_uses_sales_clearance_without_payment_data(lifecycle, monkeypatch):  # noqa: F811
@@ -93,14 +94,14 @@ def test_inventory_replacement_release_uses_sales_clearance_without_payment_data
     with TestClient(main.app) as client:
         assert client.get(f"/portal/return-attachments/{proof['attachment_id']}").status_code == 404
         response = client.post("/portal/team-leader/returns/actions/release", data={"return_id": case, "remarks": "Attempt before Sales clearance"})
-        assert response.status_code == 200 and "Sales clearance is required" in response.text
+        assert response.status_code == 200 and "Supervisor/Owner clearance is required" in response.text
         assert "additional payment" not in response.text.lower() and "PHP" not in response.text
         for path in ("refunds", "reports", "orders"):
             assert client.get(f"/portal/team-leader/{path}").status_code in {403, 404}
     sign_in(monkeypatch, d, "sales")
     with TestClient(main.app) as client:
-        assert client.get(f"/portal/return-attachments/{proof['attachment_id']}").status_code == 200
-    returns.verify_return_payment(case, d["sales"], "TOPUP" + uuid4().hex, 50, "Confirmed exact replacement collection")
+        assert client.get(f"/portal/return-attachments/{proof['attachment_id']}").status_code == 404
+    returns.verify_return_payment(case, d["supervisor"], "TOPUP" + uuid4().hex, 50, "Confirmed exact replacement collection")
     ready = returns.get_product_return(case, d["inventory"])
     assert ready["inventory_can_release"] and ready["inventory_status"] == "awaiting_replacement_release"
     assert_no_money(ready)

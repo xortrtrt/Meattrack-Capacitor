@@ -18,11 +18,13 @@ MOVEMENT_CATEGORY_TYPES = {
     "sales": ("sale_fulfillment",),
     "corrections": ("owner_correction",),
     "returns": ("reseller_return",),
+    "reservations": ("order_reserved", "order_released", "order_fulfilled", "order_migration_snapshot", "order_unpaid_hold_released"),
 }
 
 
 # Calculate historical product totals before filtering or pagination. Stored movement
 # balances remain batch snapshots for Product Details and the immutable audit ledger.
+# Opening balances contribute to totals but are hidden from the log projection.
 # Custody receipts and expiry status changes never add to or deduct from stock.
 _MOVEMENT_LOG_SOURCE = """WITH stock_movements AS (
     SELECT im.*,
@@ -40,6 +42,7 @@ _MOVEMENT_LOG_SOURCE = """WITH stock_movements AS (
            NULL::text destination,NULL::text reseller_name,NULL::text return_batch_code,
            NULL::numeric status_quantity
     FROM stock_movements im
+    WHERE im.movement_type <> 'opening_balance'
     UNION ALL
     SELECT m.movement_id,'reseller_return',h.product_id,m.quantity,i.unit,
            m.quantity,0,COALESCE(a.name,'MEATTRACK'),NULL::text,h.batch_id,
@@ -76,6 +79,18 @@ _MOVEMENT_LOG_SOURCE = """WITH stock_movements AS (
         WHERE im.affected_batch_id=b.batch_id AND im.created_at<=p.created_at
         ORDER BY im.created_at DESC,im.movement_id DESC LIMIT 1
     ) batch_snapshot ON true
+    UNION ALL
+    SELECT e.reservation_event_id,'order_'||e.action,e.product_id,0::numeric,'pack',
+           COALESCE(snapshot.total_balance_after,0),COALESCE(snapshot.total_balance_after,0),
+           COALESCE(a.name,'MEATTRACK'),'Reservation change; physical stock is recorded separately.',NULL::bigint,
+           e.order_id,e.created_at,'reservation',NULL::bigint,NULL::text,s.business_name,NULL::text,e.quantity_delta
+    FROM order_reservation_events e
+    JOIN orders o USING(order_id)
+    LEFT JOIN resellers s USING(reseller_id)
+    LEFT JOIN accounts a ON a.account_id=e.actor_account_id
+    LEFT JOIN LATERAL (SELECT sm.total_balance_after FROM stock_movements sm
+        WHERE sm.item_id=e.product_id AND sm.created_at<=e.created_at
+        ORDER BY sm.created_at DESC,sm.movement_id DESC LIMIT 1) snapshot ON true
 )"""
 
 _MOVEMENT_LOG_SORTS = {

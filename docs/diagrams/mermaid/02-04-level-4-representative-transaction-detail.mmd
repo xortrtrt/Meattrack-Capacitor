@@ -1,0 +1,29 @@
+sequenceDiagram
+    actor R as Reseller
+    participant UI as Browser
+    participant HTTP as Reseller payment handler
+    participant OCR as Receipt validation helpers
+    participant ORD as Orders repository
+    participant FEFO as Allocation planner
+    participant DB as PostgreSQL
+    R->>UI: Upload receipt and confirm extracted details
+    UI->>HTTP: Submit proof, signed scan token and payment details
+    HTTP->>HTTP: Check session, CSRF and reseller scope
+    HTTP->>OCR: Validate proof and confirmed payment
+    OCR-->>HTTP: Validated metadata and attachment
+    HTTP->>ORD: submit_order_payment
+    ORD->>DB: Begin transaction and lock owning order
+    ORD->>ORD: Check deadline, amount and duplicate reference
+    ORD->>FEFO: Check eligible stock under product and batch locks
+    FEFO->>DB: Read unexpired approved stock and competing reservations
+    FEFO-->>ORD: Availability or shortage
+    alt Sufficient stock
+        ORD->>DB: Store proof, pending status and product reservations
+        ORD->>DB: Record logs and notifications
+    else Stock shortage after payment evidence
+        ORD->>DB: Reject order and create payment-review refund case
+        ORD->>DB: Notify reseller and assigned processor
+    end
+    ORD->>DB: Commit
+    ORD-->>HTTP: Order result
+    HTTP-->>UI: Redirect or response with current order state

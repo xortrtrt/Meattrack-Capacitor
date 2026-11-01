@@ -1,0 +1,12 @@
+flowchart TD
+    A([Sales or Supervisor sign-in]) --> B[Scoped dashboard]
+    B --> C[Assigned order review and fulfillment]
+    B --> D[Counter sales and personally attributed reports]
+    B --> E[Assigned reseller conversations]
+    B --> F{Specialized role}
+    F -->|Sales| G[Initial version-1 return decision and assigned-case tracking]
+    F -->|Sales| L[Available-agent public live support]
+    G --> H[Accepted cases handed off; no further money processing]
+    F -->|Supervisor| I[Inquiry review and permitted account management]
+    F -->|Supervisor| J[Assigned replacement approval, top-up verification and delivery]
+    F -->|Supervisor| K[Assigned manual refund attempts and settlement]

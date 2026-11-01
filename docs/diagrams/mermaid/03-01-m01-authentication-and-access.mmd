@@ -1,0 +1,19 @@
+flowchart TD
+    A([Open login]) --> B[Enter email, password and consent]
+    B --> C{Input, rate checks and credentials valid?}
+    C -->|No| X[Show login error]
+    X --> B
+    C -->|Yes| D{Login OTP enabled?}
+    D -->|Yes| E[Create OTP and send email synchronously]
+    E --> F{Email sent and OTP confirmed?}
+    F -->|No| X
+    F -->|Yes| G[Record consent]
+    D -->|No| G
+    G --> H[Rotate database-backed session]
+    H --> I[Redirect to role default workspace]
+    I --> J{Requested action allowed by capability and scope?}
+    J -->|No| K[Deny access]
+    J -->|Yes| L[Execute authorized module action]
+    L --> I
+    I --> M[Logout or session expiration]
+    M --> N([Session cleared or no longer valid])

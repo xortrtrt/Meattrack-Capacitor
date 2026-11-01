@@ -4,7 +4,7 @@
     <div class="owner-resellers-total"><strong>{{ resellers_page.pagination.total }}</strong><span>matching resellers</span></div>
   </section>
   <section class="panel owner-resellers-ledger">
-    <header class="owner-resellers-toolbar"><div><strong>Reseller directory</strong><p class="hint">Each reseller reports to one sales team leader. Assignment changes require verification and an audit reason.</p></div><form action="/portal/owner/exports/resellers.csv" method="post"><button class="button subtle" type="submit"><i data-lucide="download" aria-hidden="true"></i> Export CSV</button></form></header>
+    <header class="owner-resellers-toolbar"><div><strong>Reseller directory</strong><p class="hint">Each reseller reports to one sales team leader. Assignment changes require a recorded reason.</p></div><form action="/portal/owner/exports/resellers.csv" method="post"><button class="button subtle" type="submit"><i data-lucide="download" aria-hidden="true"></i> Export all records</button></form></header>
     <form class="filter-bar owner-directory-filters" method="get">
       <label>Search resellers<input name="q" value="{{ resellers_page.filters.q }}" placeholder="Business, contact, or email"></label>
       <label>Status<select name="status"><option value="">All status</option>{% for value in ['pending', 'active', 'suspended', 'inactive'] %}<option value="{{ value }}" {{ 'selected' if resellers_page.filters.status == value else '' }}>{{ value|title }}</option>{% endfor %}</select></label>

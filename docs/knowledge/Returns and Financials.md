@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, returns, refunds, reporting]
-verified: 2026-10-28
+verified: 2026-10-30
 ---
 # Returns and financials
 
@@ -17,11 +17,14 @@ return identifiers; they do not create independent financial ledgers.
 
 1. Reseller submits within 120 hours of recorded fulfillment, before the exact
    deadline, with at least one supporting photo. Existing cases keep their history.
-2. Assigned Sales approves or rejects quantities traced to original deliveries.
+2. Assigned Sales initially accepts or rejects quantities traced to original deliveries.
+   Acceptance records a Supervisor/Owner handoff and notifies the reseller and
+   processor. Rejection closes the request with a public explanation. Further Sales
+   actions belong to the assigned Supervisor/Owner; the original leader tracks only.
 3. Inventory compares all approved packs, batches, and supporting proof, then chooses
    **Confirm complete receipt** or **Report mismatch to Sales**. New portal receipts
    accept the complete approved request; partial quantities are rejected. A mismatch
-   blocks replacement and notifies assigned Sales (Owner fallback for an inactive assignment).
+   blocks replacement and notifies the assigned Supervisor (Owner fallback for an unavailable processor).
 4. A complete match atomically records outstanding goods in **Discarded inventory**,
    verifies custody, and clears the current Sales-approved resolution. The original
    Sales approver remains the authorization source; the actual Inventory reviewer is
@@ -30,7 +33,7 @@ return identifiers; they do not create independent financial ledgers.
    available for reconciling older cases without rewriting their records.
    Receipt decisions bind to the reviewed approval revision and quantities; a
    changed approval requires reloading before the decision is accepted.
-5. A mismatch must be reviewed by Sales before Inventory can confirm a corrected
+5. A mismatch must be reviewed by Supervisor/Owner before Inventory can confirm a corrected
    complete request. Received goods stay non-sellable; the fixed holding-location
    label does not itself record physical disposal.
 6. For replacement: customer acceptance and cleared Sales approval precede reservation.
@@ -61,23 +64,29 @@ settlement details, attachments, and an event timeline. Presentation sources:
 
 ## Money has different meanings
 
-Sales team leaders use `/portal/team-leader/refunds` for both money refunds and
-product-return review (`?view=returns`). The sidebar has one **Refunds & returns**
-entry. Legacy Sales `/returns` links and return notifications open the new tab;
-review, confirmation, and additional-payment actions redirect back to that tab.
-Sales return-action forms render their session CSRF token in the HTML, including
-approval, rejection, and confirmation. Opening or refreshing an action URL with GET
-redirects to the return workspace and performs no action. Sources checked 2026-10-29:
-`app/templates/portals/team-leader/_return_case_dialog.html`,
-`app/portals/product_returns.py`, and `tests/test_sales_refunds_returns_workspace.py`.
-The Sales money-refunds tab starts with its status totals and case browser, without
-the introductory banner or settlement-progress callout. Product returns use
-full-width request rows with responsive stacking. Presentation sources:
-`app/templates/portals/refunds.html`, `app/templates/portals/team-leader/returns.html`,
-and `app/static/css/portals/team-leader.css` (checked 2026-10-29).
-Inventory continues using its quantity/custody workspace. Supervisor and Owner
-transfer processing retains its existing permissions and Sales-authorization gate.
+Sales uses `/portal/team-leader/returns` for **Returns & tracking**. New requests
+remain actionable by the assigned leader. Accepted cases are tracking-only and
+appear under Waiting on others, or Completed after settlement/follow-ups finish.
+Legacy `/refunds` links redirect to this workspace. Supervisor/Owner retain money
+processing and take over offer revisions, discrepancies, additional-payment checks,
+settlement authorization, and customer follow-up resolution. Migration 041 also
+hands off existing accepted unfinished cases, preserving approvals, quotes, custody,
+and money. Completed replacements with open follow-ups count as unfinished work.
 
+Refund transfer proof uses the order receipt OCR engine with a token scoped to the
+processor, refund, and exact file. The processor checks/corrects reference, Manila
+date/time, and amount; the confirmed amount must equal the refund due. Failed OCR
+retains the existing manual-correction flow. Duplicate transfer evidence/references,
+current-processor permissions, and settlement eligibility still gate completion.
+Completion appends one thank-you system message with amount, order and reference,
+notifies the reseller, and closes the conversation as read-only. See
+[[Background Work and Integrations]] for read cursors and private messaging.
+
+Sources checked 2026-10-29: `app/portals/product_returns.py`,
+`app/repositories/product_returns.py`, `app/portals/refunds.py`,
+`app/repositories/refunds.py`, `app/receipt_ocr.py`, migrations 041–042.
+
+Leader dashboards put role-specific current work before financial detail.
 The Sales dashboard shows cumulative original fulfilled sales, all completed
 refunds, retained sales, refund types, pending obligations, and collections. It uses
 the same `settlement_summary` / `return_settlement_totals` calculation as reports;
@@ -126,3 +135,24 @@ Sources: [current process](../refund-return-process.md),
 [report settlement calculations](../../app/repositories/report_settlements.py),
 [sales report rules](../sales-report-refunds.md),
 [Sales authorization migration](../../database/migrations/036_return_sales_authorization.sql).
+
+The 2026-10-30 [[Owner Portal]] places cumulative retained sales, pending obligations,
+and net collections on Overview, with definitions and a separate gross reseller
+sales chart. Product returns and money refunds share a sidebar destination but keep
+separate workspaces and existing actions. Accepted returns without active Supervisor
+coverage have an Owner-only fallback filter. Staff handover includes processing
+assignments and open post-release follow-ups; actual in-progress refund attempts
+require explicit completion/failure/takeover first. Sources:
+`app/repositories/owner_insights.py`, `app/repositories/superuser.py`,
+`app/repositories/product_returns.py`, `app/templates/portals/owner/dashboard.html`.
+
+## Version-2 replacement requests
+
+New replacement submissions from 2026-10-30 follow [[Replacement Workflow]]:
+reseller-selected products and recorded comparison, direct Supervisor handoff,
+private case conversation, complete Inventory receipt, then extra payment before
+FEFO preparation, Inventory release, and Supervisor delivery confirmation. Lower-
+value selections use existing difference refunds. The earlier numbered workflow
+in this note remains applicable to existing version-1 cases and refund-only work.
+Sources: `app/repositories/replacement_workflow.py`,
+`app/repositories/product_returns.py`, migration 044.

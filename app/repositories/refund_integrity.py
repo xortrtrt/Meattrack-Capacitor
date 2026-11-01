@@ -130,6 +130,8 @@ def replacement_problems(cur, case: dict, *, require_release: bool = False) -> l
 
 
 def check_refund_eligibility(cur, refund: dict) -> None:
+    if refund.get("payment_review_required"):
+        raise ValueError("Verify that the original payment was actually received before processing this refund.")
     cur.execute("SELECT * FROM orders WHERE order_id=%s;", (refund["order_id"],))
     order = cur.fetchone()
     collected = Decimal(str(order["payment_amount"] or 0))

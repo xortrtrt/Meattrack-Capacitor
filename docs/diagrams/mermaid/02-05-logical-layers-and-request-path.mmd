@@ -1,0 +1,11 @@
+flowchart TB
+    L1[Presentation: Jinja2, HTML, CSS, browser JavaScript]
+    L2[HTTP boundary: routers, portal actions and shared dependencies]
+    L3[Business orchestration: scoped workflow and validation functions]
+    L4[Persistence: domain repositories, SQL queries and transaction cursors]
+    L5[(Storage: PostgreSQL and profile image files)]
+    L1 <--> L2 <--> L3 <--> L4 <--> L5
+    C[Cross-cutting controls: sessions, CSRF, capabilities, audit context and input validation]
+    C -.-> L2
+    C -.-> L3
+    C -.-> L4

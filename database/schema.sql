@@ -1825,4 +1825,304 @@ ALTER TABLE return_customer_followups DROP CONSTRAINT IF EXISTS return_followup_
 ALTER TABLE return_customer_followups ADD CONSTRAINT return_followup_resolution_required
 CHECK(status<>'resolved' OR resolution_message IS NOT NULL);
 
+
+-- 040_paid_stock_reservations.sql
+-- Run with application and worker writes paused. Resolve active underpayments first.
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM orders WHERE order_type='reseller' AND status IN ('pending','approved')
+               AND (payment_amount IS NULL OR payment_amount < total_amount)) THEN
+        RAISE EXCEPTION 'Active reseller orders have insufficient payment. Reconcile them before migration 040.';
+    END IF;
+END $$;
+
+ALTER TABLE order_refunds ADD COLUMN IF NOT EXISTS payment_review_required boolean NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS order_reservation_events (
+    reservation_event_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id bigint NOT NULL REFERENCES orders ON DELETE RESTRICT,
+    product_id bigint NOT NULL REFERENCES inventory_items(item_id) ON DELETE RESTRICT,
+    quantity_delta numeric(12,3) NOT NULL CHECK(quantity_delta<>0),
+    action text NOT NULL CHECK(action IN ('reserved','released','fulfilled','migration_snapshot','unpaid_hold_released')),
+    actor_account_id bigint REFERENCES accounts ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ix_order_reservation_events_product ON order_reservation_events(product_id,created_at,reservation_event_id);
+CREATE INDEX IF NOT EXISTS ix_order_reservation_events_order ON order_reservation_events(order_id,reservation_event_id);
+DROP TRIGGER IF EXISTS immutable_order_reservation_events ON order_reservation_events;
+CREATE TRIGGER immutable_order_reservation_events BEFORE UPDATE OR DELETE OR TRUNCATE ON order_reservation_events
+FOR EACH STATEMENT EXECUTE FUNCTION protect_refund_trace_records();
+
+DROP TRIGGER IF EXISTS record_order_reservations ON order_stock_reservations;
+
+-- Snapshots are explicitly migration-time facts, not invented historical timestamps.
+INSERT INTO order_reservation_events(order_id,product_id,quantity_delta,action)
+SELECT r.order_id,r.product_id,r.quantity,'migration_snapshot' FROM order_stock_reservations r
+WHERE NOT EXISTS(SELECT 1 FROM order_reservation_events e WHERE e.order_id=r.order_id AND e.product_id=r.product_id);
+INSERT INTO order_reservation_events(order_id,product_id,quantity_delta,action)
+SELECT r.order_id,r.product_id,-r.quantity,'unpaid_hold_released'
+FROM order_stock_reservations r JOIN orders o USING(order_id) WHERE o.status='to_pay';
+DELETE FROM order_stock_reservations r USING orders o WHERE r.order_id=o.order_id AND o.status='to_pay';
+
+CREATE OR REPLACE FUNCTION record_order_reservation_event() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE oid bigint; pid bigint; qty numeric; state text; actor bigint;
+BEGIN
+    IF TG_OP='INSERT' THEN oid:=NEW.order_id; pid:=NEW.product_id; qty:=NEW.quantity;
+    ELSE oid:=OLD.order_id; pid:=OLD.product_id; qty:=-OLD.quantity; END IF;
+    SELECT status INTO state FROM orders WHERE order_id=oid;
+    actor:=NULLIF(current_setting('meattrack.actor_account_id',true),'')::bigint;
+    INSERT INTO order_reservation_events(order_id,product_id,quantity_delta,action,actor_account_id)
+    VALUES(oid,pid,qty,CASE WHEN TG_OP='INSERT' THEN 'reserved'
+        WHEN current_setting('meattrack.reservation_reason',true)='fulfilled' OR state='fulfilled' THEN 'fulfilled'
+        ELSE 'released' END,actor);
+    RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS record_order_reservations ON order_stock_reservations;
+CREATE TRIGGER record_order_reservations AFTER INSERT OR DELETE ON order_stock_reservations
+FOR EACH ROW EXECUTE FUNCTION record_order_reservation_event();
+DROP TRIGGER IF EXISTS immutable_order_reservations ON order_stock_reservations;
+CREATE TRIGGER immutable_order_reservations BEFORE UPDATE ON order_stock_reservations
+FOR EACH STATEMENT EXECUTE FUNCTION protect_refund_trace_records();
+
+CREATE OR REPLACE FUNCTION guard_paid_order_reservation() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE o orders%ROWTYPE; eligible numeric; held numeric;
+BEGIN
+    SELECT * INTO o FROM orders WHERE order_id=NEW.order_id FOR UPDATE;
+    IF o.order_type<>'reseller' OR o.status NOT IN ('pending','approved')
+       OR o.payment_amount IS NULL OR o.payment_amount<o.total_amount THEN
+        RAISE EXCEPTION 'Only sufficiently paid active orders may reserve stock.';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended('inventory-product:'||NEW.product_id,0));
+    SELECT COALESCE(SUM(quantity_available),0) INTO eligible FROM inventory_batches
+    WHERE item_id=NEW.product_id AND quality_status='approved'
+      AND expiry_date>(now() AT TIME ZONE 'Asia/Manila')::date;
+    SELECT COALESCE(SUM(quantity),0) INTO held FROM all_stock_reservations WHERE product_id=NEW.product_id;
+    IF held+NEW.quantity>eligible THEN RAISE EXCEPTION 'Insufficient available stock for reservation.'; END IF;
+    RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS guard_paid_order_reservation ON order_stock_reservations;
+CREATE TRIGGER guard_paid_order_reservation BEFORE INSERT ON order_stock_reservations
+FOR EACH ROW EXECUTE FUNCTION guard_paid_order_reservation();
+
+CREATE OR REPLACE FUNCTION require_reseller_order_payment() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE o orders%ROWTYPE;
+BEGIN
+    -- Deferred triggers must inspect the final row, not an earlier to_pay snapshot.
+    SELECT * INTO o FROM orders WHERE order_id=NEW.order_id;
+    IF o.order_type='reseller' AND o.status IN ('pending','approved','fulfilled') AND (
+        o.payment_transaction_number IS NULL OR o.payment_transaction_key IS NULL
+        OR o.payment_paid_at IS NULL OR o.payment_amount IS NULL OR o.payment_amount<o.total_amount
+        OR o.payment_confirmed_at IS NULL
+        OR NOT EXISTS(SELECT 1 FROM order_payment_proofs WHERE order_id=o.order_id)) THEN
+        RAISE EXCEPTION 'Reseller orders require sufficient confirmed payment details and proof before commit.';
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION require_timed_order_reservations() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE oid bigint; o orders%ROWTYPE;
+BEGIN
+    IF TG_OP='DELETE' THEN oid:=OLD.order_id; ELSE oid:=NEW.order_id; END IF;
+    SELECT * INTO o FROM orders WHERE order_id=oid;
+    IF o.order_type<>'reseller' THEN RETURN NULL; END IF;
+    IF o.status NOT IN ('pending','approved') AND EXISTS(
+        SELECT 1 FROM order_stock_reservations WHERE order_id=oid) THEN
+        RAISE EXCEPTION 'Only sufficiently paid active orders may reserve stock.';
+    END IF;
+    IF o.status IN ('pending','approved') AND (o.payment_amount IS NULL OR o.payment_amount<o.total_amount) THEN
+        RAISE EXCEPTION 'Insufficient payment cannot reserve stock.';
+    END IF;
+    IF o.payment_due_at IS NOT NULL AND o.status IN ('pending','approved') AND (
+        NOT EXISTS(SELECT 1 FROM order_items WHERE order_id=oid) OR EXISTS(
+            SELECT 1 FROM (SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=oid GROUP BY product_id) i
+            FULL JOIN (SELECT product_id,quantity FROM order_stock_reservations WHERE order_id=oid) r USING(product_id)
+            WHERE i.quantity IS DISTINCT FROM r.quantity)) THEN
+        RAISE EXCEPTION 'Paid reseller orders require matching stock reservations.';
+    END IF;
+    RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS validate_order_reservation_change ON order_stock_reservations;
+CREATE CONSTRAINT TRIGGER validate_order_reservation_change AFTER INSERT OR DELETE ON order_stock_reservations
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION require_timed_order_reservations();
+
+-- A stock-shortage payment is rejected atomically instead of passing through pending.
+CREATE OR REPLACE FUNCTION enforce_order_status_transition() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.status=OLD.status THEN RETURN NEW; END IF;
+    IF OLD.status IN ('rejected','fulfilled','cancelled','expired') THEN
+        RAISE EXCEPTION 'Order status % is terminal.',OLD.status;
+    END IF;
+    IF OLD.order_type='reseller' AND OLD.status IN ('to_pay','pending') AND NEW.status='cancelled' THEN
+        IF OLD.payment_transaction_number IS NOT NULL OR OLD.payment_amount IS NOT NULL
+           OR EXISTS(SELECT 1 FROM order_payment_proofs WHERE order_id=OLD.order_id) THEN
+            RAISE EXCEPTION 'Orders with a submitted payment cannot be cancelled.';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF OLD.status='to_pay' AND NEW.status IN ('pending','expired') THEN RETURN NEW; END IF;
+    IF OLD.status='to_pay' AND NEW.status='rejected' AND NEW.payment_amount>=NEW.total_amount
+       AND NEW.rejection_payment_received IS NULL AND NEW.rejection_reason='Stock unavailable after payment submission.' THEN RETURN NEW; END IF;
+    IF OLD.status='pending' AND NEW.status IN ('approved','rejected') THEN RETURN NEW; END IF;
+    IF OLD.status='approved' AND NEW.status='fulfilled' THEN RETURN NEW; END IF;
+    IF OLD.order_type='walk_in' AND OLD.status='pending' AND NEW.status='fulfilled' THEN RETURN NEW; END IF;
+    RAISE EXCEPTION 'Invalid order status transition: % -> %.',OLD.status,NEW.status;
+END $$;
+
+-- 041_return_processing_handoff.sql
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS processing_supervisor_account_id bigint REFERENCES accounts ON DELETE RESTRICT;
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS handed_off_at timestamptz;
+CREATE INDEX IF NOT EXISTS ix_returns_processor ON product_returns(processing_supervisor_account_id,status,updated_at);
+
+-- Preserve original approvals and custody. The timestamp records this migration's handoff.
+UPDATE product_returns r SET handed_off_at=now(),processing_supervisor_account_id=COALESCE(
+    (SELECT f.assigned_supervisor_account_id FROM order_refunds f JOIN accounts a ON a.account_id=f.assigned_supervisor_account_id
+     WHERE f.return_id=r.return_id AND a.is_active AND a.team_leader_role='sales-supervisor' LIMIT 1),
+    (SELECT a.account_id FROM accounts a WHERE a.is_active AND a.account_type='team_leader'
+     AND a.team_leader_role='sales-supervisor' ORDER BY a.name,a.account_id LIMIT 1))
+WHERE r.handed_off_at IS NULL AND r.approved_by_account_id IS NOT NULL AND r.status NOT IN ('submitted','rejected') AND (r.status<>'completed' OR EXISTS(SELECT 1 FROM return_customer_followups f WHERE f.return_id=r.return_id AND f.status='open'));
+
+INSERT INTO product_return_events(return_id,action,remarks,customer_message)
+SELECT return_id,'processing_handoff','Existing accepted case transferred during migration 041.',
+    'Your accepted request is now being handled by Supervisor/Owner. Your assigned leader can track its progress.'
+FROM product_returns r WHERE handed_off_at IS NOT NULL AND NOT EXISTS(SELECT 1 FROM product_return_events e WHERE e.return_id=r.return_id AND e.action='processing_handoff');
+
+-- Each migration handoff has one durable notification per participant/processor.
+WITH targets AS (
+    SELECT r.return_id,a.account_id,
+        CASE WHEN a.account_type='reseller' THEN 'reseller' WHEN a.account_type='owner' THEN 'owner' ELSE 'sales-supervisor' END portal
+    FROM product_returns r JOIN orders o USING(order_id)
+    JOIN accounts a ON a.is_active AND (a.account_id=o.created_by_account_id
+        OR a.account_id=r.processing_supervisor_account_id
+        OR (r.processing_supervisor_account_id IS NULL AND a.account_type='owner'))
+    WHERE EXISTS(SELECT 1 FROM product_return_events e WHERE e.return_id=r.return_id
+        AND e.action='processing_handoff' AND e.remarks='Existing accepted case transferred during migration 041.')
+), inserted AS (
+    INSERT INTO notifications(recipient_account_id,category,severity,title,message,target_url,source_type,source_id,dedupe_key)
+    SELECT account_id,'order','info','Accepted return transferred to Supervisor/Owner',
+        'Return #'||return_id||' is now handled by Supervisor/Owner. The assigned Sales Leader retains tracking access.',
+        '/portal/'||portal||CASE WHEN portal='reseller' THEN '/history?view=returns&case=' ELSE '/returns?case=' END||return_id,
+        'product_returns',return_id,'return-migration-041-'||return_id||'-'||account_id FROM targets
+    ON CONFLICT(dedupe_key) DO NOTHING RETURNING notification_id,recipient_account_id
+)
+INSERT INTO notification_recipients(notification_id,account_id)
+SELECT notification_id,recipient_account_id FROM inserted ON CONFLICT DO NOTHING;
+
+-- 042_internal_conversation_media.sql
+ALTER TABLE reseller_messages DROP CONSTRAINT IF EXISTS reseller_messages_content_check;
+ALTER TABLE reseller_messages ADD CONSTRAINT reseller_messages_content_check CHECK(char_length(content)<=500);
+ALTER TABLE reseller_messages ADD COLUMN IF NOT EXISTS attachment_count integer NOT NULL DEFAULT 0 CHECK(attachment_count BETWEEN 0 AND 3);
+ALTER TABLE reseller_messages DROP CONSTRAINT IF EXISTS reseller_message_not_empty;
+ALTER TABLE reseller_messages ADD CONSTRAINT reseller_message_not_empty CHECK(char_length(btrim(content))>0 OR attachment_count>0);
+CREATE TABLE IF NOT EXISTS reseller_message_attachments (
+    attachment_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    reseller_message_id bigint NOT NULL REFERENCES reseller_messages ON DELETE RESTRICT,
+    filename text NOT NULL CHECK(filename<>'' AND filename !~ '[\\/]'),
+    content_type text NOT NULL CHECK(content_type IN ('image/jpeg','image/png','image/webp','video/mp4','video/webm')),
+    content bytea NOT NULL,
+    size_bytes integer NOT NULL CHECK(size_bytes>0 AND size_bytes<=26214400),
+    checksum_sha256 char(64) NOT NULL,
+    CHECK(octet_length(content)=size_bytes),
+    CHECK(content_type LIKE 'video/%' OR size_bytes<=5242880)
+);
+CREATE INDEX IF NOT EXISTS ix_reseller_message_attachments_message ON reseller_message_attachments(reseller_message_id,attachment_id);
+DROP TRIGGER IF EXISTS immutable_reseller_message_attachments ON reseller_message_attachments;
+CREATE TRIGGER immutable_reseller_message_attachments BEFORE UPDATE OR DELETE OR TRUNCATE ON reseller_message_attachments
+FOR EACH STATEMENT EXECUTE FUNCTION protect_refund_trace_records();
+CREATE OR REPLACE FUNCTION validate_message_attachments() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE mid bigint; expected integer; actual integer; bytes bigint;
+BEGIN
+    mid:=NEW.reseller_message_id;
+    SELECT attachment_count INTO expected FROM reseller_messages WHERE reseller_message_id=mid;
+    SELECT count(*),COALESCE(sum(size_bytes),0) INTO actual,bytes FROM reseller_message_attachments WHERE reseller_message_id=mid;
+    IF actual<>expected OR bytes>31457280 THEN RAISE EXCEPTION 'Message attachments do not match the declared count or exceed 30 MB.'; END IF;
+    RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS validate_reseller_message_attachments ON reseller_messages;
+CREATE CONSTRAINT TRIGGER validate_reseller_message_attachments AFTER INSERT ON reseller_messages
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_message_attachments();
+DROP TRIGGER IF EXISTS validate_reseller_attachment_count ON reseller_message_attachments;
+CREATE CONSTRAINT TRIGGER validate_reseller_attachment_count AFTER INSERT ON reseller_message_attachments
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION validate_message_attachments();
+
+CREATE TABLE IF NOT EXISTS refund_message_reads (
+    order_refund_id bigint NOT NULL REFERENCES order_refunds ON DELETE RESTRICT,
+    account_id bigint NOT NULL REFERENCES accounts ON DELETE RESTRICT,
+    last_message_id bigint NOT NULL DEFAULT 0 CHECK(last_message_id>=0),
+    read_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY(order_refund_id,account_id)
+);
+ALTER TABLE order_refund_messages ADD COLUMN IF NOT EXISTS message_kind text NOT NULL DEFAULT 'text' CHECK(message_kind IN ('text','system'));
+ALTER TABLE order_refund_messages ADD COLUMN IF NOT EXISTS system_event_key text UNIQUE;
+CREATE INDEX IF NOT EXISTS ix_reseller_messages_unread_cursor ON reseller_messages(conversation_id,sender_account_id,reseller_message_id) WHERE read_at IS NULL;
+
+ALTER TABLE order_refund_attempts ADD COLUMN IF NOT EXISTS transfer_amount numeric(12,2);
+ALTER TABLE order_refund_attempts ADD COLUMN IF NOT EXISTS receipt_extraction_method text;
+ALTER TABLE order_refund_attempts ADD COLUMN IF NOT EXISTS receipt_ocr_confidence numeric;
+ALTER TABLE order_refund_attempts ADD COLUMN IF NOT EXISTS receipt_ocr_engine text;
+CREATE OR REPLACE FUNCTION validate_refund_transfer_amount() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.status='completed' AND (TG_OP='INSERT' OR OLD.status<>'completed') AND (
+        NEW.transfer_amount IS NULL OR NEW.transfer_amount IS DISTINCT FROM
+        (SELECT amount FROM order_refunds WHERE order_refund_id=NEW.order_refund_id)) THEN
+        RAISE EXCEPTION 'Confirmed transfer amount must equal the refund due.';
+    END IF;
+    RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS validate_refund_transfer_amount ON order_refund_attempts;
+CREATE TRIGGER validate_refund_transfer_amount BEFORE INSERT OR UPDATE ON order_refund_attempts
+FOR EACH ROW EXECUTE FUNCTION validate_refund_transfer_amount();
+
+-- Acknowledgement does not change fulfillment, stock, or the return deadline.
+CREATE TABLE IF NOT EXISTS reseller_order_receipts (
+    order_id bigint PRIMARY KEY REFERENCES orders(order_id) ON DELETE RESTRICT,
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON DELETE RESTRICT,
+    received_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE FUNCTION validate_reseller_order_receipt() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM orders o JOIN accounts a ON a.account_id=NEW.account_id
+        WHERE o.order_id=NEW.order_id AND o.order_type='reseller' AND o.status='fulfilled'
+          AND o.created_by_account_id=NEW.account_id AND a.account_type='reseller' AND a.is_active
+    ) THEN
+        RAISE EXCEPTION 'Only the reseller can acknowledge their completed order.';
+    END IF;
+    RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS validate_reseller_order_receipt ON reseller_order_receipts;
+CREATE TRIGGER validate_reseller_order_receipt BEFORE INSERT ON reseller_order_receipts
+FOR EACH ROW EXECUTE FUNCTION validate_reseller_order_receipt();
+DROP TRIGGER IF EXISTS immutable_reseller_order_receipts ON reseller_order_receipts;
+CREATE TRIGGER immutable_reseller_order_receipts BEFORE UPDATE OR DELETE OR TRUNCATE ON reseller_order_receipts
+FOR EACH STATEMENT EXECUTE FUNCTION protect_refund_trace_records();
+
+-- Existing returns keep version 1. Only the new replacement submission path opts into version 2.
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS replacement_workflow_version smallint NOT NULL DEFAULT 1 CHECK (replacement_workflow_version IN (1,2));
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS replacement_prepared_at timestamptz;
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS replacement_prepared_by_account_id bigint REFERENCES accounts;
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS replacement_delivered_at timestamptz;
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS replacement_delivered_by_account_id bigint REFERENCES accounts;
+ALTER TABLE product_returns ADD COLUMN IF NOT EXISTS replacement_payment_details jsonb;
+ALTER TABLE replacement_quote_lines ADD COLUMN IF NOT EXISTS pricing_components jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS return_conversation_messages (
+    message_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    return_id bigint NOT NULL REFERENCES product_returns ON DELETE RESTRICT,
+    sender_account_id bigint REFERENCES accounts ON DELETE RESTRICT,
+    client_message_id uuid NOT NULL,
+    content text NOT NULL CHECK (char_length(content) BETWEEN 1 AND 1000),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(return_id,sender_account_id,client_message_id)
+);
+CREATE INDEX IF NOT EXISTS ix_return_conversation_messages ON return_conversation_messages(return_id,message_id);
+CREATE TABLE IF NOT EXISTS return_conversation_reads (
+    return_id bigint NOT NULL REFERENCES product_returns ON DELETE RESTRICT,
+    account_id bigint NOT NULL REFERENCES accounts ON DELETE RESTRICT,
+    last_message_id bigint NOT NULL DEFAULT 0 CHECK (last_message_id>=0),
+    PRIMARY KEY(return_id,account_id)
+);
+DROP TRIGGER IF EXISTS immutable_return_conversation_messages ON return_conversation_messages;
+CREATE TRIGGER immutable_return_conversation_messages BEFORE UPDATE OR DELETE OR TRUNCATE ON return_conversation_messages
+FOR EACH STATEMENT EXECUTE FUNCTION protect_refund_trace_records();
+
 COMMIT;

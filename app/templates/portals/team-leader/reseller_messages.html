@@ -1,3 +1,7 @@
+{% if replacement_chat|default(none) %}
+{% include 'portals/_replacement_conversation.html' %}
+{% else %}
+{% include 'portals/_replacement_conversation_links.html' %}
 <section class="sales-reseller-messenger" data-sales-reseller-messages>
   <header class="reseller-inbox-hero sales-message-hero">
     <div>
@@ -25,7 +29,7 @@
       <div class="sales-message-list" data-sales-message-list>
         {% for item in reseller_message_threads %}
         <button type="button" class="sales-message-row" data-reseller-id="{{ item.reseller_account_id }}">
-          <span class="sales-message-avatar">{{ item.business_name[:1]|upper }}</span>
+          <span class="sales-message-avatar internal-person-avatar">{% if item.reseller_profile_image_path %}<img src="{{ url_for('static',path=item.reseller_profile_image_path) }}" alt="" style="object-position:{{ item.reseller_profile_image_position_x }}% {{ item.reseller_profile_image_position_y }}%;transform:scale({{ item.reseller_profile_image_scale }})">{% else %}<i data-lucide="user-round" aria-hidden="true"></i>{% endif %}</span>
           <span class="sales-message-row-copy">
             <strong>{{ item.business_name }}</strong>
             <small>{{ item.last_message or 'Start a conversation' }}</small>
@@ -44,13 +48,15 @@
 
     <section class="sales-message-stage">
       <div class="sales-message-placeholder" data-sales-message-placeholder>
-        <span><i data-lucide="message-circle"></i></span>
-        <h3>Select a reseller</h3>
-        <p>Open a conversation to see its complete message history.</p>
+        <span class="sales-message-welcome-icon"><i data-lucide="messages-square" aria-hidden="true"></i></span>
+        <small class="eyebrow">Your reseller inbox</small>
+        <h3>Select a conversation to begin</h3>
+        <p>Choose a reseller from the conversation list to read their messages, share attachments, or send a reply.</p>
+        <span class="sales-message-selection-hint"><i data-lucide="mouse-pointer-2" aria-hidden="true"></i>No conversation selected</span>
       </div>
       <div class="sales-message-thread" data-sales-message-thread hidden>
         <header class="sales-message-thread-head">
-          <span class="sales-message-avatar" data-sales-thread-avatar>R</span>
+          <span class="sales-message-avatar internal-person-avatar" data-sales-thread-avatar><i data-lucide="user-round" aria-hidden="true"></i></span>
           <div>
             <h3 data-sales-thread-business>Reseller</h3>
             <small data-sales-thread-person>Registered reseller</small>
@@ -69,7 +75,7 @@
             <p>Send a message. This thread remains available to both accounts.</p>
           </div>
         </div>
-        <form class="reseller-chat-composer" data-sales-message-form>
+        <form class="reseller-chat-composer" data-sales-message-form data-async-form>
           <label class="sr-only" for="sales-reseller-message">Message</label>
           <textarea id="sales-reseller-message" maxlength="500" rows="1" placeholder="Message this reseller…" required></textarea>
           <button class="button primary" type="submit">
@@ -80,3 +86,5 @@
     </section>
   </div>
 </section>
+
+{% endif %}

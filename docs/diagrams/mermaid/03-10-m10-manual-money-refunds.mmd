@@ -1,0 +1,23 @@
+flowchart TD
+    A([Refund obligation from rejected paid order or verified return]) --> B[Open assigned refund as Supervisor or Owner]
+    B --> C{Payment review still required?}
+    C -->|Yes| D[Verify actual receipt of original funds]
+    D --> E[Recheck financial and return-settlement eligibility]
+    C -->|No| E
+    E --> F{Eligible and not already completed?}
+    F -->|No| X[Block action and explain unresolved condition]
+    F -->|Yes| G[Claim or start numbered processing attempt under lock]
+    G --> H[Processor manually transfers exact refund using external provider]
+    H --> I{Transfer successful?}
+    I -->|No| J[Record failed attempt and reason]
+    J --> G
+    I -->|Yes| K[Enter method, reference, transfer time and remarks; attach proof]
+    K --> L[Validate exact amount, uniqueness, evidence and current processor]
+    L --> M{Validation passes?}
+    M -->|No| N[Keep processing attempt; correct details]
+    N --> K
+    M -->|Yes| O[Complete attempt and refund atomically]
+    O --> P[Recheck linked return completion and publish system messages]
+    P --> Q([Reseller can review completed refund])
+    G -.->|Owner takeover when necessary| R[Preserve prior attempt history and record takeover]
+    R --> G

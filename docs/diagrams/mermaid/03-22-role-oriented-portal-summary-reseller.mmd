@@ -1,0 +1,15 @@
+flowchart TD
+    A([Activated reseller sign-in]) --> B[Browse products and manage own cart]
+    B --> C[Checkout to unpaid order]
+    C --> D[Submit receipt and confirmed payment details before deadline]
+    D --> E[Track Sales review and fulfillment]
+    E --> F[Optionally acknowledge order received]
+    E --> G{After-sales request within 120 hours?}
+    G -->|Refund| H[Submit allocation quantities, reason and photos]
+    G -->|Replacement| I[Choose products and submit reviewed comparison]
+    H --> J[Track decision, custody and settlement]
+    I --> J
+    J --> K[Accept revisions, pay top-up when due or review refund]
+    K --> L[Review replacement delivery and completion]
+    E --> M[Read order updates or message authorized staff]
+    L --> M

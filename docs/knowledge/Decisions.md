@@ -4,6 +4,15 @@ verified: 2026-10-28
 ---
 # Decisions
 
+## 2026-10-29: Hide opening balances from Inventory Logs
+
+The user requested hiding all opening data in Inventory Logs. Exclude opening
+rows from the log projection after calculating historical stock totals, and remove
+the Opening category from the page. Retain the ledger rows so subsequent movements
+and expiry events still report correct balances. See [[Orders and Inventory]],
+`app/repositories/inventory/queries.py`, `app/portals/team_leader.py`, and
+`tests/test_inventory_log_balances.py`.
+
 ## 2026-10-29: Explicit reset with staggered opening stock
 
 The user requested clearing database data while retaining accounts and finished
@@ -36,8 +45,17 @@ setup decision. This log does not invent the original authors' intent.
 | Report personal activity by original order dates (2026-10-29) | User selected personal recorded actions rather than assignment, and original order dates rather than action dates; return review does not claim a sale. | [[Sales Activity Reports]]; `app/repositories/activity_reports.py` |
 | Freeze combined activity reports at submission (2026-10-29) | User requires the Owner, CSV, Excel and print to see the same document; later outcomes require regeneration. Legacy sales reports retain their existing adjustment rules. | [[Sales Activity Reports]], [[Returns and Financials]]; migration 037, `app/report_documents.py` |
 | Store project knowledge as linked local Markdown (2026-10-28) | User requested Obsidian context; agents can read the same files without a plugin or running GUI | [[Start Here]]; `AGENTS.md`, `.obsidian/` |
-| Consolidate Sales return review into Refunds (2026-10-29) | User requested one workflow for money refunds and product returns; reuse existing review, custody, authorization, and transfer records rather than adding another ledger. Dashboard totals reuse the report settlement calculation. | [[Returns and Financials]], [[Roles and Access]]; `app/portals/refunds.py`, `app/portals/product_returns.py`, `app/portals/team_leader.py` |
+| Consolidate Sales return review into Refunds (2026-10-29) | Earlier combined-workspace decision, superseded by the accepted-case processor handoff below. User requested one workflow for money refunds and product returns; reuse existing review, custody, authorization, and transfer records rather than adding another ledger. Dashboard totals reuse the report settlement calculation. | [[Returns and Financials]], [[Roles and Access]]; `app/portals/refunds.py`, `app/portals/product_returns.py`, `app/portals/team_leader.py` |
 | Use a complete-match or mismatch Inventory receipt decision (2026-10-29) | User rejected partial-receipt entry and a second verification step. A complete proof/quantity/batch match records fixed Discarded inventory custody, verifies, and clears the existing Sales-approved resolution atomically. A mismatch notifies Sales and blocks release. Reseller acceptance, extra-payment checks, and authorized transfer processing remain enforced. | [[Returns and Financials]], [[Roles and Access]]; `app/repositories/product_returns.py`, `app/portals/product_returns.py`, `app/templates/portals/lifecycle/_inventory_return_dialog.html` |
+| Reserve only after sufficient payment (2026-10-29) | User removed unpaid holds. Payment-time locks recheck stock; shortages reject into payment verification/refund review. Fulfillment clears the hold with one physical deduction, preserving availability and traceability. | [[Orders and Inventory]]; migration 040, `app/repositories/orders.py` |
+| Transfer accepted return processing to Supervisor/Owner (2026-10-29) | User limits regular leaders to the initial decision and assigned tracking. Apply to accepted unfinished cases, including open post-release follow-ups, while retaining custody, approval, and money history. | [[Returns and Financials]], [[Roles and Access]]; migration 041 |
+| Remove Owner action OTPs (2026-10-29) | User requires signed-in Owner actions without extra emailed codes; capabilities, CSRF, audits, activation, and password verification remain. | [[Roles and Access]]; `app/portals/owner.py` |
+| Keep internal conversation media private and read cursors bounded (2026-10-29) | User requests images/videos and unread badges for internal conversations only. Participant authorization and displayed-message cursors prevent exposing files or clearing unseen replies. | [[Background Work and Integrations]]; migration 042 |
+| Record order receipt separately from fulfillment (2026-10-30) | User requires an Order received button without disabling eligible returns. Keep the original fulfillment clock and stock ledger; record a once-only reseller acknowledgement separately, while reseller history displays Completed. | [[Orders and Inventory]]; migration 043, `app/repositories/orders.py`, `tests/test_conversation_order_receipts.py` |
+| Consolidate Owner navigation around business decisions (2026-10-30) | User requested a portal overhaul and explicitly allowed removing navigation. Reduce 19 sidebar destinations to nine while retaining authorized detailed URLs as contextual tabs; keep staff responsibility and explicit Owner intervention. | [[Owner Portal]], [[Roles and Access]]; `app/portal_config.py`, `app/templates/portals/owner/` |
+| Keep Owner financial measures distinct (2026-10-30) | Reuse reconciliation totals for retained sales, obligations, and collections; identify the chart as gross fulfilled reseller sales and report documents as snapshots. Do not invent profit or bank balances. | [[Owner Portal]], [[Returns and Financials]], [[Sales Activity Reports]]; `app/repositories/owner_insights.py`, `app/templates/portals/owner/dashboard.html` |
+| Include return processing in staff handover (2026-10-30) | Prevent stranded accepted cases/open follow-ups and assignments to staff without processing permissions. In-progress financial attempts require explicit outcome/takeover and preserve their actual processor. | [[Owner Portal]], [[Roles and Access]]; `app/repositories/superuser.py`, `app/repositories/accounts.py`, `tests/test_owner_overhaul.py` |
+| Version replacement requests and move new submissions directly to Supervisor (2026-10-30) | User selected reseller product choice/comparison, an immediate private conversation, receipt before top-up, verified funds before FEFO preparation, Inventory release, and Supervisor delivery. Same-product matched packs keep original prices; extras use catalog prices, cheaper selections refund the difference, paid selections stay fixed, and existing cases keep earlier rules. | [[Replacement Workflow]], [[Returns and Financials]]; migration 044, `app/repositories/replacement_workflow.py` |
 
 Add new entries only when a task establishes a consequential decision. Include
 the date, rationale, source/evidence, and affected notes. Do not infer deployment

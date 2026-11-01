@@ -292,20 +292,21 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(SESSION_SECRET_KEY, salt=OCR_TOKEN_SALT)
 
 
-def create_scan_token(account_id: int, attachments: list[dict], scan: dict[str, Any]) -> str:
+def create_scan_token(account_id: int, attachments: list[dict], scan: dict[str, Any], *, context: str = "order") -> str:
     return _serializer().dumps({
         "account_id": account_id,
         "checksums": sorted(str(item["checksum_sha256"]) for item in attachments),
         "transaction_number": scan.get("transaction_number", ""),
         "payment_date": scan.get("payment_date", ""),
         "payment_time": scan.get("payment_time", ""),
+        "context": context,
         "payment_amount": scan.get("payment_amount", ""),
         "confidence": float(scan.get("confidence", 0.0)),
         "engine": str(scan.get("engine", "tesseract")),
     })
 
 
-def verify_scan_token(account_id: int, attachments: list[dict], token: str) -> dict[str, Any]:
+def verify_scan_token(account_id: int, attachments: list[dict], token: str, *, context: str = "order") -> dict[str, Any]:
     if not token:
         raise ValueError("Read the payment receipt before placing the order.")
     try:
@@ -315,7 +316,8 @@ def verify_scan_token(account_id: int, attachments: list[dict], token: str) -> d
     except BadSignature:
         raise ValueError("The receipt scan could not be verified. Read the receipt again.")
     expected_checksums = sorted(str(item["checksum_sha256"]) for item in attachments)
-    if payload.get("account_id") != account_id or payload.get("checksums") != expected_checksums:
+    if (payload.get("account_id") != account_id or payload.get("checksums") != expected_checksums
+            or payload.get("context", "order") != context):
         raise ValueError("The receipt scan does not match this account or the selected files. Read the receipt again.")
     return payload
 
@@ -329,10 +331,11 @@ def confirmed_payment_details(
     payment_time: str,
     payment_amount: str,
     confirmed: bool,
+    *, context: str = "order",
 ) -> dict[str, Any]:
     if not confirmed:
         raise ValueError("Confirm that the payment details match the receipt.")
-    scan = verify_scan_token(account_id, attachments, token)
+    scan = verify_scan_token(account_id, attachments, token, context=context)
     clean_transaction = " ".join(transaction_number.strip().split())
     transaction_key = normalize_transaction_number(clean_transaction)
     if not 6 <= len(transaction_key) <= 64:

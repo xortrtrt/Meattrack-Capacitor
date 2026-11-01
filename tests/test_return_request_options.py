@@ -12,6 +12,7 @@ from app import main, repositories, web_sessions
 from app.business_time import business_now, business_today
 from app.database import fetch_one, get_transaction_cursor
 from app.repositories import product_returns as returns
+from app.repositories import replacement_workflow
 from test_inventory_postgres import _seed_fulfillment, strict_inventory_database  # noqa: F401
 from test_product_lifecycle import lifecycle, receive, supporting_photo  # noqa: F401
 
@@ -39,18 +40,33 @@ def test_non_expired_fulfilled_products_offer_both_choices_and_remain_subject_to
         assert 'type="radio" name="resolution" value="refund"' in response.text
         assert 'type="radio" name="resolution" value="replace"' in response.text
         assert 'aria-label="Return quantity for Test Product batch TEST-1"' in response.text
-        assert "Subject to Sales approval." in response.text
-    case = returns.create_product_return(d["order"], d["reseller"], resolution, [(d["allocation"], 2)], "Product issue discovered before expiry; requesting eligibility review", attachments=[supporting_photo()])
+        assert "Replacement requests go directly to Supervisor/Owner review." in response.text
+    request_options = {}
+    reviewer = d["sales"]
+    if resolution == "replace":
+        comparison = replacement_workflow.preview(
+            d["order"], d["reseller"], [(d["allocation"], 2)], [(d["product"], 2)]
+        )
+        request_options = {
+            "replacement_items": [(d["product"], 2)],
+            "comparison_token": comparison["token"],
+        }
+        reviewer = d["supervisor"]
+    case = returns.create_product_return(
+        d["order"], d["reseller"], resolution, [(d["allocation"], 2)],
+        "Product issue discovered before expiry; requesting eligibility review",
+        attachments=[supporting_photo()], **request_options,
+    )
     state = fetch_one("SELECT status,approved_by_account_id FROM product_returns WHERE return_id=%s", (case,))
     assert state["status"] == "submitted" and state["approved_by_account_id"] is None
     assert fetch_one("SELECT count(*) n FROM order_refunds WHERE return_id=%s", (case,))["n"] == 0
     before = fetch_one("SELECT quantity_available FROM inventory_batches WHERE batch_id=%s", (d["batches"][0],))
-    returns.review_product_return(case, d["sales"], True, "Reviewed product issue and approved these returned quantities")
+    returns.review_product_return(case, reviewer, True, "Reviewed product issue and approved these returned quantities")
     receive(d, case, authorize=False)
     assert fetch_one("SELECT quantity_available FROM inventory_batches WHERE batch_id=%s", (d["batches"][0],)) == before
     holding = fetch_one("SELECT source,expiry_date,quantity_remaining FROM expired_holdings WHERE return_line_id IN (SELECT return_line_id FROM product_return_lines WHERE return_id=%s)", (case,))
     assert holding["source"] == "return" and holding["expiry_date"] == expiry and holding["quantity_remaining"] == 2
-    assert not returns.get_product_return(case, d["sales"])["sales_authorized"]
+    assert not returns.get_product_return(case, reviewer)["sales_authorized"]
     if resolution == "refund":
         refund = returns.get_product_return(case, d["sales"])["refund"]["order_refund_id"]
         with pytest.raises(ValueError, match="Sales confirmation"):
@@ -70,12 +86,15 @@ def test_all_claimed_quantities_show_existing_request_guidance_instead_of_empty_
 def test_collection_breakdown_explains_small_payment_without_rewriting_order_value(strict_inventory_database, monkeypatch):  # noqa: F811
     sales, product, batches, orders = _seed_fulfillment(strict_inventory_database, batch_quantities=[20], order_quantities=[6])
     order = orders[0]
+    repositories.decide_order(order, "fulfill", team_leader_account_id=sales)
     with get_transaction_cursor() as cur:
+        # Recreate a historical settled underpayment; new orders cannot enter this state.
+        cur.execute("ALTER TABLE orders DISABLE TRIGGER trg_require_reseller_order_payment")
         cur.execute("UPDATE order_items SET unit_price=70 WHERE order_id=%s", (order,))
         cur.execute("UPDATE orders SET total_amount=420,payment_amount=50 WHERE order_id=%s", (order,))
+        cur.execute("ALTER TABLE orders ENABLE TRIGGER trg_require_reseller_order_payment")
         cur.execute("SELECT created_by_account_id FROM orders WHERE order_id=%s", (order,))
         reseller = cur.fetchone()["created_by_account_id"]
-    repositories.decide_order(order, "fulfill", team_leader_account_id=sales)
     totals = returns.return_settlement_totals(sales)
     assert totals["original_sales"] == 420 and totals["original_collections"] == totals["net_collections"] == 50
     assert totals["payment_difference_total"] == 370 and totals["reconciliation_count"] == 1
@@ -84,19 +103,19 @@ def test_collection_breakdown_explains_small_payment_without_rewriting_order_val
     assert source["original_collections"] == 50 and source["additional_collections"] == source["completed_refunds"] == 0
     sign_in(monkeypatch, sales, "team-leader", "sales")
     with TestClient(main.app) as client:
-        response = client.get("/portal/team-leader/returns")
+        response = client.get("/portal/team-leader/dashboard")
         assert response.status_code == 200
         assert "PHP 420.00" in response.text and "PHP 50.00" in response.text
         for removed in ("Where these collections came from", "Settlement breakdown", "not the order value or profit",
                         "Open existing refund workflow"):
             assert removed not in response.text
-        assert 'aria-label="Return cases"' in response.text and "Requires reconciliation" in response.text
+        assert "Confirmed original collections" in response.text
     sign_in(monkeypatch, reseller, "reseller")
     with TestClient(main.app) as client:
         response = client.get(f"/portal/reseller/returns?order={order}")
         assert 'action="/portal/reseller/returns/actions/submit"' in response.text
         assert "PHP 370.00" not in response.text and "recorded payment is" not in response.text
-        assert "Subject to Sales approval." in response.text
+        assert "Replacement requests go directly to Supervisor/Owner review." in response.text
     assert fetch_one("SELECT payment_amount FROM orders WHERE order_id=%s", (order,))["payment_amount"] == 50
 
 
@@ -117,12 +136,15 @@ def test_non_expired_request_choices_and_collection_sources_in_browser(strict_in
     from playwright.sync_api import expect, sync_playwright
     sales, _, _, orders = _seed_fulfillment(strict_inventory_database, batch_quantities=[20], order_quantities=[6])
     order = orders[0]
+    repositories.decide_order(order, "fulfill", team_leader_account_id=sales)
     with get_transaction_cursor() as cur:
+        # Preserve reporting coverage for a legacy fulfilled underpayment.
+        cur.execute("ALTER TABLE orders DISABLE TRIGGER trg_require_reseller_order_payment")
         cur.execute("UPDATE order_items SET unit_price=70 WHERE order_id=%s", (order,))
         cur.execute("UPDATE orders SET total_amount=420,payment_amount=50 WHERE order_id=%s", (order,))
+        cur.execute("ALTER TABLE orders ENABLE TRIGGER trg_require_reseller_order_payment")
         cur.execute("SELECT created_by_account_id FROM orders WHERE order_id=%s", (order,))
         reseller = cur.fetchone()["created_by_account_id"]
-    repositories.decide_order(order, "fulfill", team_leader_account_id=sales)
     output = Path("outputs/return-request-options")
     output.mkdir(parents=True, exist_ok=True)
     with TestClient(main.app, base_url="http://options.test") as client, sync_playwright() as p:
@@ -167,10 +189,12 @@ def test_non_expired_request_choices_and_collection_sources_in_browser(strict_in
             expect(page.locator(".lifecycle-financial-details")).to_have_count(0)
             expect(page.locator(".lifecycle-returns-list")).to_be_visible()
             expect(page.get_by_role("link", name="Open existing refund workflow", exact=True)).to_have_count(0)
-            section = page.locator(".lifecycle-metrics--returns")
-            expect(section).to_contain_text("PHP 420.00")
-            expect(section).to_contain_text("PHP 50.00")
+            expect(page.locator(".lifecycle-metrics--returns")).to_have_count(0)
+            expect(page.locator(".lifecycle-case-items")).to_contain_text("PHP 420.00")
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
             page.screenshot(path=str(output / f"sales-sources-{width}.png"), full_page=True)
+            page.goto("http://options.test/portal/team-leader/dashboard", wait_until="networkidle")
+            expect(page.locator(".portal-main")).to_contain_text("PHP 420.00")
+            expect(page.locator(".portal-main")).to_contain_text("PHP 50.00")
         assert not errors, errors
         browser.close()

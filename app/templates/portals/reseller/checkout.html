@@ -7,10 +7,10 @@
   >
     <span class="order-success-mark"><i data-lucide="timer"></i></span>
     <span class="order-page-kicker">Order #{{ placed_order_id }} · To pay</span>
-    <h2 id="order-success-title">Your items are reserved.</h2>
+    <h2 id="order-success-title">Your order is ready for payment.</h2>
     <p>
       Submit proof of payment within 15 minutes. Unpaid orders expire
-      automatically and their reserved stock is released.
+      automatically. Stock is secured only after sufficient payment is submitted.
     </p>
     {% if placed_order and placed_order.payment_due_at %}
     <div
@@ -25,7 +25,7 @@
     <div class="order-success-actions">
       <a
         class="button primary"
-        href="/portal/reseller/history?view=to_pay#order-{{ placed_order_id }}"
+        href="/portal/reseller/history?view=to_pay&amp;order={{ placed_order_id }}#order-{{ placed_order_id }}"
       >
         Pay this order <i data-lucide="arrow-right"></i>
       </a>
@@ -47,7 +47,7 @@
       <span class="order-page-kicker">Final review</span>
       <h2>Confirm your order</h2>
       <p>
-        Only the selected products will be reserved. Payment is completed from
+        Only the selected products will be ordered. Payment is completed from
         the To Pay section after you place the order.
       </p>
     </div>
@@ -119,13 +119,13 @@
 
         <button class="button primary checkout-submit" type="submit">
           <i data-lucide="lock-keyhole"></i>
-          <span>Place order and reserve stock</span>
+          <span>Place order</span>
         </button>
       </form>
       <ul class="checkout-assurances">
         <li>
           <i data-lucide="package-check"></i
-          ><span>Selected stock is reserved during the 15-minute payment window.</span>
+          ><span>Complete payment in the 15-minute payment window. Stock is reserved after sufficient payment, subject to availability.</span>
         </li>
         <li>
           <i data-lucide="shield-check"></i

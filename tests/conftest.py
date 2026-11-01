@@ -18,8 +18,13 @@ def isolate_web_session_store(monkeypatch, request):
     """Route unit tests do not require the PostgreSQL session integration."""
     if request.node.get_closest_marker("postgres"):
         return
+    from app.portals import team_leader
+    monkeypatch.setattr(team_leader,"leader_work_summary",lambda *args:{"counts":{},"queue":[],"attention_total":0,"recent":[]})
     from app import web_sessions
     from app import repositories
+    from app.repositories import replacement_messages
+    monkeypatch.setattr(replacement_messages,"workspace",lambda *args,**kwargs:{"replacement_threads":[],"replacement_chat":None})
+    monkeypatch.setattr(replacement_messages,"threads",lambda *args,**kwargs:[])
 
     monkeypatch.setattr(repositories,"settlement_summary",lambda *args,**kwargs:{})
     monkeypatch.setattr(repositories,"team_sales_refund_entries",lambda *args,**kwargs:[])

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
@@ -199,6 +199,12 @@ def orders_page(
         "team_leader_account_id": team_leader_account_id,
         "reseller_account_id": reseller_account_id,
     }
+    if order_type == "reseller" and team_leader_account_id is not None:
+        list_kwargs["exclude_to_pay"] = True
+        count_kwargs["exclude_to_pay"] = True
+        if status == "to_pay":
+            status = ""
+            list_kwargs["status"] = count_kwargs["status"] = status
     total = data.count_orders(**count_kwargs)
     filters["page"] = clamp_page(total, filters["page"], page_size)
     list_kwargs["page"] = filters["page"]
@@ -318,13 +324,12 @@ def notification_target_for(
     if len(parts) != 3:
         return fallback
     _portal, target_role, section = parts
-    if role_key == "team-leader" and team_leader_role == "sales" and section == "returns":
-        section = "refunds"
-        parsed = parsed._replace(query=urlencode({**dict(parse_qsl(parsed.query)), "view": "returns"}))
     current_sections = {
         item[0] for item in portal_config.portal_nav_for(role_key, team_leader_role)
     }
     current_sections.update(portal_config.portal_secondary_sections.get(role_key, {}))
+    if role_key == "team-leader" and team_leader_role == "sales":
+        current_sections.add("refunds")  # Legacy URLs pass through the scoped tracking redirect.
     if section not in current_sections:
         return fallback
 
@@ -388,6 +393,12 @@ def portal_role_for_request(role_key: str, request: Request) -> dict:
 
 def portal_section_context(role_key: str, section: str, request: Request) -> dict:
     context = PORTAL_SECTION_LOADERS[(role_key, section)](request)
+    if (role_key=="reseller" and section=="inbox") or (role_key in {"sales-supervisor","owner"} and section=="messages"):
+        from app.repositories.replacement_messages import workspace
+        try:
+            context.update(workspace(session_account_id(request) or 0,optional_positive_id(request.query_params.get("replacement"))))
+        except ValueError as exc:
+            raise HTTPException(404,detail=str(exc)) from exc
     if role_key == "team-leader" and session_team_leader_role(request) == "inventory":
         from app.repositories.return_views import inventory_context_view
         context = inventory_context_view(context)
@@ -448,9 +459,17 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         return guard
     if role_key == "reseller" and section == "returns":
         return redirect_to("/portal/reseller/history?" + urlencode({**request.query_params, "view": "returns"}))
-    if role_key == "team-leader" and section == "returns" and session_team_leader_role(request) == "sales":
+    if role_key == "team-leader" and section == "refunds" and session_team_leader_role(request) == "sales":
         require_capability(request, "returns.view", "team-leader:sales")
-        return redirect_to("/portal/team-leader/refunds?" + urlencode({**request.query_params, "view": "returns"}))
+        params = dict(request.query_params)
+        params.pop("view", None)
+        if "refund" in params:
+            from app.repositories.refunds import get_order_refund
+            refund = get_order_refund(optional_positive_id(params["refund"]) or 0,"team-leader",session_account_id(request))
+            if not refund:
+                raise HTTPException(404)
+            params = {"case":str(refund["return_id"])} if refund.get("return_id") else {}
+        return redirect_to("/portal/team-leader/returns?" + urlencode(params))
     nav = portal_nav_for_request(role_key, request)
     nav_sections = {item[0]: item for item in nav}
     secondary_section = portal_config.portal_secondary_sections.get(role_key, {}).get(section)
@@ -483,6 +502,7 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "accounts_form_action": f"/portal/{role_key}/accounts",
         "role": portal_role_for_request(role_key, request),
         "nav": nav,
+        "owner_workspace": portal_config.owner_workspace_for(section) if role_key == "owner" else {},
         "nav_groups": (
             [
                 {"label": label, "items": [item for item in nav if item[0] in slugs]}

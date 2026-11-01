@@ -43,3 +43,11 @@ legacy reports retain their earlier settlement behavior (checked 2026-10-29).
 Sources: [factory](../../app/application.py), [entry point](../../app/main.py),
 [repository facade](../../app/repositories/__init__.py), [database access](../../app/database.py),
 [inventory facade](../../app/repositories/inventory/__init__.py).
+
+The [[Owner Portal]] has nine main destinations with contextual tabs for existing
+secondary workspaces. `app/repositories/owner_insights.py` supplies business/stock
+aggregate reads; existing reconciliation functions retain financial authority.
+`app/templates/portals/owner/_workspace_header.html` and Owner-only workspace CSS
+share the presentation frame. Separate operations, inquiry, material, alert, and
+settings templates replace the former `owner/superuser.html` conditional template.
+No schema migration is added by the 2026-10-30 overhaul.

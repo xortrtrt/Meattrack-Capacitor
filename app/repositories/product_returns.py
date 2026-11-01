@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .processing_assignment import supervisor_for_case
+
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -66,7 +68,7 @@ def _actor(cur, actor_id: int, allowed: set[str]) -> str:
     return role
 
 
-def _case(cur, return_id: int, actor_id: int, allowed: set[str], *, read_only: bool = False) -> dict:
+def _case(cur, return_id: int, actor_id: int, allowed: set[str], *, read_only: bool = False, initial_review: bool = False) -> dict:
     role = _actor(cur, actor_id, allowed)
     if not read_only:
         cur.execute("SELECT order_id FROM product_returns WHERE return_id=%s;", (return_id,))
@@ -80,13 +82,13 @@ def _case(cur, return_id: int, actor_id: int, allowed: set[str], *, read_only: b
         (return_id,),
     )
     case = cur.fetchone()
-    supervisor_read = False
+    supervisor_read = bool(case and role == "sales-supervisor" and case.get("processing_supervisor_account_id") == actor_id)
     if case and read_only and role == "sales-supervisor":
         cur.execute(
             "SELECT 1 FROM order_refunds WHERE return_id=%s AND (assigned_supervisor_account_id=%s OR (assigned_supervisor_account_id IS NULL AND status IN ('pending','failed')));",
             (return_id, actor_id),
         )
-        supervisor_read = bool(cur.fetchone())
+        supervisor_read = supervisor_read or bool(cur.fetchone())
     if (
         not case
         or (role == "reseller" and case["reseller_account_id"] != actor_id)
@@ -95,6 +97,11 @@ def _case(cur, return_id: int, actor_id: int, allowed: set[str], *, read_only: b
         )
     ):
         raise ValueError("Return case was not found or is not assigned to you.")
+    if not read_only and not initial_review and role == "sales" and case.get("handed_off_at"):
+        raise ValueError("This request has been transferred to Supervisor/Owner. Your access is tracking only.")
+    if (not read_only and not initial_review and role == "sales-supervisor" and case.get("handed_off_at")
+            and case.get("processing_supervisor_account_id") != actor_id):
+        raise ValueError("Only the assigned Supervisor or Owner can process this request.")
     return dict(case)
 
 
@@ -107,52 +114,45 @@ def _event(cur, case: dict, actor_id: int | None, action: str, remarks: str, ope
     )
     event_id = cur.fetchone()["event_id"]
     cur.execute("UPDATE product_returns SET updated_at=now() WHERE return_id=%s;", (case["return_id"],))
-    fallback_owner = False
-    handoff_required = action == "inventory_verified" and case["status"] != "completed"
-    if handoff_required or action in {"receipt_discrepancy", "customer_issue_reported"}:
-        cur.execute("""SELECT 1 FROM accounts WHERE account_id=%s AND is_active
-            AND account_type='team_leader' AND team_leader_role IN ('sales','sales-supervisor');""",
-            (case.get("team_leader_account_id"),))
-        fallback_owner = not bool(cur.fetchone())
-        if fallback_owner:
-            _create_notification_cursor(
-                cur, recipient_role="owner", category="order",
-                title=("Returned goods complete—Sales assignment requires attention" if handoff_required else
-                       "Replacement issue—Sales assignment requires attention" if action == "customer_issue_reported" else
-                       "Return receipt mismatch—Sales assignment requires attention"),
-                message=(f"Return #{case['return_id']} has complete verified receipts. Resolve its missing or inactive Sales assignment before settlement."
-                         if handoff_required else f"Return #{case['return_id']} needs Sales review. Resolve its missing or inactive Sales assignment. {remarks}"),
-                target_url=f"/portal/owner/returns?case={case['return_id']}", source_type="product_returns",
-                source_id=case["return_id"], dedupe_key=f"return-event-{event_id}-owner-handoff",
-            )
-    for recipient, role in (
-        (case.get("reseller_account_id"), "reseller"),
-        (case.get("team_leader_account_id"), "team-leader"),
-    ):
-        if recipient:
-            if role == "team-leader" and fallback_owner:
-                continue
-            if role == "team-leader":
-                cur.execute("SELECT team_leader_role FROM accounts WHERE account_id=%s;", (recipient,))
-                account = cur.fetchone()
-                if account and account["team_leader_role"] == "sales-supervisor":
-                    role = "sales-supervisor"
-            _create_notification_cursor(
-                cur,
-                recipient_account_id=recipient,
-                category="order",
-                title=("Return receipt mismatch—Sales review required" if role != "reseller" and action == "receipt_discrepancy"
-                       else "Returned goods complete—Sales confirmation required" if role != "reseller" and handoff_required
-                       else f"Return #{case['return_id']}: {action.replace('_', ' ')}"),
-                message=((customer_message or RESELLER_EVENT_MESSAGES.get(action, "Your return has been updated. Open it to view the next step."))
-                         if role == "reseller" else
-                         f"All approved goods for Return #{case['return_id']} arrived and were verified. Confirm proceeding with the approved resolution."
-                         if handoff_required else remarks),
-                target_url=f"/portal/{role}/returns?case={case['return_id']}",
-                source_type="product_returns",
-                source_id=case["return_id"],
-                dedupe_key=f"return-event-{event_id}-{recipient}",
-            )
+    public_message = customer_message or RESELLER_EVENT_MESSAGES.get(action, "Your return has been updated. Open it to view the next step.")
+    if case.get("handed_off_at") and not customer_message and action not in {"submitted", "sales_approved", "rejected"}:
+        public_message = public_message.replace("Sales", "Supervisor/Owner")
+    recipients = [(case.get("reseller_account_id"), "reseller"),
+                  (case.get("team_leader_account_id"), "team-leader")]
+    processor = case.get("processing_supervisor_account_id")
+    if case.get("handed_off_at"):
+        if processor:
+            cur.execute("SELECT 1 FROM accounts WHERE account_id=%s AND is_active AND team_leader_role='sales-supervisor'",(processor,))
+            if not cur.fetchone():
+                processor = None
+        recipients.append((processor, "sales-supervisor" if processor else "owner"))
+    else:
+        cur.execute("SELECT 1 FROM accounts WHERE account_id=%s AND is_active AND team_leader_role IN ('sales','sales-supervisor')",(case.get("team_leader_account_id"),))
+        if not cur.fetchone():
+            recipients.append((None, "owner"))
+    seen = set()
+    for recipient, role in recipients:
+        if not recipient and role != "owner":
+            continue
+        identity = recipient or "owner"
+        if identity in seen:
+            continue
+        seen.add(identity)
+        if role == "team-leader":
+            cur.execute("SELECT team_leader_role FROM accounts WHERE account_id=%s;", (recipient,))
+            account = cur.fetchone()
+            if account and account["team_leader_role"] == "sales-supervisor":
+                role = "sales-supervisor"
+        tracking_only = role == "team-leader" and case.get("handed_off_at")
+        message = public_message if role == "reseller" or tracking_only else remarks
+        title = ("Return receipt mismatch—Supervisor review required" if not tracking_only and role != "reseller" and action == "receipt_discrepancy"
+                 else "Returned goods complete—Supervisor confirmation required" if not tracking_only and role != "reseller" and action == "inventory_verified"
+                 else f"Return #{case['return_id']}: {action.replace('_',' ')}")
+        _create_notification_cursor(cur,recipient_account_id=recipient,
+            recipient_role="owner" if not recipient else None,category="order",
+            title=title,message=message,
+            target_url=f"/portal/{role}/{'history?view=returns&' if role=='reseller' else 'returns?'}case={case['return_id']}",
+            source_type="product_returns",source_id=case["return_id"],dedupe_key=f"return-event-{event_id}-{identity}")
     if action not in INVENTORY_EVENT_MESSAGES:
         return
     _create_notification_cursor(
@@ -203,6 +203,7 @@ def create_product_return(
     remarks: str,
     attachments: list[dict] | None = None,
     operation_key: str | None = None,
+    *, replacement_items: list[tuple[int, object]] | None = None, comparison_token: str = "",
 ) -> int:
     remarks = _text(remarks)
     if resolution not in {"refund", "replace"} or not lines:
@@ -210,6 +211,8 @@ def create_product_return(
     if len({int(a) for a, _ in lines}) != len(lines):
         raise ValueError("Select each batch allocation only once.")
     request_hash = fingerprint(order_id,actor_id,resolution,sorted((int(i),str(parse_whole_packs(q))) for i,q in lines),remarks,sorted(a["checksum_sha256"] for a in attachments or []))
+    if replacement_items is not None:
+        request_hash = fingerprint(request_hash, sorted((int(i),str(parse_whole_packs(q))) for i,q in replacement_items))
     with get_transaction_cursor() as cur:
         _actor(cur, actor_id, {"reseller"})
         cur.execute(
@@ -237,6 +240,13 @@ def create_product_return(
             raise ValueError("Attach at least one supporting photo before submitting your request.")
         if len(attachments) > 3:
             raise ValueError("Attach up to 3 supporting photos only.")
+        replacement_comparison = None
+        if replacement_items is not None:
+            if resolution != "replace":
+                raise ValueError("Replacement products require the replacement outcome.")
+            from .replacement_workflow import comparison, verify_preview
+            replacement_comparison = comparison(cur,order_id,actor_id,lines,replacement_items)
+            verify_preview(comparison_token,order_id,actor_id,replacement_comparison)
         selected = []
         for allocation_id, value in sorted(lines):
             quantity = parse_whole_packs(value)
@@ -270,7 +280,10 @@ def create_product_return(
                 (case["return_id"], allocation_id, quantity, price),
             )
         _attachments(cur, case["return_id"], actor_id, attachments or [], "evidence")
-        _event(cur, case, actor_id, "submitted", remarks)
+        if replacement_comparison is not None:
+            from .replacement_workflow import initialize
+            initialize(cur,case,order,actor_id,replacement_comparison)
+        _event(cur, case, actor_id, "submitted", remarks, customer_message="Your replacement request and recorded comparison were sent directly to Supervisor/Owner." if replacement_comparison is not None else None)
         return int(case["return_id"])
 
 
@@ -286,7 +299,7 @@ def review_product_return(
 ) -> None:
     remarks = _text(remarks)
     with get_transaction_cursor() as cur:
-        case = _case(cur, return_id, actor_id, {"sales", "sales-supervisor"})
+        case = _case(cur, return_id, actor_id, {"sales", "sales-supervisor"}, initial_review=True)
         request_hash = fingerprint(return_id,actor_id,approve,remarks,replacements,revised_quantities,customer_message)
         if operation_key:
             operation_key = str(UUID(operation_key))
@@ -299,6 +312,15 @@ def review_product_return(
                 if previous["return_id"] != return_id or previous["request_hash"] != request_hash:
                     raise ValueError("This review reference was used with different details.")
                 return
+        if case.get("replacement_workflow_version") == 2:
+            from .replacement_workflow import review
+            return review(cur,case,actor_id,approve,remarks,replacements,revised_quantities,operation_key,customer_message,request_hash)
+        role = _actor(cur, actor_id, {"sales", "sales-supervisor"})
+        if case.get("handed_off_at") and (role == "sales" or (
+                role == "sales-supervisor" and case.get("processing_supervisor_account_id") != actor_id)):
+            raise ValueError("This request has been transferred to Supervisor/Owner. Your access is tracking only.")
+        if role == "sales" and case["status"] != "submitted":
+            raise ValueError("Sales leaders can only accept or reject new requests.")
         if not approve or case["status"] == "discrepancy":
             customer_message = _text(customer_message, "Explanation for the reseller")
         elif customer_message:
@@ -404,13 +426,21 @@ def review_product_return(
             THEN 'awaiting_inventory_verification' ELSE 'awaiting_receipt' END WHERE return_id=%s;""",
             (actor_id, return_id),
         )
+        if not case.get("handed_off_at"):
+            supervisor_id = supervisor_for_case(cur, case.get("team_leader_account_id"))
+            cur.execute("UPDATE product_returns SET processing_supervisor_account_id=%s,handed_off_at=now() WHERE return_id=%s", (supervisor_id,return_id))
         cur.execute("SELECT * FROM product_returns WHERE return_id=%s;", (return_id,))
         updated = dict(cur.fetchone())
         snapshot_offer(cur, return_id)
         if updated["verified_at"] and updated["resolution"] == "refund":
             _refund(cur, updated)
             _complete_if_ready(cur, return_id)
+        first_handoff = not case.get("handed_off_at")
+        case.update(updated)
         _event(cur, case, actor_id, "sales_approved", remarks, operation_key,request_hash=request_hash,customer_message=customer_message)
+        if first_handoff:
+            _event(cur, case, actor_id, "processing_handoff", "Accepted request transferred to Supervisor/Owner.",
+                   customer_message="Your request was accepted and transferred to Supervisor/Owner for processing. Your assigned leader can track its progress.")
 
 
 def _holding(
@@ -464,11 +494,9 @@ def _refund(cur, case: dict) -> None:
     cur.execute("SELECT COALESCE(SUM(amount),0) total FROM order_refunds WHERE order_id=%s AND return_id IS DISTINCT FROM %s;", (case["order_id"],case["return_id"]))
     if cur.fetchone()["total"] + amount > collected:
         raise ValueError("Refund obligations exceed the confirmed original payment. Review the sales record.")
-    cur.execute(
-        "SELECT account_id FROM accounts WHERE account_type='team_leader' AND team_leader_role='sales-supervisor' AND is_active=true ORDER BY account_id LIMIT 1;"
-    )
-    supervisor = cur.fetchone()
-    supervisor_id = supervisor["account_id"] if supervisor else None
+    supervisor_id = case.get("processing_supervisor_account_id")
+    if not case.get("handed_off_at"):
+        supervisor_id = supervisor_for_case(cur, case.get("team_leader_account_id"))
     cur.execute(
         """INSERT INTO order_refunds(order_id,return_id,amount,requested_by_account_id,assigned_supervisor_account_id)
         VALUES(%s,%s,%s,%s,%s) ON CONFLICT(return_id) WHERE return_id IS NOT NULL DO NOTHING RETURNING order_refund_id;""",
@@ -496,6 +524,8 @@ def _complete_if_ready(cur, return_id: int) -> None:
     if not settlement_is_authorized(case):
         return
     if case["resolution"] == "replace" and not case["replacement_released_at"]:
+        return
+    if case.get("replacement_workflow_version") == 2 and not case["replacement_delivered_at"]:
         return
     if not case["approved_by_account_id"] or not case["verified_by_account_id"]:
         raise ValueError("Sales approval and final Inventory verification are required.")
@@ -772,7 +802,7 @@ def accept_replacement_quote(return_id: int, actor_id: int, revision: int) -> No
         _event(cur, case, actor_id, "quote_accepted", f"Reseller accepted replacement quote revision {revision}.")
 
 
-def reserve_replacement(return_id: int, actor_id: int, remarks: str) -> None:
+def reserve_replacement(return_id: int, actor_id: int, remarks: str) -> bool:
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"inventory"})
         require_settlement_authorization(case)
@@ -792,7 +822,16 @@ def reserve_replacement(return_id: int, actor_id: int, remarks: str) -> None:
             (return_id, case["quote_revision"]),
         )
         quantities = {r["product_id"]: r["quantity"] for r in cur.fetchall()}
-        plans = _plan_fefo_allocations(cur, quantities, reservation_return_id=return_id)
+        if case.get("replacement_workflow_version") == 2 and case["replacement_total"]>case["credit"] and not case["payment_verified_at"]:
+            raise ValueError("Supervisor clearance is required before preparing replacement stock.")
+        try:
+            plans = _plan_fefo_allocations(cur, quantities, reservation_return_id=return_id)
+        except ValueError:
+            if case.get("replacement_workflow_version") != 2:
+                raise
+            cur.execute("UPDATE product_returns SET replacement_prepared_at=NULL,replacement_prepared_by_account_id=NULL WHERE return_id=%s",(return_id,))
+            _event(cur,case,actor_id,"awaiting_valid_stock","Requested stock is unavailable. The accepted selection and any verified collection remain unchanged.")
+            return False
         cur.execute("DELETE FROM replacement_stock_reservations WHERE return_id=%s;", (return_id,))
         for plan in plans:
             cur.execute(
@@ -800,9 +839,13 @@ def reserve_replacement(return_id: int, actor_id: int, remarks: str) -> None:
                 (return_id, plan["batch_id"], plan["take"]),
             )
         _event(cur, case, actor_id, "replacement_reserved", _text(remarks))
+        if case.get("replacement_workflow_version") == 2:
+            cur.execute("UPDATE product_returns SET replacement_prepared_at=now(),replacement_prepared_by_account_id=%s WHERE return_id=%s",(actor_id,return_id))
+            _event(cur,case,actor_id,"replacement_ready","Replacement packs prepared from valid FEFO stock and ready for warehouse release.",customer_message="Your replacement is prepared and ready for dispatch.")
+        return True
 
 
-def record_return_payment(return_id: int, actor_id: int, attachments: list[dict]) -> None:
+def record_return_payment(return_id: int, actor_id: int, attachments: list[dict], payment_details: dict | None = None) -> None:
     if not attachments:
         raise ValueError("Attach a payment screenshot.")
     with get_transaction_cursor() as cur:
@@ -816,7 +859,12 @@ def record_return_payment(return_id: int, actor_id: int, attachments: list[dict]
             or case["payment_verified_at"]
         ):
             raise ValueError("This return is not awaiting an additional payment.")
-        if not _valid_reservation(cur, case):
+        if case.get("replacement_workflow_version") == 2:
+            if not payment_details or Decimal(str(payment_details["payment_amount"])) != case["replacement_total"]-case["credit"]:
+                raise ValueError("The receipt amount must equal the comparison's additional payment.")
+            import json
+            cur.execute("UPDATE product_returns SET replacement_payment_details=%s::jsonb WHERE return_id=%s",(json.dumps({**payment_details,"revision":case["quote_revision"]},default=str),return_id))
+        elif not _valid_reservation(cur, case):
             raise ValueError("Inventory must reserve valid replacement stock before payment.")
         _attachments(cur, return_id, actor_id, attachments, "payment", case["quote_revision"])
         _event(cur, case, actor_id, "payment_uploaded", "Additional-payment evidence uploaded for sales verification.")
@@ -835,7 +883,7 @@ def _valid_reservation(cur, case: dict) -> bool:
     return bool(rows) and all(r["quantity"] == r["reserved"] for r in rows)
 
 
-def verify_return_payment(return_id: int, actor_id: int, reference: str, amount: object, remarks: str) -> None:
+def verify_return_payment(return_id: int, actor_id: int, reference: str, amount: object, remarks: str, *, funds_received: bool = False) -> None:
     from .refunds import _normalize_reference
 
     _, reference_key = _normalize_reference(reference)
@@ -862,8 +910,17 @@ def verify_return_payment(return_id: int, actor_id: int, reference: str, amount:
             "SELECT 1 FROM return_attachments WHERE return_id=%s AND purpose='payment' AND revision=%s;",
             (return_id, case["quote_revision"]),
         )
-        if not cur.fetchone() or not _valid_reservation(cur, case):
+        if not cur.fetchone() or (case.get("replacement_workflow_version") != 2 and not _valid_reservation(cur, case)):
             raise ValueError("Current payment proof and valid reserved stock are required.")
+        if case.get("replacement_workflow_version") == 2:
+            if not funds_received:
+                raise ValueError("Confirm receipt of funds in the payment provider before verifying this payment.")
+            details = case.get("replacement_payment_details") or {}
+            if details.get("revision") != case["quote_revision"] or Decimal(str(details.get("payment_amount",0))) != amount:
+                raise ValueError("Review the current payment submission before verifying funds.")
+            _, submitted_reference = _normalize_reference(details.get("transaction_number", ""))
+            if reference_key != submitted_reference:
+                raise ValueError("The verified reference must match the submitted receipt details.")
         cur.execute(
             "SELECT 1 FROM orders WHERE payment_transaction_key=%s UNION ALL SELECT 1 FROM product_returns WHERE payment_reference=%s LIMIT 1;",
             (reference_key, reference_key),
@@ -883,6 +940,8 @@ def release_replacement(return_id: int, actor_id: int, remarks: str) -> None:
         if case["replacement_released_at"]:
             return
         require_settlement_authorization(case)
+        if case.get("replacement_workflow_version") == 2 and not case.get("replacement_prepared_at"):
+            raise ValueError("Prepare valid replacement stock before warehouse release.")
         if (
             case["status"] != "settlement_pending"
             or not case["verified_at"]
@@ -1087,7 +1146,7 @@ def sync_expired_custody(cur) -> None:
             "awaiting_valid_stock",
             "Reserved replacement stock expired. Inventory must reserve valid stock before release.",
         )
-    cur.execute("""SELECT o.order_id,o.team_leader_account_id FROM orders o WHERE o.status IN ('to_pay','pending','approved')
+    cur.execute("""SELECT o.order_id,o.team_leader_account_id FROM orders o WHERE o.status IN ('pending','approved')
         AND EXISTS(SELECT 1 FROM order_items oi WHERE oi.order_id=o.order_id AND oi.quantity>(
             SELECT COALESCE(SUM(b.quantity_available),0) FROM inventory_batches b WHERE b.item_id=oi.product_id
             AND b.quality_status='approved' AND b.expiry_date>(now() AT TIME ZONE 'Asia/Manila')::date
@@ -1108,20 +1167,34 @@ def sync_expired_custody(cur) -> None:
 
 
 def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reconciliation_only: bool = False,
-                         queue: str | None = None) -> list[dict]:
+                         queue: str | None = None, order_id: int | None = None, owner_only: bool = False) -> list[dict]:
     from app.return_experience import QUEUE_SQL, PAYMENT_PROOF_SQL, FOLLOWUP_SQL, VALID_RESERVATION_SQL, experience, normalize_queue
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"reseller", "sales", "sales-supervisor", "inventory"})
         scope, params = "", []
+        if owner_only:
+            if role != "owner":
+                raise ValueError("Only an Owner can view the business fallback queue.")
+            scope += """ AND r.handed_off_at IS NOT NULL
+                AND (r.status NOT IN ('completed','rejected') OR EXISTS(
+                    SELECT 1 FROM return_customer_followups f WHERE f.return_id=r.return_id AND f.status='open'))
+                AND NOT EXISTS(SELECT 1 FROM accounts p WHERE p.account_id=r.processing_supervisor_account_id
+                    AND p.is_active AND p.team_leader_role='sales-supervisor')"""
         if role == "reseller":
             scope, params = " AND o.created_by_account_id=%s", [actor_id]
         elif role == "sales-supervisor":
             scope, params = (
-                " AND (o.team_leader_account_id=%s OR EXISTS(SELECT 1 FROM order_refunds f WHERE f.return_id=r.return_id AND f.assigned_supervisor_account_id=%s))",
-                [actor_id, actor_id],
+                " AND (o.team_leader_account_id=%s OR r.processing_supervisor_account_id=%s OR EXISTS(SELECT 1 FROM order_refunds f WHERE f.return_id=r.return_id AND f.assigned_supervisor_account_id=%s))",
+                [actor_id, actor_id, actor_id],
             )
         elif role == "sales":
             scope, params = " AND o.team_leader_account_id=%s", [actor_id]
+        if order_id:
+            scope += " AND r.order_id=%s"
+            params.append(order_id)
+        if role == "sales":
+            from app.return_experience import assigned_leader_queue_sql
+            QUEUE_SQL = assigned_leader_queue_sql()
         if queue is not None and role != "inventory":
             scope += f" AND ({QUEUE_SQL})=%s" if normalize_queue(queue) != "all" else ""
             if normalize_queue(queue) != "all":
@@ -1165,6 +1238,12 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
             row["sales_authorized"] = settlement_is_authorized(row)
             if role != "inventory":
                 row["experience"] = experience(row)
+                from .replacement_workflow import enrich_progress
+                enrich_progress(row)
+                if role == "sales" and row.get("handed_off_at"):
+                    row["experience"]["sales"] = dict(title="Tracking with Supervisor/Owner",action="",description="This request is with Supervisor/Owner. Follow its progress here.")
+                if role == "sales" and row.get("handed_off_at"):
+                    row["experience"]["sales"] = dict(title="Tracking with Supervisor/Owner",action="",description="This request is with Supervisor/Owner. Follow its progress here.")
         if role == "inventory":
             return [inventory_return_view(row) for row in rows]
         if role == "reseller":
@@ -1176,8 +1255,14 @@ def return_queue_counts(actor_id: int) -> dict:
     from app.return_experience import QUEUE_SQL
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"sales", "sales-supervisor"})
-        scope = " AND o.team_leader_account_id=%s" if role != "owner" else ""
+        if role == "sales":
+            from app.return_experience import assigned_leader_queue_sql
+            QUEUE_SQL = assigned_leader_queue_sql()
+        scope = "" if role == "owner" else " AND o.team_leader_account_id=%s"
         params = (actor_id,) if scope else None
+        if role == "sales-supervisor":
+            scope = " AND (o.team_leader_account_id=%s OR r.processing_supervisor_account_id=%s)"
+            params = (actor_id,actor_id)
         cur.execute(f"""SELECT {QUEUE_SQL} queue,COUNT(*) total FROM product_returns r
             JOIN orders o USING(order_id) JOIN product_return_review_reconciliation checks USING(return_id)
             WHERE true {scope} GROUP BY 1""", params)
@@ -1214,6 +1299,9 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
         )
         case["attachments"] = clean_row(cur.fetchall())
         case["has_reservations"] = _valid_reservation(cur, case)
+        if case.get("replacement_workflow_version") == 2:
+            from .replacement_workflow import progress
+            case["replacement_progress"] = progress(case)
         cur.execute("SELECT order_refund_id,status,amount,completed_at FROM order_refunds WHERE return_id=%s;", (return_id,))
         case["refund"] = clean_row(cur.fetchone())
         case["sales_authorized"] = settlement_is_authorized(case)
@@ -1280,11 +1368,22 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
             case["inventory_can_release"] = bool(
                 case["inventory_can_reserve"] and case["has_reservations"] and not replacement_problems(cur, case)
             )
+            if case.get("replacement_workflow_version") == 2:
+                case["inventory_can_reserve"] = bool(case["inventory_can_reserve"] and
+                    (case["replacement_total"]<=case["credit"] or case["payment_verified_at"]))
+                case["inventory_can_release"] = bool(case["inventory_can_release"] and case.get("replacement_prepared_at"))
             return clean_row(inventory_return_view(case))
         from .return_customer import enrich_case
         enrich_case(cur, case)
+        from .replacement_workflow import enrich_progress
+        enrich_progress(case)
         if role == "reseller":
             return clean_row(reseller_return_view(case))
+        if role == "sales" and case.get("handed_off_at"):
+            case["experience"]["sales"] = dict(title="Tracking with Supervisor/Owner",action="",description="This request is with Supervisor/Owner. Follow its progress here.")
+            for event in case["events"]:
+                event["remarks"] = event.get("customer_message") or RESELLER_EVENT_MESSAGES.get(event["action"], "Progress updated.")
+            case["attachments"] = [a for a in case["attachments"] if a["purpose"] == "evidence"]
         return clean_row(case)
 
 

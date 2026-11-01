@@ -1,0 +1,73 @@
+erDiagram
+
+    ACCOUNTS {
+        bigint account_id PK
+        text account_type
+        bigint reseller_id FK
+        text name
+        text email
+        text team_leader_role
+        boolean is_active
+    }
+
+    NOTIFICATIONS {
+        bigint notification_id PK
+        bigint recipient_account_id FK
+        text severity
+        text message
+        text dedupe_key UK
+    }
+
+    NOTIFICATION_RECIPIENTS {
+        bigint notification_id PK, FK
+        bigint account_id PK, FK
+    }
+
+    NOTIFICATION_OUTBOX {
+        bigint outbox_id PK
+        text event_type
+        jsonb payload
+        text dedupe_key UK
+        integer attempt_count
+        timestamptz next_attempt_at
+        timestamptz sent_at
+    }
+
+    BUSINESS_SETTINGS {
+        text setting_key PK
+        jsonb setting_value
+        bigint updated_by_account_id FK
+    }
+
+    SYSTEM_STATUS_REPORTS {
+        text component PK
+        text status
+    }
+
+    SECURITY_EVENTS {
+        bigint security_event_id PK
+        text event_type
+    }
+
+    RATE_LIMIT_BUCKETS {
+        text event_type PK
+        text subject_hash PK
+        integer window_seconds PK
+        timestamptz bucket_started_at PK
+    }
+
+    OWNER_STEP_UP_CHALLENGES {
+        bigint owner_step_up_challenge_id PK
+        bigint account_id FK
+        integer attempt_count
+    }
+
+    SCHEMA_MIGRATIONS {
+        text version PK
+    }
+
+    ACCOUNTS |o..o{ NOTIFICATIONS : "recipient_account_id"
+    NOTIFICATIONS ||--o{ NOTIFICATION_RECIPIENTS : "notification_id"
+    ACCOUNTS ||--o{ NOTIFICATION_RECIPIENTS : "account_id"
+    ACCOUNTS ||..o{ OWNER_STEP_UP_CHALLENGES : "account_id"
+    ACCOUNTS |o..o{ BUSINESS_SETTINGS : "updated_by_account_id"

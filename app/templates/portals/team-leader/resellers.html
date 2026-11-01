@@ -63,6 +63,7 @@
           <div><dt>Address</dt><dd>{{ reseller.address or "Not provided" }}</dd></div>
         </dl>
         <div class="team-reseller-activity">
+          {% if reseller.account_id and reseller.reseller_status=='active' %}<a class="button subtle" href="/portal/team-leader/messages?reseller={{ reseller.account_id }}"><i data-lucide="message-circle"></i>Message reseller</a>{% endif %}
           <span class="status-badge {{ reseller.reseller_status }}">{{ reseller.reseller_status }}</span>
           <span class="team-reseller-account-state"><i data-lucide="key-round"></i> {{ reseller.account_status }}</span>
           <strong>{{ reseller.total_orders|number }} order{{ '' if reseller.total_orders == 1 else 's' }}</strong>

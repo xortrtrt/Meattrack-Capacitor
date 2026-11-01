@@ -130,7 +130,7 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         receive(d, refund_case)
         snapshots = [
             ("reseller", d["reseller"], "reseller", None, "/portal/reseller/returns?case=1"),
-            ("sales", d["sales"], "team-leader", "sales", "/portal/team-leader/returns?case=1"),
+            ("sales", d["sales"], "team-leader", "sales", "/portal/team-leader/returns?queue=all&case=1"),
             ("inventory", d["inventory"], "team-leader", "inventory", "/portal/team-leader/expired-stock"),
             (
                 "product-details",
@@ -264,9 +264,11 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
             page.set_viewport_size({"width":width,"height":900})
             page.goto(f"http://lifecycle.test/portal/team-leader/refunds?refund={refund_id}")
             page.wait_for_load_state("networkidle")
-            expect(page.get_by_role("navigation",name="Refund and return views",exact=True)).to_be_visible()
+            expect(page.get_by_role("navigation",name="Sales return action queues",exact=True)).to_be_visible()
             expect(page.locator(".refund-hero")).to_have_count(0)
-            expect(page.get_by_text("View refund screenshot",exact=True)).to_be_visible()
+            expect(page.get_by_text("View refund screenshot",exact=True)).to_have_count(0)
+            expect(page.locator(".sales-return-dialog")).to_contain_text(f"Refund #{refund_id}")
+            expect(page.get_by_role("link", name="Open refund workspace", exact=True)).to_have_count(0)
             expect(page.get_by_role("button",name="Start processing",exact=True)).to_have_count(0)
             expect(page.locator('textarea[name="message"]')).to_have_count(0)
             assert "Simulated transfer confirmed against ledger" not in page.locator('body').inner_text()

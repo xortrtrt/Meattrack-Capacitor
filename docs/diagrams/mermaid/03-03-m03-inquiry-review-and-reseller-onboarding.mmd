@@ -1,0 +1,19 @@
+flowchart TD
+    A([Valid inquiry submitted]) --> B[Select active Sales Supervisor or Owner fallback]
+    B --> C[Save assigned inquiry, activity and notification]
+    C --> D[Supervisor or Owner reviews inquiry]
+    D --> E{Approve?}
+    E -->|No| F[Require public rejection explanation]
+    F --> G[Save rejection and queue rejection email]
+    E -->|Yes| H[Lock inquiry; validate email and required Supervisor assignment]
+    H --> I[Create reseller profile and assigned Sales relationship]
+    I --> J[Create pending reseller account and activation token]
+    J --> K[Queue activation email in database outbox]
+    K --> L[Worker delivers activation link]
+    L --> M[Reseller sets and confirms password]
+    M --> N{Token and password valid?}
+    N -->|No| O[Show activation error or arrange resend]
+    O --> M
+    N -->|Yes| P[Consume token and activate account]
+    P --> Q([Reseller can sign in])
+    C -.->|Unresolved after one day| R[Worker queues inquiry follow-up email]

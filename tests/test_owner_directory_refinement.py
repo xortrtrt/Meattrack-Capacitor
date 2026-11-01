@@ -152,8 +152,9 @@ def test_owner_verification_renders_without_removed_pages(monkeypatch):
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args: 0)
     response = TestClient(main.app).get("/portal/owner/verify?challenge=1")
     assert response.status_code == 200
-    assert '/portal/owner/verify/step-up/request' in response.text
-    assert '/portal/owner/verify/step-up/confirm' in response.text
+    assert '/portal/owner/verify/step-up/request' not in response.text
+    assert '/portal/owner/verify/step-up/confirm' not in response.text
+    assert 'no longer require an extra email verification code' in response.text
     assert '/portal/owner/security' not in response.text
     assert '/portal/owner/audit' not in response.text
     assert 'Active sessions' not in response.text

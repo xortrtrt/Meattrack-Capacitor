@@ -9,6 +9,8 @@ from app import live_chat
 from app import reseller_messaging
 from app import repositories as data
 from app.config import LIVE_CHAT_ENABLED
+from app.business_time import business_today
+from app.repositories.portal_dashboard import leader_work_summary
 from app.portals import owner as owner_portal
 from app.portals import shared
 
@@ -18,7 +20,7 @@ router = APIRouter()
 
 def logs_page(request: Request, page_size: int = 10, inventory_only: bool = False) -> dict:
     filters = shared.portal_filters(request)
-    movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales", "returns"} else ""
+    movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales", "returns", "reservations"} else ""
     if inventory_only:
         total = data.count_inventory_movements(q=filters["q"], category=movement_category)
         filters["page"] = shared.clamp_page(total, filters["page"], page_size)
@@ -175,8 +177,10 @@ def profile_context(request: Request) -> dict:
 def dashboard_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
     leader_role = shared.session_team_leader_role(request) or "sales"
+    work_summary = leader_work_summary(account_id or 0,leader_role)
     if leader_role == "inventory":
         return {
+            "work_summary":work_summary,"dashboard_date":business_today(),
             "team_leader_role": leader_role,
             "metrics": data.inventory_stock_metrics(),
             "products": data.list_products(),
@@ -186,6 +190,7 @@ def dashboard_context(request: Request) -> dict:
         "team_leader_role": leader_role,
         "metrics": data.current_metrics(team_leader_account_id=account_id),
         "settlement_summary": data.settlement_summary(account_id),
+        "work_summary":work_summary,"dashboard_date":business_today(),
         "inquiries": (
             data.list_inquiries(
                 limit=4,
@@ -195,7 +200,7 @@ def dashboard_context(request: Request) -> dict:
             if leader_role == "sales-supervisor"
             else []
         ),
-        "orders": data.list_orders(order_type="reseller", limit=5, team_leader_account_id=account_id),
+        "orders": data.list_orders(order_type="reseller", limit=5, team_leader_account_id=account_id,exclude_to_pay=True),
     }
 
 
@@ -241,11 +246,11 @@ def logs_context(request: Request) -> dict:
         "activity_logs": page["items"],
         "movement_categories": (
             ("", "All movements"),
-            ("opening", "Opening"),
             ("receipts", "Receipts"),
             ("returns", "Returns"),
             ("production", "Production"),
             ("sales", "Sales"),
+            ("reservations", "Reservations"),
         ),
     }
 

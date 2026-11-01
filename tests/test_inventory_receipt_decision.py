@@ -67,14 +67,14 @@ def test_mismatch_notifies_sales_once_blocks_release_and_requires_sales_review(l
     assert state["lines"][0]["received_quantity"] == 0 and not state["receipts"]
     notices = fetch_all("""SELECT n.title,n.message FROM notifications n JOIN notification_recipients r USING(notification_id)
         WHERE n.source_type='product_returns' AND n.source_id=%s AND r.account_id=%s
-        AND n.title='Return receipt mismatch—Sales review required'""", (case, d["sales"]))
+        AND n.title='Return receipt mismatch—Supervisor review required'""", (case, d["supervisor"]))
     assert len(notices) == 1 and remarks in notices[0]["message"]
     with pytest.raises(ValueError):
         returns.reserve_replacement(case, d["inventory"], "Release must stay blocked on a mismatch")
     with pytest.raises(ValueError, match="resolve the mismatch"):
         returns.inspect_product_return(case, d["inventory"], "complete", "Attempt before Sales reviewed the mismatch", str(uuid4()))
     line = state["lines"][0]
-    returns.review_product_return(case, d["sales"], True, "Reviewed proof and approved the corrected one-pack request",
+    returns.review_product_return(case, d["supervisor"], True, "Reviewed proof and approved the corrected one-pack request",
                                  revised_quantities=[(line["return_line_id"], 1)], customer_message="Sales reviewed the mismatch and approved the corrected one-pack request.")
     returns.inspect_product_return(case, d["inventory"], "complete", "The revised complete request now matches the received pack", str(uuid4()))
     checked = returns.get_product_return(case, d["sales"])
@@ -100,7 +100,7 @@ def test_complete_receipt_preserves_additional_payment_and_concurrent_idempotenc
     with pytest.raises(ValueError, match="additional payment"):
         returns.release_replacement(case, d["inventory"], "Payment must still be verified by Sales")
     returns.record_return_payment(case, d["reseller"], [refund_proof()])
-    returns.verify_return_payment(case, d["sales"], "EXTRA" + uuid4().hex, 50, "Verified the additional replacement collection")
+    returns.verify_return_payment(case, d["supervisor"], "EXTRA" + uuid4().hex, 50, "Verified the additional replacement collection")
     returns.release_replacement(case, d["inventory"], "Handed over the replacement after Sales payment clearance")
     assert returns.get_product_return(case, d["sales"])["status"] == "completed"
 
@@ -159,7 +159,7 @@ def test_http_requires_complete_attestation_rejects_partial_receipts_and_manual_
         unchecked = client.post("/portal/team-leader/returns/actions/inspect", data=payload, follow_redirects=False)
         assert "error" in parse_qs(urlsplit(unchecked.headers["location"]).query)
         assert returns.get_product_return(case, d["sales"])["lines"][0]["received_quantity"] == 0
-        returns.review_product_return(case, d["sales"], True, "Sales revised the replacement approval while Inventory was reviewing")
+        returns.review_product_return(case, d["supervisor"], True, "Sales revised the replacement approval while Inventory was reviewing")
         outdated = client.post("/portal/team-leader/returns/actions/inspect", data={**payload, "proof_matches": "1"}, follow_redirects=False)
         assert "approved request changed" in parse_qs(urlsplit(outdated.headers["location"]).query)["error"][0]
         payload["review_version"] = returns.get_product_return(case, d["inventory"])["receipt_review_version"]
@@ -213,11 +213,11 @@ def test_inventory_modal_complete_or_mismatch_workflow_on_phone_and_desktop(life
             if width == 375:
                 dialog.locator(".is-mismatch > summary").click()
                 dialog.get_by_label("Missing products or proof mismatch").fill("Only one pack arrived; two approved packs were expected")
-                dialog.get_by_role("button", name="Report mismatch to Sales", exact=True).click()
+                dialog.get_by_role("button", name="Report mismatch to Supervisor/Owner", exact=True).click()
                 page.wait_for_load_state("networkidle")
-                expect(page.get_by_role("heading", name="Sales has been notified", exact=True)).to_be_visible()
+                expect(page.get_by_role("heading", name="Supervisor/Owner has been notified", exact=True)).to_be_visible()
                 page.screenshot(path=str(output / "reported-mismatch.png"), full_page=True)
-                returns.review_product_return(case, d["sales"], True, "Sales resolved the mismatch and confirmed both approved packs will be returned", customer_message="Please return both approved packs for Inventory to check.")
+                returns.review_product_return(case, d["supervisor"], True, "Sales resolved the mismatch and confirmed both approved packs will be returned", customer_message="Please return both approved packs for Inventory to check.")
             else:
                 dialog.locator(".is-complete > summary").click()
                 dialog.get_by_label("I checked every approved product, quantity, batch, and supporting photo. Everything matches.").check()

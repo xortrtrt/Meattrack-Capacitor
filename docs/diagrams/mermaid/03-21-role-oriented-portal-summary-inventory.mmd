@@ -1,0 +1,11 @@
+flowchart TD
+    A([Inventory sign-in]) --> B[Stock and expiry dashboard]
+    B --> C[Receive materials and maintain product recipes]
+    C --> D[Produce and record finished batches]
+    B --> E[Inspect complete return receipt or report mismatch]
+    E --> F[Record verified non-sellable custody]
+    F --> G[Prepare financially cleared replacement stock]
+    G --> H[Mark ready, then separately release warehouse goods]
+    B --> I[Physically pull out expired stock]
+    I --> J[Record holding and later disposal]
+    B --> K[Inspect batch history and immutable movement logs]

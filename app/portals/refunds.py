@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from app import repositories as data
+from app import receipt_ocr, conversation_notifications
 from app.business_time import BUSINESS_ZONE
+from app.database import fetch_one
 from app.capabilities import require_capability
 from app.portals import shared
 
@@ -61,8 +63,8 @@ def refunds_context(request: Request) -> dict:
     role_key = request.path_params.get("role_key", "owner")
     account_id = shared.session_account_id(request)
     read_only = role_key == "team-leader"
-    require_capability(request,"refunds.view_assigned" if read_only else ("refunds.manage_all" if role_key == "owner" else "refunds.manage_assigned"),role_key)
-    if read_only and request.query_params.get("view") == "returns":
+    require_capability(request,"returns.view" if read_only else ("refunds.manage_all" if role_key == "owner" else "refunds.manage_assigned"),role_key)
+    if read_only:
         require_capability(request, "returns.view", role_key)
         from app.portals.product_returns import sales_returns_context
         return {**sales_returns_context(request), "refund_workspace_view": "returns",
@@ -211,6 +213,9 @@ async def complete_refund(
     internal_note: str = Form(""),
     proof: UploadFile | None = File(None),
     operation_key: str = Form(""),
+    receipt_scan_token: str = Form(""),
+    transfer_amount: str = Form(""),
+    payment_details_confirmed: str = Form(""),
 ):
     account_id, guard = await run_in_threadpool(_allowed_role, request, role_key)
     if guard:
@@ -222,9 +227,14 @@ async def complete_refund(
             raise ValueError("Enter a valid transfer date and time.") from exc
         if transfer_time.tzinfo is None:
             transfer_time = transfer_time.replace(tzinfo=BUSINESS_ZONE)
+        else:
+            transfer_time = transfer_time.astimezone(BUSINESS_ZONE)
         attachments = await shared.parse_payment_proof_attachments([proof] if proof else [])
         if len(attachments) > 1:
             raise ValueError("Attach only one refund screenshot.")
+        details = receipt_ocr.confirmed_payment_details(account_id,attachments,receipt_scan_token,
+            transaction_reference,transfer_time.date().isoformat(),transfer_time.strftime("%H:%M"),
+            transfer_amount,payment_details_confirmed == "yes",context=f"refund:{refund_id}")
         await run_in_threadpool(
             data.complete_order_refund,
             refund_id, account_id, role_key,
@@ -234,10 +244,60 @@ async def complete_refund(
             internal_note=internal_note,
             proof=attachments[0] if attachments else None,
             operation_key=operation_key or None,
+            transfer_amount=details["payment_amount"],receipt_details=details,
         )
     except ValueError as exc:
         return _refund_redirect(role_key, refund_id, error=str(exc), pane="transfer")
     return _refund_redirect(role_key, refund_id, message="Refund completed and the reseller was notified.")
+
+
+@router.post("/portal/{role_key}/refunds/{refund_id}/receipt-scan")
+async def refund_receipt_scan(request: Request,role_key: str,refund_id: int,proof: UploadFile = File(...)):
+    account_id,guard = await run_in_threadpool(_allowed_role,request,role_key)
+    if guard:
+        return guard
+    refund = await run_in_threadpool(data.get_order_refund,refund_id,role_key,account_id)
+    if not refund:
+        raise HTTPException(404)
+    if refund["status"] != "processing" or refund.get("processing_by_account_id") != account_id:
+        raise HTTPException(403,detail="Only the current processor can scan a transfer receipt.")
+    try:
+        attachments = await shared.parse_payment_proof_attachments([proof])
+        if not attachments:
+            raise ValueError("Choose a refund receipt screenshot.")
+        scan = await run_in_threadpool(receipt_ocr.scan_payment_proofs,attachments)
+        scan["scan_token"] = receipt_ocr.create_scan_token(account_id,attachments,scan,context=f"refund:{refund_id}")
+    except ValueError as exc:
+        return JSONResponse({"message":str(exc)},status_code=400)
+    return JSONResponse(scan,headers={"Cache-Control":"no-store"})
+
+
+@router.post("/portal/{role_key}/refunds/{refund_id}/confirm-payment")
+async def refund_confirm_payment(request: Request,role_key: str,refund_id: int,payment_received: str = Form("")):
+    account_id,guard = await run_in_threadpool(_allowed_role,request,role_key)
+    if guard:
+        return guard
+    try:
+        if payment_received != "yes":
+            raise ValueError("Confirm receipt of funds in your payment provider before proceeding.")
+        await run_in_threadpool(data.confirm_shortage_payment,refund_id,account_id,role_key)
+    except ValueError as exc:
+        return _refund_redirect(role_key,refund_id,error=str(exc))
+    return _refund_redirect(role_key,refund_id,message="Original payment receipt verified. The refund can now be processed.")
+
+
+class RefundReadPayload(BaseModel):
+    through_id: int = Field(ge=0,le=9223372036854775807)
+
+
+@router.post("/api/portal/{role_key}/refunds/{refund_id}/read")
+def refund_read(request: Request,role_key: str,refund_id: int,payload: RefundReadPayload):
+    account_id = _refund_message_actor(request,role_key)
+    try:
+        conversation_notifications.mark_refund_read(refund_id,account_id,role_key,payload.through_id)
+    except ValueError as exc:
+        raise HTTPException(404,detail="Conversation not found.") from exc
+    return {"ok":True}
 
 
 @router.post("/portal/{role_key}/refunds/{refund_id}/messages")
@@ -284,7 +344,7 @@ def refund_messages(request: Request, role_key: str, refund_id: int, after_id: i
         return JSONResponse(
             {"error": "conversation_unavailable", "message": str(exc)}, status_code=404,
         )
-    return {"messages": messages}
+    return {"messages": messages,"status":fetch_one("SELECT status FROM order_refunds WHERE order_refund_id=%s",(refund_id,))["status"]}
 
 
 @router.post("/api/portal/{role_key}/refunds/{refund_id}/messages")

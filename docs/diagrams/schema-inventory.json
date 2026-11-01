@@ -1,0 +1,3474 @@
+{
+  "review_date": "2026-10-31",
+  "baseline_sha256": "76132931c008a3136882d7de6fdf073ccef1b2809254ab219d941b54b731abaf",
+  "baseline_tables": 71,
+  "migration_metadata_tables": 1,
+  "tables": {
+    "departments": {
+      "department_id": "bigint",
+      "department_name": "text",
+      "description": "text",
+      "created_at": "timestamptz"
+    },
+    "accounts": {
+      "account_id": "bigint",
+      "account_type": "text",
+      "reseller_id": "bigint",
+      "name": "text",
+      "email": "text",
+      "password_hash": "text",
+      "profile_image_path": "text",
+      "profile_image_position_x": "numeric",
+      "profile_image_position_y": "numeric",
+      "profile_image_scale": "numeric",
+      "team_leader_role": "text",
+      "is_active": "boolean",
+      "activation_status": "text",
+      "activated_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "activity_logs": {
+      "activity_log_id": "bigint",
+      "account_id": "bigint",
+      "action": "text",
+      "entity_type": "text",
+      "entity_id": "bigint",
+      "created_at": "timestamptz",
+      "actor_role": "text",
+      "reason": "text",
+      "before_state": "jsonb",
+      "after_state": "jsonb",
+      "outcome": "text",
+      "request_id": "text",
+      "source_key": "text"
+    },
+    "inquiries": {
+      "inquiry_id": "bigint",
+      "name": "text",
+      "contact_number": "text",
+      "email": "text",
+      "business_name": "text",
+      "message": "text",
+      "rejection_reason": "text",
+      "status": "text",
+      "assigned_team_leader_account_id": "bigint",
+      "reviewed_by_account_id": "bigint",
+      "reviewed_at": "timestamptz",
+      "follow_up_sent_at": "timestamptz",
+      "created_at": "timestamptz",
+      "chat_conversation_id": "uuid"
+    },
+    "resellers": {
+      "reseller_id": "bigint",
+      "inquiry_id": "bigint",
+      "business_name": "text",
+      "contact_person": "text",
+      "email": "text",
+      "contact_number": "text",
+      "address": "text",
+      "reseller_status": "text",
+      "team_leader_account_id": "bigint",
+      "approved_by_account_id": "bigint",
+      "approved_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "inventory_items": {
+      "item_id": "bigint",
+      "item_type": "text",
+      "category": "text",
+      "name": "text",
+      "description": "text",
+      "unit": "text",
+      "base_price": "numeric",
+      "quantity_available": "numeric",
+      "pack_size": "numeric",
+      "pack_size_unit": "text",
+      "pack_content_status": "text",
+      "is_active": "boolean",
+      "created_at": "timestamptz"
+    },
+    "inventory_batches": {
+      "batch_id": "bigint",
+      "item_id": "bigint",
+      "batch_code": "text",
+      "source_type": "text",
+      "quantity_received": "numeric",
+      "quantity_available": "numeric",
+      "unit": "text",
+      "received_date": "date",
+      "expiry_date": "date",
+      "quality_status": "text",
+      "created_at": "timestamptz"
+    },
+    "product_recipes": {
+      "recipe_id": "bigint",
+      "product_item_id": "bigint",
+      "material_item_id": "bigint",
+      "quantity_required": "numeric",
+      "unit": "text"
+    },
+    "orders": {
+      "order_id": "bigint",
+      "order_type": "text",
+      "reseller_id": "bigint",
+      "created_by_account_id": "bigint",
+      "team_leader_account_id": "bigint",
+      "approved_by_account_id": "bigint",
+      "approved_at": "timestamptz",
+      "order_date": "timestamptz",
+      "status": "text",
+      "fulfilled_at": "timestamptz",
+      "total_amount": "numeric",
+      "notes": "text",
+      "rejection_reason": "text",
+      "rejection_payment_received": "boolean",
+      "cancellation_reason": "text",
+      "cancelled_at": "timestamptz",
+      "payment_transaction_number": "text",
+      "payment_transaction_key": "text",
+      "payment_paid_at": "timestamptz",
+      "payment_amount": "numeric",
+      "payment_ocr_confidence": "numeric",
+      "payment_extraction_method": "text",
+      "payment_confirmed_at": "timestamptz",
+      "payment_ocr_engine": "text",
+      "payment_due_at": "timestamptz",
+      "expired_at": "timestamptz"
+    },
+    "order_items": {
+      "order_item_id": "bigint",
+      "order_id": "bigint",
+      "product_id": "bigint",
+      "quantity": "numeric",
+      "unit": "text",
+      "unit_price": "numeric",
+      "line_total": "numeric"
+    },
+    "order_stock_reservations": {
+      "order_id": "bigint",
+      "product_id": "bigint",
+      "quantity": "numeric",
+      "reserved_at": "timestamptz"
+    },
+    "order_payment_proofs": {
+      "order_payment_proof_id": "bigint",
+      "order_id": "bigint",
+      "uploaded_by_account_id": "bigint",
+      "filename": "text",
+      "content_type": "text",
+      "content": "bytea",
+      "size_bytes": "integer",
+      "checksum_sha256": "text",
+      "uploaded_at": "timestamptz"
+    },
+    "order_refunds": {
+      "order_refund_id": "bigint",
+      "order_id": "bigint",
+      "amount": "numeric",
+      "currency": "char",
+      "status": "text",
+      "requested_by_account_id": "bigint",
+      "assigned_supervisor_account_id": "bigint",
+      "processing_by_account_id": "bigint",
+      "requested_at": "timestamptz",
+      "processing_started_at": "timestamptz",
+      "completed_at": "timestamptz",
+      "failed_at": "timestamptz",
+      "updated_at": "timestamptz",
+      "return_id": "bigint",
+      "payment_review_required": "boolean"
+    },
+    "order_refund_attempts": {
+      "order_refund_attempt_id": "bigint",
+      "order_refund_id": "bigint",
+      "attempt_number": "integer",
+      "status": "text",
+      "processor_account_id": "bigint",
+      "refund_method": "text",
+      "refund_transaction_number": "text",
+      "refund_transaction_key": "text",
+      "transferred_at": "timestamptz",
+      "internal_note": "text",
+      "failure_reason": "text",
+      "started_at": "timestamptz",
+      "completed_at": "timestamptz",
+      "failed_at": "timestamptz",
+      "transfer_amount": "numeric",
+      "receipt_extraction_method": "text",
+      "receipt_ocr_confidence": "numeric",
+      "receipt_ocr_engine": "text"
+    },
+    "order_refund_proofs": {
+      "order_refund_proof_id": "bigint",
+      "order_refund_attempt_id": "bigint",
+      "uploaded_by_account_id": "bigint",
+      "filename": "text",
+      "content_type": "text",
+      "content": "bytea",
+      "size_bytes": "integer",
+      "checksum_sha256": "char",
+      "uploaded_at": "timestamptz"
+    },
+    "order_refund_messages": {
+      "order_refund_message_id": "bigint",
+      "order_refund_id": "bigint",
+      "sender_account_id": "bigint",
+      "sender_role": "text",
+      "message": "text",
+      "created_at": "timestamptz",
+      "message_kind": "text",
+      "system_event_key": "text"
+    },
+    "reseller_cart_items": {
+      "cart_item_id": "bigint",
+      "account_id": "bigint",
+      "product_id": "bigint",
+      "quantity": "numeric",
+      "created_at": "timestamptz",
+      "updated_at": "timestamptz"
+    },
+    "sales_reports": {
+      "sales_report_id": "bigint",
+      "report_source": "text",
+      "submitted_by_account_id": "bigint",
+      "reseller_id": "bigint",
+      "department_id": "bigint",
+      "period_start": "date",
+      "period_end": "date",
+      "total_sales": "numeric",
+      "total_orders": "integer",
+      "notes": "text",
+      "submitted_at": "timestamptz",
+      "refund_separation_version": "smallint"
+    },
+    "sales_report_items": {
+      "sales_report_item_id": "bigint",
+      "sales_report_id": "bigint",
+      "product_id": "bigint",
+      "quantity_sold": "numeric",
+      "unit": "text",
+      "unit_price": "numeric",
+      "line_total": "numeric"
+    },
+    "sales_report_attachments": {
+      "sales_report_attachment_id": "bigint",
+      "sales_report_id": "bigint",
+      "filename": "text",
+      "content_type": "text",
+      "content": "bytea",
+      "size_bytes": "integer",
+      "checksum_sha256": "text",
+      "uploaded_at": "timestamptz"
+    },
+    "alerts": {
+      "alert_id": "bigint",
+      "alert_type": "text",
+      "severity": "text",
+      "product_id": "bigint",
+      "product_batch_id": "bigint",
+      "raw_material_id": "bigint",
+      "message": "text",
+      "status": "text",
+      "triggered_at": "timestamptz"
+    },
+    "forecast_runs": {
+      "forecast_run_id": "bigint",
+      "run_by_account_id": "bigint",
+      "model_name": "text",
+      "input_period_start": "date",
+      "input_period_end": "date",
+      "forecast_horizon_days": "integer",
+      "status": "text",
+      "queued_at": "timestamptz",
+      "started_at": "timestamptz",
+      "completed_at": "timestamptz",
+      "attempt_count": "integer",
+      "next_attempt_at": "timestamptz",
+      "locked_at": "timestamptz",
+      "last_error": "text",
+      "total_products": "integer",
+      "processed_products": "integer",
+      "configuration": "jsonb",
+      "notes": "text",
+      "retry_of_forecast_run_id": "bigint",
+      "cancel_requested_at": "timestamptz"
+    },
+    "forecast_product_summaries": {
+      "forecast_product_summary_id": "bigint",
+      "forecast_run_id": "bigint",
+      "product_id": "bigint",
+      "method": "text",
+      "diagnostic_status": "text",
+      "diagnostic_message": "text",
+      "history_days": "integer",
+      "nonzero_days": "integer",
+      "score_metric": "text",
+      "backtest_score": "numeric",
+      "candidate_scores": "jsonb",
+      "forecast_total": "numeric",
+      "confidence_lower_total": "numeric",
+      "confidence_upper_total": "numeric",
+      "usable_stock": "numeric",
+      "production_gap": "numeric",
+      "created_at": "timestamptz"
+    },
+    "forecast_results": {
+      "forecast_result_id": "bigint",
+      "forecast_run_id": "bigint",
+      "product_id": "bigint",
+      "forecast_date": "date",
+      "predicted_quantity": "numeric",
+      "confidence_lower": "numeric",
+      "confidence_upper": "numeric",
+      "created_at": "timestamptz"
+    },
+    "user_consents": {
+      "user_consent_id": "bigint",
+      "account_id": "bigint",
+      "policy_version": "text",
+      "consent_source": "text",
+      "provider": "text",
+      "accepted_at": "timestamptz"
+    },
+    "account_password_otps": {
+      "account_password_otp_id": "bigint",
+      "account_id": "bigint",
+      "otp_hash": "text",
+      "pending_password_hash": "text",
+      "expires_at": "timestamptz",
+      "consumed_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "account_login_otps": {
+      "account_login_otp_id": "bigint",
+      "account_id": "bigint",
+      "otp_hash": "text",
+      "expires_at": "timestamptz",
+      "consumed_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "notifications": {
+      "notification_id": "bigint",
+      "recipient_account_id": "bigint",
+      "recipient_role": "text",
+      "category": "text",
+      "severity": "text",
+      "title": "text",
+      "message": "text",
+      "target_url": "text",
+      "source_type": "text",
+      "source_id": "bigint",
+      "dedupe_key": "text",
+      "read_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "order_system_messages": {
+      "order_system_message_id": "bigint",
+      "reseller_account_id": "bigint",
+      "order_id": "bigint",
+      "event_type": "text",
+      "title": "text",
+      "message": "text",
+      "rejection_reason": "text",
+      "dedupe_key": "text",
+      "order_refund_attempt_id": "bigint",
+      "read_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "notification_recipients": {
+      "notification_id": "bigint",
+      "account_id": "bigint",
+      "read_at": "timestamptz"
+    },
+    "web_sessions": {
+      "token_hash": "char",
+      "account_id": "bigint",
+      "data": "jsonb",
+      "created_at": "timestamptz",
+      "updated_at": "timestamptz",
+      "expires_at": "timestamptz"
+    },
+    "security_events": {
+      "security_event_id": "bigint",
+      "event_type": "text",
+      "subject_key": "text",
+      "succeeded": "boolean",
+      "created_at": "timestamptz"
+    },
+    "account_activation_tokens": {
+      "activation_token_id": "bigint",
+      "account_id": "bigint",
+      "token_hash": "char",
+      "purpose": "text",
+      "expires_at": "timestamptz",
+      "consumed_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "notification_outbox": {
+      "outbox_id": "bigint",
+      "event_type": "text",
+      "payload": "jsonb",
+      "dedupe_key": "text",
+      "attempt_count": "integer",
+      "next_attempt_at": "timestamptz",
+      "locked_at": "timestamptz",
+      "sent_at": "timestamptz",
+      "last_error": "text",
+      "created_at": "timestamptz"
+    },
+    "inventory_movements": {
+      "movement_id": "bigint",
+      "item_id": "bigint",
+      "affected_batch_id": "bigint",
+      "production_batch_id": "bigint",
+      "order_id": "bigint",
+      "movement_type": "text",
+      "quantity_delta": "numeric",
+      "unit": "text",
+      "balance_before": "numeric",
+      "balance_after": "numeric",
+      "actor_account_id": "bigint",
+      "actor_name": "text",
+      "note": "text",
+      "created_at": "timestamptz"
+    },
+    "chat_conversations": {
+      "conversation_id": "uuid",
+      "display_name": "text",
+      "status": "text",
+      "escalation_reason": "text",
+      "assigned_team_leader_account_id": "bigint",
+      "fallback_contact_type": "text",
+      "fallback_contact": "text",
+      "privacy_consent_at": "timestamptz",
+      "queued_at": "timestamptz",
+      "claimed_at": "timestamptz",
+      "last_visitor_at": "timestamptz",
+      "last_leader_at": "timestamptz",
+      "visitor_typing_until": "timestamptz",
+      "leader_typing_until": "timestamptz",
+      "inquiry_form_requested_at": "timestamptz",
+      "closed_at": "timestamptz",
+      "created_at": "timestamptz",
+      "updated_at": "timestamptz"
+    },
+    "chat_messages": {
+      "chat_message_id": "bigint",
+      "conversation_id": "uuid",
+      "client_message_id": "uuid",
+      "sender_type": "text",
+      "sender_account_id": "bigint",
+      "content": "text",
+      "publication_status": "text",
+      "publish_attempts": "integer",
+      "last_publish_error": "text",
+      "published_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "reseller_conversations": {
+      "conversation_id": "bigint",
+      "reseller_account_id": "bigint",
+      "team_leader_account_id": "bigint",
+      "last_message_at": "timestamptz",
+      "reseller_deleted_at": "timestamptz",
+      "team_leader_deleted_at": "timestamptz",
+      "created_at": "timestamptz",
+      "updated_at": "timestamptz"
+    },
+    "reseller_messages": {
+      "reseller_message_id": "bigint",
+      "conversation_id": "bigint",
+      "client_message_id": "uuid",
+      "sender_account_id": "bigint",
+      "content": "text",
+      "read_at": "timestamptz",
+      "created_at": "timestamptz",
+      "return_id": "bigint",
+      "attachment_count": "integer"
+    },
+    "chat_service_ratings": {
+      "conversation_id": "uuid",
+      "team_leader_account_id": "bigint",
+      "rating": "smallint",
+      "created_at": "timestamptz"
+    },
+    "team_leader_presence": {
+      "account_id": "bigint",
+      "availability": "text",
+      "active_conversation_id": "uuid",
+      "heartbeat_at": "timestamptz",
+      "updated_at": "timestamptz"
+    },
+    "rate_limit_buckets": {
+      "event_type": "text",
+      "subject_hash": "text",
+      "window_seconds": "integer",
+      "bucket_started_at": "timestamptz",
+      "request_count": "integer",
+      "expires_at": "timestamptz"
+    },
+    "owner_step_up_challenges": {
+      "owner_step_up_challenge_id": "bigint",
+      "account_id": "bigint",
+      "otp_hash": "text",
+      "action_scope": "text",
+      "attempt_count": "integer",
+      "expires_at": "timestamptz",
+      "consumed_at": "timestamptz",
+      "created_at": "timestamptz"
+    },
+    "business_settings": {
+      "setting_key": "text",
+      "setting_value": "jsonb",
+      "updated_by_account_id": "bigint",
+      "updated_at": "timestamptz"
+    },
+    "system_status_reports": {
+      "component": "text",
+      "status": "text",
+      "detail": "text",
+      "metadata": "jsonb",
+      "checked_at": "timestamptz"
+    },
+    "fulfillment_allocations": {
+      "allocation_id": "bigint",
+      "order_item_id": "bigint",
+      "batch_id": "bigint",
+      "quantity": "numeric",
+      "verified_by_account_id": "bigint",
+      "verification_note": "text"
+    },
+    "product_returns": {
+      "return_id": "bigint",
+      "order_id": "bigint",
+      "resolution": "text",
+      "status": "text",
+      "remarks": "text",
+      "requested_by_account_id": "bigint",
+      "approved_by_account_id": "bigint",
+      "credit": "numeric",
+      "quote_revision": "integer",
+      "accepted_revision": "integer",
+      "replacement_total": "numeric",
+      "payment_verified_by_account_id": "bigint",
+      "payment_verified_at": "timestamptz",
+      "payment_reference": "text",
+      "payment_amount": "numeric",
+      "replacement_released_at": "timestamptz",
+      "verified_at": "timestamptz",
+      "created_at": "timestamptz",
+      "completed_at": "timestamptz",
+      "updated_at": "timestamptz",
+      "operation_key": "uuid",
+      "verified_by_account_id": "bigint",
+      "verification_remarks": "text",
+      "request_hash": "text",
+      "settlement_authorized_by_account_id": "bigint",
+      "settlement_authorized_at": "timestamptz",
+      "settlement_authorized_quote_revision": "integer",
+      "processing_supervisor_account_id": "bigint",
+      "handed_off_at": "timestamptz",
+      "replacement_workflow_version": "smallint",
+      "replacement_prepared_at": "timestamptz",
+      "replacement_prepared_by_account_id": "bigint",
+      "replacement_delivered_at": "timestamptz",
+      "replacement_delivered_by_account_id": "bigint",
+      "replacement_payment_details": "jsonb"
+    },
+    "product_return_lines": {
+      "return_line_id": "bigint",
+      "return_id": "bigint",
+      "allocation_id": "bigint",
+      "quantity": "numeric",
+      "received_quantity": "numeric",
+      "unit_price": "numeric"
+    },
+    "product_return_events": {
+      "event_id": "bigint",
+      "return_id": "bigint",
+      "actor_account_id": "bigint",
+      "action": "text",
+      "remarks": "text",
+      "created_at": "timestamptz",
+      "operation_key": "uuid",
+      "refund_id": "bigint",
+      "refund_attempt_id": "bigint",
+      "amount": "numeric",
+      "request_hash": "text",
+      "customer_message": "text"
+    },
+    "replacement_quote_lines": {
+      "quote_line_id": "bigint",
+      "return_id": "bigint",
+      "revision": "integer",
+      "product_id": "bigint",
+      "quantity": "numeric",
+      "unit_price": "numeric",
+      "line_total": "numeric",
+      "pricing_components": "jsonb"
+    },
+    "replacement_stock_reservations": {
+      "return_id": "bigint",
+      "batch_id": "bigint",
+      "quantity": "numeric"
+    },
+    "replacement_releases": {
+      "release_id": "bigint",
+      "return_id": "bigint",
+      "batch_id": "bigint",
+      "quantity": "numeric",
+      "released_by_account_id": "bigint",
+      "created_at": "timestamptz",
+      "inventory_movement_id": "bigint"
+    },
+    "return_attachments": {
+      "attachment_id": "bigint",
+      "return_id": "bigint",
+      "purpose": "text",
+      "revision": "integer",
+      "filename": "text",
+      "content_type": "text",
+      "content": "bytea",
+      "size_bytes": "integer",
+      "checksum_sha256": "text",
+      "uploaded_by_account_id": "bigint",
+      "created_at": "timestamptz"
+    },
+    "expired_pullouts": {
+      "pullout_id": "bigint",
+      "batch_id": "bigint",
+      "created_at": "timestamptz"
+    },
+    "expired_holdings": {
+      "holding_id": "bigint",
+      "product_id": "bigint",
+      "batch_id": "bigint",
+      "return_line_id": "bigint",
+      "source": "text",
+      "source_batch_code": "text",
+      "expiry_date": "date",
+      "quantity_received": "numeric",
+      "quantity_remaining": "numeric",
+      "location": "text",
+      "created_by_account_id": "bigint",
+      "created_at": "timestamptz"
+    },
+    "expired_stock_movements": {
+      "movement_id": "bigint",
+      "holding_id": "bigint",
+      "action": "text",
+      "quantity": "numeric",
+      "actor_account_id": "bigint",
+      "remarks": "text",
+      "disposal_method": "text",
+      "operation_key": "uuid",
+      "created_at": "timestamptz"
+    },
+    "product_return_receipts": {
+      "receipt_id": "bigint",
+      "return_id": "bigint",
+      "operation_key": "uuid",
+      "request_hash": "text",
+      "received_by_account_id": "bigint",
+      "location": "text",
+      "remarks": "text",
+      "received_at": "timestamptz"
+    },
+    "product_return_receipt_lines": {
+      "receipt_line_id": "bigint",
+      "receipt_id": "bigint",
+      "return_line_id": "bigint",
+      "holding_id": "bigint",
+      "movement_id": "bigint",
+      "quantity": "numeric"
+    },
+    "refund_operations": {
+      "operation_key": "uuid",
+      "refund_id": "bigint",
+      "actor_account_id": "bigint",
+      "action": "text",
+      "request_hash": "text",
+      "attempt_id": "bigint",
+      "created_at": "timestamptz"
+    },
+    "sales_report_orders": {
+      "sales_report_id": "bigint",
+      "order_id": "bigint",
+      "gross_sales": "numeric",
+      "refunded_at_submission": "numeric"
+    },
+    "sales_report_refunds": {
+      "sales_report_id": "bigint",
+      "order_refund_id": "bigint",
+      "amount": "numeric"
+    },
+    "sales_report_activity_snapshots": {
+      "sales_report_id": "bigint",
+      "author_account_id": "bigint",
+      "submission_key": "uuid",
+      "schema_version": "smallint",
+      "captured_at": "timestamptz",
+      "payload": "jsonb"
+    },
+    "return_offer_snapshots": {
+      "return_id": "bigint",
+      "revision": "integer",
+      "credit": "numeric",
+      "replacement_total": "numeric",
+      "returned_items": "jsonb",
+      "replacement_items": "jsonb",
+      "is_baseline": "boolean",
+      "created_at": "timestamptz"
+    },
+    "return_customer_followups": {
+      "followup_id": "bigint",
+      "return_id": "bigint",
+      "reported_by_account_id": "bigint",
+      "report_key": "uuid",
+      "message": "text",
+      "status": "text",
+      "resolved_by_account_id": "bigint",
+      "resolution_message": "text",
+      "created_at": "timestamptz",
+      "resolved_at": "timestamptz"
+    },
+    "return_followup_messages": {
+      "followup_id": "bigint",
+      "client_message_id": "uuid",
+      "content": "text",
+      "reseller_message_id": "bigint",
+      "created_at": "timestamptz"
+    },
+    "order_reservation_events": {
+      "reservation_event_id": "bigint",
+      "order_id": "bigint",
+      "product_id": "bigint",
+      "quantity_delta": "numeric",
+      "action": "text",
+      "actor_account_id": "bigint",
+      "created_at": "timestamptz"
+    },
+    "reseller_message_attachments": {
+      "attachment_id": "bigint",
+      "reseller_message_id": "bigint",
+      "filename": "text",
+      "content_type": "text",
+      "content": "bytea",
+      "size_bytes": "integer",
+      "checksum_sha256": "char"
+    },
+    "refund_message_reads": {
+      "order_refund_id": "bigint",
+      "account_id": "bigint",
+      "last_message_id": "bigint",
+      "read_at": "timestamptz"
+    },
+    "reseller_order_receipts": {
+      "order_id": "bigint",
+      "account_id": "bigint",
+      "received_at": "timestamptz"
+    },
+    "return_conversation_messages": {
+      "message_id": "bigint",
+      "return_id": "bigint",
+      "sender_account_id": "bigint",
+      "client_message_id": "uuid",
+      "content": "text",
+      "created_at": "timestamptz"
+    },
+    "return_conversation_reads": {
+      "return_id": "bigint",
+      "account_id": "bigint",
+      "last_message_id": "bigint"
+    },
+    "schema_migrations": {
+      "version": "text",
+      "checksum_sha256": "text",
+      "applied_at": "timestamptz"
+    }
+  },
+  "primary_keys": {
+    "departments": [
+      "department_id"
+    ],
+    "accounts": [
+      "account_id"
+    ],
+    "activity_logs": [
+      "activity_log_id"
+    ],
+    "inquiries": [
+      "inquiry_id"
+    ],
+    "resellers": [
+      "reseller_id"
+    ],
+    "inventory_items": [
+      "item_id"
+    ],
+    "inventory_batches": [
+      "batch_id"
+    ],
+    "product_recipes": [
+      "recipe_id"
+    ],
+    "orders": [
+      "order_id"
+    ],
+    "order_items": [
+      "order_item_id"
+    ],
+    "order_stock_reservations": [
+      "order_id",
+      "product_id"
+    ],
+    "order_payment_proofs": [
+      "order_payment_proof_id"
+    ],
+    "order_refunds": [
+      "order_refund_id"
+    ],
+    "order_refund_attempts": [
+      "order_refund_attempt_id"
+    ],
+    "order_refund_proofs": [
+      "order_refund_proof_id"
+    ],
+    "order_refund_messages": [
+      "order_refund_message_id"
+    ],
+    "reseller_cart_items": [
+      "cart_item_id"
+    ],
+    "sales_reports": [
+      "sales_report_id"
+    ],
+    "sales_report_items": [
+      "sales_report_item_id"
+    ],
+    "sales_report_attachments": [
+      "sales_report_attachment_id"
+    ],
+    "alerts": [
+      "alert_id"
+    ],
+    "forecast_runs": [
+      "forecast_run_id"
+    ],
+    "forecast_product_summaries": [
+      "forecast_product_summary_id"
+    ],
+    "forecast_results": [
+      "forecast_result_id"
+    ],
+    "user_consents": [
+      "user_consent_id"
+    ],
+    "account_password_otps": [
+      "account_password_otp_id"
+    ],
+    "account_login_otps": [
+      "account_login_otp_id"
+    ],
+    "notifications": [
+      "notification_id"
+    ],
+    "order_system_messages": [
+      "order_system_message_id"
+    ],
+    "notification_recipients": [
+      "notification_id",
+      "account_id"
+    ],
+    "web_sessions": [
+      "token_hash"
+    ],
+    "security_events": [
+      "security_event_id"
+    ],
+    "account_activation_tokens": [
+      "activation_token_id"
+    ],
+    "notification_outbox": [
+      "outbox_id"
+    ],
+    "inventory_movements": [
+      "movement_id"
+    ],
+    "chat_conversations": [
+      "conversation_id"
+    ],
+    "chat_messages": [
+      "chat_message_id"
+    ],
+    "reseller_conversations": [
+      "conversation_id"
+    ],
+    "reseller_messages": [
+      "reseller_message_id"
+    ],
+    "chat_service_ratings": [
+      "conversation_id"
+    ],
+    "team_leader_presence": [
+      "account_id"
+    ],
+    "rate_limit_buckets": [
+      "event_type",
+      "subject_hash",
+      "window_seconds",
+      "bucket_started_at"
+    ],
+    "owner_step_up_challenges": [
+      "owner_step_up_challenge_id"
+    ],
+    "business_settings": [
+      "setting_key"
+    ],
+    "system_status_reports": [
+      "component"
+    ],
+    "fulfillment_allocations": [
+      "allocation_id"
+    ],
+    "product_returns": [
+      "return_id"
+    ],
+    "product_return_lines": [
+      "return_line_id"
+    ],
+    "product_return_events": [
+      "event_id"
+    ],
+    "replacement_quote_lines": [
+      "quote_line_id"
+    ],
+    "replacement_stock_reservations": [
+      "return_id",
+      "batch_id"
+    ],
+    "replacement_releases": [
+      "release_id"
+    ],
+    "return_attachments": [
+      "attachment_id"
+    ],
+    "expired_pullouts": [
+      "pullout_id"
+    ],
+    "expired_holdings": [
+      "holding_id"
+    ],
+    "expired_stock_movements": [
+      "movement_id"
+    ],
+    "product_return_receipts": [
+      "receipt_id"
+    ],
+    "product_return_receipt_lines": [
+      "receipt_line_id"
+    ],
+    "refund_operations": [
+      "operation_key"
+    ],
+    "sales_report_orders": [
+      "sales_report_id",
+      "order_id"
+    ],
+    "sales_report_refunds": [
+      "sales_report_id",
+      "order_refund_id"
+    ],
+    "sales_report_activity_snapshots": [
+      "sales_report_id"
+    ],
+    "return_offer_snapshots": [
+      "return_id",
+      "revision"
+    ],
+    "return_customer_followups": [
+      "followup_id"
+    ],
+    "return_followup_messages": [
+      "followup_id",
+      "client_message_id"
+    ],
+    "order_reservation_events": [
+      "reservation_event_id"
+    ],
+    "reseller_message_attachments": [
+      "attachment_id"
+    ],
+    "refund_message_reads": [
+      "order_refund_id",
+      "account_id"
+    ],
+    "reseller_order_receipts": [
+      "order_id"
+    ],
+    "return_conversation_messages": [
+      "message_id"
+    ],
+    "return_conversation_reads": [
+      "return_id",
+      "account_id"
+    ],
+    "schema_migrations": [
+      "version"
+    ]
+  },
+  "foreign_keys": [
+    {
+      "child": "activity_logs",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inquiries",
+      "cols": [
+        "assigned_team_leader_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inquiries",
+      "cols": [
+        "reviewed_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "resellers",
+      "cols": [
+        "inquiry_id"
+      ],
+      "parent": "inquiries",
+      "target": [
+        "inquiry_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "resellers",
+      "cols": [
+        "team_leader_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "resellers",
+      "cols": [
+        "approved_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "accounts",
+      "cols": [
+        "reseller_id"
+      ],
+      "parent": "resellers",
+      "target": [
+        "reseller_id"
+      ],
+      "name": "fk_accounts_reseller"
+    },
+    {
+      "child": "inventory_batches",
+      "cols": [
+        "item_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_recipes",
+      "cols": [
+        "product_item_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_recipes",
+      "cols": [
+        "material_item_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "orders",
+      "cols": [
+        "reseller_id"
+      ],
+      "parent": "resellers",
+      "target": [
+        "reseller_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "orders",
+      "cols": [
+        "created_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "orders",
+      "cols": [
+        "team_leader_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "orders",
+      "cols": [
+        "approved_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_items",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_items",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_stock_reservations",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_stock_reservations",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_payment_proofs",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_payment_proofs",
+      "cols": [
+        "uploaded_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refunds",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refunds",
+      "cols": [
+        "requested_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refunds",
+      "cols": [
+        "assigned_supervisor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refunds",
+      "cols": [
+        "processing_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refund_attempts",
+      "cols": [
+        "order_refund_id"
+      ],
+      "parent": "order_refunds",
+      "target": [
+        "order_refund_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refund_attempts",
+      "cols": [
+        "processor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refund_proofs",
+      "cols": [
+        "order_refund_attempt_id"
+      ],
+      "parent": "order_refund_attempts",
+      "target": [
+        "order_refund_attempt_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refund_proofs",
+      "cols": [
+        "uploaded_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refund_messages",
+      "cols": [
+        "order_refund_id"
+      ],
+      "parent": "order_refunds",
+      "target": [
+        "order_refund_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refund_messages",
+      "cols": [
+        "sender_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_cart_items",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_cart_items",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_reports",
+      "cols": [
+        "submitted_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_reports",
+      "cols": [
+        "reseller_id"
+      ],
+      "parent": "resellers",
+      "target": [
+        "reseller_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_reports",
+      "cols": [
+        "department_id"
+      ],
+      "parent": "departments",
+      "target": [
+        "department_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_items",
+      "cols": [
+        "sales_report_id"
+      ],
+      "parent": "sales_reports",
+      "target": [
+        "sales_report_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_items",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_attachments",
+      "cols": [
+        "sales_report_id"
+      ],
+      "parent": "sales_reports",
+      "target": [
+        "sales_report_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "alerts",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "alerts",
+      "cols": [
+        "product_batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "alerts",
+      "cols": [
+        "raw_material_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "forecast_runs",
+      "cols": [
+        "run_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "forecast_product_summaries",
+      "cols": [
+        "forecast_run_id"
+      ],
+      "parent": "forecast_runs",
+      "target": [
+        "forecast_run_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "forecast_product_summaries",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "forecast_results",
+      "cols": [
+        "forecast_run_id"
+      ],
+      "parent": "forecast_runs",
+      "target": [
+        "forecast_run_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "forecast_results",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "user_consents",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "account_password_otps",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "account_login_otps",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "notifications",
+      "cols": [
+        "recipient_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_system_messages",
+      "cols": [
+        "reseller_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_system_messages",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_system_messages",
+      "cols": [
+        "order_refund_attempt_id"
+      ],
+      "parent": "order_refund_attempts",
+      "target": [
+        "order_refund_attempt_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "notification_recipients",
+      "cols": [
+        "notification_id"
+      ],
+      "parent": "notifications",
+      "target": [
+        "notification_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "notification_recipients",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "web_sessions",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "account_activation_tokens",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inventory_movements",
+      "cols": [
+        "item_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inventory_movements",
+      "cols": [
+        "affected_batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inventory_movements",
+      "cols": [
+        "production_batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inventory_movements",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inventory_movements",
+      "cols": [
+        "actor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "chat_conversations",
+      "cols": [
+        "assigned_team_leader_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "chat_messages",
+      "cols": [
+        "conversation_id"
+      ],
+      "parent": "chat_conversations",
+      "target": [
+        "conversation_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "chat_messages",
+      "cols": [
+        "sender_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_conversations",
+      "cols": [
+        "reseller_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_conversations",
+      "cols": [
+        "team_leader_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_messages",
+      "cols": [
+        "conversation_id"
+      ],
+      "parent": "reseller_conversations",
+      "target": [
+        "conversation_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_messages",
+      "cols": [
+        "sender_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "chat_service_ratings",
+      "cols": [
+        "conversation_id"
+      ],
+      "parent": "chat_conversations",
+      "target": [
+        "conversation_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "chat_service_ratings",
+      "cols": [
+        "team_leader_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "team_leader_presence",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "team_leader_presence",
+      "cols": [
+        "active_conversation_id"
+      ],
+      "parent": "chat_conversations",
+      "target": [
+        "conversation_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "inquiries",
+      "cols": [
+        "chat_conversation_id"
+      ],
+      "parent": "chat_conversations",
+      "target": [
+        "conversation_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "owner_step_up_challenges",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "business_settings",
+      "cols": [
+        "updated_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "forecast_runs",
+      "cols": [
+        "retry_of_forecast_run_id"
+      ],
+      "parent": "forecast_runs",
+      "target": [
+        "forecast_run_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "fulfillment_allocations",
+      "cols": [
+        "order_item_id"
+      ],
+      "parent": "order_items",
+      "target": [
+        "order_item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "fulfillment_allocations",
+      "cols": [
+        "batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "fulfillment_allocations",
+      "cols": [
+        "verified_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "requested_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "approved_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "payment_verified_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_lines",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_lines",
+      "cols": [
+        "allocation_id"
+      ],
+      "parent": "fulfillment_allocations",
+      "target": [
+        "allocation_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_events",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_events",
+      "cols": [
+        "actor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_quote_lines",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_quote_lines",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_stock_reservations",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_stock_reservations",
+      "cols": [
+        "batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_releases",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_releases",
+      "cols": [
+        "batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_releases",
+      "cols": [
+        "released_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_attachments",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_attachments",
+      "cols": [
+        "uploaded_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "expired_pullouts",
+      "cols": [
+        "batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "expired_holdings",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "expired_holdings",
+      "cols": [
+        "batch_id"
+      ],
+      "parent": "inventory_batches",
+      "target": [
+        "batch_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "expired_holdings",
+      "cols": [
+        "return_line_id"
+      ],
+      "parent": "product_return_lines",
+      "target": [
+        "return_line_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "expired_holdings",
+      "cols": [
+        "created_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "expired_stock_movements",
+      "cols": [
+        "holding_id"
+      ],
+      "parent": "expired_holdings",
+      "target": [
+        "holding_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "expired_stock_movements",
+      "cols": [
+        "actor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_refunds",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "verified_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_receipts",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_receipts",
+      "cols": [
+        "received_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_receipt_lines",
+      "cols": [
+        "receipt_id"
+      ],
+      "parent": "product_return_receipts",
+      "target": [
+        "receipt_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_receipt_lines",
+      "cols": [
+        "return_line_id"
+      ],
+      "parent": "product_return_lines",
+      "target": [
+        "return_line_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_receipt_lines",
+      "cols": [
+        "holding_id"
+      ],
+      "parent": "expired_holdings",
+      "target": [
+        "holding_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_receipt_lines",
+      "cols": [
+        "movement_id"
+      ],
+      "parent": "expired_stock_movements",
+      "target": [
+        "movement_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_events",
+      "cols": [
+        "refund_id"
+      ],
+      "parent": "order_refunds",
+      "target": [
+        "order_refund_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_return_events",
+      "cols": [
+        "refund_attempt_id"
+      ],
+      "parent": "order_refund_attempts",
+      "target": [
+        "order_refund_attempt_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "refund_operations",
+      "cols": [
+        "refund_id"
+      ],
+      "parent": "order_refunds",
+      "target": [
+        "order_refund_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "refund_operations",
+      "cols": [
+        "actor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "refund_operations",
+      "cols": [
+        "attempt_id"
+      ],
+      "parent": "order_refund_attempts",
+      "target": [
+        "order_refund_attempt_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_orders",
+      "cols": [
+        "sales_report_id"
+      ],
+      "parent": "sales_reports",
+      "target": [
+        "sales_report_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_orders",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_refunds",
+      "cols": [
+        "sales_report_id"
+      ],
+      "parent": "sales_reports",
+      "target": [
+        "sales_report_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_refunds",
+      "cols": [
+        "order_refund_id"
+      ],
+      "parent": "order_refunds",
+      "target": [
+        "order_refund_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "settlement_authorized_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "replacement_releases",
+      "cols": [
+        "inventory_movement_id"
+      ],
+      "parent": "inventory_movements",
+      "target": [
+        "movement_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_activity_snapshots",
+      "cols": [
+        "sales_report_id"
+      ],
+      "parent": "sales_reports",
+      "target": [
+        "sales_report_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "sales_report_activity_snapshots",
+      "cols": [
+        "author_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_offer_snapshots",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_messages",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_customer_followups",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_customer_followups",
+      "cols": [
+        "reported_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_customer_followups",
+      "cols": [
+        "resolved_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_followup_messages",
+      "cols": [
+        "followup_id"
+      ],
+      "parent": "return_customer_followups",
+      "target": [
+        "followup_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_followup_messages",
+      "cols": [
+        "reseller_message_id"
+      ],
+      "parent": "reseller_messages",
+      "target": [
+        "reseller_message_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_reservation_events",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_reservation_events",
+      "cols": [
+        "product_id"
+      ],
+      "parent": "inventory_items",
+      "target": [
+        "item_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "order_reservation_events",
+      "cols": [
+        "actor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "processing_supervisor_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_message_attachments",
+      "cols": [
+        "reseller_message_id"
+      ],
+      "parent": "reseller_messages",
+      "target": [
+        "reseller_message_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "refund_message_reads",
+      "cols": [
+        "order_refund_id"
+      ],
+      "parent": "order_refunds",
+      "target": [
+        "order_refund_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "refund_message_reads",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_order_receipts",
+      "cols": [
+        "order_id"
+      ],
+      "parent": "orders",
+      "target": [
+        "order_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "reseller_order_receipts",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "replacement_prepared_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "product_returns",
+      "cols": [
+        "replacement_delivered_by_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_conversation_messages",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_conversation_messages",
+      "cols": [
+        "sender_account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_conversation_reads",
+      "cols": [
+        "return_id"
+      ],
+      "parent": "product_returns",
+      "target": [
+        "return_id"
+      ],
+      "name": null
+    },
+    {
+      "child": "return_conversation_reads",
+      "cols": [
+        "account_id"
+      ],
+      "parent": "accounts",
+      "target": [
+        "account_id"
+      ],
+      "name": null
+    }
+  ],
+  "single_or_composite_unique_keys": {
+    "departments": {
+      "departments_pkey": [
+        "department_id"
+      ],
+      "departments_department_name_key": [
+        "department_name"
+      ]
+    },
+    "accounts": {
+      "accounts_pkey": [
+        "account_id"
+      ]
+    },
+    "activity_logs": {
+      "activity_logs_pkey": [
+        "activity_log_id"
+      ]
+    },
+    "inquiries": {
+      "inquiries_pkey": [
+        "inquiry_id"
+      ],
+      "inquiries_chat_conversation_id_key": [
+        "chat_conversation_id"
+      ]
+    },
+    "resellers": {
+      "resellers_pkey": [
+        "reseller_id"
+      ],
+      "resellers_inquiry_id_key": [
+        "inquiry_id"
+      ]
+    },
+    "inventory_items": {
+      "inventory_items_pkey": [
+        "item_id"
+      ],
+      "inventory_items_item_type_name_key": [
+        "item_type",
+        "name"
+      ]
+    },
+    "inventory_batches": {
+      "inventory_batches_pkey": [
+        "batch_id"
+      ],
+      "inventory_batches_batch_code_key": [
+        "batch_code"
+      ]
+    },
+    "product_recipes": {
+      "product_recipes_pkey": [
+        "recipe_id"
+      ],
+      "product_recipes_product_item_id_material_item_id_key": [
+        "product_item_id",
+        "material_item_id"
+      ]
+    },
+    "orders": {
+      "orders_pkey": [
+        "order_id"
+      ]
+    },
+    "order_items": {
+      "order_items_pkey": [
+        "order_item_id"
+      ]
+    },
+    "order_stock_reservations": {
+      "order_stock_reservations_pkey": [
+        "order_id",
+        "product_id"
+      ]
+    },
+    "order_payment_proofs": {
+      "order_payment_proofs_pkey": [
+        "order_payment_proof_id"
+      ]
+    },
+    "order_refunds": {
+      "order_refunds_pkey": [
+        "order_refund_id"
+      ],
+      "ux_return_case_refund": [
+        "return_id"
+      ]
+    },
+    "order_refund_attempts": {
+      "order_refund_attempts_pkey": [
+        "order_refund_attempt_id"
+      ],
+      "order_refund_attempts_order_refund_id_attempt_number_key": [
+        "order_refund_id",
+        "attempt_number"
+      ],
+      "ux_order_refund_attempt_transaction": [
+        "refund_transaction_key"
+      ]
+    },
+    "order_refund_proofs": {
+      "order_refund_proofs_pkey": [
+        "order_refund_proof_id"
+      ],
+      "order_refund_proofs_order_refund_attempt_id_key": [
+        "order_refund_attempt_id"
+      ]
+    },
+    "order_refund_messages": {
+      "order_refund_messages_pkey": [
+        "order_refund_message_id"
+      ],
+      "order_refund_messages_system_event_key_key": [
+        "system_event_key"
+      ]
+    },
+    "reseller_cart_items": {
+      "reseller_cart_items_pkey": [
+        "cart_item_id"
+      ],
+      "reseller_cart_items_account_id_product_id_key": [
+        "account_id",
+        "product_id"
+      ]
+    },
+    "sales_reports": {
+      "sales_reports_pkey": [
+        "sales_report_id"
+      ]
+    },
+    "sales_report_items": {
+      "sales_report_items_pkey": [
+        "sales_report_item_id"
+      ]
+    },
+    "sales_report_attachments": {
+      "sales_report_attachments_pkey": [
+        "sales_report_attachment_id"
+      ]
+    },
+    "alerts": {
+      "alerts_pkey": [
+        "alert_id"
+      ]
+    },
+    "forecast_runs": {
+      "forecast_runs_pkey": [
+        "forecast_run_id"
+      ],
+      "ux_forecast_runs_single_retry": [
+        "retry_of_forecast_run_id"
+      ]
+    },
+    "forecast_product_summaries": {
+      "forecast_product_summaries_pkey": [
+        "forecast_product_summary_id"
+      ],
+      "forecast_product_summaries_forecast_run_id_product_id_key": [
+        "forecast_run_id",
+        "product_id"
+      ]
+    },
+    "forecast_results": {
+      "forecast_results_pkey": [
+        "forecast_result_id"
+      ],
+      "forecast_results_forecast_run_id_product_id_forecast_date_key": [
+        "forecast_run_id",
+        "product_id",
+        "forecast_date"
+      ]
+    },
+    "user_consents": {
+      "user_consents_pkey": [
+        "user_consent_id"
+      ]
+    },
+    "account_password_otps": {
+      "account_password_otps_pkey": [
+        "account_password_otp_id"
+      ]
+    },
+    "account_login_otps": {
+      "account_login_otps_pkey": [
+        "account_login_otp_id"
+      ]
+    },
+    "notifications": {
+      "notifications_pkey": [
+        "notification_id"
+      ],
+      "notifications_dedupe_key_key": [
+        "dedupe_key"
+      ]
+    },
+    "order_system_messages": {
+      "order_system_messages_pkey": [
+        "order_system_message_id"
+      ],
+      "order_system_messages_dedupe_key_key": [
+        "dedupe_key"
+      ]
+    },
+    "notification_recipients": {
+      "notification_recipients_pkey": [
+        "notification_id",
+        "account_id"
+      ]
+    },
+    "web_sessions": {
+      "web_sessions_pkey": [
+        "token_hash"
+      ]
+    },
+    "security_events": {
+      "security_events_pkey": [
+        "security_event_id"
+      ]
+    },
+    "account_activation_tokens": {
+      "account_activation_tokens_pkey": [
+        "activation_token_id"
+      ],
+      "account_activation_tokens_token_hash_key": [
+        "token_hash"
+      ]
+    },
+    "notification_outbox": {
+      "notification_outbox_pkey": [
+        "outbox_id"
+      ],
+      "notification_outbox_dedupe_key_key": [
+        "dedupe_key"
+      ]
+    },
+    "inventory_movements": {
+      "inventory_movements_pkey": [
+        "movement_id"
+      ]
+    },
+    "chat_conversations": {
+      "chat_conversations_pkey": [
+        "conversation_id"
+      ]
+    },
+    "chat_messages": {
+      "chat_messages_pkey": [
+        "chat_message_id"
+      ],
+      "chat_messages_conversation_id_client_message_id_key": [
+        "conversation_id",
+        "client_message_id"
+      ]
+    },
+    "reseller_conversations": {
+      "reseller_conversations_pkey": [
+        "conversation_id"
+      ],
+      "reseller_conversations_reseller_account_id_team_leader_account_id_key": [
+        "reseller_account_id",
+        "team_leader_account_id"
+      ]
+    },
+    "reseller_messages": {
+      "reseller_messages_pkey": [
+        "reseller_message_id"
+      ],
+      "reseller_messages_conversation_id_client_message_id_key": [
+        "conversation_id",
+        "client_message_id"
+      ]
+    },
+    "chat_service_ratings": {
+      "chat_service_ratings_pkey": [
+        "conversation_id"
+      ]
+    },
+    "team_leader_presence": {
+      "team_leader_presence_pkey": [
+        "account_id"
+      ]
+    },
+    "rate_limit_buckets": {
+      "rate_limit_buckets_pkey": [
+        "event_type",
+        "subject_hash",
+        "window_seconds",
+        "bucket_started_at"
+      ]
+    },
+    "owner_step_up_challenges": {
+      "owner_step_up_challenges_pkey": [
+        "owner_step_up_challenge_id"
+      ]
+    },
+    "business_settings": {
+      "business_settings_pkey": [
+        "setting_key"
+      ]
+    },
+    "system_status_reports": {
+      "system_status_reports_pkey": [
+        "component"
+      ]
+    },
+    "fulfillment_allocations": {
+      "fulfillment_allocations_pkey": [
+        "allocation_id"
+      ],
+      "fulfillment_allocations_order_item_id_batch_id_key": [
+        "order_item_id",
+        "batch_id"
+      ]
+    },
+    "product_returns": {
+      "product_returns_pkey": [
+        "return_id"
+      ],
+      "ux_return_payment_reference": [
+        "payment_reference"
+      ],
+      "ux_return_request_operation": [
+        "operation_key"
+      ]
+    },
+    "product_return_lines": {
+      "product_return_lines_pkey": [
+        "return_line_id"
+      ],
+      "product_return_lines_return_id_allocation_id_key": [
+        "return_id",
+        "allocation_id"
+      ]
+    },
+    "product_return_events": {
+      "product_return_events_pkey": [
+        "event_id"
+      ],
+      "ux_return_event_operation": [
+        "operation_key"
+      ]
+    },
+    "replacement_quote_lines": {
+      "replacement_quote_lines_pkey": [
+        "quote_line_id"
+      ],
+      "replacement_quote_lines_return_id_revision_product_id_key": [
+        "return_id",
+        "revision",
+        "product_id"
+      ]
+    },
+    "replacement_stock_reservations": {
+      "replacement_stock_reservations_pkey": [
+        "return_id",
+        "batch_id"
+      ]
+    },
+    "replacement_releases": {
+      "replacement_releases_pkey": [
+        "release_id"
+      ],
+      "replacement_releases_return_id_batch_id_key": [
+        "return_id",
+        "batch_id"
+      ],
+      "ux_replacement_release_movement": [
+        "inventory_movement_id"
+      ]
+    },
+    "return_attachments": {
+      "return_attachments_pkey": [
+        "attachment_id"
+      ],
+      "return_attachments_return_id_purpose_revision_checksum_sha256_key": [
+        "return_id",
+        "purpose",
+        "revision",
+        "checksum_sha256"
+      ]
+    },
+    "expired_pullouts": {
+      "expired_pullouts_pkey": [
+        "pullout_id"
+      ],
+      "expired_pullouts_batch_id_key": [
+        "batch_id"
+      ]
+    },
+    "expired_holdings": {
+      "expired_holdings_pkey": [
+        "holding_id"
+      ]
+    },
+    "expired_stock_movements": {
+      "expired_stock_movements_pkey": [
+        "movement_id"
+      ],
+      "expired_stock_movements_operation_key_key": [
+        "operation_key"
+      ]
+    },
+    "product_return_receipts": {
+      "product_return_receipts_pkey": [
+        "receipt_id"
+      ],
+      "product_return_receipts_operation_key_key": [
+        "operation_key"
+      ]
+    },
+    "product_return_receipt_lines": {
+      "product_return_receipt_lines_pkey": [
+        "receipt_line_id"
+      ],
+      "product_return_receipt_lines_holding_id_key": [
+        "holding_id"
+      ],
+      "product_return_receipt_lines_movement_id_key": [
+        "movement_id"
+      ],
+      "product_return_receipt_lines_receipt_id_return_line_id_key": [
+        "receipt_id",
+        "return_line_id"
+      ]
+    },
+    "refund_operations": {
+      "refund_operations_pkey": [
+        "operation_key"
+      ]
+    },
+    "sales_report_orders": {
+      "sales_report_orders_pkey": [
+        "sales_report_id",
+        "order_id"
+      ]
+    },
+    "sales_report_refunds": {
+      "sales_report_refunds_pkey": [
+        "sales_report_id",
+        "order_refund_id"
+      ]
+    },
+    "sales_report_activity_snapshots": {
+      "sales_report_activity_snapshots_pkey": [
+        "sales_report_id"
+      ],
+      "sales_report_activity_snapshots_submission_key_key": [
+        "submission_key"
+      ]
+    },
+    "return_offer_snapshots": {
+      "return_offer_snapshots_pkey": [
+        "return_id",
+        "revision"
+      ]
+    },
+    "return_customer_followups": {
+      "return_customer_followups_pkey": [
+        "followup_id"
+      ],
+      "return_customer_followups_report_key_key": [
+        "report_key"
+      ]
+    },
+    "return_followup_messages": {
+      "return_followup_messages_client_message_id_key": [
+        "client_message_id"
+      ],
+      "return_followup_messages_pkey": [
+        "followup_id",
+        "client_message_id"
+      ]
+    },
+    "order_reservation_events": {
+      "order_reservation_events_pkey": [
+        "reservation_event_id"
+      ]
+    },
+    "reseller_message_attachments": {
+      "reseller_message_attachments_pkey": [
+        "attachment_id"
+      ]
+    },
+    "refund_message_reads": {
+      "refund_message_reads_pkey": [
+        "order_refund_id",
+        "account_id"
+      ]
+    },
+    "reseller_order_receipts": {
+      "reseller_order_receipts_pkey": [
+        "order_id"
+      ]
+    },
+    "return_conversation_messages": {
+      "return_conversation_messages_pkey": [
+        "message_id"
+      ],
+      "return_conversation_messages_return_id_sender_account_id_client_message_id_key": [
+        "return_id",
+        "sender_account_id",
+        "client_message_id"
+      ]
+    },
+    "return_conversation_reads": {
+      "return_conversation_reads_pkey": [
+        "return_id",
+        "account_id"
+      ]
+    },
+    "schema_migrations": {
+      "schema_migrations_pkey": [
+        "version"
+      ]
+    }
+  },
+  "nullable_columns": {
+    "departments": [
+      "description"
+    ],
+    "accounts": [
+      "reseller_id",
+      "profile_image_path",
+      "team_leader_role",
+      "activated_at"
+    ],
+    "activity_logs": [
+      "account_id",
+      "entity_type",
+      "entity_id",
+      "actor_role",
+      "reason",
+      "before_state",
+      "after_state",
+      "request_id",
+      "source_key"
+    ],
+    "inquiries": [
+      "message",
+      "rejection_reason",
+      "assigned_team_leader_account_id",
+      "reviewed_by_account_id",
+      "reviewed_at",
+      "follow_up_sent_at",
+      "chat_conversation_id"
+    ],
+    "resellers": [
+      "inquiry_id",
+      "address",
+      "team_leader_account_id",
+      "approved_by_account_id",
+      "approved_at"
+    ],
+    "inventory_items": [
+      "category",
+      "description",
+      "pack_size",
+      "pack_size_unit",
+      "pack_content_status"
+    ],
+    "inventory_batches": [],
+    "product_recipes": [],
+    "orders": [
+      "reseller_id",
+      "created_by_account_id",
+      "team_leader_account_id",
+      "approved_by_account_id",
+      "approved_at",
+      "fulfilled_at",
+      "notes",
+      "rejection_reason",
+      "rejection_payment_received",
+      "cancellation_reason",
+      "cancelled_at",
+      "payment_transaction_number",
+      "payment_transaction_key",
+      "payment_paid_at",
+      "payment_amount",
+      "payment_ocr_confidence",
+      "payment_extraction_method",
+      "payment_confirmed_at",
+      "payment_ocr_engine",
+      "payment_due_at",
+      "expired_at"
+    ],
+    "order_items": [
+      "line_total"
+    ],
+    "order_stock_reservations": [],
+    "order_payment_proofs": [
+      "uploaded_by_account_id"
+    ],
+    "order_refunds": [
+      "requested_by_account_id",
+      "assigned_supervisor_account_id",
+      "processing_by_account_id",
+      "processing_started_at",
+      "completed_at",
+      "failed_at",
+      "return_id"
+    ],
+    "order_refund_attempts": [
+      "refund_method",
+      "refund_transaction_number",
+      "refund_transaction_key",
+      "transferred_at",
+      "internal_note",
+      "failure_reason",
+      "completed_at",
+      "failed_at",
+      "transfer_amount",
+      "receipt_extraction_method",
+      "receipt_ocr_confidence",
+      "receipt_ocr_engine"
+    ],
+    "order_refund_proofs": [
+      "uploaded_by_account_id"
+    ],
+    "order_refund_messages": [
+      "system_event_key"
+    ],
+    "reseller_cart_items": [],
+    "sales_reports": [
+      "submitted_by_account_id",
+      "reseller_id",
+      "department_id",
+      "notes"
+    ],
+    "sales_report_items": [
+      "line_total"
+    ],
+    "sales_report_attachments": [],
+    "alerts": [
+      "product_id",
+      "product_batch_id",
+      "raw_material_id"
+    ],
+    "forecast_runs": [
+      "run_by_account_id",
+      "started_at",
+      "completed_at",
+      "locked_at",
+      "last_error",
+      "notes",
+      "retry_of_forecast_run_id",
+      "cancel_requested_at"
+    ],
+    "forecast_product_summaries": [
+      "diagnostic_message",
+      "score_metric",
+      "backtest_score",
+      "forecast_total",
+      "confidence_lower_total",
+      "confidence_upper_total",
+      "usable_stock",
+      "production_gap"
+    ],
+    "forecast_results": [
+      "confidence_lower",
+      "confidence_upper"
+    ],
+    "user_consents": [
+      "provider"
+    ],
+    "account_password_otps": [
+      "consumed_at"
+    ],
+    "account_login_otps": [
+      "consumed_at"
+    ],
+    "notifications": [
+      "recipient_account_id",
+      "recipient_role",
+      "target_url",
+      "source_type",
+      "source_id",
+      "dedupe_key",
+      "read_at"
+    ],
+    "order_system_messages": [
+      "rejection_reason",
+      "order_refund_attempt_id",
+      "read_at"
+    ],
+    "notification_recipients": [
+      "read_at"
+    ],
+    "web_sessions": [
+      "account_id"
+    ],
+    "security_events": [],
+    "account_activation_tokens": [
+      "consumed_at"
+    ],
+    "notification_outbox": [
+      "locked_at",
+      "sent_at",
+      "last_error"
+    ],
+    "inventory_movements": [
+      "affected_batch_id",
+      "production_batch_id",
+      "order_id",
+      "actor_account_id",
+      "note"
+    ],
+    "chat_conversations": [
+      "assigned_team_leader_account_id",
+      "fallback_contact_type",
+      "fallback_contact",
+      "claimed_at",
+      "last_visitor_at",
+      "last_leader_at",
+      "visitor_typing_until",
+      "leader_typing_until",
+      "inquiry_form_requested_at",
+      "closed_at"
+    ],
+    "chat_messages": [
+      "sender_account_id",
+      "last_publish_error",
+      "published_at"
+    ],
+    "reseller_conversations": [
+      "last_message_at",
+      "reseller_deleted_at",
+      "team_leader_deleted_at"
+    ],
+    "reseller_messages": [
+      "read_at",
+      "return_id"
+    ],
+    "chat_service_ratings": [],
+    "team_leader_presence": [
+      "active_conversation_id",
+      "heartbeat_at"
+    ],
+    "rate_limit_buckets": [],
+    "owner_step_up_challenges": [
+      "consumed_at"
+    ],
+    "business_settings": [
+      "updated_by_account_id"
+    ],
+    "system_status_reports": [
+      "detail"
+    ],
+    "fulfillment_allocations": [
+      "verified_by_account_id",
+      "verification_note"
+    ],
+    "product_returns": [
+      "approved_by_account_id",
+      "accepted_revision",
+      "payment_verified_by_account_id",
+      "payment_verified_at",
+      "payment_reference",
+      "payment_amount",
+      "replacement_released_at",
+      "verified_at",
+      "completed_at",
+      "operation_key",
+      "verified_by_account_id",
+      "verification_remarks",
+      "request_hash",
+      "settlement_authorized_by_account_id",
+      "settlement_authorized_at",
+      "settlement_authorized_quote_revision",
+      "processing_supervisor_account_id",
+      "handed_off_at",
+      "replacement_prepared_at",
+      "replacement_prepared_by_account_id",
+      "replacement_delivered_at",
+      "replacement_delivered_by_account_id",
+      "replacement_payment_details"
+    ],
+    "product_return_lines": [],
+    "product_return_events": [
+      "actor_account_id",
+      "operation_key",
+      "refund_id",
+      "refund_attempt_id",
+      "amount",
+      "request_hash",
+      "customer_message"
+    ],
+    "replacement_quote_lines": [],
+    "replacement_stock_reservations": [],
+    "replacement_releases": [
+      "inventory_movement_id"
+    ],
+    "return_attachments": [],
+    "expired_pullouts": [],
+    "expired_holdings": [
+      "batch_id",
+      "return_line_id"
+    ],
+    "expired_stock_movements": [
+      "disposal_method"
+    ],
+    "product_return_receipts": [
+      "request_hash"
+    ],
+    "product_return_receipt_lines": [],
+    "refund_operations": [],
+    "sales_report_orders": [],
+    "sales_report_refunds": [],
+    "sales_report_activity_snapshots": [],
+    "return_offer_snapshots": [],
+    "return_customer_followups": [
+      "resolved_by_account_id",
+      "resolution_message",
+      "resolved_at"
+    ],
+    "return_followup_messages": [
+      "reseller_message_id"
+    ],
+    "order_reservation_events": [
+      "actor_account_id"
+    ],
+    "reseller_message_attachments": [],
+    "refund_message_reads": [],
+    "reseller_order_receipts": [],
+    "return_conversation_messages": [
+      "sender_account_id"
+    ],
+    "return_conversation_reads": [],
+    "schema_migrations": []
+  },
+  "notes": [
+    "Expression and conditional-subset unique indexes are omitted from unique-key inference.",
+    "schema_migrations is extracted from the migration runner definition, not database/schema.sql."
+  ]
+}

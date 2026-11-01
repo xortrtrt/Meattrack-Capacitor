@@ -80,51 +80,31 @@ def test_owner_recovery_expiry_account_change_and_oversized_draft():
     assert owner_recovery.SESSION_KEY not in req.session
 
 
-def test_step_up_http_captures_form_and_resumes_without_post_replay(monkeypatch):
-    state = {"account_id": 1, "role_key": "owner"}
-    monkeypatch.setattr(web_sessions, "_load_session", lambda token: dict(state))
-    monkeypatch.setattr(web_sessions, "_persist_session", lambda token, data, seconds: state.update(data))
-    monkeypatch.setattr(shared, "require_portal_session", lambda *args: None)
-    monkeypatch.setattr(repositories, "record_owner_audit", lambda *a, **kw: None)
-    monkeypatch.setattr(repositories, "confirm_owner_step_up", lambda *a: None)
-    writes = []
-    monkeypatch.setattr(repositories, "update_product_price", lambda *a, **kw: writes.append(a))
-    client = TestClient(main.app)
-    response = client.post("/portal/owner/products", data={"product_id": "7", "base_price": "129.75", "reason": "Review price change", "_owner_return_to": "/portal/owner/products?q=bacon&page=2"}, follow_redirects=False)
-    assert response.status_code == 303
-    assert state[owner_recovery.SESSION_KEY]["fields"]["base_price"] == "129.75"
-    state["owner_step_up_challenge_id"] = 1
-    response = client.post("/portal/owner/verify/step-up/confirm", data={"otp_code": "123456"}, follow_redirects=False)
-    parsed = urlsplit(response.headers["location"])
-    assert parsed.path == "/portal/owner/products"
-    assert parse_qs(parsed.query)["q"] == ["bacon"]
-    assert parse_qs(parsed.query)["page"] == ["2"]
-    assert not writes
+def test_owner_action_executes_without_an_email_step_up(monkeypatch):
+    state = {"account_id":1,"role_key":"owner"}
+    monkeypatch.setattr(web_sessions,"_load_session",lambda token:dict(state))
+    monkeypatch.setattr(web_sessions,"_persist_session",lambda token,data,seconds:state.update(data))
+    monkeypatch.setattr(shared,"require_portal_session",lambda *args:None)
+    monkeypatch.setattr(repositories,"record_owner_audit",lambda *a,**kw:None)
+    monkeypatch.setattr(repositories,"product_by_id",lambda *a:{"base_price":100})
+    writes=[]
+    monkeypatch.setattr(repositories,"update_product_price",lambda *a,**kw:writes.append(a))
+    response=TestClient(main.app).post("/portal/owner/products",data={"product_id":"7","base_price":"129.75","reason":"Review price change"},follow_redirects=False)
+    assert response.status_code==303 and "/verify" not in response.headers["location"]
+    assert len(writes)==1 and owner_recovery.SESSION_KEY not in state
 
 
-def test_recovery_retains_context_through_wrong_otp_and_resend(monkeypatch):
-    from app.portals import owner
-
-    state = {"account_id": 1, "role_key": "owner", "owner_step_up_challenge_id": 1}
-    req = request(session=state)
-    owner_recovery.capture(req, "products", {"product_id": "7", "reason": "Preserve this draft"})
-    original = dict(state[owner_recovery.SESSION_KEY])
-    monkeypatch.setattr(web_sessions, "_load_session", lambda token: dict(state))
-    monkeypatch.setattr(web_sessions, "_persist_session", lambda token, data, seconds: state.update(data))
-    monkeypatch.setattr(shared, "require_portal_session", lambda *args: None)
-
-    def wrong_code(*args):
-        raise ValueError("Incorrect verification code.")
-
-    monkeypatch.setattr(repositories, "confirm_owner_step_up", wrong_code)
-    monkeypatch.setattr(repositories, "request_owner_step_up", lambda *args: {"challenge_id": 2, "email": "owner@test.invalid", "name": "Owner", "otp_code": "123456"})
-    monkeypatch.setattr(owner, "send_owner_step_up_otp", lambda **kw: (True, "sent"))
-    client = TestClient(main.app)
-    assert client.post("/portal/owner/verify/step-up/confirm", data={"otp_code": "000000"}, follow_redirects=False).status_code == 303
-    assert state[owner_recovery.SESSION_KEY] == original
-    assert client.post("/portal/owner/verify/step-up/request", follow_redirects=False).status_code == 303
-    assert state[owner_recovery.SESSION_KEY] == original
-    assert state["owner_step_up_challenge_id"] == 2
+def test_obsolete_action_otp_routes_do_not_send_email_or_replay_actions(monkeypatch):
+    state={"account_id":1,"role_key":"owner"}
+    monkeypatch.setattr(web_sessions,"_load_session",lambda token:dict(state))
+    monkeypatch.setattr(web_sessions,"_persist_session",lambda *args:None)
+    monkeypatch.setattr(shared,"require_portal_session",lambda *args:None)
+    monkeypatch.setattr(repositories,"request_owner_step_up",lambda *args:pytest.fail("Action OTP must not be issued"))
+    monkeypatch.setattr(repositories,"confirm_owner_step_up",lambda *args:pytest.fail("Action OTP must not be required"))
+    client=TestClient(main.app)
+    for path in ("request","confirm"):
+        response=client.post(f"/portal/owner/verify/step-up/{path}",data={"otp_code":"000000"},follow_redirects=False)
+        assert response.status_code==303 and "/dashboard" in response.headers["location"]
 
 
 def test_recovery_bounds_destination_and_preserves_unchecked_setting():

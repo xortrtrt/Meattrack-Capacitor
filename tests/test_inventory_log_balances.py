@@ -31,8 +31,12 @@ def test_stock_log_totals_span_batches_before_search_sort_and_pagination(strict_
                    (%s,'raw_receipt',1.25,'kg',2.5,3.75,'Test')""", (material, material))
 
     opening = repositories.list_inventory_movements(q="Test Product", category="opening", sort="oldest")
-    assert [row["balance_after"] for row in opening] == [20, 40, 60, 80, 100]
-    assert [row["balance_before"] for row in opening] == [0, 20, 40, 60, 80]
+    assert opening == []
+    assert repositories.count_inventory_movements(category="opening") == 0
+    assert repositories.list_inventory_movements(q="opening_balance") == []
+    assert repositories.count_inventory_movements(q="Test Product") == 2
+    assert all(row["action"] != "opening_balance" for row in repositories.list_inventory_movements())
+    assert fetch_one("SELECT count(*) AS total FROM inventory_movements WHERE movement_type='opening_balance'")["total"] == 6
     sales_rows = repositories.list_inventory_movements(q="sale_fulfillment", category="sales", sort="oldest")
     assert [row["balance_after"] for row in sales_rows] == [94, 88]
     for sort, expected in (("newest", [88, 94]), ("oldest", [94, 88])):

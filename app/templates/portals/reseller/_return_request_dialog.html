@@ -36,11 +36,17 @@
       </fieldset>
       <fieldset class="return-request-section" aria-describedby="return-resolution-hint">
         <legend><span class="return-request-step" aria-hidden="true">2</span>Choose an outcome</legend>
-        <p id="return-resolution-hint" class="return-request-instruction">Select one option. Subject to Sales approval.</p>
+        <p id="return-resolution-hint" class="return-request-instruction">Select one option. Replacement requests go directly to Supervisor/Owner review.</p>
         <div class="return-resolution-options">
           <label class="return-resolution-option" for="return-refund"><input id="return-refund" type="radio" name="resolution" value="refund" required checked aria-labelledby="return-refund-title" aria-describedby="return-refund-description"><span><strong id="return-refund-title">Refund</strong><small id="return-refund-description">Request money back for returned products.</small></span></label>
           <label class="return-resolution-option" for="return-replacement"><input id="return-replacement" type="radio" name="resolution" value="replace" required aria-labelledby="return-replacement-title" aria-describedby="return-replacement-description"><span><strong id="return-replacement-title">Replacement</strong><small id="return-replacement-description">Request replacement products.</small></span></label>
         </div>
+      </fieldset>
+      <fieldset class="replacement-selection" data-replacement-selection hidden>
+        <legend>Choose replacement products</legend><p>Same-product packs keep their original paid prices. Extra packs and different products use current prices. Stock is checked again during preparation.</p>
+        <div class="replacement-product-picker">{% for product in replacement_products %}<label><span>{{ product.name }}<small>{{ product.base_price|currency }} catalog price · {{ product.available|number }} packs currently available</small></span><span><input type="hidden" name="replacement_product_id" value="{{ product.product_id }}"><input type="number" name="replacement_quantity" min="0" max="999999999" step="1" value="0" aria-label="Replacement packs for {{ product.name }}"></span></label>{% endfor %}</div>
+        <button class="button subtle" type="button" data-replacement-preview>Review price comparison</button>
+        <input type="hidden" name="comparison_token" value=""><div data-replacement-comparison role="status"></div>
       </fieldset>
       <fieldset class="return-request-section">
         <legend><span class="return-request-step" aria-hidden="true">3</span>Add details</legend>

@@ -1,0 +1,20 @@
+flowchart TD
+    A([Authenticated Owner]) --> B[Open accounts, operations, inventory, alerts or settings]
+    B --> C[Choose authorized action and provide required reason]
+    C --> D{Action type}
+    D -->|Account status or role| E[Inspect retained Owner access and outstanding workload]
+    E --> F{Safe under current assignment and processing rules?}
+    F -->|No| G[Require workload transfer or completion of active attempts]
+    G --> E
+    F -->|Yes| H[Apply status or role change and applicable session revocation]
+    D -->|Staff handover| I[Validate active destination and Supervisor capability for money duties]
+    I --> J[Transfer assignments and open processing responsibility]
+    D -->|Inventory correction| K[Lock balance and append compensating movement]
+    D -->|Settings or pricing| L[Validate values and save changes]
+    D -->|Recovery or operations| M[Revoke sessions, queue password reset, manage alerts or forecast runs]
+    H --> N[Record required audit evidence]
+    J --> N
+    K --> N
+    L --> N
+    M --> N
+    N --> O([Updated workspace and preserved history])

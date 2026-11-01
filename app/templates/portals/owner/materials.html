@@ -1,0 +1,23 @@
+<div class="owner-page owner-superuser-page">
+  <section class="panel owner-workspace-surface">
+    <div class="panel-heading"><div><span class="eyebrow">Inventory</span><h2>Raw materials</h2><p class="hint">Review available stock and record a receipt for the selected material.</p></div></div>
+    <form class="filter-bar" method="get"><label>Search materials<input name="q" value="{{ materials_page.filters.q }}" placeholder="Material name or category"></label><button class="button primary">Find materials</button><a class="button subtle" href="/portal/owner/materials">Clear filters</a></form>
+    <div class="owner-material-list">
+      {% for item in materials %}
+      <article class="owner-material-row">
+        <div class="owner-material-identity"><span class="owner-chip">{{ item.category.replace('_', ' ') }}</span><h3>{{ item.name }}</h3><span class="hint">Available stock</span><strong>{{ item.available|number }} {{ item.unit }}</strong></div>
+        <details class="owner-override"><summary>Record receipt · {{ item.name }}</summary>
+          <form action="/portal/owner/materials/{{ item.item_id }}/receipt" method="post">
+            <label>Quantity received ({{ item.unit }})<input required type="number" min="0.001" step="0.001" name="quantity" placeholder="0.000" max="999999999.999"></label>
+            <label>Reason for receipt<input required minlength="5" maxlength="500" name="reason" placeholder="e.g. Delivery received and checked"></label>
+            <button class="button primary">Record receipt</button>
+          </form>
+        </details>
+      </article>
+      {% else %}<p class="hint">No materials match your search.</p>{% endfor %}
+    </div>
+  </section>
+
+
+{% with directory_page=materials_page %}{% include "portals/owner/_directory_pagination.html" %}{% endwith %}
+</div>

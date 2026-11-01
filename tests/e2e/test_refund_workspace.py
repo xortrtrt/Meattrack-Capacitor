@@ -245,6 +245,7 @@ def test_reseller_refund_activity_and_conversation_are_separate_tabs() -> None:
             }
             """
         )
+        page.add_script_tag(content=Path("app/static/js/internal_conversations.js").read_text(encoding="utf-8"))
         page.add_script_tag(content=RESELLER_INBOX_SCRIPT.read_text(encoding="utf-8"))
 
         page.get_by_role("button", name="Open order").click()

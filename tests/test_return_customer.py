@@ -44,8 +44,8 @@ def test_followups_and_acknowledgments_do_not_change_settlement_or_inventory(lif
     assert fetch_one("SELECT COUNT(*) n FROM return_customer_followups")["n"] == 1
     assert fetch_one("SELECT COUNT(*) n FROM return_followup_messages")["n"] == 2
     assert fetch_one("SELECT COUNT(*) n FROM reseller_messages")["n"] == 2
-    assert returns.return_queue_counts(d["sales"])["needs_review"] == 1
-    assert returns.list_product_returns(d["sales"], queue="completed") == []
+    assert returns.return_queue_counts(d["supervisor"])["needs_review"] == 1
+    assert returns.list_product_returns(d["supervisor"], queue="completed") == []
     assert returns.get_product_return(case, d["inventory"])["status"] == "completed"
     for _ in range(2):
         customer.acknowledge_replacement(case, d["reseller"])
@@ -53,7 +53,7 @@ def test_followups_and_acknowledgments_do_not_change_settlement_or_inventory(lif
     assert returns.get_product_return(case, d["sales"])["has_open_followup"]
     followup = fetch_one("SELECT followup_id FROM return_customer_followups")["followup_id"]
     for _ in range(2):
-        customer.resolve_followup(case, d["sales"], followup, "We contacted you and resolved your concern.")
+        customer.resolve_followup(case, d["supervisor"], followup, "We contacted you and resolved your concern.")
     assert returns.return_queue_counts(d["sales"])["completed"] == 1
     assert fetch_one("SELECT status,completed_at FROM product_returns WHERE return_id=%s", (case,)) == settled
     assert fetch_all("SELECT * FROM inventory_movements ORDER BY movement_id") == before
@@ -81,13 +81,12 @@ def test_issue_is_retained_when_chat_routing_changes(lifecycle, unavailable):  #
     assert fetch_one("SELECT COUNT(*) n FROM return_customer_followups")["n"] == 1
     if unavailable == "reassigned":
         assert result["return_id"] == case
-        with pytest.raises(ValueError):
-            returns.get_product_return(case, d["supervisor"])
+        assert returns.get_product_return(case,d["supervisor"])["return_id"]==case
     else:
         assert result["followup_saved"] and "unavailable" in result["warning"]
         assert fetch_one("SELECT COUNT(*) n FROM reseller_messages")["n"] == 0
     if unavailable == "inactive":
-        assert fetch_one("SELECT COUNT(*) n FROM notifications WHERE source_type='product_returns' AND title LIKE 'Replacement issue%%'")["n"] > 0
+        assert fetch_one("SELECT COUNT(*) n FROM notification_recipients nr JOIN notifications n USING(notification_id) WHERE n.source_type='product_returns' AND nr.account_id=%s",(d["supervisor"],))["n"] > 0
 
 
 def test_required_public_explanations_and_offer_revisions(lifecycle):  # noqa: F811
@@ -98,7 +97,7 @@ def test_required_public_explanations_and_offer_revisions(lifecycle):  # noqa: F
     returns.review_product_return(case, d["sales"], True, "PRIVATE initial review")
     old = returns.get_product_return(case, d["reseller"])["offer_snapshot"]
     returns.accept_replacement_quote(case, d["reseller"], 1)
-    returns.review_product_return(case, d["sales"], True, "PRIVATE revised offer", [(substitute(250), 1)], customer_message="Please review the new replacement and price difference.")
+    returns.review_product_return(case, d["supervisor"], True, "PRIVATE revised offer", [(substitute(250), 1)], customer_message="Please review the new replacement and price difference.")
     view = returns.get_product_return(case, d["reseller"])
     assert view["offer_snapshot"]["revision"] == 2 and view["offer_changes"]
     assert view["previous_offer"] == old
@@ -115,8 +114,8 @@ def test_required_public_explanations_and_offer_revisions(lifecycle):  # noqa: F
             cur.execute("UPDATE return_offer_snapshots SET credit=0 WHERE return_id=%s", (case,))
     returns.inspect_product_return(case, d["inventory"], "mismatch", "Internal observed packing mismatch", str(uuid4()))
     with pytest.raises(ValueError, match="Explanation"):
-        returns.review_product_return(case, d["sales"], True, "PRIVATE correction")
-    returns.review_product_return(case, d["sales"], True, "PRIVATE correction", customer_message="Please bring the missing approved pack for checking.")
+        returns.review_product_return(case, d["supervisor"], True, "PRIVATE correction")
+    returns.review_product_return(case, d["supervisor"], True, "PRIVATE correction", customer_message="Please bring the missing approved pack for checking.")
     assert "missing approved pack" in str(returns.get_product_return(case, d["reseller"])["events"])
 
 
@@ -125,11 +124,11 @@ def test_payment_queue_and_customer_ownership(lifecycle, monkeypatch):  # noqa: 
     case = complete_replacement(d, 250)
     assert returns.get_product_return(case, d["reseller"])["experience"]["reseller"]["action"] == "payment"
     returns.record_return_payment(case, d["reseller"], [refund_proof()])
-    assert returns.return_queue_counts(d["sales"])["payment"] == 1
-    assert returns.list_product_returns(d["sales"], queue="payment")[0]["experience"]["sales"]["action"] == "verify_payment"
-    sign_in(monkeypatch, d["sales"], "team-leader", "sales")
+    assert returns.return_queue_counts(d["supervisor"])["payment"] == 1
+    assert returns.list_product_returns(d["supervisor"], queue="payment")[0]["experience"]["sales"]["action"] == "verify_payment"
+    sign_in(monkeypatch, d["supervisor"], "sales-supervisor", "sales-supervisor")
     with TestClient(main.app) as client:
-        page = client.get(f"/portal/team-leader/refunds?view=returns&queue=payment&case={case}")
+        page = client.get(f"/portal/sales-supervisor/returns?queue=payment&case={case}")
         assert page.status_code == 200 and "review the reseller’s payment proof" in page.text
         assert 'name="csrf_token"' in page.text and "Confirm additional payment" in page.text
     with pytest.raises(ValueError):
@@ -223,9 +222,9 @@ def test_followup_resolution_requires_public_summary_and_assignment(lifecycle): 
     chat.send_from_reseller(d["reseller"], str(uuid4()), "A problem with my replacement", return_id=case, report_issue=True)
     followup = fetch_one("SELECT followup_id FROM return_customer_followups")["followup_id"]
     with pytest.raises(ValueError, match="Explanation"):
-        customer.resolve_followup(case, d["sales"], followup, "")
-    with pytest.raises(ValueError, match="not assigned"):
-        customer.resolve_followup(case, d["supervisor"], followup, "Not the assigned Sales reviewer")
+        customer.resolve_followup(case, d["supervisor"], followup, "")
+    with pytest.raises(ValueError, match="tracking only"):
+        customer.resolve_followup(case, d["sales"], followup, "Tracking leaders cannot resolve a processor follow-up")
     with pytest.raises(psycopg2.IntegrityError):
         with get_transaction_cursor() as cur:
             cur.execute("""UPDATE return_customer_followups SET status='resolved',resolved_at=now(),

@@ -1,0 +1,24 @@
+flowchart LR
+    subgraph I[Business inputs]
+        I1[Customer inquiries and account information]
+        I2[Orders and payment evidence]
+        I3[Products, recipes, materials and batches]
+        I4[Return evidence and actual goods received]
+        I5[Recorded sales history and business settings]
+    end
+    subgraph P[MEATTRACK processing]
+        P1[Authenticate and authorize each actor]
+        P2[Coordinate onboarding, sales and inventory]
+        P3[Trace batches, returns and financial settlement]
+        P4[Generate reports, alerts and demand forecasts]
+        P1 --> P2 --> P3 --> P4
+    end
+    subgraph O[System outputs]
+        O1[Activated and assigned accounts]
+        O2[Tracked orders and current stock availability]
+        O3[Traceable custody, replacements and refunds]
+        O4[Saved reports, notifications and forecast results]
+    end
+    I --> P --> O
+    O --> D[Owner and staff review results]
+    D -.->|Adjust plans and authorized settings| I

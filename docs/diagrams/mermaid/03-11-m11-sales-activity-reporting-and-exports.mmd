@@ -1,0 +1,17 @@
+flowchart TD
+    A([Sales or Supervisor chooses report period]) --> B[Validate period using Manila dates]
+    B --> C[Select orders by original order creation date]
+    C --> D[Require current access and recorded personal qualifying actions]
+    D --> E[Build Orders, fulfilled Sales, Returns and Refunds sections]
+    E --> F[Aggregate money once per order and add optional notes]
+    F --> G[Display account-bound signed preview]
+    G --> H[Submit with unique submission key]
+    H --> I[Rebuild data in a consistent transaction]
+    I --> J{Matches reviewed preview?}
+    J -->|No| K[Reject stale preview and retain notes for review]
+    K --> G
+    J -->|Yes| L[Insert sales report and immutable activity document snapshot]
+    L --> M[Save traceability membership and notify Owner]
+    M --> N[Author or Owner opens saved document]
+    N --> O[Render print view, section CSV or five-sheet Excel workbook]
+    O --> P([Submitted values remain frozen])
