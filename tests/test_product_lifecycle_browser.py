@@ -83,9 +83,12 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         expect(page.locator('textarea[name="remarks"]:invalid')).to_be_visible()
         page.get_by_label("Return quantity for Test Product batch TEST-1").fill("2")
         page.get_by_role("radio", name="Replacement", exact=True).check()
+        page.get_by_label("Replacement packs for Test Product", exact=True).fill("2")
         page.get_by_label("Reason and remarks").fill("Expired two packs from original delivered batch")
         photo = supporting_photo()
         page.get_by_label("Supporting photos").set_input_files({"name": photo["filename"], "mimeType": photo["content_type"], "buffer": photo["content"]})
+        page.get_by_role("button", name="Review price comparison", exact=True).click()
+        expect(page.locator("[name=comparison_token]")).not_to_have_value("")
         page.get_by_role("button", name="Request return", exact=True).click()
         page.wait_for_load_state("networkidle")
         page.screenshot(path=str(output / "request-result.png"), full_page=True)
@@ -95,8 +98,8 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         expect(page.get_by_role("heading", name="Return #1", exact=True)).to_be_visible()
         page.screenshot(path=str(output / "reseller-return-390.png"), full_page=True)
 
-        as_role(d["sales"], "team-leader", "sales")
-        page.goto("http://lifecycle.test/portal/team-leader/returns")
+        as_role(d["supervisor"], "sales-supervisor", "sales-supervisor")
+        page.goto("http://lifecycle.test/portal/sales-supervisor/returns")
         page.wait_for_load_state("networkidle")
         expect(page.locator("[data-return-dialog]")).to_have_count(0)
         page.locator('[data-return-open="1"]').focus()
@@ -169,7 +172,7 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
                     expect(page).not_to_have_url(re.compile(r"[?&]case="))
                     selected = page.locator(f'[data-return-open="{refund_case if label == "supervisor" else 1}"]')
                     expect(selected).to_be_focused()
-                    if label in {"reseller", "sales"}:
+                    if label in {"reseller", "sales", "owner"}:
                         expect(page.locator(".lifecycle-financial-details")).to_have_count(0)
                         if label == "reseller":
                             assert "Original sales" not in page.locator("body").inner_text()

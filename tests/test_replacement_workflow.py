@@ -292,11 +292,13 @@ def test_current_receipt_and_explicit_funds_confirmation_are_required(lifecycle)
         returns.verify_return_payment(
             case, d["supervisor"], "PAYMENTCHECK123", 100, "Requires explicit receipt of funds"
         )
-    with pytest.raises(ValueError, match="reference"):
-        returns.verify_return_payment(
-            case, d["supervisor"], "OTHERREFERENCE", 100, "Wrong reference cannot be verified", funds_received=True
-        )
-    assert not returns.get_product_return(case, d["supervisor"])["payment_verified_at"]
+    returns.verify_return_payment(
+        case, d["supervisor"], "OTHERREFERENCE", 999, "Verify stored reseller details only", funds_received=True
+    )
+    verified = returns.get_product_return(case, d["supervisor"])
+    assert verified["payment_verified_at"]
+    assert verified["payment_reference"] == "PAYMENTCHECK123"
+    assert verified["payment_amount"] == 100
 
 
 def test_migration_preserves_legacy_cases_and_conversation_history_is_immutable(lifecycle):  # noqa: F811
@@ -355,3 +357,35 @@ def test_mismatch_revision_recalculates_original_credit_and_requires_fresh_accep
         returns.reserve_replacement(case, d["inventory"], "Cannot prepare before revised quote acceptance")
     returns.accept_replacement_quote(case, d["reseller"], 2)
     assert returns.reserve_replacement(case, d["inventory"], "Prepare the newly accepted corrected request")
+
+
+def test_new_payment_is_in_supervisor_queue_before_stock_reservation(lifecycle):  # noqa: F811
+    d = lifecycle
+    case, _ = request(d, [(substitute(300), 1)])
+    approve_receive(d, case)
+    returns.record_return_payment(case, d["reseller"], [refund_proof()], dict(
+        transaction_number="NEWQUEUE123", payment_amount="100.00", payment_date=business_today().isoformat(), payment_time="10:30"))
+    assert not returns.get_product_return(case, d["supervisor"])["has_reservations"]
+    assert returns.return_queue_counts(d["supervisor"])["payment"] == 1
+    queued = returns.list_product_returns(d["supervisor"], queue="payment")
+    row = next(row for row in queued if row["return_id"] == case)
+    assert row["experience"]["sales"]["action"] == "verify_payment"
+    assert row["experience"]["reseller"]["action"] == ""
+
+
+def test_payment_confirmation_rejects_receipt_changed_since_staff_review(lifecycle):  # noqa: F811
+    d = lifecycle
+    case, _ = request(d, [(substitute(300), 1)])
+    approve_receive(d, case)
+    details = dict(transaction_number="FIRSTRECEIPT123", payment_amount="100.00",
+                   payment_date=business_today().isoformat(), payment_time="10:30")
+    returns.record_return_payment(case, d["reseller"], [refund_proof()], details)
+    reviewed = returns.get_product_return(case, d["supervisor"])["payment_review_version"]
+    returns.record_return_payment(case, d["reseller"], [refund_proof()], {**details, "transaction_number": "SECONDRECEIPT123"})
+    with pytest.raises(ValueError, match="submission changed"):
+        returns.verify_return_payment(case, d["supervisor"], "", "", "Funds reviewed on earlier receipt", funds_received=True, review_version=reviewed)
+    current = returns.get_product_return(case, d["supervisor"])
+    assert not current["payment_verified_at"]
+    assert current["payment_review_version"] != reviewed
+    returns.verify_return_payment(case, d["supervisor"], "", "", "Current provider funds checked", funds_received=True, review_version=current["payment_review_version"])
+    assert returns.get_product_return(case, d["supervisor"])["payment_reference"] == "SECONDRECEIPT123"

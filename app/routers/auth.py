@@ -79,6 +79,7 @@ async def login(request: Request, message: str = "", error: str = ""):
             "login_otp_pending": LOGIN_OTP_ENABLED and bool(pending_login_account_id),
             "pending_login_email": request.session.get("pending_login_email", ""),
         },
+        headers={"Cache-Control": "no-store"},
     )
 
 

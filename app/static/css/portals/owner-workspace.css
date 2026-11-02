@@ -166,3 +166,8 @@
 @media (prefers-reduced-motion: reduce) {
   .role-owner .owner-workspace *, .role-owner .owner-workspace *::before, .role-owner .owner-workspace *::after { animation: none; transition: none; scroll-behavior: auto; }
 }
+
+/* Unread updates share a count style across sidebar destinations and child tabs. */
+.role-owner .owner-update-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: 2px 7px; border-radius: 999px; background: var(--owner-danger); color: var(--owner-surface); font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.role-owner .portal-nav .owner-update-badge { margin-left: auto; }
+.role-owner .notification-panel[popover] { margin: 0; max-height: calc(100dvh - 24px); color: var(--owner-ink); }

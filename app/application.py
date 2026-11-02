@@ -17,6 +17,7 @@ from app.portals import refunds as refunds_portal
 from app.portals import product_returns as returns_portal
 from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
+from app.portals import inventory_tools
 from app.portals import team_leader as team_leader_portal
 from app.portals import activity_reports as activity_reports_portal
 from app.routers import auth, chatbot, live_chat, public, system
@@ -82,16 +83,36 @@ def create_app() -> FastAPI:
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("X-Frame-Options", "DENY")
+        # FastAPI's documentation pages load Swagger/ReDoc assets from jsDelivr.
+        # Keep this exception limited to those pages, not business portals.
+        docs_asset_source = (
+            " https://cdn.jsdelivr.net"
+            if request.url.path in {application.docs_url, application.redoc_url}
+            else ""
+        )
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; media-src 'self' blob:; img-src 'self' data: blob:; font-src 'self' data:; "
-            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+            f"style-src 'self' 'unsafe-inline'{docs_asset_source}; "
+            f"script-src 'self' 'unsafe-inline'{docs_asset_source}; "
             "connect-src 'self' https://*.ably.io wss://*.ably.io "
             "https://*.ably.net wss://*.ably.net "
             "https://*.ably-realtime.com wss://*.ably-realtime.com; "
             "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         )
         return response
+
+    @application.exception_handler(403)
+    async def forbidden(request: Request, exc: HTTPException):
+        if (
+            request.url.path in {"/login", "/login/otp"}
+            and exc.detail == "Invalid or missing CSRF token."
+            and "application/json" not in request.headers.get("accept", "")
+        ):
+            response = await auth.login(request, error="Your sign-in page expired. Please enter your details and try again.")
+            response.status_code = 403
+            return response
+        return JSONResponse({"detail": exc.detail}, status_code=403, headers=exc.headers)
 
     @application.exception_handler(404)
     async def not_found(request: Request, exc: HTTPException):
@@ -125,6 +146,7 @@ def create_app() -> FastAPI:
         {
             **owner_portal.SECTION_LOADERS,
             **team_leader_portal.SECTION_LOADERS,
+            **inventory_tools.SECTION_LOADERS,
             **reseller_portal.SECTION_LOADERS,
             **refunds_portal.SECTION_LOADERS,
             **returns_portal.SECTION_LOADERS,
@@ -140,6 +162,7 @@ def create_app() -> FastAPI:
     for portal_router in (
         owner_portal.router,
         team_leader_portal.router,
+        inventory_tools.router,
         reseller_portal.router,
         refunds_portal.router,
         returns_portal.router,

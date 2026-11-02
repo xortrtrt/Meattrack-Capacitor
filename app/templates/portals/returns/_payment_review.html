@@ -1,0 +1,29 @@
+{% if return_can_review and case.sales_authorized and case.additional_due > 0 and case.has_payment_proof and not case.payment_verified_at %}
+<form class="lifecycle-form lifecycle-box" method="post" action="{{ action_base }}verify-payment">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+  <input type="hidden" name="return_id" value="{{ case.return_id }}">
+  <h4>Review reseller payment</h4>
+  {% set details = case.replacement_payment_details or {} %}
+  {% set payment_stock_ready = case.replacement_workflow_version|default(1)==2 or case.has_reservations %}
+  {% set complete_submission = details.transaction_number and details.payment_amount and details.revision == case.quote_revision %}
+  {% if complete_submission %}
+  <input type="hidden" name="payment_review_version" value="{{ case.payment_review_version }}">
+  <dl class="payment-review-details">
+    <div><dt>Reseller reference</dt><dd>{{ details.transaction_number }}</dd></div>
+    <div><dt>Amount sent</dt><dd>{{ details.payment_amount|float|currency }}</dd></div>
+    <div><dt>Paid (Manila)</dt><dd>{% if details.payment_date %}{{ details.payment_date }} {{ details.payment_time }}{% else %}{{ details.paid_at|default('Not submitted') }}{% endif %}</dd></div>
+  </dl>
+  {% elif payment_stock_ready %}
+  <div class="return-payment-missing" role="status"><strong>Waiting for reseller details</strong><p>The reseller must resubmit this receipt with its reference, amount, date, and time.</p></div>
+  {% endif %}
+  {% if not payment_stock_ready %}<div class="return-payment-missing" role="status"><strong>Waiting for Inventory</strong><p>Inventory must reserve valid replacement stock before this older case can continue.</p></div>{% endif %}
+  <div class="sales-return-photo-grid">{% for proof in case.attachments if proof.purpose=='payment' and proof.revision==case.quote_revision %}<a href="/portal/return-attachments/{{ proof.attachment_id }}" target="_blank" rel="noopener" class="sales-return-photo"><i data-lucide="file-image" aria-hidden="true"></i><span>View uploaded receipt</span></a>{% endfor %}</div>
+  {% if complete_submission and payment_stock_ready %}
+  <label><input required type="checkbox" name="funds_received" value="yes"> Funds received in our payment provider</label>
+  {% endif %}
+  {% if complete_submission and payment_stock_ready %}
+  <label>Verification remarks<textarea required name="remarks" minlength="5" maxlength="1000" rows="2"></textarea></label>
+  <button class="button primary" type="submit">Confirm funds received</button>
+  {% else %}<button class="button primary" type="button" disabled>{{ 'Awaiting reseller submission' if payment_stock_ready else 'Awaiting Inventory' }}</button>{% endif %}
+</form>
+{% endif %}

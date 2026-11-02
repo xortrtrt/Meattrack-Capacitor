@@ -457,7 +457,11 @@ def submit_order_payment(
             order = cur.fetchone()
             if not order:
                 raise ValueError("Order was not found.")
-            if order["status"] != "to_pay":
+            legacy_unpaid = order["status"] == "pending" and not order.get("payment_transaction_key") and not order.get("payment_amount")
+            if legacy_unpaid:
+                cur.execute("SELECT 1 FROM order_payment_proofs WHERE order_id=%s LIMIT 1", (order_id,))
+                legacy_unpaid = not cur.fetchone()
+            if order["status"] != "to_pay" and not legacy_unpaid:
                 if (order["status"] in {"pending", "approved", "fulfilled", "rejected"}
                     and order.get("payment_transaction_key") == payment_details["transaction_key"]
                     and order.get("payment_amount") == payment_details["payment_amount"]):
@@ -465,7 +469,7 @@ def submit_order_payment(
                     if {r["checksum_sha256"] for r in cur.fetchall()} == {a["checksum_sha256"] for a in attachments}:
                         return clean_row(dict(order))
                 raise ValueError("This order is no longer awaiting payment.")
-            if order["payment_due_at"] is None or order["payment_due_at"] <= business_now():
+            if not legacy_unpaid and (order["payment_due_at"] is None or order["payment_due_at"] <= business_now()):
                 cur.execute("DELETE FROM order_stock_reservations WHERE order_id = %s;", (order_id,))
                 cur.execute(
                     "UPDATE orders SET status = 'expired', expired_at = now() WHERE order_id = %s;",
@@ -489,6 +493,8 @@ def submit_order_payment(
                 cur.execute("SELECT set_config('meattrack.actor_account_id',%s,true)", (str(account_id),))
                 cur.execute("SELECT product_id,SUM(quantity) quantity FROM order_items WHERE order_id=%s GROUP BY product_id ORDER BY product_id", (order_id,))
                 quantities = {r["product_id"]: Decimal(r["quantity"]) for r in cur.fetchall()}
+                if legacy_unpaid:
+                    cur.execute("DELETE FROM order_stock_reservations WHERE order_id=%s", (order_id,))
                 shortage = False
                 try:
                     _plan_fefo_allocations(cur, quantities, reservation_order_id=order_id)

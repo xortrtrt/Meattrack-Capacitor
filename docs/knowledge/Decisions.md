@@ -57,6 +57,102 @@ setup decision. This log does not invent the original authors' intent.
 | Include return processing in staff handover (2026-10-30) | Prevent stranded accepted cases/open follow-ups and assignments to staff without processing permissions. In-progress financial attempts require explicit outcome/takeover and preserve their actual processor. | [[Owner Portal]], [[Roles and Access]]; `app/repositories/superuser.py`, `app/repositories/accounts.py`, `tests/test_owner_overhaul.py` |
 | Version replacement requests and move new submissions directly to Supervisor (2026-10-30) | User selected reseller product choice/comparison, an immediate private conversation, receipt before top-up, verified funds before FEFO preparation, Inventory release, and Supervisor delivery. Same-product matched packs keep original prices; extras use catalog prices, cheaper selections refund the difference, paid selections stay fixed, and existing cases keep earlier rules. | [[Replacement Workflow]], [[Returns and Financials]]; migration 044, `app/repositories/replacement_workflow.py` |
 
+| Keep local Wi-Fi sharing opt-in (2026-11-01) | User requested access for a friend on the same Wi-Fi. A local environment override changes only the app binding; default loopback access and private database/mail ports remain. | [[Database and Operations]]; `compose.yml` |
+
 Add new entries only when a task establishes a consequential decision. Include
 the date, rationale, source/evidence, and affected notes. Do not infer deployment
 status or business approval from the existence of a note.
+
+- 2026-11-01: Replace the initial view-only low-stock threshold with one saved
+  business setting (default 10 packs), following the user's confirmed choice.
+  Owners review alerts independently; Inventory team retains stock responsibility,
+  with no individual assignment. Stock conditions control automatic clearance;
+  manual closure cannot hide an active stock risk. Keep notification reads separate.
+  Migration 045 and `app/repositories/stock_alerts.py` implement these boundaries.
+  See [[Owner Portal]] and [[Background Work and Integrations]].
+
+- 2026-11-01: Connect Inventory and Owner alerts through one workspace data loader
+  and shared presentation. Reuse stock episodes and saved policy; do not copy
+  records or give Inventory Owner review/closure powers. Inventory dashboard
+  low-stock counts use live availability so stale alert records cannot change the
+  displayed product count. See [[Owner Portal]] and [[Orders and Inventory]].
+
+## Inventory alert card destinations — 2026-11-01
+
+Inventory's three stock-risk summary cards open category detail pages with
+matching live records and inclusion rules. Use category query URLs on the existing
+Alerts route to retain its authorization and navigation context, with an explicit
+Back link. Share row rendering with the summary so stock quantities/actions stay
+consistent. This implements the requested card drill-down without changing stock
+eligibility or alert closure rules. See [[Orders and Inventory]]. Sources:
+`app/portals/team_leader.py`, `app/templates/portals/_stock_alerts.html`, and
+`app/templates/portals/team-leader/alert-detail.html`.
+
+## Make expired alerts actionable before the queue scan - 2026-11-01
+
+Read pending pull-outs from live expired batch balances and optionally join their
+worker queue records. Stock Alerts already detects live expiry, so requiring a
+queue row could send staff to a page without the alerted batch while the worker
+was delayed. Keep GETs read-only, preserve worker-created historical queue events,
+and retain the transactional pull-out/disposal operations. Batch-specific links
+and live progress connect the two pages; completing a warehouse pull-out does not
+require disposing of the held goods first. See [[Orders and Inventory]] and
+[[Testing and Change Impact]]. Sources: `app/repositories/product_returns.py`,
+`app/portals/product_returns.py`, and `tests/test_alert_pullout_connection.py`.
+
+Owner alert card navigation - 2026-11-01: use the same category detail template
+as Inventory with explicit portal-role parameters. Owner cards now open matching
+lists instead of page anchors; links stay in the Owner portal. Existing review
+and stock rules remain unchanged. See [[Owner Portal]]. Sources:
+`app/portals/owner.py`, `app/templates/portals/_stock_alert_detail.html`.
+
+
+## 2026-11-01 - Integrate standalone stock tools
+
+Add raw-material adjustments, batch archives, package contents/dispatch, and
+product photos without importing the standalone database or its expiry policy.
+Use shared product locks and FEFO allocation to preserve order/replacement holds.
+Keep the start-of-expiry-date block and route expired goods through Pull-outs,
+preserving custody/disposal semantics. Require legacy package balances and holds
+to clear before component tools are used, retaining existing history. Manual
+package dispatch creates no sale; standard contents lock once, and customization
+is per dispatch. Store public product photos in PostgreSQL to survive redeploys.
+Sources: migration 046, `app/repositories/inventory/tools.py`,
+`app/portals/inventory_tools.py`, and `app/uploads.py`. See [[Orders and Inventory]].
+
+## 2026-11-02 — Reseller owns submitted payment details
+
+Use the same receipt-review component for ordering, history, and version-2
+replacement payments. Supervisor/Owner verifies actual funds against the stored
+reseller submission rather than entering another reference or amount. This keeps
+collection verification tied to the exact evidence and current quote. Legacy
+version-1 reconciliation remains available. See [[Replacement Workflow]] and
+[[Orders and Inventory]].
+
+## 2026-11-02 — Include historical cases in portal receipt review
+
+Live Supervisor case review exposed a separate version-1 dialog and image-only
+submission path. Apply signed reseller receipt review and read-only staff payment
+values to all portal cases. Missing historical fields require reseller resubmission;
+never infer reference/amount from the amount due or ask staff to enter reseller
+values. Preserve old stock/custody rules and evidence. See [[Replacement Workflow]].
+
+## 2026-11-02 — Render login CSRF tokens before client scripts
+
+A reported Supervisor sign-in failure exposed login forms depending on JavaScript
+token injection. Render tokens server-side, prevent login-page caching, and return
+a retry form for rejected browser login tokens. Keep token validation, HTTP 403,
+and session rotation intact. See [[Roles and Access]].
+
+## 2026-11-02 — Queue only actionable payment reviews
+
+Require the reseller's current confirmed details before assigning staff payment
+verification. Version-2 payment review must not depend on later stock reservation.
+This aligns queue counts and next actions with the signed receipt workflow while
+preserving historical version-1 reservation rules. See [[Replacement Workflow]].
+
+## 2026-11-02 — Bind confirmation to the payment staff reviewed
+
+Read-only payment fields must not silently confirm a newer reseller submission.
+Compare a reviewed-state fingerprint under the case lock before recording funds.
+Changed metadata, quote, or evidence requires a reload. See [[Replacement Workflow]].

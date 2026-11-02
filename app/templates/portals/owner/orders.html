@@ -18,7 +18,7 @@
         <article class="owner-order-card" id="order-{{ item.order_id }}">
           <button class="owner-order-card-summary" type="button" data-owner-order-open="owner-order-dialog-{{ item.order_id }}" aria-haspopup="dialog" aria-controls="owner-order-dialog-{{ item.order_id }}" aria-label="View order {{ item.order_id }} from {{ item.reseller }}">
             <div class="owner-order-identity"><span class="owner-order-number">Order #{{ item.order_id }}</span><strong>{{ item.reseller }}</strong>{% if item.order_date %}<time>{{ item.order_date|nice_date }}</time>{% endif %}<span class="status-badge {{ item.status }}">{{ item.status.replace('_', ' ') }}</span></div>
-            <div class="owner-order-preview" aria-label="{{ item['items']|length }} product lines">{% for line in item['items'][:3] %}<img src="{{ line.name|product_image|media_url }}" alt="" width="48" height="48" loading="lazy">{% endfor %}{% if item['items']|length > 3 %}<span>+{{ item['items']|length - 3 }}</span>{% endif %}</div>
+            <div class="owner-order-preview" aria-label="{{ item['items']|length }} product lines">{% for line in item['items'][:3] %}<img src="{{ line.name|product_photo_url }}" alt="" width="48" height="48" loading="lazy">{% endfor %}{% if item['items']|length > 3 %}<span>+{{ item['items']|length - 3 }}</span>{% endif %}</div>
             <div class="owner-order-total"><small>Total</small><strong>{{ item.total_amount|currency }}</strong></div>
             <span class="owner-order-chevron" aria-hidden="true"><i data-lucide="arrow-up-right"></i></span>
           </button>
@@ -32,13 +32,14 @@
               <header><div><span class="eyebrow">Order contents</span><h3 id="owner-order-items-{{ item.order_id }}">{{ item['items']|length }} products</h3></div></header>
               <div class="owner-order-product-list">
                 {% for line in item['items'] %}
-                <article class="owner-order-product-line"><img src="{{ line.name|product_image|media_url }}" alt="{{ line.name }}" width="62" height="62" loading="lazy"><div><strong>{{ line.name }}</strong><small>{{ line.quantity|number }} packs{% if line.unit_price is defined %} × {{ line.unit_price|currency }}{% endif %}</small></div>{% if line.line_total is defined %}<strong>{{ line.line_total|currency }}</strong>{% endif %}</article>
+                <article class="owner-order-product-line"><img src="{{ line.name|product_photo_url }}" alt="{{ line.name }}" width="62" height="62" loading="lazy"><div><strong>{{ line.name }}</strong><small>{{ line.quantity|number }} packs{% if line.unit_price is defined %} × {{ line.unit_price|currency }}{% endif %}</small></div>{% if line.line_total is defined %}<strong>{{ line.line_total|currency }}</strong>{% endif %}</article>
                 {% else %}<p class="hint">No products were recorded for this order.</p>{% endfor %}
               </div>
             </section>
             <aside class="owner-order-review" aria-label="Owner oversight and actions">
               <header><div><span class="eyebrow">Owner oversight</span><h3>Assignment & payment</h3></div></header>
               <p class="hint">Assigned to {{ item.team_leader_name or 'Nobody' }}</p>
+              {% if item.payment_transaction_number %}<dl class="payment-review-details"><div><dt>Reseller reference</dt><dd>{{ item.payment_transaction_number }}</dd></div><div><dt>Amount sent</dt><dd>{{ item.payment_amount|currency }}</dd></div><div><dt>Paid</dt><dd>{{ item.payment_paid_at|nice_date }}</dd></div></dl>{% endif %}
               {% if item.payment_proofs %}<div class="owner-order-proof-links"><a href="/portal/order-payment-proofs/{{ item.payment_proofs[0].order_payment_proof_id }}" target="_blank" rel="noopener"><i data-lucide="image" aria-hidden="true"></i><span><strong>View payment proof</strong><small>Opens in a new tab</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a></div>{% else %}<p class="hint">No payment proof submitted.</p>{% endif %}
               {% if item.status in ['pending', 'approved'] %}
               <details class="owner-override"><summary>Owner override</summary>

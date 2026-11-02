@@ -61,7 +61,7 @@
         data-product-unit="{{ product.unit }}"
         data-product-stock="{{ product.available }}"
         data-product-description="{{ product.description or 'No description available yet.' }}"
-        data-product-image="{{ product.name|product_image|media_url }}"
+        data-product-image="{{ product.name|product_photo_url }}"
       >
         <button
           class="reseller-product-card-button"
@@ -71,7 +71,7 @@
         >
           <span class="reseller-product-image">
             <img
-              src="{{ product.name|product_image|media_url }}"
+              src="{{ product.name|product_photo_url }}"
               alt="{{ product.name }}"
               loading="lazy"
             />

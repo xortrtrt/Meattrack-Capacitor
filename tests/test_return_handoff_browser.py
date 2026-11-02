@@ -69,7 +69,7 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
         page.goto(f"http://handoff.test/portal/team-leader/returns?case={case}", wait_until="networkidle")
         expect(page.get_by_role("heading", name="Return Review and Settlement", exact=True)).to_be_visible()
         expect(page.locator('form[action$="/proceed"]')).to_have_count(0)
-        expect(page.get_by_role("dialog")).to_contain_text("Inventory confirmed a complete matching receipt")
+        expect(page.get_by_role("dialog")).to_contain_text("Returned goods checked. Resolution cleared.")
         refund = fetch_one("SELECT order_refund_id FROM order_refunds WHERE return_id=%s", (case,))["order_refund_id"]
         sign_in("supervisor")
         page.goto(f"http://handoff.test/portal/sales-supervisor/refunds?refund={refund}", wait_until="networkidle")

@@ -70,7 +70,7 @@
         {% for item in checkout_items %}
         <article class="checkout-line">
           <img
-            src="{{ item.name|product_image|media_url }}"
+            src="{{ item.name|product_photo_url }}"
             alt=""
             loading="lazy"
           />

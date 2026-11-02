@@ -7,7 +7,8 @@ from app.return_experience import experience, normalize_queue
 
 BASE = dict(status="settlement_pending", resolution="replace", credit=200, replacement_total=200,
             quote_revision=1, accepted_revision=1, approved_by_account_id=2, verified_at="checked",
-            sales_authorized=True, has_reservations=True)
+            sales_authorized=True, has_reservations=True,
+            replacement_payment_details=dict(transaction_number="REF123", payment_amount="50.00", revision=1))
 
 
 @pytest.mark.parametrize("changes,queue,sales_action,reseller_action,owner", [
@@ -18,7 +19,7 @@ BASE = dict(status="settlement_pending", resolution="replace", credit=200, repla
     ({"verified_at": None}, "waiting", "", "", "Reseller / Inventory"),
     ({"has_reservations": False}, "waiting", "", "", "Inventory"),
     ({"has_reservations": False, "replacement_total": 250, "has_payment_proof": True}, "waiting", "", "", "Inventory"),
-    ({"replacement_total": 250}, "waiting", "", "payment", "Reseller"),
+    ({"replacement_total": 250, "replacement_payment_details": None}, "waiting", "", "payment", "Reseller"),
     ({"replacement_total": 250, "has_payment_proof": True}, "payment", "verify_payment", "", "Sales"),
     ({"replacement_total": 250, "payment_verified_at": "paid"}, "waiting", "", "", "Inventory"),
     ({"replacement_released_at": "released", "replacement_total": 100}, "waiting", "", "", "Supervisor / Owner"),
@@ -46,3 +47,24 @@ def test_financial_and_product_progress_are_independent():
     assert normalize_queue("untrusted") == "needs_review" and normalize_queue("all") == "all"
     value = experience({**BASE, "replacement_total": 250, "has_payment_proof": True})
     assert value["financial_progress"] == "₱50.00 payment awaiting verification"
+
+
+def test_image_only_proof_waits_on_reseller_and_new_workflow_does_not_require_holds_for_review():
+    case = {**BASE, "replacement_total": 250, "has_payment_proof": True, "replacement_payment_details": None}
+    result = experience(case)
+    assert result["queue"] == "waiting" and result["owner"] == "Reseller"
+    assert result["reseller"]["action"] == "payment"
+    assert "receipt details needed" in result["financial_progress"]
+    case.update(replacement_workflow_version=2, has_reservations=False, replacement_payment_details=BASE["replacement_payment_details"])
+    result = experience(case)
+    assert result["queue"] == "payment" and result["sales"]["action"] == "verify_payment"
+
+
+def test_new_replacement_progress_preserves_open_issue_action():
+    from app.repositories.replacement_workflow import enrich_progress
+    case = {**BASE, "replacement_workflow_version": 2, "status": "completed", "has_open_followup": True,
+            "replacement_released_at": "released", "payment_verified_at": None}
+    case["experience"] = experience(case)
+    enrich_progress(case)
+    assert case["experience"]["sales"]["action"] == "resolve_issue"
+    assert case["experience"]["queue"] == "needs_review"

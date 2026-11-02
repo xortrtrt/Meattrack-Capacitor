@@ -83,3 +83,16 @@ Cross-table triggers enforce recipe and batch item types and units. Fulfillment
 locks FEFO batches and writes every deduction in the same transaction as the
 order status update. `inventory_movements` rejects update, delete, and truncate;
 opening rows define the audit boundary for databases upgraded by migration 002.
+
+Migration 045 adds per-Owner alert reviews, resolution metadata, active low-stock
+alert uniqueness, and the `finished_stock_availability` view. Apply it before
+restarting the app and worker. Historical alert reviews are not backfilled;
+duplicate active finished-product low-stock alerts are closed with an explicit
+migration reason while preserving their original records and batch links.
+
+
+Migration 046 adds Inventory tools: raw-material adjustment submission history,
+batch archival metadata, locked package components and dispatch snapshots, and
+product-photo storage. Apply before running the updated application. Existing
+stock, orders, reservations, and movement history are preserved. See
+`docs/knowledge/Orders and Inventory.md` for workflow boundaries.

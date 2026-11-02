@@ -12,9 +12,10 @@
       </fieldset>
       <fieldset class="owner-settings-group">
         <legend><i data-lucide="package-search" aria-hidden="true"></i> Inventory & alerts</legend>
-        <p class="hint">Choose when expiring stock needs attention.</p>
+        <p class="hint">Choose expiry windows and the finished-product low-stock warning level.</p>
         <div class="owner-form-grid">
           <label>Near-expiry warning (days)<input required type="number" min="14" max="90" name="near_expiry_days" value="{{ business_settings['inventory.near_expiry_days'] }}"></label>
+          <label>Low-stock warning (available packs)<input required type="number" min="0" max="100000" step="1" name="low_stock_packs" value="{{ business_settings['inventory.low_stock_packs'] }}"><small>Warn at or below this level. Zero warns only when out of stock.</small></label>
           <label>Critical expiry (days)<input required type="number" min="0" max="90" name="critical_expiry_days" value="{{ business_settings['inventory.critical_expiry_days'] }}"></label>
           <label class="owner-checkbox owner-field-wide"><input type="checkbox" name="owner_critical_alerts" value="true" {{ 'checked' if business_settings['notifications.owner_critical_alerts'] else '' }}> Notify owners about critical alerts</label>
         </div>

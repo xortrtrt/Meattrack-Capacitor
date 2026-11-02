@@ -86,6 +86,8 @@ def product_image(value: str) -> str:
 
 
 def media_url(filename: str) -> str:
+    if filename.startswith("/media/products/"):
+        return filename
     return f"/static/img/{quote(filename, safe='')}"
 
 
@@ -98,6 +100,7 @@ def configure_templates(csrf_token) -> None:
         number=number,
         nice_date=nice_date,
         product_image=product_image,
+        product_photo_url=lambda name: "/media/product-photo/" + quote(str(name), safe=""),
         media_url=media_url,
     )
 

@@ -1,4 +1,4 @@
-<details class="lifecycle-box refund-receipt-trace" open>
+<details class="lifecycle-box refund-receipt-trace" {% if not receipt_trace_collapsed|default(false) %}open{% endif %}>
   <summary>Sales and Inventory record chain &middot; Return #{{ case.return_id }}</summary>
   {% if role_key in ['owner','sales-supervisor'] or (role_key=='team-leader' and not return_can_receive) %}<p><a href="/portal/{{ role_key }}/orders?q={{ case.order_id }}#order-{{ case.order_id }}">Open original sale #{{ case.order_id }}</a></p>{% endif %}
   <p>Sales approval: {{ 'Recorded' if case.approved_by_account_id else 'Awaiting approval' }} &middot; Inventory verification: {{ case.verified_at|nice_date if case.verified_at else 'Awaiting final verification' }}{% if case.verified_by_name %} by {{ case.verified_by_name }}{% endif %}</p>

@@ -67,6 +67,7 @@ def test_sales_and_reseller_tasks_chat_and_acknowledgment(lifecycle, monkeypatch
             page.goto(f"http://return-customer.test/portal/reseller/history?view=returns&case={case}", wait_until="networkidle")
             dialog = page.get_by_role("dialog", name=f"Return #{case}", exact=True)
             expect(dialog.get_by_role("heading", name="Completed return receipt", exact=True)).to_be_visible()
+            dialog.locator("summary").filter(has_text="Return & replacement").click()
             expect(dialog.locator(".return-offer__difference")).to_have_text("No additional payment")
             expect(dialog.get_by_role("link", name="Contact Sales about this return", exact=True)).to_be_visible()
             assert dialog.evaluate("el=>el.scrollWidth<=el.clientWidth+1")
@@ -87,7 +88,7 @@ def test_sales_and_reseller_tasks_chat_and_acknowledgment(lifecycle, monkeypatch
         as_role("supervisor")
         page.goto(f"http://return-customer.test/portal/sales-supervisor/returns?case={case}", wait_until="networkidle")
         dialog = page.get_by_role("dialog", name=f"Return #{case}", exact=True)
-        expect(dialog.locator("[data-return-next-step]")).to_contain_text("resolve the reseller’s reported issue")
+        expect(dialog.locator(".supervisor-case-summary")).to_contain_text("resolve the reseller’s reported issue")
         expect(dialog).to_contain_text("One replacement pack arrived with damaged packaging")
         assert dialog.locator('button.button:visible').count() == 1
         page.screenshot(path=str(output / "sales-followup.png"), full_page=True)
@@ -156,7 +157,8 @@ def test_revised_offers_payment_proof_and_unused_credit_are_clear(lifecycle, mon
             if price == 250:
                 expect(dialog.locator("[data-return-next-step]")).to_contain_text("Payment proof submitted")
                 expect(dialog.get_by_role("button", name="Send payment proof", exact=True)).not_to_be_visible()
-                expect(dialog.get_by_text("Upload another payment proof", exact=True)).to_be_visible()
+                expect(dialog.locator("[data-receipt-checkout]")).to_be_visible()
+                expect(dialog.locator("[data-receipt-submit]")).to_be_disabled()
             else:
                 expect(dialog.locator(".return-outcomes")).to_contain_text("Replacement released")
                 expect(dialog.locator(".return-outcomes")).to_contain_text("₱100.00 refund pending")

@@ -6,8 +6,10 @@ from app.conversation_notifications import unread_summary
 
 def leader_work_summary(account_id: int, leader_role: str) -> dict:
     if leader_role == "inventory":
+        from .superuser import business_setting
+        threshold = int(business_setting("inventory.low_stock_packs"))
         counts = fetch_one("""SELECT
-            (SELECT COUNT(DISTINCT COALESCE(product_id,raw_material_id)) FROM alerts WHERE status='open' AND alert_type='low_stock') low_stock,
+            (SELECT COUNT(*) FROM finished_stock_availability WHERE is_active AND available<=%s) low_stock,
             (SELECT COUNT(*) FROM expired_pullouts p JOIN inventory_batches b USING(batch_id) WHERE b.quantity_available>0 AND b.expiry_date<=(now() AT TIME ZONE 'Asia/Manila')::date) pending_pullouts,
             (SELECT COUNT(*) FROM product_returns WHERE status IN ('awaiting_receipt','awaiting_inventory_verification')) return_receipts,
             (SELECT COUNT(*) FROM product_returns r WHERE resolution='replace' AND approved_by_account_id IS NOT NULL
@@ -17,7 +19,7 @@ def leader_work_summary(account_id: int, leader_role: str) -> dict:
                  OR replacement_total<=credit OR payment_verified_at IS NOT NULL)) replacements,
             COALESCE((SELECT SUM(quantity) FROM all_stock_reservations),0) reserved,
             COALESCE((SELECT SUM(b.quantity_available) FROM inventory_batches b JOIN inventory_items i ON i.item_id=b.item_id
-             WHERE i.item_type='finished_product'),0) physical_stock""")
+             WHERE i.item_type='finished_product'),0) physical_stock""", (threshold,))
         rows = [
             (
                 "Return receipts",
@@ -41,9 +43,9 @@ def leader_work_summary(account_id: int, leader_role: str) -> dict:
                 "refresh-cw",
             ),
             (
-                "Low-stock alerts",
+                "Low-stock products",
                 counts["low_stock"],
-                "finished-products",
+                "alerts#replenishment",
                 "Check available quantities before production",
                 "triangle-alert",
             ),

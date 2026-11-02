@@ -134,7 +134,7 @@ def _create_order_system_message_cursor(
 def list_notifications(role_key: str, account_id: int | None = None, limit: int = 8) -> list[dict]:
     return clean_row(fetch_all(
         """
-        SELECT n.notification_id, n.category, n.severity, n.title, n.message, n.target_url,
+        SELECT n.notification_id, n.category, n.severity, n.title, n.message, n.target_url, n.source_type, n.source_id,
                nr.read_at, n.created_at
         FROM notification_recipients nr
         JOIN notifications n ON n.notification_id = nr.notification_id
@@ -275,7 +275,7 @@ def list_notification_history(
     offset = (max(page, 1) - 1) * page_size
     return clean_row(fetch_all(
         """
-        SELECT n.notification_id, n.category, n.severity, n.title, n.message, n.target_url,
+        SELECT n.notification_id, n.category, n.severity, n.title, n.message, n.target_url, n.source_type, n.source_id,
                nr.read_at, n.created_at
         FROM notification_recipients nr
         JOIN notifications n ON n.notification_id = nr.notification_id
@@ -317,6 +317,16 @@ def count_notification_history(
     return int(row["total"])
 
 
+def unread_notification_targets(account_id: int | None) -> list[dict]:
+    """Count every unread recipient row, independently of preview pagination."""
+    return fetch_all("""
+        SELECT n.target_url, COUNT(*) AS total
+        FROM notification_recipients nr JOIN notifications n USING(notification_id)
+        WHERE nr.account_id = %s AND nr.read_at IS NULL
+        GROUP BY n.target_url
+    """, (account_id,))
+
+
 def unread_notification_count(role_key: str, account_id: int | None = None) -> int:
     row = fetch_one(
         """
@@ -341,3 +351,5 @@ def mark_notifications_read(role_key: str, account_id: int | None = None) -> Non
 
 
 __all__ = ['_notification_recipient_ids', '_create_notification_cursor', '_create_order_system_message_cursor', 'create_notification', 'list_notifications', 'list_order_system_messages', 'get_order_system_message', 'get_latest_order_system_message', 'unread_order_system_message_count', 'mark_order_system_message_read', 'mark_notification_read', 'list_notification_history', 'count_notification_history', 'unread_notification_count', 'mark_notifications_read']
+
+__all__ += ["unread_notification_targets"]

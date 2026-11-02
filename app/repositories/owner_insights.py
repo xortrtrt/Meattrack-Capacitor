@@ -36,7 +36,7 @@ def owner_business_snapshot() -> dict:
     return {key: int(value or 0) for key, value in row.items()}
 
 
-def owner_stock_snapshot() -> dict:
+def owner_stock_snapshot(batch_limit: int | None = 6) -> dict:
     near_days = int(business_setting("inventory.near_expiry_days"))
     counts = fetch_one("""WITH stock AS (
         SELECT p.item_id,
@@ -65,8 +65,14 @@ def owner_stock_snapshot() -> dict:
         WHERE p.item_type='finished_product' AND p.is_active AND b.quantity_available>0
           AND b.expiry_date<=(now() AT TIME ZONE 'Asia/Manila')::date+%s
           AND (b.quality_status='approved' OR b.expiry_date<=(now() AT TIME ZONE 'Asia/Manila')::date)
-        ORDER BY b.expiry_date,b.batch_id LIMIT 6""", (near_days,))
+        ORDER BY b.expiry_date,b.batch_id LIMIT %s""", (near_days, batch_limit))
     return {"counts": clean_row(counts), "batches": clean_row(batches), "near_days": near_days}
 
 
 __all__ = ["owner_business_snapshot", "owner_stock_snapshot"]
+
+
+def owner_low_stock(threshold: int = 10) -> list[dict]:
+    """Finished packs available to promise, after all active reservations."""
+    return clean_row(fetch_all("""SELECT item_id,name,available FROM finished_stock_availability
+        WHERE is_active AND available<=%s ORDER BY available,name,item_id""", (threshold,)))

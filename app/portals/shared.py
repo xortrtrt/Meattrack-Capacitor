@@ -343,6 +343,28 @@ def notification_target_for(
     return urlunsplit(("", "", safe_path, parsed.query, parsed.fragment))
 
 
+def owner_update_badges(account_id: int | None) -> tuple[dict, dict]:
+    pages, parents = {}, {}
+    for row in data.unread_notification_targets(account_id):
+        target = notification_target_for("owner", None, row["target_url"])
+        section = urlsplit(target).path.rsplit("/", 1)[-1]
+        if section == "notifications":
+            continue
+        count = int(row["total"])
+        pages[section] = pages.get(section, 0) + count
+        parent = portal_config.owner_workspace_for(section)["parent"]
+        parents[parent] = parents.get(parent, 0) + count
+    return pages, parents
+
+
+def notification_record_target(role_key: str, team_leader_role: str | None, item: dict) -> str:
+    target = item.get("target_url")
+    if role_key == "team-leader" and team_leader_role == "inventory" and item.get("source_type") == "alerts":
+        anchor = f"#stock-alert-{item['source_id']}" if str(item.get("source_id", "")).isdigit() else ""
+        target = "/portal/team-leader/alerts" + anchor
+    return notification_target_for(role_key, team_leader_role, target)
+
+
 def normalize_notification_targets(
     items: list[dict],
     role_key: str,
@@ -358,11 +380,7 @@ def normalize_notification_targets(
     return [
         {
             **item,
-            "target_url": notification_target_for(
-                role_key,
-                team_leader_role,
-                item.get("target_url"),
-            ),
+            "target_url": notification_record_target(role_key, team_leader_role, item),
         }
         for item in items
     ]
@@ -525,6 +543,7 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
     }
     context.update(portal_section_context(role_key, section, request))
     if role_key == "owner":
+        context["page_updates"], context["nav_updates"] = owner_update_badges(session_account_id(request))
         from app import owner_recovery
         context["owner_resume"] = owner_recovery.consume(request)
     return templates().TemplateResponse(
@@ -566,11 +585,7 @@ async def portal_notification_open(request: Request, role_key: str, notification
             f"/portal/reseller/inbox?system_message={system_message_id}"
             f"#system-message-{system_message_id}"
         )
-    target_url = notification_target_for(
-        role_key,
-        session_team_leader_role(request),
-        notification.get("target_url"),
-    )
+    target_url = notification_record_target(role_key, session_team_leader_role(request), notification)
     return redirect_to(target_url)
 
 

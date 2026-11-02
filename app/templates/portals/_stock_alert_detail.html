@@ -1,0 +1,36 @@
+{% set is_low_stock = stock_alert_category == 'low-stock' %}
+{% set is_expired = stock_alert_category == 'expired' %}
+{% set title = 'Low stock' if is_low_stock else 'Expired stock' if is_expired else 'Expiring soon' %}
+{% set batches = stock_risk.batches|selectattr('expired')|list if is_expired else stock_risk.batches|rejectattr('expired')|list %}
+{% set item_count = low_stock|length if is_low_stock else batches|length %}
+{% set expired_count = stock_risk.batches|selectattr('expired')|list|length %}
+{% set expiring_count = stock_risk.batches|rejectattr('expired')|list|length %}
+<div class="ia-toolbar">
+  <a class="oa-detail-back" href="/portal/{{ stock_alert_role }}/alerts"><i data-lucide="arrow-left" aria-hidden="true"></i>Back to stock alerts</a>
+  <span class="ia-live"><span aria-hidden="true"></span>Live stock</span>
+</div>
+<section class="stock-ledger ia-detail owner-alerts stock-alerts" aria-labelledby="alert-detail-title">
+  <header class="stock-ledger__header">
+    <div><span class="stock-ledger__eyebrow">Stock alerts</span><h2 id="alert-detail-title">{{ title }}</h2></div>
+    <a class="oa-refresh" href="/portal/{{ stock_alert_role }}/alerts?category={{ stock_alert_category }}"><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh</a>
+  </header>
+  <nav class="ia-categories" aria-label="Alert categories">
+    {% for slug, label, count in [('expired', 'Expired stock', expired_count), ('expiring', 'Expiring soon', expiring_count), ('low-stock', 'Low stock', low_stock|length)] %}
+    <a href="/portal/{{ stock_alert_role }}/alerts?category={{ slug }}" {% if stock_alert_category == slug %}aria-current="page"{% endif %}>{{ label }}<span>{{ count }}</span></a>
+    {% endfor %}
+  </nav>
+  <div class="ia-list-heading">
+    <h3>Included in this alert <span>{{ item_count }} {{ 'product' if is_low_stock and item_count == 1 else 'products' if is_low_stock else 'batch' if item_count == 1 else 'batches' }}</span></h3>
+    <span class="ia-rule">{% if is_low_stock %}≤ {{ stock_threshold }} available packs{% elif is_expired %}Expires today or earlier{% else %}Within {{ stock_risk.near_days }} days{% endif %}</span>
+  </div>
+  <div class="oa-list">
+    {% if is_low_stock %}
+      {% include 'portals/team-leader/_alert_products.html' %}
+    {% elif batches %}
+      {% set stock_risk = dict(stock_risk, batches=batches) %}
+      {% include 'portals/team-leader/_alert_batches.html' %}
+    {% else %}
+      <div class="oa-empty"><i data-lucide="shield-check" aria-hidden="true"></i><h3>{{ 'No expired stock' if is_expired else 'No batches expiring soon' }}</h3></div>
+    {% endif %}
+  </div>
+</section>

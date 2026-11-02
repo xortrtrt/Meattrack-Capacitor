@@ -160,3 +160,42 @@ def test_cancellation_modal_works_after_filtering_order_history():
             page.get_by_role("button", name="Confirm cancellation").click()
         assert "cancellation_reason=ordered_by_mistake" in submitted.value.post_data
         browser.close()
+
+
+def test_replacement_payment_requires_receipt_review_on_mobile():
+    from types import SimpleNamespace
+    html = templates.env.get_template("portals/reseller/_replacement_payment.html").render(
+        case=SimpleNamespace(return_id=7, order_id=91, additional_due=100),
+        action_base="/portal/reseller/returns/actions/",
+    )
+    styles = "\n".join(Path(path).read_text(encoding="utf-8") for path in ["app/static/css/portal_base.css", "app/static/css/portals/reseller.css"])
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.route("http://meattrack.test/history", lambda route: route.fulfill(
+            body=f'<meta charset="utf-8"><style>{styles}</style><body class="role-reseller">{html}</body>', content_type="text/html"))
+        page.route("**/7/receipt-scan", lambda route: route.fulfill(json={
+            "ok": True, "scan_token": "replacement-token", "transaction_number": "REPLACE123",
+            "payment_amount": "100.00", "payment_date": "2026-11-02", "payment_time": "10:30",
+        }))
+        submissions = []
+        def submit(route):
+            submissions.append(route.request.post_data_buffer)
+            route.fulfill(body="Submitted")
+        page.route("**/returns/actions/payment", submit)
+        page.goto("http://meattrack.test/history")
+        page.add_script_tag(content=Path("app/static/js/portal.js").read_text(encoding="utf-8"))
+        expect(page.locator("[data-receipt-submit]")).to_be_disabled()
+        page.locator("[data-receipt-files]").set_input_files({"name": "receipt.png", "mimeType": "image/png", "buffer": b"receipt"})
+        expect(page.locator("[data-receipt-confirm]")).to_be_enabled()
+        expect(page.locator("[data-receipt-submit]")).to_be_disabled()
+        page.locator("[data-receipt-confirm]").check()
+        page.locator("[data-receipt-accept]").click()
+        expect(page.locator("[data-receipt-submit]")).to_be_enabled()
+        page.screenshot(path="outputs/payment-review-mobile.png", full_page=True)
+        page.locator("[data-receipt-submit]").click()
+        page.wait_for_url("**/returns/actions/payment")
+        assert b"replacement-token" in submissions[0]
+        assert b'REPLACE123' in submissions[0]
+        assert b'name="return_id"' in submissions[0]
+        browser.close()

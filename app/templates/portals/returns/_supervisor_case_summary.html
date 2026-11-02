@@ -1,0 +1,25 @@
+{% set requested_packs = case.lines|sum(attribute='quantity') %}
+{% set received_packs = case.lines|sum(attribute='received_quantity') %}
+{% set payment_details = case.replacement_payment_details or {} %}
+{% set needs_receipt_details = case.status == 'settlement_pending' and case.sales_authorized and case.additional_due > 0 and case.has_payment_proof and not case.payment_verified_at and (case.replacement_workflow_version|default(1)==2 or case.has_reservations) and (not payment_details.transaction_number or payment_details.revision != case.quote_revision) %}
+{% set current_title = 'Waiting for reseller receipt details' if needs_receipt_details else case.experience.sales.title|replace('Your action: ', '') if case.experience else case.status|replace('_',' ')|title %}
+<section class="supervisor-case-summary" aria-label="Case overview">
+  <header>
+    <div><span class="eyebrow">Current status</span><h4>{{ current_title }}</h4></div>
+    <span class="status-badge">{{ 'Replacement' if case.resolution=='replace' else 'Refund' }}</span>
+  </header>
+  <dl class="supervisor-case-facts">
+    <div><dt>Reseller</dt><dd>{{ case.reseller_name or 'Not recorded' }}</dd></div>
+    <div><dt>Returned packs</dt><dd>{{ received_packs|number }} / {{ requested_packs|number }} received <span>{{ 'Verified' if case.verified_at else 'Awaiting verification' }}</span></dd></div>
+    <div><dt>{{ 'Waiting on' if needs_receipt_details or not (case.experience and case.experience.sales.action) else 'Next action with' }}</dt><dd>{{ 'Reseller' if needs_receipt_details else case.experience.owner if case.experience else 'Not assigned' }}</dd></div>
+    <div><dt>{{ 'Replacement stock' if case.resolution=='replace' else 'Refund status' }}</dt><dd>{% if case.resolution=='replace' %}{{ 'Delivered' if case.replacement_delivered_at else 'Released' if case.replacement_released_at else 'Ready for dispatch' if case.replacement_prepared_at else 'Reserved' if case.has_reservations else case.experience.replacement_progress if case.experience else 'Not started' }}{% else %}{{ case.refund.status|title if case.refund else 'Not started' }}{% endif %}</dd></div>
+  </dl>
+  <dl class="supervisor-case-money">
+    <div><dt>Return credit</dt><dd>{{ case.credit|currency }}</dd></div>
+    {% if case.resolution=='replace' %}<div><dt>Replacement value</dt><dd>{{ case.replacement_total|currency }}</dd></div><div class="is-emphasis"><dt>{{ 'Extra payment verified' if case.payment_verified_at else 'Extra payment to verify' if case.has_payment_proof else 'Extra payment due' }}</dt><dd>{{ case.additional_due|currency }}</dd></div><div><dt>Difference refund</dt><dd>{{ case.unused_credit|currency }}</dd></div>
+    {% else %}<div class="is-emphasis"><dt>{{ 'Refund sent' if case.refund and case.refund.status=='completed' else 'Refund amount' }}</dt><dd>{{ case.refund.amount|currency if case.refund else case.credit|currency }}</dd></div>{% endif %}
+  </dl>
+  <footer><span>Submitted <time>{{ case.created_at|nice_date }}</time></span><span>Updated <time>{{ case.updated_at|nice_date }}</time></span></footer>
+  {% if case.remarks %}<div class="supervisor-case-reason"><strong>Reason</strong>{% if case.remarks|length > 140 %}<details><summary>{{ case.remarks|truncate(110) }}</summary><p>{{ case.remarks }}</p></details>{% else %}<span>{{ case.remarks }}</span>{% endif %}</div>{% endif %}
+  {% if case.reconciliation_flags %}<details class="supervisor-case-warning" open><summary>Records need review</summary><ul>{% for flag in case.reconciliation_flags %}<li>{{ flag }}</li>{% endfor %}</ul></details>{% endif %}
+</section>

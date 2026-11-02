@@ -94,3 +94,24 @@ worker job. Sources: `app/templates/portals/_replacement_conversation.html`,
 `app/static/css/replacement_workflow.css`,
 `app/static/js/replacement_workflow.js`, `app/repositories/replacement_messages.py`.
 See [[Replacement Workflow]] and [[Testing and Change Impact]].
+
+## Stock alert episodes (checked 2026-11-01)
+
+After expiry/custody maintenance, `scan_batch_expiry` calls stock-alert reconciliation.
+It uses a shared database availability view, the saved low-stock policy, transactional
+upserts, and an advisory lock to create or clear episodes. Receipt/production uses
+the same batch-alert helper, so the next scan does not duplicate notifications.
+Expiry and low-stock notifications deduplicate by alert ID, role, and severity;
+Owner notifications remain critical-only and respect the Owner setting.
+Automatic closure writes its timestamp, source, reason, and system audit together.
+The successful scan timestamp is committed in that same reconciliation transaction.
+A failed scan leaves the previous timestamp visible. No request-time GET performs
+maintenance. See [[Owner Portal]] and [[Orders and Inventory]]. Sources:
+`app/worker.py`, `app/repositories/stock_alerts.py`, migration 045.
+
+Inventory stock notifications now open `/portal/team-leader/alerts#stock-alert-ID`.
+Existing alert-source notification URLs are normalized for Inventory on display and
+open. Receipt/production and worker paths retain the same episode deduplication;
+adding the Inventory view creates no separate lifecycle or notification stream.
+Checked 2026-11-01 against `app/repositories/stock_alerts.py` and
+`app/portals/shared.py`. See [[Owner Portal]] and [[Orders and Inventory]].

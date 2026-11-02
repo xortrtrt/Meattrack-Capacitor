@@ -134,3 +134,113 @@ keeps returned-goods custody separate from expired-stock records and sellable st
 Waiting for valid restock preserves paid selections and confirmed collections.
 Sources: `app/repositories/product_returns.py`,
 `app/templates/portals/lifecycle/expired-stock.html`, migration 044.
+
+Owner low-stock oversight now shares the `finished_stock_availability` view with
+worker alerts (migration 045), using eligible packs less all order/replacement holds.
+One saved whole-pack warning level defaults to 10; it never applies to raw-material
+units. Expired-stock alert closure requires that no expired warehouse packs remain;
+quality reclassification alone does not count as physical removal. Per-Owner reviews
+and notification reads remain separate. Checked 2026-11-01 against
+`app/repositories/stock_alerts.py`, `app/repositories/owner_insights.py`, and the
+migration. See [[Owner Portal]] and [[Background Work and Integrations]].
+
+Inventory's **Stock alerts** page is shared with [[Owner Portal]] (checked
+2026-11-01). Dashboard low-stock products now count the same active finished-product
+availability view and saved threshold directly, rather than counting stale/open-only
+alert rows. The dashboard links to the alert replenishment list. New stock-alert
+notifications link to a shared episode anchor; existing `source_type='alerts'`
+notifications are normalized on display/open without rewriting stored history.
+Stock changes appear on page refresh; recorded episode clearance follows the
+existing worker scan. No new schema or Inventory closure permissions were added.
+Sources: `app/repositories/portal_dashboard.py`, `app/repositories/stock_alerts.py`,
+`app/portals/shared.py`, and `app/templates/portals/_stock_alerts.html`.
+
+Inventory alert summary cards open dedicated category detail views at
+`/portal/team-leader/alerts?category=expired`, `category=expiring`, and
+`category=low-stock` (checked 2026-11-01). Each view uses a short threshold/expiry label,
+shows only the matching live batches/products, and provides stock-action links,
+category refresh, and a Back to stock alerts link. The existing Inventory page
+capability guards apply to these URLs. Shared row partials keep summary/detail
+quantities and actions aligned. Owner cards now use equivalent Owner-scoped category views;
+see [[Owner Portal]].
+See [[Roles and Access]] and [[Testing and Change Impact]]. Sources:
+`app/portals/team_leader.py`, `app/templates/portals/team-leader/alert-detail.html`,
+`app/templates/portals/team-leader/_alert_batches.html`,
+`app/templates/portals/team-leader/_alert_products.html`, and
+`tests/test_inventory_alert_workspace.py`.
+
+The Inventory alert detail presentation uses the portal's stock-ledger theme:
+white panels, gold category tabs with live counts, compact rows, and direct review
+buttons. Inclusion paragraphs and repeated footers were replaced by short labels;
+Inventory recorded-alert rows show the subject, batch/type, status, and date.
+Owner's detailed alert copy remains intact. This is a presentation change only.
+Sources: `app/templates/portals/team-leader/alert-detail.html`,
+`app/templates/portals/_stock_alerts.html`, and
+`app/static/css/portals/inventory-alerts.css`. See [[Testing and Change Impact]].
+
+## Stock Alerts to physical pull-out, 2026-11-01
+
+Inventory expired-batch rows and recorded expired alerts link directly to
+`expired-stock?batch_id=<id>&from_alerts=1#pullout-<id>`. Pull-outs opens the
+Pending pull-out tab, highlights the selected batch, and links back to the expired
+Stock Alerts category. Its focus summary shows live warehouse packs awaiting
+pull-out and the remaining pull-out holding quantity. Successful and failed
+submissions retain this batch context; partial removal keeps the remaining
+warehouse risk visible, while full removal leaves a completion summary and a
+holding link. Disposal remains separate, and recorded alert closure still follows
+the worker scan. See [[Background Work and Integrations]] and [[Roles and Access]].
+
+The pending list now reads live expired warehouse balances with an optional worker
+queue record, so a live alert is actionable before the worker has queued it. GETs
+create no queue/audit records; the worker still owns the persistent queue event
+used by Inventory Logs. Sources: `app/repositories/product_returns.py`
+(`expired_stock_workspace`, `expired_pullout_progress`),
+`app/portals/product_returns.py`, `app/static/js/expired_stock.js`,
+`app/templates/portals/lifecycle/expired-stock.html`, and
+`tests/test_alert_pullout_connection.py`.
+
+## Inventory tools, 2026-11-01
+
+Inventory tools adds raw-material deductions with a reason, exact stock-unit
+quantities, actor attribution, and submission replay protection. Removal hides a
+material while preserving its balance and ledger; recipe references block removal.
+Reactivation restores the same record. Duplicate names direct staff to reactivate.
+
+Product Details can archive a batch and deduct its remaining packs with a required
+reason and confirmation. Stale quantities and stock needed by order/replacement
+reservations are rejected. Archived batches retain receipts and movements and
+cannot receive new stock corrections. Expired warehouse goods use the existing
+Pull-outs/holding/disposal workflow instead. The removed-batches view shows the
+latest 100 removals; complete stock history remains under each product.
+
+Packages can save immutable standard contents or dispatch one-time customized
+contents. Dispatch multiplies component packs by package count and uses the shared
+FEFO allocator, preserving order and replacement reservations and blocking stock
+on its expiry date. The operation is atomic and replay-safe. Dispatch snapshots
+retain names, quantities, mode, actor, and timestamp; component deductions remain
+in Inventory Logs and Product Details. This manual stock handout creates no sale
+or order. Legacy package stock/reservations must clear before component dispatch;
+existing legacy history is preserved. Once component tools are used, production
+and direct stock receipts for that package are blocked.
+
+Optional JPG/PNG/WebP product photos (2 MB, 16 megapixels) are verified and decoded
+before database storage. Recipe creation saves its optional photo atomically;
+Product Details can add/change photos for existing products. Catalog image URLs
+serve the uploaded photo or redirect to the existing bundled fallback, including
+public, Owner, Sales, and Reseller displays. Photos are public catalog media.
+
+Checked against `app/repositories/inventory/tools.py`, `app/portals/inventory_tools.py`,
+`app/repositories/inventory/products.py`, `app/uploads.py`, and migration 046.
+See [[Roles and Access]], [[Database and Operations]], [[Testing and Change Impact]].
+
+## Receipt review consistency (2026-11-02)
+
+History uses the ordering receipt-confirmation form, including pending legacy
+orders without payment metadata or proof. The old `/payment-proof` route now
+uses the same signed scan, exact-file binding, and reseller confirmation as
+`/payment`. Legacy pending orders recheck full payment and stock transactionally;
+existing reservations are replaced within that transaction. Paid orders retain
+their existing evidence. History keeps expandable order cards and shows a compact
+dated progress timeline. See [[Replacement Workflow]]. Sources:
+`app/portals/reseller.py`, `app/repositories/orders.py`,
+`app/templates/portals/reseller/history.html`.

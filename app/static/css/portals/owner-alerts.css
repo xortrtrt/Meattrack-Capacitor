@@ -1,0 +1,176 @@
+/* Owner alert worklists: scoped independently from legacy panel and card styles. */
+.stock-alerts {
+  --oa-danger: #a32c32;
+  --oa-danger-wash: #fff1f0;
+  --oa-warning: #805500;
+  --oa-warning-wash: #fff7df;
+  --oa-success: #286346;
+  --oa-success-wash: #edf6f0;
+  display: grid;
+  gap: 20px;
+  color: var(--owner-ink);
+}
+.stock-alerts *, .stock-alerts *::before, .stock-alerts *::after { box-sizing: border-box; }
+.stock-alerts :is(h2,h3,p) { margin: 0; }
+.stock-alerts svg { width: 17px; height: 17px; flex-shrink: 0; }
+.stock-alerts a { text-decoration: none; }
+.stock-alerts .oa-context { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stock-alerts .oa-context p { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; font-weight: 500; }
+.stock-alerts .oa-context p > span:last-child { color: var(--owner-muted); font-weight: 400; margin-left: 8px; }
+.stock-alerts .oa-live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--oa-success); }
+.stock-alerts .oa-refresh { display: inline-flex; gap: 7px; align-items: center; justify-content: center; min-height: 44px; padding-inline: 12px; color: var(--owner-ink); font-size: 12px; border: 1px solid var(--owner-line); border-radius: 8px; background: var(--owner-surface); }
+.stock-alerts .oa-summary { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+.stock-alerts .oa-metric { display: grid; gap: 16px; padding: 20px 22px 16px; border: 1px solid var(--owner-line); border-top: 3px solid var(--owner-accent); border-radius: 12px; background: var(--owner-surface); color: var(--owner-ink); }
+.stock-alerts .oa-metric-danger { border-top-color: var(--oa-danger); }
+.stock-alerts .oa-metric-warning { border-top-color: var(--oa-warning); }
+.stock-alerts .oa-metric-label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; color: var(--owner-muted); }
+.stock-alerts .oa-metric-danger .oa-metric-label svg { color: var(--oa-danger); }
+.stock-alerts .oa-metric-warning .oa-metric-label svg { color: var(--oa-warning); }
+.stock-alerts .oa-metric strong { display: flex; align-items: baseline; gap: 10px; font-size: 36px; line-height: 1; font-weight: 600; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.stock-alerts .oa-metric strong small { color: var(--owner-muted); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.stock-alerts .oa-metric-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; border-top: 1px solid var(--owner-line); padding-top: 12px; font-size: 11px; color: var(--owner-muted); }
+.stock-alerts .oa-metric-foot svg { width: 14px; height: 14px; }
+.stock-alerts .oa-worklist { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px; align-items: start; }
+.stock-alerts .oa-surface { min-width: 0; overflow: hidden; background: var(--owner-surface); border: 1px solid var(--owner-line); border-radius: 12px; scroll-margin-top: 90px; }
+.stock-alerts .oa-section-head { display: flex; justify-content: space-between; gap: 16px; padding: 22px; border-bottom: 1px solid var(--owner-line); }
+.stock-alerts .oa-eyebrow { display: block; margin-bottom: 7px; color: var(--owner-accent); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; }
+.stock-alerts .oa-section-head h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; font-size: 18px; font-weight: 600; letter-spacing: -.025em; line-height: 1.4; }
+.stock-alerts .oa-count { display: inline-flex; align-items: center; min-height: 23px; padding: 2px 8px; border: 1px solid var(--owner-line); border-radius: 6px; background: var(--owner-canvas); color: var(--owner-muted); font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.stock-alerts .oa-section-head p { margin-top: 6px; font-size: 12px; line-height: 1.6; color: var(--owner-muted); }
+.stock-alerts .oa-section-icon { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid var(--owner-line); border-radius: 10px; color: var(--owner-accent); flex-shrink: 0; }
+.stock-alerts .oa-stock-row { padding: 20px 22px; border-bottom: 1px solid var(--owner-line); }
+.stock-alerts .oa-stock-row:last-child { border-bottom: 0; }
+.stock-alerts .oa-stock-row.is-urgent { box-shadow: inset 3px 0 var(--oa-danger); }
+.stock-alerts .oa-item-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.stock-alerts .oa-status { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 6px; color: var(--owner-muted); background: var(--owner-canvas); font-size: 11px; font-weight: 500; line-height: 1.3; }
+.stock-alerts .oa-status svg { width: 13px; height: 13px; }
+.stock-alerts .oa-status-danger { color: var(--oa-danger); background: var(--oa-danger-wash); }
+.stock-alerts .oa-status-warning { color: var(--oa-warning); background: var(--oa-warning-wash); }
+.stock-alerts .oa-quantity { font-size: 20px; font-weight: 600; line-height: 1.2; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.stock-alerts .oa-quantity small { color: var(--owner-muted); font-size: 11px; font-weight: 400; letter-spacing: 0; }
+.stock-alerts .oa-stock-row h3 { font-size: 15px; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }
+.stock-alerts .oa-batch-code { margin-top: 4px; font-size: 11px; line-height: 1.6; color: var(--owner-muted); overflow-wrap: anywhere; }
+.stock-alerts .oa-item-bottom { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 14px; margin-top: 8px; color: var(--owner-muted); font-size: 11px; }
+.stock-alerts .oa-item-bottom a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--owner-ink); font-size: 12px; font-weight: 500; }
+.stock-alerts .oa-item-bottom a svg { width: 14px; height: 14px; color: var(--owner-accent); }
+.stock-alerts .oa-section-foot { display: flex; align-items: flex-start; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--owner-line); background: var(--owner-canvas); color: var(--owner-muted); font-size: 11px; line-height: 1.6; }
+.stock-alerts .oa-section-foot svg { width: 14px; height: 14px; margin-top: 2px; }
+.stock-alerts .oa-threshold { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin: 0; padding: 14px 22px; background: var(--owner-canvas); border-bottom: 1px solid var(--owner-line); }
+.stock-alerts .oa-threshold label { margin: 0; font-size: 12px; font-weight: 500; }
+.stock-alerts .oa-threshold label small { display: block; margin-top: 4px; color: var(--owner-muted); font-size: 10px; font-weight: 400; }
+.stock-alerts .oa-threshold-controls { display: flex; gap: 8px; align-items: center; }
+.stock-alerts .oa-input-unit { display: flex; align-items: center; border: 1px solid var(--owner-line); border-radius: 7px; background: var(--owner-surface); padding-right: 10px; }
+.stock-alerts #stock-threshold { width: 64px; min-height: 44px; padding: 8px; border: 0; border-radius: 7px; background: transparent; color: var(--owner-ink); font-size: 14px; }
+.stock-alerts .oa-input-unit > span { color: var(--owner-muted); font-size: 11px; }
+.stock-alerts button { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 44px; padding: 9px 12px; border: 1px solid var(--owner-line); border-radius: 7px; background: var(--owner-surface); color: var(--owner-ink); font-size: 12px; font-weight: 500; cursor: pointer; }
+.stock-alerts .oa-threshold button { background: var(--owner-ink); border-color: var(--owner-ink); color: var(--owner-surface); }
+.stock-alerts .oa-empty { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 40px 22px; }
+.stock-alerts .oa-empty > svg { width: 30px; height: 30px; padding: 6px; box-sizing: content-box; border-radius: 12px; background: var(--oa-success-wash); color: var(--oa-success); }
+.stock-alerts .oa-empty h3 { font-size: 14px; font-weight: 500; }
+.stock-alerts .oa-empty p { color: var(--owner-muted); font-size: 12px; line-height: 1.6; }
+.stock-alerts .oa-log-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 22px; border-bottom: 1px solid var(--owner-line); }
+.stock-alerts .oa-log-row:last-child { border-bottom: 0; }
+.stock-alerts .oa-log-content { min-width: 0; }
+.stock-alerts .oa-log-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--owner-muted); margin-bottom: 8px; }
+.stock-alerts .oa-log-row h3 { font-size: 13px; font-weight: 500; line-height: 1.6; overflow-wrap: anywhere; }
+.stock-alerts .oa-log-row p { font-size: 12px; color: var(--owner-muted); line-height: 1.7; margin-top: 4px; overflow-wrap: anywhere; }
+.stock-alerts .oa-log-actions { display: flex; align-items: center; flex-wrap: wrap; flex-shrink: 0; gap: 8px; margin: 0; }
+.stock-alerts .oa-resolve { border-color: var(--owner-ink); background: var(--owner-ink); color: var(--owner-surface); }
+.stock-alerts .oa-acknowledged { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--owner-muted); }
+.stock-alerts .oa-history summary { display: flex; align-items: center; gap: 10px; padding: 16px 22px; min-height: 48px; cursor: pointer; background: var(--owner-canvas); font-size: 12px; font-weight: 500; list-style: none; }
+.stock-alerts .oa-history summary::-webkit-details-marker { display: none; }
+.stock-alerts .oa-history summary > span { color: var(--owner-muted); }
+.stock-alerts .oa-history summary svg { margin-left: auto; }
+.stock-alerts .oa-history[open] summary svg { transform: rotate(180deg); }
+.stock-alerts .oa-page-note, .stock-alerts .oa-log-empty { display: flex; align-items: flex-start; gap: 8px; color: var(--owner-muted); font-size: 11px; line-height: 1.7; }
+.stock-alerts .oa-page-note { padding: 0 2px; }
+.stock-alerts .oa-page-note svg { width: 14px; height: 14px; margin-top: 3px; }
+.stock-alerts .oa-log-empty { padding: 24px 22px; }
+.stock-alerts :is(a,button,summary) { transition: background-color 150ms ease, border-color 150ms ease; }
+.stock-alerts .oa-metric:hover, .stock-alerts .oa-refresh:hover, .stock-alerts .oa-acknowledge:hover { border-color: var(--owner-accent); }
+.stock-alerts .oa-item-bottom a:hover { text-decoration: underline; }
+.stock-alerts :is(.oa-resolve,.oa-threshold button):hover { background: var(--owner-muted); }
+@media (max-width: 1150px) {
+  .stock-alerts .oa-log-row { flex-wrap: wrap; gap: 14px; }
+  .stock-alerts .oa-metric { padding: 18px 16px 14px; }
+}
+@media (max-width: 1050px) and (min-width: 861px), (max-width: 680px) {
+  .stock-alerts .oa-worklist { grid-template-columns: minmax(0,1fr); }
+}
+@media (max-width: 560px) {
+  .stock-alerts { gap: 16px; }
+  .stock-alerts .oa-context p > span:last-child { display: none; }
+  .stock-alerts .oa-summary { gap: 0; border: 1px solid var(--owner-line); border-radius: 10px; overflow: hidden; background: var(--owner-surface); }
+  .stock-alerts .oa-metric { gap: 12px; padding: 14px 10px; border: 0; border-top: 3px solid var(--owner-accent); border-right: 1px solid var(--owner-line); border-radius: 0; }
+  .stock-alerts .oa-metric-danger { border-top-color: var(--oa-danger); }
+  .stock-alerts .oa-metric-warning { border-top-color: var(--oa-warning); }
+  .stock-alerts .oa-metric:last-child { border-right: 0; }
+  .stock-alerts .oa-metric-label { font-size: 11px; align-items: flex-start; min-height: 30px; gap: 5px; line-height: 1.4; }
+  .stock-alerts .oa-metric-label svg { width: 13px; height: 13px; margin-top: 1px; }
+  .stock-alerts .oa-metric strong { flex-direction: column; gap: 5px; font-size: 29px; }
+  .stock-alerts .oa-metric strong small { font-size: 10px; }
+  .stock-alerts .oa-metric-foot { font-size: 10px; line-height: 1.5; align-items: flex-start; }
+  .stock-alerts .oa-metric-foot svg { display: none; }
+  .stock-alerts .oa-section-head, .stock-alerts .oa-stock-row, .stock-alerts .oa-log-row { padding: 18px; }
+  .stock-alerts .oa-threshold { padding: 14px 18px; }
+  .stock-alerts .oa-section-foot { padding-inline: 18px; }
+  .stock-alerts .oa-section-head p { font-size: 12px; }
+  .stock-alerts .oa-log-actions { width: 100%; }
+  .stock-alerts #stock-threshold { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .stock-alerts :is(a,button,summary) { transition: none; } }
+
+.stock-alerts .oa-threshold strong { display: block; margin-top: 5px; font-size: 13px; }
+.stock-alerts .oa-threshold > span, .stock-alerts .oa-threshold > a { font-size: 12px; }
+.stock-alerts .oa-threshold > a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--owner-accent); }
+.stock-alerts .oa-progress { font-size: 11px; }
+.stock-alerts .oa-log-actions { max-width: 330px; }
+.stock-alerts .oa-log-actions form { margin: 0; }
+.stock-alerts .oa-close { width: 100%; }
+.stock-alerts .oa-close summary { padding-block: 12px; cursor: pointer; font-size: 12px; }
+.stock-alerts .oa-close label { display: block; font-size: 12px; }
+.stock-alerts .oa-close textarea { display: block; width: 100%; margin-block: 8px; min-height: 80px; font-size: 16px; }
+
+/* Inventory consumes the same worklist without Owner management controls. */
+.role-team-leader .stock-alerts {
+  --owner-ink: #1b242c;
+  --owner-muted: #56646e;
+  --owner-line: #dce2e6;
+  --owner-surface: #ffffff;
+  --owner-canvas: #f2f5f7;
+  --owner-accent: #876a0e;
+}
+.inventory-alerts-page { display: grid; gap: 24px; min-width: 0; }
+.stock-alerts .oa-threshold > small { color: var(--owner-muted); font-size: 11px; }
+.stock-alerts :is(a, button, summary, input, textarea):focus-visible { outline: 3px solid var(--owner-accent); outline-offset: 3px; }
+
+.stock-alerts .oa-record-action { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 12px; color: var(--owner-ink); }
+.stock-alerts .oa-log-row { scroll-margin-top: 90px; }
+.stock-alerts .oa-log-row:target { background: var(--oa-warning-wash); }
+
+/* Owner category pages retain Owner colors and role-scoped navigation. */
+.owner-alert-detail { display: grid; gap: 16px; width: 100%; min-width: 0; }
+.owner-alert-detail .ia-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.owner-alert-detail .oa-detail-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--owner-ink); text-decoration: none; font-size: 13px; }
+.owner-alert-detail .oa-detail-back svg { width: 18px; height: 18px; }
+.owner-alert-detail .ia-live { display: inline-flex; align-items: center; gap: 6px; color: var(--owner-muted); font-size: 12px; white-space: nowrap; }
+.owner-alert-detail .ia-live > span { width: 6px; height: 6px; border-radius: 50%; background: var(--owner-accent); }
+.owner-alert-detail .ia-detail { gap: 0; overflow: hidden; border: 1px solid var(--owner-line); border-radius: 12px; background: var(--owner-surface); }
+.owner-alert-detail .stock-ledger__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 24px; border-bottom: 1px solid var(--owner-line); }
+.owner-alert-detail .stock-ledger__eyebrow { display: block; margin-bottom: 8px; color: var(--owner-accent); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; }
+.owner-alert-detail .stock-ledger__header h2 { font-size: clamp(22px, 3vw, 30px); }
+.owner-alert-detail .ia-categories { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 24px; border-bottom: 1px solid var(--owner-line); }
+.owner-alert-detail .ia-categories a { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid transparent; border-radius: 8px; color: var(--owner-muted); font-size: 13px; }
+.owner-alert-detail .ia-categories a > span { padding: 3px 6px; border-radius: 4px; background: var(--owner-surface); color: var(--owner-ink); font-size: 12px; }
+.owner-alert-detail .ia-categories a:hover, .owner-alert-detail .ia-categories a[aria-current] { border-color: var(--owner-line); background: var(--owner-canvas); color: var(--owner-ink); }
+.owner-alert-detail .ia-categories a[aria-current] { box-shadow: inset 0 -2px var(--owner-accent); }
+.owner-alert-detail .ia-list-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 18px 24px; border-bottom: 1px solid var(--owner-line); }
+.owner-alert-detail .ia-list-heading h3 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; font-size: 14px; font-weight: 500; }
+.owner-alert-detail .ia-list-heading h3 > span, .owner-alert-detail .ia-rule { color: var(--owner-muted); font-size: 12px; font-weight: 400; }
+.owner-alert-detail :is(.oa-detail-back, .ia-categories a):focus-visible { outline: 2px solid var(--owner-accent); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .owner-alert-detail .stock-ledger__header, .owner-alert-detail .ia-list-heading { padding: 16px; }
+  .owner-alert-detail .ia-categories { padding: 12px; gap: 6px; }
+  .owner-alert-detail .ia-categories a { flex: 1 1 auto; padding-inline: 8px; font-size: 12px; }
+  .owner-alert-detail .oa-detail-back { font-size: 12px; }
+}

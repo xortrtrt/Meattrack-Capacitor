@@ -374,3 +374,19 @@ def test_migration_releases_legacy_unpaid_hold_with_a_balanced_audit(strict_inve
     assert fetch_one("SELECT COUNT(*) n FROM order_stock_reservations")["n"] == 0
     assert fetch_one("SELECT SUM(quantity_delta) n FROM order_reservation_events")["n"] == 0
     assert fetch_one("SELECT COUNT(*) n FROM order_reservation_events WHERE action='unpaid_hold_released'")["n"] == 1
+
+
+def test_legacy_pending_payment_uses_confirmed_details_and_reserves_once(strict_inventory_database):
+    _, product, _, account, order = unpaid(strict_inventory_database)
+    with get_transaction_cursor() as cur:
+        # Emulate a pre-payment-policy row in this isolated test schema.
+        cur.execute("ALTER TABLE orders DISABLE TRIGGER USER")
+        cur.execute("UPDATE orders SET status='pending', payment_due_at=NULL WHERE order_id=%s", (order["order_id"],))
+        cur.execute("ALTER TABLE orders ENABLE TRIGGER USER")
+    proofs, payment = _payment_submission("legacy-confirmation")
+    result = repositories.submit_order_payment(account, order["order_id"], proofs, payment)
+    assert result["status"] == "pending"
+    stored = fetch_one("SELECT payment_transaction_number,payment_amount FROM orders WHERE order_id=%s", (order["order_id"],))
+    assert stored["payment_transaction_number"] == payment["transaction_number"]
+    assert stored["payment_amount"] == payment["payment_amount"]
+    assert fetch_one("SELECT SUM(quantity) quantity FROM order_stock_reservations WHERE order_id=%s", (order["order_id"],))["quantity"] == 2

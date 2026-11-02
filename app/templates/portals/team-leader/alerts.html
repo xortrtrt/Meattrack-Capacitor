@@ -1,0 +1,10 @@
+<div class="inventory-alerts-page">
+  {% set stock_alert_owner = false %}
+  {% set stock_alert_role = 'team-leader' %}
+  {% if stock_alert_category %}
+    {% include 'portals/team-leader/alert-detail.html' %}
+  {% else %}
+  <header class="operations-heading"><div><span class="dashboard-kicker">Inventory control</span><h2>Stock alerts</h2><p>Expiry risks and replenishment.</p></div></header>
+  {% include 'portals/_stock_alerts.html' %}
+  {% endif %}
+</div>

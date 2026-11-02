@@ -899,8 +899,16 @@ def test_reseller_history_hides_proof_upload_after_payment_is_submitted(monkeypa
     response = TestClient(main.app).get("/portal/reseller/history?view=pending")
 
     assert response.status_code == 200
-    assert 'class="proof-upload-form"' in response.text
-    assert "Send proof" in response.text
+    assert 'class="proof-upload-form"' not in response.text
+    assert 'data-receipt-checkout' not in response.text
+
+    order["payment_transaction_number"] = None
+    order["payment_amount"] = None
+    order["payment_paid_at"] = None
+    response = TestClient(main.app).get("/portal/reseller/history?view=pending")
+    assert 'data-receipt-checkout' in response.text
+    assert 'data-receipt-submit disabled' in response.text
+    assert "Submit payment" in response.text
 
 
 def test_reseller_history_labels_completed_refund_as_refunded(monkeypatch):
@@ -1136,7 +1144,8 @@ def test_receipt_scan_endpoint_returns_signed_suggestions(monkeypatch):
     assert response.json()["scan_token"]
 
 
-def test_reseller_payment_submission_moves_timed_order_to_pending(monkeypatch):
+@pytest.mark.parametrize("payment_route", ["payment", "payment-proof"])
+def test_reseller_payment_submission_moves_timed_order_to_pending(monkeypatch, payment_route):
     attachments = [{"checksum_sha256": "a" * 64, "filename": "receipt.png"}]
     payment = {"transaction_number": "TXN-123456", "payment_amount": Decimal("500.00")}
     submitted = []
@@ -1157,7 +1166,7 @@ def test_reseller_payment_submission_moves_timed_order_to_pending(monkeypatch):
     )
 
     response = TestClient(main.app).post(
-        "/portal/reseller/orders/91/payment",
+        f"/portal/reseller/orders/91/{payment_route}",
         data={
             "receipt_scan_token": "signed",
             "transaction_number": "TXN-123456",
@@ -2669,3 +2678,84 @@ def test_legacy_inventory_items_redirects_to_raw_materials(monkeypatch):
     assert response.status_code == 303
     assert response.headers["location"] == "/portal/team-leader/raw-materials?q=beef&type=meat&page=2"
 
+
+
+@pytest.mark.parametrize("workflow_version", [1, 2])
+def test_replacement_payment_review_shows_reseller_values_without_edit_fields(workflow_version):
+    from app.web import templates
+    html = templates.env.get_template("portals/returns/_payment_review.html").render(
+        case={"sales_authorized": True, "additional_due": 100, "has_payment_proof": True,
+              "payment_verified_at": None, "replacement_workflow_version": workflow_version,
+              "return_id": 7, "quote_revision": 1, "attachments": [], "has_reservations": True,
+              "replacement_payment_details": {"revision": 1, "transaction_number": "RESELLER123", "payment_amount": "100.00",
+                                               "payment_date": "2026-11-02", "payment_time": "10:30"}},
+        return_can_review=True, action_base="/portal/owner/returns/actions/",
+        request=None, csrf_token=lambda request: "",
+    )
+    assert "RESELLER123" in html
+    assert 'name="reference"' not in html
+    assert 'name="amount"' not in html
+    assert 'name="funds_received"' in html
+    assert "2026-11-02 10:30" in html
+
+
+def test_legacy_receipt_without_details_cannot_be_verified_from_staff_form():
+    from app.web import templates
+    html = templates.env.get_template("portals/returns/_payment_review.html").render(
+        case={"sales_authorized": True, "additional_due": 100, "has_payment_proof": True,
+              "payment_verified_at": None, "replacement_workflow_version": 1,
+              "return_id": 7, "quote_revision": 1, "attachments": [], "has_reservations": True, "replacement_payment_details": None},
+        return_can_review=True, action_base="/portal/sales-supervisor/returns/actions/",
+        request=None, csrf_token=lambda request: "",
+    )
+    assert "Waiting for reseller details" in html
+    assert 'type="button" disabled' in html
+    assert 'name="reference"' not in html
+    assert 'name="amount"' not in html
+    assert 'type="submit"' not in html
+
+
+@pytest.mark.parametrize("has_submission", [False, True])
+def test_staff_payment_action_requires_and_uses_stored_reseller_submission(monkeypatch, has_submission):
+    from app.portals import product_returns as portal
+    monkeypatch.setattr(portal, "_guard", lambda *args: None)
+    monkeypatch.setattr(portal.shared, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(portal.returns, "get_product_return", lambda *args: {
+        "quote_revision": 1,
+        "replacement_payment_details": {"revision": 1, "transaction_number": "RESELLER123", "payment_amount": "50.00"} if has_submission else None,
+    })
+    verified = []
+    monkeypatch.setattr(portal.returns, "verify_return_payment", lambda *args, **kwargs: verified.append((args, kwargs)))
+    response = TestClient(main.app).post("/portal/sales-supervisor/returns/actions/verify-payment", data={
+        "return_id": "7", "reference": "STAFFVALUE", "amount": "999", "funds_received": "yes", "remarks": "Provider funds checked", "payment_review_version": "reviewed-version",
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    if has_submission:
+        assert verified[0][0][2:4] == ("RESELLER123", "50.00")
+        assert verified[0][1]["review_version"] == "reviewed-version"
+    else:
+        assert not verified
+        assert "resubmit" in response.headers["location"]
+
+
+@pytest.mark.parametrize("workflow_version", [1, 2])
+def test_replacement_scan_returns_shared_receipt_widget_success_contract(monkeypatch, workflow_version):
+    from app.portals import product_returns as portal
+    monkeypatch.setattr(portal, "_guard", lambda *args: None)
+    monkeypatch.setattr(portal.shared, "session_account_id", lambda request: 42)
+    monkeypatch.setattr(portal.returns, "get_product_return", lambda *args: {
+        "replacement_workflow_version": workflow_version, "resolution": "replace",
+        "sales_authorized": True, "verified_at": True, "payment_verified_at": None,
+    })
+    async def parse(uploads):
+        return [{"checksum_sha256": "proof-hash"}]
+    monkeypatch.setattr(portal.shared, "parse_payment_proof_attachments", parse)
+    monkeypatch.setattr(portal.receipt_ocr, "scan_payment_proofs", lambda proofs: {"transaction_number": "REF123"})
+    scopes = []
+    monkeypatch.setattr(portal.receipt_ocr, "create_scan_token", lambda *args, **kwargs: scopes.append(kwargs["context"]) or "signed")
+    response = TestClient(main.app).post("/portal/reseller/returns/7/receipt-scan",
+        files={"payment_proofs": ("receipt.png", b"receipt", "image/png")})
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["scan_token"] == "signed"
+    assert scopes == ["replacement:7"]

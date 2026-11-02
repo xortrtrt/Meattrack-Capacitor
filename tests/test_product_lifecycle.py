@@ -509,3 +509,24 @@ def test_new_portal_pages_render_with_scoped_sessions(lifecycle, monkeypatch):
                     response = client.get(response.headers["location"])
                 assert response.status_code == 200, response.text[:1000]
                 assert "lifecycle" in response.text or "product-details?product_id=" in response.text
+
+
+def test_older_case_accepts_reviewed_reseller_receipt_and_uses_its_stored_values(lifecycle):
+    d = lifecycle
+    case = create_case(d, "replace")
+    returns.review_product_return(case, d["sales"], True, "Approved higher value replacement", [(substitute(250), 1)])
+    receive(d, case)
+    returns.accept_replacement_quote(case, d["reseller"], 1)
+    returns.reserve_replacement(case, d["inventory"], "Reserve stock for legacy replacement")
+    proof, _ = _payment_submission(f"reviewed-legacy-{case}")
+    details = {"transaction_number": "LEGACY" + uuid4().hex[:12], "payment_amount": "50.00",
+               "payment_date": "2026-11-02", "payment_time": "10:30"}
+    returns.record_return_payment(case, d["reseller"], proof, details)
+    submitted = returns.get_product_return(case, d["supervisor"])
+    assert submitted["replacement_payment_details"]["revision"] == 1
+    with pytest.raises(ValueError, match="provider"):
+        returns.verify_return_payment(case, d["supervisor"], "STAFFVALUE", 999, "Missing provider confirmation")
+    returns.verify_return_payment(case, d["supervisor"], "STAFFVALUE", 999, "Provider funds match reseller receipt", funds_received=True)
+    verified = returns.get_product_return(case, d["supervisor"])
+    assert verified["payment_amount"] == 50
+    assert verified["payment_reference"] == details["transaction_number"].upper()

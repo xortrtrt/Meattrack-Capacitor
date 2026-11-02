@@ -123,14 +123,14 @@ def test_payment_queue_and_customer_ownership(lifecycle, monkeypatch):  # noqa: 
     d = lifecycle
     case = complete_replacement(d, 250)
     assert returns.get_product_return(case, d["reseller"])["experience"]["reseller"]["action"] == "payment"
-    returns.record_return_payment(case, d["reseller"], [refund_proof()])
+    returns.record_return_payment(case, d["reseller"], [refund_proof()], dict(transaction_number="REVIEW123", payment_amount="50.00", payment_date="2026-11-02", payment_time="10:30"))
     assert returns.return_queue_counts(d["supervisor"])["payment"] == 1
     assert returns.list_product_returns(d["supervisor"], queue="payment")[0]["experience"]["sales"]["action"] == "verify_payment"
     sign_in(monkeypatch, d["supervisor"], "sales-supervisor", "sales-supervisor")
     with TestClient(main.app) as client:
         page = client.get(f"/portal/sales-supervisor/returns?queue=payment&case={case}")
         assert page.status_code == 200 and "review the reseller’s payment proof" in page.text
-        assert 'name="csrf_token"' in page.text and "Confirm additional payment" in page.text
+        assert 'name="csrf_token"' in page.text and "Confirm funds received" in page.text
     with pytest.raises(ValueError):
         customer.acknowledge_replacement(case, d["reseller"])
     with pytest.raises(ValueError):
@@ -230,3 +230,12 @@ def test_followup_resolution_requires_public_summary_and_assignment(lifecycle): 
             cur.execute("""UPDATE return_customer_followups SET status='resolved',resolved_at=now(),
                 resolved_by_account_id=%s,resolution_message=NULL WHERE followup_id=%s""", (d["sales"], followup))
     assert fetch_one("SELECT status FROM return_customer_followups")["status"] == "open"
+
+
+def test_image_only_payment_waits_for_reseller_details(lifecycle):  # noqa: F811
+    d = lifecycle
+    case = complete_replacement(d, 250)
+    returns.record_return_payment(case, d["reseller"], [refund_proof()])
+    assert returns.return_queue_counts(d["supervisor"]).get("payment", 0) == 0
+    waiting = returns.list_product_returns(d["supervisor"], queue="waiting")
+    assert next(row for row in waiting if row["return_id"] == case)["experience"]["owner"] == "Reseller"

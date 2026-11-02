@@ -156,3 +156,32 @@ value selections use existing difference refunds. The earlier numbered workflow
 in this note remains applicable to existing version-1 cases and refund-only work.
 Sources: `app/repositories/replacement_workflow.py`,
 `app/repositories/product_returns.py`, migration 044.
+
+## Return detail grouping (2026-11-02)
+
+The reseller tracking dialog shows one current-status block followed by product
+and money facts. Payment actions precede collapsed comparison, returned-item, and
+attachment cards. Activity uses short event labels, newest first; full notes remain
+available in expandable rows. Supervisor/Owner details also collapse the comparison
+and price breakdown, show follow-ups once, and keep conversation/delivery actions
+outside reference cards. This changes presentation only. Sources:
+`app/templates/portals/reseller/_return_tracking_dialog.html`,
+`app/templates/portals/team-leader/_return_case_dialog.html`,
+`app/templates/portals/returns/_activity_timeline.html`,
+`app/templates/portals/returns/_replacement_actions.html`,
+`app/static/css/return_experience.css`. See [[Replacement Workflow]].
+
+## Supervisor case overview (2026-11-02)
+
+Both Supervisor/Owner case-dialog variants expose a compact overview above actions:
+current status, reseller, received/requested pack totals, next responsible party,
+stock/refund status, credit, replacement value, extra payment, difference refund,
+submitted/updated dates, and reason. Long reasons expand; reconciliation flags stay
+visible. Current status follows the existing case experience. Missing receipt
+metadata overrides it only for an authorized active settlement awaiting extra
+payment, never completed/declined/mismatch cases. Stock labels use recorded
+preparation, reservation, release, and delivery facts. No workflow or money is
+changed. Sources: `app/templates/portals/returns/_supervisor_case_summary.html`,
+`app/templates/portals/team-leader/returns.html`,
+`app/templates/portals/team-leader/_return_case_dialog.html`,
+`app/static/css/return_experience.css`. See [[Replacement Workflow]].

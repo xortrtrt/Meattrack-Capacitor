@@ -7,6 +7,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/portals/inventory-tools.css') }}?v=20261101-1">
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
@@ -22,7 +23,7 @@
     {% if section == "refunds" %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/refunds.css') }}?v=20261019-business-theme-2" />
     {% endif %}
-    {% if section in ['returns','refunds','history','inbox','messages'] %}<link rel="stylesheet" href="{{ url_for('static', path='css/return_experience.css') }}?v=20261029-2">{% endif %}
+    {% if section in ['returns','refunds','history','inbox','messages'] %}<link rel="stylesheet" href="{{ url_for('static', path='css/return_experience.css') }}?v=20261102-case-overview-1">{% endif %}
     {% if role_key == "owner" and section == "orders" %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-orders.css') }}?v=20261019-ledger-modal-4">
     {% endif %}
@@ -41,9 +42,11 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-directories.css') }}?v=20261019-1">
     {% endif %}
     {% if section in ["returns", "expired-stock", "product-details", "finished-products", "refunds"] or (role_key=="reseller" and section=="history" and orders_page.filters.view=="returns") %}
-    <link rel="stylesheet" href="{{ url_for('static', path='css/product_lifecycle.css') }}?v=20261029-inventory-receipt-decision-9">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/product_lifecycle.css') }}?v=20261102-payment-review-1">
     {% endif %}
-    {% if role_key == "owner" %}<link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-workspace.css') }}?v=20261030-1">{% endif %}
+    {% if section == "alerts" and role_key in ["owner", "team-leader"] %}<link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-alerts.css') }}?v=20261101-owner-detail-4">{% endif %}
+    {% if role_key == "team-leader" and section == "alerts" %}<link rel="stylesheet" href="{{ url_for('static', path='css/portals/inventory-alerts.css') }}?v=20261101-1">{% endif %}
+    {% if role_key == "owner" %}<link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-workspace.css') }}?v=20261101-alerts-1">{% endif %}
   <link rel="stylesheet" href="{{ url_for('static', path='css/replacement_workflow.css') }}?v=20261031-conversation-1">
   </head>
   <body class="portal-body {{ portal_body_roles|default('role-' ~ role_key) }} section-{{ section }}{% if role_key in ['team-leader', 'sales-supervisor'] %} leader-role-{{ role.team_leader_role }}{% endif %}">
@@ -92,6 +95,8 @@
         >
           <i data-lucide="{{ icon }}"></i>
           {{ label }}
+          {% set updates = (nav_updates|default({})).get(slug, 0) %}
+          {% if updates %}<span class="owner-update-badge" aria-label="{{ updates }} unread updates">{{ '99+' if updates > 99 else updates }}</span>{% endif %}
         </a>
         {% endfor %}
         {% endfor %}
@@ -385,7 +390,8 @@
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261017-dynamic-csrf-2"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261020-explicit-dates-1"></script>
     {% if role_key == 'owner' %}<script src="{{ url_for('static', path='js/owner_recovery.js') }}?v=20261020-2" defer></script>{% endif %}
-    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261027-return-tab-navigation-4"></script>
+    <script src="{{ url_for('static', path='js/product_photos.js') }}?v=20261101-1" defer></script>
+    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261102-payment-review-1"></script>
     {% if role_key == "owner" and section in ["orders", "reports", "accounts"] %}
     <script src="{{ url_for('static', path='js/owner_modals.js') }}?v=20261019-modal-4" defer></script>
     {% endif %}
@@ -393,7 +399,7 @@
     <script src="{{ url_for('static', path='js/product_returns.js') }}?v=20261029-return-tracking-dialog-2" defer></script>
     {% endif %}
     {% if section == "expired-stock" %}
-    <script src="{{ url_for('static', path='js/expired_stock.js') }}?v=20261027-custody-tabs-2" defer></script>
+    <script src="{{ url_for('static', path='js/expired_stock.js') }}?v=20261101-alert-pullout-connection" defer></script>
     {% endif %}
     <script type="module" src="{{ url_for('static', path='js/profile.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/charts.js') }}?v=20261030-owner-overview-1"></script>

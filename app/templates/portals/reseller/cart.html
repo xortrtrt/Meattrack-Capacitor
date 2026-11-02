@@ -35,7 +35,7 @@
             />
             <span aria-hidden="true"><i data-lucide="check"></i></span>
           </label>
-          <img class="cart-line-image" src="{{ item.name|product_image|media_url }}" alt="{{ item.name }}" loading="lazy" />
+          <img class="cart-line-image" src="{{ item.name|product_photo_url }}" alt="{{ item.name }}" loading="lazy" />
           <div class="cart-line-copy">
             <span class="reseller-product-category">{{ item.category }}</span>
             <h3>{{ item.name }}</h3>

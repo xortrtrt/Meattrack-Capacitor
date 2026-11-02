@@ -28,7 +28,7 @@
       <details class="order-history-card" id="order-{{ order.order_id }}" {% if request.query_params.get("order")==order.order_id|string %}open{% endif %}>
         <summary class="order-card-summary">
           <div class="order-card-identity"><span class="order-card-number">Order #{{ order.order_id }}</span><time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time><span class="status-badge {{ reseller_status }}">{{ 'To pay' if reseller_status == 'to_pay' else reseller_status }}</span></div>
-          <div class="order-card-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_image|media_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>
+          <div class="order-card-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_photo_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>
           <div class="order-card-total"><small>Total</small><strong>{{ order.total_amount|currency }}</strong></div>
           <span class="order-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span>
         </summary>
@@ -38,7 +38,7 @@
             <header><div><span class="eyebrow">Order contents</span><h3 id="order-items-title-{{ order.order_id }}">{{ order['items']|length }} product{{ '' if order['items']|length == 1 else 's' }}</h3></div></header>
             <div class="order-product-list">
               {% for item in order['items'] %}
-              <article class="order-product-line"><img src="{{ item.name|product_image|media_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
+              <article class="order-product-line"><img src="{{ item.name|product_photo_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
               {% else %}<p class="hint">No items were recorded for this order.</p>{% endfor %}
             </div>
           </section>
@@ -48,6 +48,11 @@
 
             {% if order.status == 'cancelled' and order.cancellation_reason %}<div class="order-cancellation-note"><i data-lucide="message-square-text"></i><span><strong>Cancellation reason</strong><small>{{ order.cancellation_reason }}</small></span></div>{% endif %}
 
+            <ol class="payment-progress-timeline" aria-label="Order timeline">
+              <li><strong>Placed</strong><time>{{ order.order_date|nice_date }}</time></li>
+              {% if order.payment_paid_at %}<li><strong>Payment submitted</strong><time>{{ order.payment_paid_at|nice_date }}</time></li>{% endif %}
+              <li aria-current="step"><strong>{{ 'To pay' if reseller_status == 'to_pay' else reseller_status|replace('_', ' ')|title }}</strong></li>
+            </ol>
             <div class="order-payment-workspace">
               {% if order.status == 'to_pay' %}
                 {% include "portals/reseller/_receipt_payment_form.html" %}
@@ -56,8 +61,8 @@
                 <div class="proof-links">{% for proof in order.payment_proofs %}<a href="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}" data-proof-modal-open data-proof-url="/portal/order-payment-proofs/{{ proof.order_payment_proof_id }}" data-proof-title="{{ proof.filename }}"><i data-lucide="image"></i>{{ proof.filename }}</a>{% endfor %}</div>
               {% elif order.status == 'expired' %}
                 <div class="order-action-note is-warning"><i data-lucide="timer-off"></i><span><strong>Payment window expired</strong><small>The unpaid order expired without reserving stock.</small></span></div>
-              {% elif order.status == 'pending' %}
-                <form class="proof-upload-form" action="/portal/reseller/orders/{{ order.order_id }}/payment-proof" method="post" enctype="multipart/form-data"><label>Upload payment screenshot<input required type="file" name="payment_proofs" accept="image/png,image/jpeg,image/webp" multiple /></label><button class="button subtle" type="submit"><i data-lucide="upload"></i> Send proof</button></form>
+              {% elif order.status == 'pending' and not order.payment_transaction_number and not order.payment_amount %}
+                {% include "portals/reseller/_receipt_payment_form.html" %}
               {% else %}
                 <div class="order-action-note"><i data-lucide="circle-check-big"></i><span><strong>No action needed</strong><small>This order is up to date.</small></span></div>
               {% endif %}

@@ -101,6 +101,8 @@ def test_new_replacement_transaction_in_return_modal_and_linked_messages(lifecyc
         dialog.get_by_role("button", name="Request return", exact=False).click()
         page.wait_for_load_state("networkidle")
         case = fetch_one("SELECT return_id FROM product_returns ORDER BY return_id DESC LIMIT 1")["return_id"]
+        page.locator("summary").filter(has_text="Return & replacement").click()
+        page.locator("summary").filter(has_text="Price breakdown").click()
         expect(page.get_by_role("heading", name="Recorded replacement comparison")).to_be_visible()
 
         as_role("supervisor")
@@ -130,15 +132,17 @@ def test_new_replacement_transaction_in_return_modal_and_linked_messages(lifecyc
 
         as_role("reseller")
         page.goto(f"http://replacement.test/portal/reseller/history?view=returns&case={case}", wait_until="networkidle")
-        payment = page.locator("[data-replacement-payment]")
+        payment = page.locator("[data-receipt-checkout]")
         expect(payment).to_be_visible()
         payment.locator("[name=payment_proofs]").set_input_files(
             {"name": "simulated-payment.png", "mimeType": "image/png", "buffer": photo["content"]}
         )
         expect(payment.locator("[name=receipt_scan_token]")).not_to_have_value("")
-        payment.locator("[name=payment_details_confirmed]").check()
+        expect(payment.locator("[data-receipt-confirm]")).to_be_enabled()
+        payment.locator("[data-receipt-confirm]").check()
+        payment.locator("[data-receipt-accept]").click()
         page.screenshot(path=str(output / f"payment-modal-{width}.png"), full_page=True)
-        payment.get_by_role("button", name="Submit additional payment", exact=True).click()
+        payment.get_by_role("button", name="Submit payment", exact=True).click()
         page.wait_for_load_state("networkidle")
 
         as_role("supervisor")
@@ -147,7 +151,7 @@ def test_new_replacement_transaction_in_return_modal_and_linked_messages(lifecyc
         expect(verify).to_be_visible()
         verify.locator("[name=funds_received]").check()
         verify.locator("[name=remarks]").fill("Simulated test funds confirmed; no actual money sent")
-        verify.get_by_role("button", name="Confirm additional payment", exact=True).click()
+        verify.get_by_role("button", name="Confirm funds received", exact=True).click()
         page.wait_for_load_state("networkidle")
         assert fetch_one("SELECT payment_verified_at FROM product_returns WHERE return_id=%s", (case,))[
             "payment_verified_at"

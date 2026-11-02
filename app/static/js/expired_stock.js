@@ -67,7 +67,16 @@
     });
   });
 
-  select(panelForHash() || savedPanel() || panels[0]);
+  const linkedBatchPanel = new URLSearchParams(location.search).has("batch_id")
+    ? panels.find(panel => panel.id === "pending-pullout") : null;
+  select(panelForHash() || linkedBatchPanel || savedPanel() || panels[0]);
+  const linkedBatch = workspace.querySelector(".is-alert-focus");
+  if (linkedBatch && !linkedBatch.closest("[data-custody-panel]").hidden) {
+    requestAnimationFrame(() => {
+      linkedBatch.focus({ preventScroll: true });
+      linkedBatch.scrollIntoView({ block: "center" });
+    });
+  }
   const followLocation = () => select(panelForHash() || panels[0]);
   window.addEventListener("hashchange", followLocation);
   window.addEventListener("popstate", followLocation);

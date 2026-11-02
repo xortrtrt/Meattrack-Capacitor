@@ -51,3 +51,10 @@ aggregate reads; existing reconciliation functions retain financial authority.
 share the presentation frame. Separate operations, inquiry, material, alert, and
 settings templates replace the former `owner/superuser.html` conditional template.
 No schema migration is added by the 2026-10-30 overhaul.
+
+API documentation: `/docs` (Swagger UI), `/redoc`, and `/openapi.json` are
+registered by FastAPI. The documentation HTML pages alone allow jsDelivr in
+`script-src` and `style-src`, because FastAPI loads their UI assets there; the
+normal application policy remains restricted to local scripts/styles. Checked
+2026-11-01 against `app/application.py`; regression coverage:
+`tests/test_api_docs.py`.

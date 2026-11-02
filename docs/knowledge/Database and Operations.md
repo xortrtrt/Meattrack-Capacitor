@@ -161,3 +161,39 @@ loopback development target was verified, app/worker writes were paused, 044 app
 successfully, and both local services restarted. No production upgrade is established.
 Sources: `database/migrations/044_replacement_workflow.sql`, `database/schema.sql`,
 `tools/migrate_database.py`, `tools/reset_operational_data.py`.
+
+
+## Optional local Wi-Fi sharing
+
+`compose.yml` lets the app's published port use `LOCAL_APP_BIND_ADDRESS` from the
+ignored local `.env`. The default remains loopback-only. For an explicitly requested
+Wi-Fi demo, select the all-interface bind locally, then recreate only the app with
+`docker compose up -d --no-deps app`. Visitors use the host computer's current Wi-Fi
+IPv4 address and app port; the host can continue using localhost. Revert the local
+binding to loopback and recreate the app to end sharing.
+
+Check the active Windows firewall profile and Docker Desktop Backend allowance.
+Keep PostgreSQL and local mail-capture ports on loopback. Sharing the browser UI
+does not change the configured base URL used for emailed links. The host computer
+and Docker must keep running; visitors use the same local database. Checked against
+Compose and the local network setup on 2026-11-01. See [[Architecture]] and
+[[Testing and Change Impact]]. Source: `compose.yml`.
+
+## Local Owner alert schema, 2026-11-01
+
+Migration 045 (`045_owner_alert_workflow.sql`) was applied locally with
+`tools/migrate_database.py`; a repeat run verified current migration checksums.
+The app and worker were restarted, and stock-alert reconciliation completed
+successfully. Migration 045 is required before running the updated alert routes
+and worker. This is local verification, not a production migration record.
+See [[Owner Portal]] and [[Testing and Change Impact]].
+
+
+Migration `046_inventory_tools.sql` (2026-11-01) adds batch archival metadata,
+immutable submission/dispatch records, locked package contents, and database-backed
+product photos. It preserves existing stock, accounts, and histories. The fresh
+baseline includes the same definitions; migration replay is supported. Apply 046
+before serving the updated templates/routes. The local Docker development database
+was migrated in this session; no production migration/deployment was performed.
+Sources: `database/migrations/046_inventory_tools.sql`, `database/schema.sql`.
+See [[Orders and Inventory]] and [[Testing and Change Impact]].

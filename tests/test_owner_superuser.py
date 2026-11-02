@@ -121,7 +121,7 @@ def test_owner_migration_contains_immutable_correction_and_retry_guards():
         ("materials", {"materials_page": {"filters": {"q": ""}}, "materials": []}),
         ("batches", {"batches_page": {"filters": {}}, "batches": [], "finished_products": []}),
         ("movements", {"movements_page": {"filters": {}}, "movements": [], "inventory_items": [], "inventory_batches": []}),
-        ("alerts", {"alerts": []}),
+        ("alerts", {"alerts": [], "stock_risk": {"batches": [], "near_days": 14}, "low_stock": [], "stock_threshold": 10, "stock_alert_scan": None}),
         ("resellers", {"resellers_page": {"pagination": {"total": 1}, "filters": {}}, "reseller_assignments": [{"reseller_id": 2, "business_name": "Example store", "contact_person": "Alex", "email": "alex@example.test", "reseller_status": "active", "team_leader_name": "Sales Leader", "team_leader_account_id": 4}], "team_leaders": [{"account_id": 4, "name": "Sales Leader"}]}),
         ("settings", {"business_settings": dict(superuser.SETTING_DEFAULTS)}),
     ],
@@ -135,7 +135,7 @@ def test_owner_superuser_sections_render(monkeypatch, section, context):
     response = TestClient(main.app).get(f"/portal/owner/{section}")
 
     assert response.status_code == 200
-    assert ("owner-orders-page" if section == "orders" else "owner-superuser-page") in response.text
+    assert ("owner-orders-page" if section == "orders" else "owner-alerts" if section == "alerts" else "owner-superuser-page") in response.text
     if section == "operations":
         assert '/portal/owner/audit' not in response.text
         assert 'Recent high-risk owner actions' not in response.text

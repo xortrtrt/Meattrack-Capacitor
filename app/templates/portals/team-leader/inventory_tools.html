@@ -1,0 +1,48 @@
+<section class="inventory-workspace inventory-tools" aria-labelledby="inventory-tools-title">
+  <header class="panel-heading"><div><span class="eyebrow">Stock accountability</span><h2 id="inventory-tools-title">Inventory tools</h2><p>Record adjustments, prepare packages, and review archived batches.</p></div><a class="button secondary" href="/portal/team-leader/inventory">Back to inventory</a></header>
+  <nav class="portal-category-tabs" aria-label="Inventory tools">
+    {% for key,label in [('materials','Raw-material adjustments'),('packages','Packages'),('removed','Removed batches')] %}<a href="/portal/team-leader/inventory-tools?view={{ key }}" class="{{ 'active' if tools_view==key else '' }}" {% if tools_view==key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  </nav>
+  {% if tools_view=='materials' %}
+  <section class="panel"><div class="panel-heading"><h3>Deduct raw materials</h3><span class="hint">Spoilage, wastage, or stock correction</span></div>
+    <form method="post" action="/portal/team-leader/inventory-tools/deduct" class="form-panel bare">
+      <input type="hidden" name="reference" value="{{ new_reference() }}">
+      <div class="form-grid"><label>Material<select name="item_id" required><option value="">Choose material</option>{% for material in materials if material.is_active %}<option value="{{ material.item_id }}">{{ material.name }} — {{ material.quantity_available|number }} {{ material.unit }}</option>{% endfor %}</select></label>
+      <label>Quantity in the selected material's stock unit<input required name="quantity" type="number" min="0.001" step="0.001" inputmode="decimal"></label></div>
+      <label>Reason<textarea name="reason" required maxlength="500" rows="2" placeholder="Explain why stock is being deducted"></textarea></label>
+      <button type="submit" class="button primary">Record deduction</button>
+    </form>
+  </section>
+  <section class="panel"><h3>Material status</h3><p class="hint">Removal preserves stock and history. Materials used in recipes cannot be removed.</p>
+    <div class="inventory-tool-list">{% for material in materials %}<article class="inventory-tool-row"><div><strong>{{ material.name }}</strong><small>{{ material.quantity_available|number }} {{ material.unit }} · {{ 'Active' if material.is_active else 'Removed' }}</small></div>
+      <details><summary>{{ 'Remove material' if material.is_active else 'Reactivate' }}</summary><form method="post" action="/portal/team-leader/inventory-tools/{{ 'remove-material' if material.is_active else 'reactivate-material' }}" class="form-panel bare"><input type="hidden" name="item_id" value="{{ material.item_id }}"><label><input type="checkbox" required name="confirmed" value="yes"> Confirm {{ 'removal' if material.is_active else 'reactivation' }} of {{ material.name }}</label><button type="submit" class="button secondary">{{ 'Remove material' if material.is_active else 'Reactivate' }}</button></form></details>
+    </article>{% else %}<p>No raw materials recorded.</p>{% endfor %}</div>
+  </section>
+  <section class="panel"><h3>Recent deductions</h3>{% for operation in operations if operation.action=='raw_deduction' %}<article class="inventory-tool-row"><div><strong>{{ operation.payload.quantity }} deducted</strong><p>{{ operation.payload.reason }}</p><small>{{ operation.actor_name }} · {{ operation.created_at|nice_date }} · Material #{{ operation.payload.item }}</small></div></article>{% else %}<p>No manual deductions recorded.</p>{% endfor %}</section>
+  {% elif tools_view=='packages' %}
+  <p class="hint">Packages contain existing finished packs. Standard contents lock once saved; customized contents apply to one dispatch. Dispatch records stock movement independently of sales and orders.</p>
+  {% for package in packages %}
+  <section class="panel" id="package-{{ package.item_id }}"><div class="panel-heading"><h3>{{ package.name }}</h3><span class="status-badge">{{ 'Standard locked' if package.standard_locked_at else 'Standard not configured' }}</span></div>
+    {% if package.standard_locked_at %}<ul>{% for component in package_components if component.package_item_id==package.item_id %}<li>{{ component.name }} — {{ component.quantity_per_package|number }} packs per package</li>{% endfor %}</ul>
+    {% else %}<details class="inventory-tool-disclosure"><summary>Configure and lock standard contents</summary>
+      <form method="post" action="/portal/team-leader/inventory-tools/package-save" class="form-panel bare"><input type="hidden" name="package_id" value="{{ package.item_id }}"><input type="hidden" name="mode" value="standard"><input type="hidden" name="reference" value="{{ new_reference() }}">
+        {% for component in component_products %}<label class="inventory-component-row"><span>{{ component.name }}<small>{{ component.available|number }} packs available</small></span><input type="hidden" name="product_id[]" value="{{ component.item_id }}"><input name="packs[]" type="number" min="0" max="999999999" step="1" value="0" aria-label="{{ component.name }} packs per standard package"></label>{% endfor %}
+        <label><input type="checkbox" required name="confirmed" value="yes"> I confirm these contents cannot be edited after saving.</label><button type="submit" class="button primary">Save and lock standard</button>
+      </form>
+    </details>{% endif %}
+    {% if package.is_active %}
+    <details class="inventory-tool-disclosure"><summary>Dispatch {{ package.name }}</summary>
+      <form method="post" action="/portal/team-leader/inventory-tools/package-dispatch" class="form-panel bare"><input type="hidden" name="package_id" value="{{ package.item_id }}"><input type="hidden" name="reference" value="{{ new_reference() }}">
+        <div class="form-grid"><label>Contents<select name="mode"><option value="standard" {{ 'disabled' if not package.standard_locked_at else '' }}>Standard</option><option value="customized" {{ 'selected' if not package.standard_locked_at else '' }}>Customize</option></select></label><label>Number of packages<input required name="quantity" type="number" min="1" max="999999999" step="1" value="1"></label></div>
+        <details><summary>Customized contents — starts from zero</summary><p class="hint">These quantities apply only when Customize is selected.</p>{% for component in component_products %}<label class="inventory-component-row"><span>{{ component.name }}<small>{{ component.available|number }} packs available</small></span><input type="hidden" name="product_id[]" value="{{ component.item_id }}"><input name="packs[]" type="number" min="0" max="999999999" step="1" value="0" aria-label="{{ component.name }} packs per customized package"></label>{% endfor %}</details>
+        <label>Dispatch reason<textarea required name="reason" maxlength="500" rows="2"></textarea></label><button class="button primary" type="submit">Dispatch package stock</button>
+      </form>
+    </details>{% endif %}
+  </section>{% else %}<section class="panel"><p>No packages in the catalog.</p></section>{% endfor %}
+  <section class="panel"><h3>Recent package dispatches</h3>{% for dispatch in dispatches %}<article class="inventory-tool-row"><div><strong>{{ dispatch.package_name }} × {{ dispatch.quantity|number }}</strong><small>{{ dispatch.mode|title }} · {{ dispatch.actor_name }} · {{ dispatch.created_at|nice_date }}</small><p>{{ dispatch.payload.reason }}</p><details><summary>Finished packs dispatched</summary><ul>{% for line in dispatch.contents %}<li>{{ line.name }}: {{ line.per_package }} per package · {{ line.total }} total packs</li>{% endfor %}</ul><small>Reference {{ dispatch.reference }}</small></details></div></article>{% else %}<p>No package dispatches recorded.</p>{% endfor %}</section>
+  {% elif tools_view=='removed' %}
+  <section class="panel"><h3>Removed batches</h3><p class="hint">Latest 100 archived batches. Original receipts and stock movements remain in product history.</p>
+    {% for batch in removed_batches %}<article class="inventory-tool-row"><div><strong><a href="/portal/team-leader/product-details?product_id={{ batch.item_id }}">{{ batch.name }} · {{ batch.batch_code }}</a></strong><small>Received {{ batch.quantity_received|number }} packs · Expiry {{ batch.expiry_date|nice_date }}</small><p>{{ batch.removal_reason }}</p><small>{{ batch.actor_name }} · {{ batch.removed_at|nice_date }}</small></div></article>{% else %}<p>No batches have been removed.</p>{% endfor %}
+  </section>
+  {% endif %}
+</section>

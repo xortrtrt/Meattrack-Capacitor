@@ -227,3 +227,237 @@ Sources: `tests/test_replacement_conversation_browser.py`,
 `app/templates/portals/_replacement_conversation.html`,
 `app/static/css/replacement_workflow.css`, `app/static/js/replacement_workflow.js`.
 See [[Background Work and Integrations]].
+
+
+## Local Owner page rendering, 2026-11-01
+
+Corrected malformed Jinja syntax in
+`app/templates/portals/owner/_workspace_header.html` that caused HTTP 500 after
+Owner sign-in. The active-tab accessibility attribute now uses a quoted template
+expression. All application templates compiled; **47 Owner-focused tests passed**.
+Authenticated requests to the running local dashboard, orders, returns, inventory,
+accounts, and profile pages each returned **HTTP 200**. The dashboard tab strip
+also identified exactly one current page. Temporary verification sessions were
+removed. No business or permission rules changed; this fix was kept local.
+See [[Owner Portal]]. Report: `outputs/owner-local-fix/verification.xml`.
+
+
+## Local Wi-Fi sharing, 2026-11-01
+
+Validated the optional app bind in `compose.yml` with `docker compose config` and
+recreated only the local app. Host-side health and sign-in-page requests passed
+through both loopback and the host's Wi-Fi address. Confirmed PostgreSQL and
+mail-capture remained loopback-bound and the existing Windows Docker Desktop
+Backend TCP allowance covered the active network profile. Also validated that
+an explicit loopback override restores the original binding. A request from the
+friend's separate device has not been observed. See [[Database and Operations]].
+
+## Owner alerts and notification overlay, 2026-11-01
+
+18 Owner directory regression tests and two unread-badge tests passed. Authenticated
+Playwright checks on the running local Alerts page passed at 1440, 768, and 390px:
+HTTP 200, no horizontal overflow, no JavaScript errors, popup visible in the top
+layer and receiving pointer hits above page content, and Escape dismissal.
+Temporary verification sessions were deleted. Screenshots are local under
+`outputs/owner-alerts/`. These checks do not establish production deployment.
+See [[Owner Portal]].
+
+The subsequent visual redesign was inspected in rendered desktop and phone
+screenshots. Authenticated browser checks passed at 1440, 960, 768, 390, and 320px,
+including the warning-level GET form at zero packs, no horizontal overflow, no
+JavaScript errors, and notification top-layer visibility/Escape dismissal.
+Template branch checks covered empty worklists, expiry today/tomorrow, and
+collapsed resolved history without active-case buttons. No alert statuses or
+inventory quantities were changed by these checks. Styling is isolated in
+`app/static/css/portals/owner-alerts.css`.
+
+## Owner alert workflow, 2026-11-01
+
+Completed 18 alert-workflow cases in `tests/test_owner_stock_alerts.py`, including
+per-Owner review isolation/idempotence, unchanged notification reads, audit rollback,
+active-risk closure rejection, reason validation, HTTP settings persistence,
+Owner/CSRF checks, threshold boundaries, paid-order and replacement reservations,
+recurrence, escalation, notification deduplication, concurrent scans, physical
+partial/full pull-outs, quality reclassification, migration consolidation, and
+legacy raw-material handling. Also passed 60 Owner/navigation tests and 42 stock,
+return-custody, expiry and Owner-overhaul regressions across targeted runs.
+
+All Jinja templates compiled; focused Ruff checks passed. Authenticated browser
+checks passed at 1440, 960, 768, 390, and 320px: read-only Alerts rendering, saved
+policy link, absence of routine Resolve buttons, no horizontal overflow/JavaScript
+errors, and notification top-layer visibility/Escape dismissal. Desktop screenshots
+were visually inspected; earlier phone layout checks remain valid.
+
+Applied migration 045 through the migration runner to the existing local database;
+repeat run reported up to date. Baseline-backed isolated test schemas and migration
+replay/consolidation passed. Restarted local app/worker and verified a successful
+stock-alert reconciliation timestamp; both services remained running and the app
+reported healthy. Tests used isolated schemas; temporary browser sessions were
+removed. No production deployment was performed. See [[Owner Portal]],
+[[Orders and Inventory]], and [[Background Work and Integrations]].
+
+## Inventory/Owner alert connection, 2026-11-01
+
+Passed 177 targeted tests: five shared-workspace PostgreSQL cases, 18 Owner alert
+workflow cases, 112 portal-context tests, and 42 Owner/navigation cases. Coverage
+includes matching live stock/thresholds/episode states, private Owner reviews,
+legacy/raw-material scope, forecast exclusion, read-only GETs, Inventory/Sales/
+Supervisor access, dashboard counts before worker scans, physical pull-out
+propagation, and new/legacy stock notification redirects with read state.
+
+Authenticated browser checks passed for both portals at 1440, 960, 768, 390, and
+320px, including overflow, scoped links/controls, no JavaScript errors, and
+notification popup visibility/hit-testing/Escape. Inventory desktop and phone
+screenshots were visually inspected (`outputs/inventory-alerts/`). Temporary browser
+sessions were deleted. Focused Ruff and diff checks passed. No new migration was
+needed; the local worker was restarted to load new stock notification targets.
+This does not establish production deployment. See [[Owner Portal]],
+[[Orders and Inventory]], and [[Roles and Access]].
+
+Inventory Alerts layout polish, 2026-11-01: inspected fresh desktop and phone
+screenshots, preserving the existing palette/summary structure. Browser checks
+passed at 320, 390, 768, 960, and 1440px for HTTP 200, overflow, Owner-only control
+absence, notification hit-testing/dismissal, and JavaScript errors. Changes are
+scoped to Inventory presentation; no stock rules changed. See [[Owner Portal]].
+
+## Inventory alert category details, 2026-11-01
+
+Six shared Inventory alert tests passed, including browser clicks through all three
+summary cards and Back links at 1440, 768, 390, and 320px. Verified category item
+counts against the live workspace, batch filtering, explicit inclusion copy,
+category-specific empty state, invalid-category 404, Sales denial, read-only GETs,
+no horizontal overflow, and no JavaScript errors. Desktop and phone screenshots
+were visually inspected; artifacts are under `outputs/inventory-alert-details/`.
+All 94 Jinja templates compiled; focused Ruff checks passed. Tests used isolated
+PostgreSQL schemas, and no production deployment was performed. See
+[[Orders and Inventory]]. Source: `tests/test_inventory_alert_workspace.py`.
+
+Nine Owner regression tests also passed, including the existing full Owner portal
+browser sweep at desktop, tablet, and phone widths. Shared Owner alert rendering
+remains covered by that sweep.
+
+Inventory alert visual simplification, 2026-11-01: six shared alert tests passed
+again after the ledger-theme redesign. Browser coverage includes category cards,
+current-category navigation, Back links, matching item counts, empty state, access
+restrictions, and overflow/JavaScript checks at 1440, 768, 390, and 320px. Final
+desktop and phone screenshots were inspected. Long detail explanations were
+replaced by short labels; no stock rules changed. All 94 templates compiled;
+focused Ruff and whitespace checks passed. See [[Orders and Inventory]].
+
+## Stock Alerts and Pull-outs connection, 2026-11-01
+
+Three connection tests passed, including browser journeys at 1440 and 390px:
+expired alert to the exact pending batch, overriding a previously selected
+Disposed tab; partial and complete physical pull-outs; preserved batch context;
+live warehouse/holding balances; holding-tab navigation; and return to the cleared
+expired-alert list. The HTTP/PostgreSQL case also covers actionability before the
+worker scan, read-only GETs, invalid batches, over-pull-out errors, idempotent
+replays, Sales denial, and worker episode closure only after warehouse clearance.
+Ten existing alert, pull-out destination/CSRF, and action regression tests passed.
+Desktop and phone screenshots were inspected under
+`outputs/alert-pullout-connection/`. No overflow or browser script errors were
+observed. All 94 templates compiled; focused Ruff and whitespace checks passed.
+Tests used isolated schemas; no production deployment was performed. See
+[[Orders and Inventory]] and [[Decisions]]. Source:
+`tests/test_alert_pullout_connection.py`.
+
+An additional 28 pending-pull-out log and product lifecycle regressions passed,
+including partial/idempotent removal and disposal, expiry, and stock history.
+
+## Owner alert card destinations, 2026-11-01
+
+Both portal card-navigation browser cases passed at 1440, 768, 390, and 320px,
+covering all three cards, matching category contents/counts, current-category tabs,
+Back links, empty states, invalid categories, role denial, read-only page visits,
+and no overflow or browser script errors. Owner desktop and phone screenshots
+were inspected in `outputs/owner-alert-card-details/`. All 18 Owner stock-alert
+workflow regressions passed. All 95 templates compiled; focused Ruff and whitespace
+checks passed. No production deployment was performed. See [[Owner Portal]] and
+[[Orders and Inventory]]. Source: `tests/test_inventory_alert_workspace.py`.
+
+
+Inventory tools coverage (2026-11-01): `tests/test_inventory_tools.py` verifies
+concurrent deductions/dispatch, precision, replay identity, reservation protection,
+expiry boundaries, immutable standards, multi-component rollback, batch archival,
+photo validation/storage, role guards, and baseline-to-upgrade stock preservation.
+`tests/test_inventory_tools_browser.py` uses real templates/JavaScript and an
+isolated PostgreSQL schema to exercise desktop/mobile deductions, standard package
+setup/dispatch, photo preview/upload, and batch removal. Screenshots and run logs
+are under ignored `outputs/inventory-tools/`. See [[Orders and Inventory]].
+
+Validation in this session: 558 non-PostgreSQL/non-e2e unit tests passed; the new
+stock-tool tests and desktop/mobile browser flow passed. Existing stock/alert
+regressions produced 56 passes and an initial baseline-replay failure; migration
+046 was made replay-safe and that failed check passed on rerun. The separate
+pre-046 upgrade/preservation check passed. Ruff, mypy, JavaScript syntax checking,
+and diff whitespace checks passed. This is local validation, not production proof.
+
+## Payment review consistency, 2026-11-02
+
+Eight receipt browser tests passed, including mobile replacement receipt review
+and submission. Replacement workflow and portal-improvement database regressions
+passed, including stored reseller values overriding posted staff values and legacy
+pending-order payment/reservation. The legacy fixture explicitly bypasses current
+order triggers only to create a historical unpaid row in its isolated schema;
+submission then runs with triggers enabled. Portal context tests passed after
+updating the old plain-upload expectations; an added read-only review rendering
+check also passed. All templates compiled. Focused Ruff, JavaScript syntax, and
+diff whitespace checks passed. Mobile screenshot inspected at
+`outputs/payment-review-mobile.png`. No deployment performed. See
+[[Replacement Workflow]] and [[Orders and Inventory]].
+
+Return layout correction (2026-11-02): inspected the live reseller return dialog
+in Chrome before and after changes, opened the comparison dropdown, and checked
+the 390px layout. Reference cards collapse by default; timeline notes expand
+separately. All 114 portal context tests passed and all templates compiled.
+Supervisor/Owner presentation shares the updated components; its separate
+authenticated browser window was not inspected. Desktop capture:
+`outputs/return-layout-desktop.jpg`. See [[Returns and Financials]].
+
+Supervisor older-case correction (2026-11-02): the actual authenticated
+`/portal/sales-supervisor/returns?case=1` page was inspected before/after changes,
+including request/quote and Inventory-record dropdowns and a 390px mobile view.
+No real payment verification was submitted. Case proof without reseller metadata
+now shows a disabled awaiting-submission state. All 120 portal-context tests
+passed, covering both receipt-scan success contracts, read-only versions, missing
+metadata, and staff-posted values. Existing lifecycle regressions passed; the new
+older-case stored-payment regression passed after correcting its expected reference
+to the existing uppercase normalization. Both focused version-2 payment regressions
+passed. Ruff, template compilation, and diff whitespace checks passed. Screenshots:
+`outputs/supervisor-return-1-desktop.jpg`, `outputs/supervisor-return-1-mobile.jpg`.
+See [[Replacement Workflow]].
+
+Supervisor overview validation (2026-11-02): 127 summary/portal-context checks passed.
+The seven overview checks cover visible decision facts, terminal/mismatch status,
+current reseller receipt details, refund presentation, and escaped expandable
+customer reasons. The live authenticated case was inspected at desktop and 390px;
+no case action was submitted. Captures are `outputs/supervisor-case-overview-desktop.jpg`
+and `outputs/supervisor-case-overview-mobile.jpg`. See [[Returns and Financials]].
+
+## Release audit, 2026-11-02
+
+Aggregate initial runs and final targeted rechecks produced **910 distinct passing
+checks, zero unresolved failures, and zero remaining skips**. The initial broad
+PostgreSQL run had 294 passes, eight browser/UI expectation failures, and eight
+external-service skips. Final rechecks passed all eight failing paths after updating
+comparison-review, collapsed-card, status-summary, and action-label expectations.
+The separately configured browser server covered the external skips in a disposable
+schema; its sidebar-scroll expectation was corrected to use available scroll space.
+The role-navigation audit rendered all configured role menus and key case/product
+pages against an isolated PostgreSQL schema without server errors.
+
+Confirmed gaps fixed during audit: payment queue readiness for current reseller
+metadata, version-2 payment review before stock reservation, preserved follow-up
+work, and stale payment-review rejection under the case lock. Older reservation
+requirements remain reflected in the displayed responsible party. Unit, integration,
+and browser checks cover these changes. Ruff, mypy (78 source files), Python
+compilation, JavaScript syntax, all-template compilation, importer safety self-check,
+and diff whitespace checks passed. Both Compose definitions validate; production
+validation used placeholder secrets. All 46 local migrations are installed; migration
+023 uses an explicitly supported historical checksum. Recent local app/worker logs
+showed no new server errors; earlier startup retries had recovered.
+
+The aggregate is recorded in ignored `outputs/audit-summary.json`; detailed JUnit
+reports are `outputs/audit-*.xml`. Test schemas and the isolated browser server were
+cleaned up. These results verify local source and test behavior. See
+[[Replacement Workflow]], [[Orders and Inventory]], and [[Database and Operations]].

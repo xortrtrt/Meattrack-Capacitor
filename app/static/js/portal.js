@@ -70,6 +70,9 @@
             return;
         }
 
+        // The top layer escapes sidebar clipping and page stacking contexts.
+        panel.setAttribute("popover", "manual");
+
         function positionPanel() {
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
@@ -114,8 +117,13 @@
         function setExpanded(open) {
             trigger.setAttribute("aria-expanded", String(open));
             menu.classList.toggle("is-open", open);
-            if (open) prepareOpenPanel();
-            else menu.classList.remove("is-positioning");
+            if (open) {
+                panel.showPopover();
+                prepareOpenPanel();
+            } else {
+                panel.hidePopover();
+                menu.classList.remove("is-positioning");
+            }
         }
 
         trigger.addEventListener("click", () => {
@@ -1517,7 +1525,7 @@
             const body = new FormData();
             selectedFiles().forEach((file) => body.append("payment_proofs", file));
             try {
-                const response = await fetch("/portal/reseller/orders/receipt-scan", {
+                const response = await fetch(form.dataset.receiptScanUrl || "/portal/reseller/orders/receipt-scan", {
                     method: "POST",
                     body,
                     credentials: "same-origin",
@@ -1605,7 +1613,7 @@
             summaryAmount.textContent = `₱${Number(amountInput.value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             summaryDate.textContent = `${dateInput.value} at ${timeInput.value}`;
             summary.hidden = false;
-            cardStatus.textContent = "Payment details confirmed. Submit them before the timer expires.";
+            cardStatus.textContent = "Payment details confirmed. Ready to submit.";
             cardStatus.dataset.state = "success";
             updateActionState();
             closeModal();
@@ -1654,9 +1662,13 @@
             if (isSubmitting) return;
             updateActionState();
             if (submitButton.disabled) {
-                status.textContent = "Review the receipt, complete all payment details, and confirm them before placing the order.";
+                status.textContent = "Review the receipt, complete all payment details, and confirm them before submitting payment.";
                 status.dataset.state = "error";
                 if (selectedFiles().length) openModal();
+                return;
+            }
+            if (form.hasAttribute("data-receipt-native-submit")) {
+                HTMLFormElement.prototype.submit.call(form);
                 return;
             }
             const body = new FormData(form);

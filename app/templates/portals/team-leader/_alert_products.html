@@ -1,0 +1,6 @@
+{% for product in low_stock %}
+        <article class="oa-stock-row {{ 'is-urgent' if product.available == 0 else '' }}">
+          <div class="oa-item-top"><span class="oa-status {{ 'oa-status-danger' if product.available == 0 else 'oa-status-warning' }}"><i data-lucide="{{ 'package-x' if product.available == 0 else 'package-minus' }}" aria-hidden="true"></i>{{ 'Out of stock' if product.available == 0 else 'Running low' }}</span><span class="oa-quantity">{{ product.available|number }} <small>packs</small></span></div>
+          <h3>{{ product.name }}</h3><div class="oa-item-bottom"><span>{{ 'Replenishment needed' if product.available == 0 else 'At or below warning level' }}</span><a href="/portal/{{ stock_alert_role }}/product-details?product_id={{ product.item_id }}" aria-label="Review stock for {{ product.name }}">Review stock<i data-lucide="arrow-right" aria-hidden="true"></i></a></div>
+        </article>
+        {% else %}<div class="oa-empty"><i data-lucide="package-check" aria-hidden="true"></i><h3>Stock is above this level</h3><p>No active products have {{ stock_threshold }} available packs or fewer.</p></div>{% endfor %}

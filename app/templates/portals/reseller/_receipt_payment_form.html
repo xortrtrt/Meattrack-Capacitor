@@ -1,17 +1,20 @@
 <form
-  action="/portal/reseller/orders/{{ order.order_id }}/payment"
+  action="{{ receipt_action|default('/portal/reseller/orders/' ~ order.order_id ~ '/payment') }}"
   method="post"
   enctype="multipart/form-data"
   class="receipt-payment-form"
   data-receipt-checkout
-  data-async-form
-  data-payment-deadline="{{ order.payment_due_at.isoformat() }}"
+  {% if receipt_scan_url is not defined %}data-async-form{% endif %}
+  {% if order.payment_due_at %}data-payment-deadline="{{ order.payment_due_at.isoformat() }}"{% endif %}
+  {% if receipt_scan_url is defined %}data-receipt-scan-url="{{ receipt_scan_url }}" data-receipt-native-submit{% endif %}
 >
-  <div class="to-pay-clock">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) if request is defined else '' }}">
+  {% if receipt_return_id is defined %}<input type="hidden" name="return_id" value="{{ receipt_return_id }}">{% endif %}
+  {% if order.payment_due_at %}<div class="to-pay-clock">
     <span><i data-lucide="timer"></i> Pay before expiry</span>
     <strong data-payment-countdown aria-live="polite">15:00</strong>
     <small>{{ order.payment_due_at|nice_date }}</small>
-  </div>
+  </div>{% endif %}
   <label class="receipt-file-picker compact" for="payment-proof-{{ order.order_id }}">
     <i data-lucide="image-up"></i>
     <span><strong>Upload payment receipt</strong><small>Recognition starts automatically</small></span>
@@ -39,7 +42,7 @@
         <span>
           <span class="order-page-kicker">Order #{{ order.order_id }} · Payment verification</span>
           <h3 id="receipt-modal-title-{{ order.order_id }}">Check your receipt details</h3>
-          <p id="receipt-modal-description-{{ order.order_id }}">MEATTRACK reads the screenshot automatically. Correct any value that does not match the receipt.</p>
+          <p id="receipt-modal-description-{{ order.order_id }}">Check the scanned values against your receipt. Correct any errors.</p>
         </span>
         <button class="receipt-modal-close" type="button" aria-label="Close receipt details" data-receipt-modal-close><i data-lucide="x"></i></button>
       </header>

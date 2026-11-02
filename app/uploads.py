@@ -23,6 +23,36 @@ PROFILE_IMAGE_MAX_BYTES = 2 * 1024 * 1024
 PROFILE_IMAGE_DIR = Path(__file__).resolve().parent / "static" / "uploads" / "profiles"
 
 
+def validate_product_image(content_type: str, content: bytes) -> None:
+    if not content or len(content) > 2 * 1024 * 1024:
+        raise ValueError('Product photo must be nonempty and 2 MB or smaller.')
+    if content_type not in PAYMENT_PROOF_TYPES:
+        raise ValueError('Product photo must be JPG, PNG, or WebP.')
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', Image.DecompressionBombWarning)
+            with Image.open(BytesIO(content)) as image:
+                detected = PAYMENT_PROOF_FORMATS.get(image.format or '')
+                if image.width * image.height > 16_000_000:
+                    raise ValueError('Product photo must be at most 16 megapixels.')
+                image.verify()
+            with Image.open(BytesIO(content)) as image:
+                image.load()
+    except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ValueError('Product photo is invalid or has excessive image dimensions.') from None
+    if detected != content_type:
+        raise ValueError('Product photo does not match its declared image type.')
+
+
+async def parse_product_image(upload: UploadFile | None) -> dict | None:
+    if upload is None or not upload.filename:
+        return None
+    content = await upload.read(2 * 1024 * 1024 + 1)
+    content_type = upload.content_type or ''
+    validate_product_image(content_type, content)
+    return {'content': content, 'content_type': content_type}
+
+
 async def parse_payment_proof_attachments(uploads: list[UploadFile]) -> list[dict]:
     attachments: list[dict[str, object]] = []
     for upload in uploads:

@@ -8,6 +8,9 @@ QUEUES = (
 
 PAYMENT_PROOF_SQL = """EXISTS(SELECT 1 FROM return_attachments proof
  WHERE proof.return_id=r.return_id AND proof.purpose='payment' AND proof.revision=r.quote_revision)"""
+PAYMENT_DETAILS_SQL = """(NULLIF(r.replacement_payment_details->>'transaction_number','') IS NOT NULL
+ AND NULLIF(r.replacement_payment_details->>'payment_amount','') IS NOT NULL
+ AND r.replacement_payment_details->>'revision'=r.quote_revision::text)"""
 FOLLOWUP_SQL = "EXISTS(SELECT 1 FROM return_customer_followups followup WHERE followup.return_id=r.return_id AND followup.status='open')"
 AUTHORIZED_SQL = "(r.settlement_authorized_by_account_id IS NOT NULL AND r.settlement_authorized_at IS NOT NULL AND r.settlement_authorized_quote_revision IS NOT DISTINCT FROM r.quote_revision)"
 VALID_RESERVATION_SQL = """(EXISTS(SELECT 1 FROM replacement_quote_lines q WHERE q.return_id=r.return_id AND q.revision=r.quote_revision)
@@ -25,12 +28,19 @@ QUEUE_SQL = f"""CASE
  WHEN r.status IN ('completed','rejected') THEN 'completed'
  WHEN r.resolution='replace' AND r.status='settlement_pending' AND {AUTHORIZED_SQL}
    AND r.accepted_revision=r.quote_revision AND r.replacement_total>r.credit
-   AND r.payment_verified_at IS NULL AND {VALID_RESERVATION_SQL} AND {PAYMENT_PROOF_SQL} THEN 'payment'
+   AND r.payment_verified_at IS NULL AND (r.replacement_workflow_version=2 OR {VALID_RESERVATION_SQL})
+   AND {PAYMENT_PROOF_SQL} AND {PAYMENT_DETAILS_SQL} THEN 'payment'
  ELSE 'waiting' END"""
 
 
 def normalize_queue(value: str | None) -> str:
     return value if value in dict(QUEUES) else "needs_review"
+
+
+def payment_submission_ready(case: dict) -> bool:
+    details = case.get("replacement_payment_details") or {}
+    return bool(case.get("has_payment_proof") and details.get("transaction_number")
+                and details.get("payment_amount") and details.get("revision") == case.get("quote_revision"))
 
 
 def experience(case: dict) -> dict:
@@ -44,9 +54,11 @@ def experience(case: dict) -> dict:
     refund_due = max(Decimal(0), credit-total) if replace else credit
     refund_status = (case.get("refund") or {}).get("status") or case.get("refund_status")
     refund_complete = refund_status == "completed"
+    receipt_ready = payment_submission_ready(case)
     money = (f"₱{refund_due:,.2f} refund {'completed' if refund_complete else 'pending'}" if refund_due
              else f"₱{due:,.2f} additional payment verified" if case.get("payment_verified_at")
-             else f"₱{due:,.2f} payment awaiting verification" if due and case.get("has_payment_proof")
+             else f"₱{due:,.2f} payment awaiting verification" if due and receipt_ready
+             else f"₱{due:,.2f} receipt details needed" if due and case.get("has_payment_proof")
              else f"₱{due:,.2f} additional payment" if due else "No additional payment")
     product = ("Replacement released" if released else "Preparing replacement" if replace and case.get("verified_at")
                else "Awaiting returned goods" if case.get("approved_by_account_id") else "Under review")
@@ -88,17 +100,22 @@ def experience(case: dict) -> dict:
         owner = "Supervisor / Owner"
         sales_title = reseller_title = "Waiting for the refund transfer"
         description = "The authorized processor must complete the refund. Sales can follow its progress."
-    elif not case.get("has_reservations"):
+    elif not case.get("has_reservations") and not (case.get("replacement_workflow_version") == 2 and due and not case.get("payment_verified_at")):
         owner = "Inventory"
         sales_title = reseller_title = "Waiting for Inventory to reserve valid replacement stock"
         description = "Inventory is preparing eligible stock. Additional payment is requested after valid stock is reserved."
-    elif due and not case.get("payment_verified_at") and case.get("has_payment_proof"):
+    elif due and not case.get("payment_verified_at") and receipt_ready:
         sales_action, sales_title = "verify_payment", "Your action: review the reseller’s payment proof"
         reseller_title, description = "Payment proof submitted—waiting for Sales verification", "Sales will verify the submitted proof before replacement release."
     elif due and not case.get("payment_verified_at"):
         owner, reseller_action = "Reseller", "payment"
         sales_title, reseller_title = "Waiting for the reseller’s additional payment", "Your action: send additional-payment proof"
-        description = f"Valid replacement stock is reserved. Pay ₱{due:,.2f} and upload your proof."
+        if case.get("has_payment_proof"):
+            sales_title = "Waiting for reseller receipt details"
+            reseller_title = "Your action: resubmit payment receipt details"
+            description = "Resubmit the receipt and confirm its reference, amount, date, and time."
+        else:
+            description = f"Pay ₱{due:,.2f} and confirm the receipt details."
     else:
         owner = "Inventory"
         sales_title = reseller_title = "Waiting for Inventory to release the replacement"
@@ -116,7 +133,7 @@ def experience(case: dict) -> dict:
         "reconcile": "Review the recorded details and the highlighted inconsistencies before continuing.",
     }.get(sales_action, description)
     if not sales_action and owner == "Reseller":
-        sales_description = "The reseller must accept the current offer." if reseller_action == "accept" else "Valid stock is reserved. Waiting for the reseller’s additional-payment proof."
+        sales_description = "The reseller must accept the current offer." if reseller_action == "accept" else description
     elif not sales_action and owner == "Reseller / Inventory":
         sales_description = "Waiting for the reseller to return the approved goods and Inventory to check the complete receipt."
     if case.get("handed_off_at") and owner == "Sales":

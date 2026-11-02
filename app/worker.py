@@ -42,13 +42,7 @@ def enqueue_due_inquiry_followups() -> int:
 
 
 def scan_batch_expiry() -> int:
-    from app.repositories.notifications import _create_notification_cursor
-    from app.repositories.superuser import business_setting
-
     changed = 0
-    near_expiry_days = int(business_setting("inventory.near_expiry_days"))
-    critical_expiry_days = int(business_setting("inventory.critical_expiry_days"))
-    notify_owners = bool(business_setting("notifications.owner_critical_alerts"))
     with get_transaction_cursor() as cur:
         cur.execute("SELECT pg_try_advisory_xact_lock(hashtext('meattrack-expiry-scan')) AS locked;")
         if not cur.fetchone()["locked"]:
@@ -70,90 +64,8 @@ def scan_batch_expiry() -> int:
         changed += len(cur.fetchall())
         from app.repositories.product_returns import sync_expired_custody
         sync_expired_custody(cur)
-        cur.execute(
-            """
-            UPDATE alerts a SET status = 'resolved'
-            FROM inventory_batches b
-            WHERE a.product_batch_id = b.batch_id
-              AND a.status IN ('open', 'acknowledged')
-              AND (b.quantity_available = 0 OR b.quality_status IN ('rejected', 'spoiled')
-                   OR (b.quality_status = 'expired' AND a.alert_type = 'near_expiry'));
-            """
-        )
-        cur.execute(
-            """
-            SELECT b.batch_id, b.batch_code, b.item_id, b.quantity_available, b.expiry_date, i.name
-            FROM inventory_batches b JOIN inventory_items i ON i.item_id = b.item_id
-            WHERE b.quality_status = 'expired' AND b.quantity_available > 0
-            ORDER BY b.batch_id FOR UPDATE OF b;
-            """
-        )
-        for batch in cur.fetchall():
-            message = f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expired on {batch['expiry_date']}. Pull-out required."
-            cur.execute(
-                """
-                INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message)
-                VALUES ('expired_batch', 'critical', %s, %s, %s)
-                ON CONFLICT (product_batch_id, alert_type)
-                    WHERE product_batch_id IS NOT NULL AND status IN ('open', 'acknowledged')
-                DO UPDATE SET message = EXCLUDED.message, severity = 'critical';
-                """,
-                (batch["item_id"], batch["batch_id"], message),
-            )
-            _create_notification_cursor(
-                cur, recipient_role="team-leader", category="inventory", severity="critical",
-                title="Expired batch requires action", message=message,
-                target_url="/portal/team-leader/expired-stock", source_type="inventory_batches",
-                source_id=batch["batch_id"], dedupe_key=f"batch-expired-{batch['batch_id']}",
-            )
-            if notify_owners:
-                _create_notification_cursor(
-                    cur, recipient_role="owner", category="inventory", severity="critical",
-                    title="Expired batch requires action", message=message,
-                    target_url="/portal/owner/alerts", source_type="inventory_batches",
-                    source_id=batch["batch_id"], dedupe_key=f"owner-batch-expired-{batch['batch_id']}",
-                )
-        cur.execute(
-            """
-            SELECT b.batch_id, b.batch_code, b.expiry_date, b.quantity_available, i.item_id, i.name,
-                   (b.expiry_date - (now() AT TIME ZONE 'Asia/Manila')::date) AS days_left
-            FROM inventory_batches b
-            JOIN inventory_items i ON i.item_id = b.item_id
-            WHERE b.quality_status = 'approved' AND b.quantity_available > 0
-              AND b.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date AND b.expiry_date <= (now() AT TIME ZONE 'Asia/Manila')::date + %s
-            ORDER BY b.expiry_date, b.batch_id
-            FOR UPDATE OF b;
-            """
-        , (near_expiry_days,))
-        for batch in cur.fetchall():
-            days = int(batch["days_left"])
-            severity = "critical" if days <= critical_expiry_days else "warning"
-            cur.execute(
-                """
-                INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message)
-                VALUES ('near_expiry', %s, %s, %s, %s)
-                ON CONFLICT (product_batch_id, alert_type)
-                    WHERE product_batch_id IS NOT NULL AND status IN ('open', 'acknowledged')
-                DO UPDATE SET severity = EXCLUDED.severity, message = EXCLUDED.message;
-                """,
-                (severity, batch["item_id"], batch["batch_id"],
-                 f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expire on {batch['expiry_date']} ({days} day(s))."),
-            )
-            _create_notification_cursor(
-                cur, recipient_role="team-leader", category="inventory", severity=severity,
-                title="Batch expiry warning",
-                message=f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expire on {batch['expiry_date']} ({days} day(s)).",
-                target_url="/portal/team-leader/batches", source_type="inventory_batches",
-                source_id=batch["batch_id"], dedupe_key=f"batch-expiry-{batch['batch_id']}-{severity}",
-            )
-            if notify_owners and severity == "critical":
-                _create_notification_cursor(
-                    cur, recipient_role="owner", category="inventory", severity="critical",
-                    title="Critical batch expiry warning",
-                    message=f"{batch['name']} batch {batch['batch_code']}: {batch['quantity_available']:g} packs expire on {batch['expiry_date']} ({days} day(s)).",
-                    target_url="/portal/owner/alerts", source_type="inventory_batches",
-                    source_id=batch["batch_id"], dedupe_key=f"owner-batch-expiry-{batch['batch_id']}-{severity}",
-                )
+    from app.repositories.stock_alerts import reconcile_stock_alerts
+    reconcile_stock_alerts()
     return changed
 
 

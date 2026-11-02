@@ -26,7 +26,7 @@
         <details class="sales-order-card" id="order-{{ order.order_id }}" {% if request.query_params.get("order")==order.order_id|string %}open{% endif %}>
           <summary class="sales-order-card-summary">
             <div class="sales-order-identity"><span class="sales-order-number">Order #{{ order.order_id }}</span><strong>{{ order.reseller }}</strong>{% if order.order_date is defined and order.order_date %}<time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time>{% endif %}<span class="status-badge {{ review_status }}">{{ 'To pay' if review_status == 'to_pay' else review_status }}</span></div>
-            <div class="sales-order-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_image|media_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>
+            <div class="sales-order-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_photo_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>
             <div class="sales-order-total"><small>Total</small><strong>{{ order.total_amount|currency }}</strong></div>
             <span class="sales-order-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span>
           </summary>
@@ -37,7 +37,7 @@
               <header><div><span class="eyebrow">Order contents</span><h3 id="sales-order-items-{{ order.order_id }}">{{ order['items']|length }} product{{ '' if order['items']|length == 1 else 's' }}</h3></div></header>
               <div class="sales-order-product-list">
                 {% for item in order['items'] %}
-                <article class="sales-order-product-line"><img src="{{ item.name|product_image|media_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
+                <article class="sales-order-product-line"><img src="{{ item.name|product_photo_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
                 {% else %}<div class="sales-order-empty-products"><i data-lucide="package-open"></i><span>No products were recorded for this order.</span></div>{% endfor %}
               </div>
             </section>

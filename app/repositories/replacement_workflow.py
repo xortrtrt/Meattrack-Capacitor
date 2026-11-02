@@ -318,7 +318,8 @@ def progress(case: dict) -> str:
     if case["replacement_released_at"]:
         return "In transit — Supervisor records delivery"
     if case["replacement_total"] > case["credit"] and not case["payment_verified_at"]:
-        return "Supervisor payment review" if case.get("replacement_payment_details") else "Additional payment required"
+        from app.return_experience import payment_submission_ready
+        return "Supervisor payment review" if payment_submission_ready(case) else "Additional payment required"
     return (
         "Ready for warehouse release"
         if case.get("replacement_prepared_at") and case.get("has_reservations")
@@ -329,6 +330,8 @@ def progress(case: dict) -> str:
 def enrich_progress(case: dict) -> None:
     if case.get("replacement_workflow_version") != 2:
         return
+    from app.return_experience import payment_submission_ready
+
     title = progress(case)
     case["replacement_progress"] = title
     if not case.get("experience"):
@@ -340,15 +343,18 @@ def enrich_progress(case: dict) -> None:
         and case["replacement_total"] > case["credit"]
         and not case.get("payment_verified_at")
     )
+    receipt_ready = payment_submission_ready(case)
+    if case["experience"]["sales"]["action"] in {"resolve_issue", "proceed", "reconcile"}:
+        return
     case["experience"]["reseller"] = dict(
         title=title,
-        action="pay" if payment else "",
+        action="pay" if payment and not receipt_ready else "",
         description="Complete payment in this return's payment form; Supervisor verifies receipt of funds before Inventory prepares stock."
         if payment
         else "Follow the recorded comparison, Supervisor conversation, and delivery updates for this replacement.",
     )
     case["experience"]["sales"] = dict(
         title=title,
-        action="review" if case["status"] in {"submitted", "discrepancy"} else "",
+        action="review" if case["status"] in {"submitted", "discrepancy"} else "verify_payment" if payment and receipt_ready else "",
         description="Review the request and evidence, verify any payment in the provider, and record delivery after Inventory release.",
     )

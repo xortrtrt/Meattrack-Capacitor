@@ -1,4 +1,14 @@
 /* Product lifecycle: shared stock, custody, and returns workspace. */
+.lifecycle-expired-page .custody-alert-back { display:inline-flex; align-items:center; gap:8px; justify-self:start; min-height:44px; color:var(--lc-ink); font-size:14px; text-decoration:none }
+.lifecycle-expired-page .custody-alert-back svg { width:18px; height:18px }
+.lifecycle-expired-page .custody-alert-focus { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:20px; border:1px solid var(--lc-gold); border-radius:14px; background:var(--lc-wash) }
+.lifecycle-expired-page .custody-alert-focus h3 { display:flex; align-items:baseline; flex-wrap:wrap; gap:10px; margin-block:6px }
+.lifecycle-expired-page .custody-alert-focus h3 small { color:var(--lc-muted); font-size:13px; font-weight:400 }
+.lifecycle-expired-page .custody-alert-focus p { color:var(--lc-muted); font-size:13px; line-height:1.6 }
+.lifecycle-expired-page .custody-alert-focus a { display:inline-flex; align-items:center; gap:8px; min-height:44px; color:var(--lc-ink); font-size:13px }
+.lifecycle-expired-page .custody-alert-focus a svg { width:16px; height:16px }
+.lifecycle-expired-page .is-alert-focus { outline:2px solid var(--lc-gold); outline-offset:3px; scroll-margin-top:100px }
+.lifecycle-expired-page :is(.custody-alert-back,.custody-alert-focus a):focus-visible { outline:2px solid var(--lc-gold); outline-offset:3px }
 .portal-body .panel.lifecycle-workspace{
   --lc-ink:var(--text,#241f19);
   --lc-muted:var(--text-light,#6f675d);
@@ -2806,3 +2816,8 @@
   .inventory-receipt-choice>.lifecycle-form {padding:14px}
   .inventory-return-status {align-items:flex-start;flex-direction:column}
 }
+
+.payment-review-details { display:grid; gap:12px; margin:0; }
+.payment-review-details div { display:grid; gap:4px; }
+.payment-review-details dt { font-size:.8rem; opacity:.75; }
+.payment-review-details dd { margin:0; font-weight:600; overflow-wrap:anywhere; }

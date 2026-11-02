@@ -11,6 +11,7 @@
     </span>
   </header>
 
+  <p><a class="button secondary" href="/portal/team-leader/inventory-tools">Raw-material adjustments</a> <a class="button secondary" href="/portal/team-leader/inventory-tools?view=packages">Package contents &amp; dispatch</a></p>
   <div class="inventory-task-grid">
     <button class="inventory-task-card inventory-task-card--material" type="button" data-inventory-modal-open="add-material" aria-haspopup="dialog" aria-controls="inventory-modal-add-material">
       <span class="inventory-task-icon"><i data-lucide="package-plus"></i></span>
@@ -126,7 +127,8 @@
       <button class="icon-button" type="button" aria-label="Close create product recipe" data-inventory-modal-close><i data-lucide="x"></i></button>
     </header>
     <div class="inventory-modal-body">
-      <form class="form-panel bare inventory-modal-form inventory-recipe-panel" id="product-recipe-form" action="/portal/team-leader/products" method="post">
+      <form class="form-panel bare inventory-modal-form inventory-recipe-panel" id="product-recipe-form" action="/portal/team-leader/products" method="post" enctype="multipart/form-data">
+        <label>Product photo (optional, JPG, PNG or WebP, up to 2 MB)<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-product-photo></label>
         <div class="form-grid">
           <label>Product name <input required name="name" placeholder="Tocino" /></label>
           <label>Category <select name="category" required>{% for category in product_categories %}<option value="{{ category }}">{{ category }}</option>{% endfor %}</select></label>

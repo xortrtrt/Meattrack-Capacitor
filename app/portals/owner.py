@@ -337,7 +337,11 @@ def movements_context(request: Request) -> dict:
 
 
 def alerts_context(request: Request) -> dict:
-    return {"alerts": data.list_alerts()}
+    from app.repositories.stock_alerts import stock_alert_workspace
+    category = request.query_params.get("category", "")
+    if category not in {"", "expired", "expiring", "low-stock"}:
+        raise HTTPException(status_code=404)
+    return {**stock_alert_workspace(shared.session_account_id(request)), "stock_alert_category": category}
 
 
 def resellers_context(request: Request) -> dict:
@@ -739,12 +743,17 @@ def owner_account_password_reset(
     return shared.redirect_to(shared.safe_portal_path("owner", "accounts", message="Password reset email queued."))
 
 
+@router.post("/portal/owner/alerts/{alert_id}/review")
+def owner_alert_review(request: Request, alert_id: int):
+    return owner_alert_status(request, alert_id, status="reviewed", reason="")
+
+
 @router.post("/portal/owner/alerts/{alert_id}/status")
 def owner_alert_status(
     request: Request,
     alert_id: int,
     status: Annotated[str, Form()],
-    reason: Annotated[str, Form()],
+    reason: Annotated[str, Form()] = "",
 ):
     guard = shared.require_portal_session(request, "owner")
     if guard:
@@ -754,6 +763,8 @@ def owner_alert_status(
     if step_up:
         return step_up
     try:
+        if status not in {"reviewed", "acknowledged", "resolved"}:
+            raise ValueError("Unknown alert action.")
         data.acknowledge_alert(
             alert_id,
             shared.session_account_id(request) or 0,
@@ -771,6 +782,7 @@ def owner_settings_update(
     order_payment_window_minutes: Annotated[int, Form()],
     near_expiry_days: Annotated[int, Form()],
     critical_expiry_days: Annotated[int, Form()],
+    low_stock_packs: Annotated[int, Form()],
     forecast_default_horizon_days: Annotated[int, Form()],
     owner_critical_alerts: Annotated[str, Form()] = "",
     contact_email: Annotated[str, Form()] = "",
@@ -792,6 +804,7 @@ def owner_settings_update(
                 "order.payment_window_minutes": order_payment_window_minutes,
                 "inventory.near_expiry_days": near_expiry_days,
                 "inventory.critical_expiry_days": critical_expiry_days,
+                "inventory.low_stock_packs": low_stock_packs,
                 "forecast.default_horizon_days": forecast_default_horizon_days,
                 "notifications.owner_critical_alerts": owner_critical_alerts,
                 "business.contact_email": contact_email,

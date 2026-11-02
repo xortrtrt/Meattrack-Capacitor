@@ -183,3 +183,58 @@ development target was verified as loopback PostgreSQL on port 55433, app/worker
 writes were paused, 044 was applied through the migration runner, and both local
 services resumed. This records a local upgrade only, not a Contabo deployment.
 See [[Database and Operations]] and [[Testing and Change Impact]].
+
+## Payment review presentation (2026-11-02)
+
+Replacement checkout reuses the ordering receipt dialog with the replacement-scoped
+scan endpoint and token. Upload alone never enables submission: the reseller must
+review and confirm complete payment details. Supervisor/Owner version-2 review
+displays the submitted reference, amount, and Manila date/time as read-only text.
+Verification reads those values from the current stored submission, regardless
+of posted reference/amount, and still requires explicit provider funds confirmation.
+Historical image-only portal submissions require reseller resubmission through receipt review before staff verification. See [[Orders and Inventory]]
+and [[Returns and Financials]]. Sources: `app/repositories/product_returns.py`,
+`app/templates/portals/returns/_payment_review.html`,
+`app/templates/portals/reseller/_replacement_payment.html`, `app/static/js/portal.js`.
+
+## Older-case portal payment review (2026-11-02)
+
+The same receipt review now applies to version-1 portal payments without changing
+those cases' stock-reservation prerequisite. The reseller receipt-scan endpoint
+returns the shared widget's success flag and a replacement-case/file-bound token.
+All portal payment uploads validate the token and confirmed fields, then store
+payment metadata against the current quote revision. Supervisor/Owner portal
+verification requires those stored details and explicit funds confirmation; posted
+staff reference/amount cannot replace them. Historical image-only proof remains
+visible but cannot be verified through the portal until the reseller resubmits.
+Lower-level legacy reconciliation primitives remain for existing integration paths.
+
+The older Supervisor/Owner dialog now puts payment review first and groups request/
+quote, Inventory/approval records, attachments, and activity into collapsed cards.
+See [[Returns and Financials]] and [[Testing and Change Impact]]. Sources:
+`app/portals/product_returns.py`, `app/repositories/product_returns.py`,
+`app/templates/portals/team-leader/returns.html`,
+`app/templates/portals/returns/_payment_review.html`,
+`app/templates/portals/reseller/_return_tracking_dialog.html`.
+
+## Payment queue readiness (2026-11-02)
+
+Payment verification queues require current-revision reseller reference/amount
+metadata and current proof. An image-only historical submission waits on the
+reseller instead of advertising a staff verification action. Version-2 submissions
+can enter payment review before stock reservation; version 1 retains its existing
+reservation prerequisite. SQL queue counts, list filtering, public status, and
+next-action resolution use the same readiness rules. Version-2 progress enrichment
+preserves issue/reconciliation actions and does not request another payment while
+submitted details await verification. Sources: `app/return_experience.py`,
+`app/repositories/replacement_workflow.py`, `tests/test_return_experience.py`,
+`tests/test_return_customer.py`, and `tests/test_replacement_workflow.py`.
+
+Portal funds confirmation also binds to a fingerprint of the reviewed case,
+quote revision, reseller payment metadata, and current-revision proof IDs. The
+repository compares this fingerprint while holding the case lock. A resubmission
+invalidates the open staff form and requires reloading before confirmation. Older
+cases with invalid/expired reservations first wait on Inventory, preserving their
+reservation prerequisite. Sources: `app/repositories/product_returns.py`,
+`app/portals/product_returns.py`, `app/templates/portals/returns/_payment_review.html`,
+`tests/test_replacement_workflow.py`.

@@ -1,0 +1,6 @@
+{% if case.replacement_workflow_version|default(1)==2 %}
+<div class="return-current-actions">
+  {% if role_key in ['reseller','sales-supervisor','owner'] %}<a class="button subtle" href="/portal/{{ role_key }}/{{ 'inbox' if role_key=='reseller' else 'messages' }}?replacement={{ case.return_id }}">Open replacement conversation</a>{% endif %}
+  {% if role_key in ['sales-supervisor','owner'] and case.replacement_released_at and not case.replacement_delivered_at %}<form class="lifecycle-form" method="post" action="{{ action_base }}delivered"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="return_id" value="{{ case.return_id }}"><label>Delivery confirmation<textarea name="remarks" minlength="5" maxlength="1000" required placeholder="Record when and to whom the replacement was delivered"></textarea></label><button class="button" type="submit">Confirm replacement delivered</button></form>{% endif %}
+</div>
+{% endif %}

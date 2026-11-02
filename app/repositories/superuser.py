@@ -18,6 +18,7 @@ from ._shared import clean_row, fetch_all, fetch_one, get_transaction_cursor
 SETTING_DEFAULTS: dict[str, Any] = {
     "order.payment_window_minutes": 15,
     "inventory.near_expiry_days": 14,
+    "inventory.low_stock_packs": 10,
     "inventory.critical_expiry_days": 2,
     "forecast.default_horizon_days": 7,
     "notifications.owner_critical_alerts": True,
@@ -535,6 +536,8 @@ def compensate_inventory(
             batch = cur.fetchone()
             if not batch:
                 raise ValueError("Inventory batch not found.")
+            if batch["removed_at"]:
+                raise ValueError("Removed batches cannot receive stock corrections.")
             cur.execute("SELECT COALESCE(SUM(quantity),0) reserved FROM replacement_stock_reservations WHERE batch_id=%s;", (batch_id,))
             batch_reserved = Decimal(cur.fetchone()["reserved"])
             before = Decimal(batch["quantity_available"])
@@ -649,6 +652,12 @@ def update_business_settings(values: dict[str, object], actor_account_id: int, r
             normalized[key] = int(value)
             if not (14 if key == "inventory.near_expiry_days" else 0) <= normalized[key] <= 90:
                 raise ValueError("Expiry windows must be between 0 and 90 days; near-expiry warnings require at least 14 days.")
+        elif key == "inventory.low_stock_packs":
+            if isinstance(value, bool) or not str(value).strip().isdigit():
+                raise ValueError("Low-stock warning must be a whole number from 0 to 100000 packs.")
+            normalized[key] = int(value)
+            if not 0 <= normalized[key] <= 100000:
+                raise ValueError("Low-stock warning must be between 0 and 100000 packs.")
         elif key == "forecast.default_horizon_days":
             normalized[key] = int(value)
             if not 1 <= normalized[key] <= 365:
@@ -938,30 +947,10 @@ def report_system_status(component: str, status: str, detail: str = "", metadata
 
 
 def acknowledge_alert(alert_id: int, actor_account_id: int, reason: str, resolved: bool = False) -> dict:
-    clean_reason = " ".join(reason.strip().split())
-    if len(clean_reason) < 5 or len(clean_reason) > 500:
-        raise ValueError("Enter a reason using 5 to 500 characters.")
-    with get_transaction_cursor() as cur:
-        cur.execute("SELECT * FROM alerts WHERE alert_id = %s FOR UPDATE;", (alert_id,))
-        alert = cur.fetchone()
-        if not alert:
-            raise ValueError("Alert not found.")
-        before = {"status": alert["status"]}
-        new_status = "resolved" if resolved else "acknowledged"
-        cur.execute("UPDATE alerts SET status = %s WHERE alert_id = %s RETURNING *;", (new_status, alert_id))
-        updated = dict(cur.fetchone())
-        _audit_cursor(
-            cur,
-            actor_account_id=actor_account_id,
-            actor_role="owner",
-            action="resolved_alert" if resolved else "acknowledged_alert",
-            entity_type="alerts",
-            entity_id=alert_id,
-            reason=clean_reason,
-            before_state=before,
-            after_state={"status": new_status},
-        )
-    return clean_row(updated)
+    from .stock_alerts import close_alert, review_alert
+    if resolved:
+        return close_alert(alert_id, actor_account_id, reason)
+    return review_alert(alert_id, actor_account_id)
 
 
 __all__ = [

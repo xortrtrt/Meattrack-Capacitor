@@ -1,4 +1,7 @@
-<div class="owner-page owner-superuser-page">
-  <section class="panel owner-workspace-surface"><div class="panel-heading"><div><span class="eyebrow">Exceptions</span><h2>Inventory alerts</h2></div></div><div class="owner-record-grid">{% for item in alerts %}<article class="owner-record-card"><span class="status-badge {{ item.severity }}">{{ item.severity }} · {{ item.status }}</span><h3>{{ item.subject }}</h3><p>{{ item.message }}</p>{% if item.status != 'resolved' %}<form action="/portal/owner/alerts/{{ item.alert_id }}/status" method="post"><label>Reason<input required minlength="5" maxlength="500" name="reason"></label><div class="owner-inline-actions"><button class="button subtle" name="status" value="acknowledged">Acknowledge</button><button class="button danger" name="status" value="resolved">Resolve</button></div></form>{% endif %}</article>{% else %}<p class="hint">No alerts recorded.</p>{% endfor %}</div></section>
-
-</div>
+{% set stock_alert_owner = true %}
+{% set stock_alert_role = 'owner' %}
+{% if stock_alert_category %}
+<div class="owner-alert-detail">{% include 'portals/_stock_alert_detail.html' %}</div>
+{% else %}
+{% include 'portals/_stock_alerts.html' %}
+{% endif %}

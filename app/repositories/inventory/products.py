@@ -6,7 +6,7 @@ from functools import wraps
 from psycopg2.errors import UniqueViolation
 
 from app import inventory_measurements as measurements
-from app.business_time import business_now, business_today
+from app.business_time import business_today
 from .._shared import (
     _add_log_cursor,
     clean_row,
@@ -22,7 +22,6 @@ from .._shared import (
     recipe_units,
     require_inventory_choice,
 )
-from ..notifications import _create_notification_cursor
 from .movements import _insert_inventory_movement, _inventory_actor_name
 
 
@@ -48,7 +47,11 @@ def create_product_with_recipe(
     pack_size: object = "",
     pack_size_unit: str = "",
     actor_account_id: int | None = None,
+    product_photo: dict | None = None,
 ) -> dict:
+    if product_photo:
+        from app.uploads import validate_product_image
+        validate_product_image(product_photo["content_type"], product_photo["content"])
     product_name = normalize_inventory_name(name, "Product name")
     product_category = require_inventory_choice(category, product_categories, "Category")
     product_unit = "pack"
@@ -102,7 +105,7 @@ def create_product_with_recipe(
             FROM inventory_items
             WHERE item_type = 'raw_material'
               AND is_active = true
-              AND item_id = ANY(%s);
+              AND item_id = ANY(%s) ORDER BY item_id FOR UPDATE;
         """, (material_ids,))
         materials = {row["item_id"]: row for row in cur.fetchall()}
         if len(materials) != len(material_ids):
@@ -126,6 +129,9 @@ def create_product_with_recipe(
             size_unit,
         ))
         product = cur.fetchone()
+        if product_photo:
+            cur.execute("INSERT INTO inventory_product_images(product_item_id,content_type,image_data) VALUES(%s,%s,%s)",
+                        (product["product_id"], product_photo["content_type"], product_photo["content"]))
 
         for material_id, required, required_unit in requirements:
             material = materials[material_id]
@@ -165,6 +171,9 @@ def update_product_pack_content(
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
+        cur.execute("SELECT 1 FROM inventory_package_settings WHERE package_item_id=%s", (product_id,))
+        if cur.fetchone():
+            raise ValueError("This package uses finished-product components. Use package dispatch instead.")
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_product_pack_content", entity_type="inventory_items", entity_id=product_id)
     return clean_row(product)
 
@@ -193,6 +202,7 @@ def produce_product(
         raise ValueError("Expiry date must be after today. Record expired arrivals in Expired Holding.")
 
     with get_transaction_cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f"inventory-product:{product_id}",))
         cur.execute("""
             SELECT item_id AS product_id, name, unit
             FROM inventory_items
@@ -203,6 +213,9 @@ def produce_product(
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
+        cur.execute("SELECT 1 FROM inventory_package_settings WHERE package_item_id=%s", (product_id,))
+        if cur.fetchone():
+            raise ValueError("This package uses finished-product components. Use package dispatch instead.")
 
         cur.execute("SELECT batch_id FROM inventory_batches WHERE batch_code = %s;", (clean_batch_code,))
         if cur.fetchone() is not None:
@@ -290,26 +303,9 @@ def produce_product(
             note=f"Produced batch {clean_batch_code}",
         )
 
-        days = (expiry_date - business_today()).days
-        if days <= near_expiry_days:
-            cur.execute("""
-                INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
-                VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
-            """, (
-                'warning' if days > critical_expiry_days else 'critical',
-                product_id, batch["product_batch_id"],
-                f"{produced_quantity:g} {product['unit']} expires in {days} day(s).",
-                business_now()
-            ))
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="produced_product_batch", entity_type="inventory_batches", entity_id=batch["product_batch_id"])
-        if days <= near_expiry_days:
-            _create_notification_cursor(
-                cur, recipient_role="team-leader", category="inventory",
-                severity="critical" if days <= critical_expiry_days else "warning", title="Batch expiry warning",
-                message=f"{product['name']} batch {clean_batch_code}: {produced_quantity:g} packs expire on {expiry_date} ({days} day(s)).",
-                target_url="/portal/team-leader/inventory", source_type="inventory_batches",
-                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}-{'critical' if days <= critical_expiry_days else 'warning'}",
-            )
+        from ..stock_alerts import receipt_batch_alert
+        receipt_batch_alert(cur, batch["product_batch_id"], near_expiry_days, critical_expiry_days)
     return clean_row(batch)
 
 
@@ -338,6 +334,7 @@ def add_product_batch(
         raise ValueError("Expiry date must be after today. Record expired arrivals in Expired Holding.")
 
     with get_transaction_cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f"inventory-product:{product_id}",))
         cur.execute("""
             SELECT item_id AS product_id, name, unit
             FROM inventory_items
@@ -347,6 +344,9 @@ def add_product_batch(
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
+        cur.execute("SELECT 1 FROM inventory_package_settings WHERE package_item_id=%s", (product_id,))
+        if cur.fetchone():
+            raise ValueError("This package uses finished-product components. Use package dispatch instead.")
         actor_name = _inventory_actor_name(cur, actor_account_id)
         cur.execute("""
             INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
@@ -368,26 +368,9 @@ def add_product_batch(
             note=f"Direct receipt batch {clean_batch_code}",
         )
 
-        days = (expiry_date - business_today()).days
-        if days <= near_expiry_days:
-            cur.execute("""
-                INSERT INTO alerts (alert_type, severity, product_id, product_batch_id, message, status, triggered_at)
-                VALUES ('near_expiry', %s, %s, %s, %s, 'open', %s);
-            """, (
-                'warning' if days > critical_expiry_days else 'critical',
-                product_id, batch["product_batch_id"],
-                f"{clean_quantity:g} {product['unit']} expires in {days} day(s).",
-                business_now(),
-            ))
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="registered_product_batch", entity_type="inventory_batches", entity_id=batch["product_batch_id"])
-        if days <= near_expiry_days:
-            _create_notification_cursor(
-                cur, recipient_role="team-leader", category="inventory",
-                severity="critical" if days <= critical_expiry_days else "warning", title="Batch expiry warning",
-                message=f"{product['name']} batch {clean_batch_code}: {clean_quantity:g} packs expire on {expiry_date} ({days} day(s)).",
-                target_url="/portal/team-leader/inventory", source_type="inventory_batches",
-                source_id=batch["product_batch_id"], dedupe_key=f"batch-expiry-{batch['product_batch_id']}-{'critical' if days <= critical_expiry_days else 'warning'}",
-            )
+        from ..stock_alerts import receipt_batch_alert
+        receipt_batch_alert(cur, batch["product_batch_id"], near_expiry_days, critical_expiry_days)
     return clean_row(batch)
 
 

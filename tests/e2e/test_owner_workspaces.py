@@ -48,8 +48,8 @@ def test_owner_navigation_and_workspace_layouts(width):
                     toolbar = sidebar.locator(":scope > .portal-topbar")
                     assert toolbar.count() == 1
                     before = toolbar.bounding_box()["y"]
-                    sidebar.evaluate("el => el.scrollTop = 120")
-                    assert toolbar.bounding_box()["y"] < before - 50
+                    scrolled = sidebar.evaluate("el => { el.scrollTop = 120; return el.scrollTop; }")
+                    assert toolbar.bounding_box()["y"] == pytest.approx(before - scrolled, abs=2)
                     sidebar.evaluate("el => el.scrollTop = 0")
                 if section == "orders":
                     assert page.locator(".owner-order-card").count() <= 6

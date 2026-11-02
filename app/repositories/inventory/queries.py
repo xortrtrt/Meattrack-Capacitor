@@ -16,7 +16,7 @@ MOVEMENT_CATEGORY_TYPES = {
     "receipts": ("raw_receipt", "direct_finished_receipt"),
     "production": ("production_consumption", "production_output"),
     "sales": ("sale_fulfillment",),
-    "corrections": ("owner_correction",),
+    "corrections": ("owner_correction", "raw_deduction", "stock_dispatch"),
     "returns": ("reseller_return",),
     "reservations": ("order_reserved", "order_released", "order_fulfilled", "order_migration_snapshot", "order_unpaid_hold_released"),
 }
@@ -128,7 +128,7 @@ def inventory_item_filter(category: str) -> tuple[str, str]:
 
 
 def list_inventory_items(q: str = "", category: str = "", page: int | None = None, page_size: int = 10, sort: str = "") -> list[dict]:
-    where = ["ii.item_type IN ('raw_material', 'finished_product')"]
+    where = ["ii.item_type IN ('raw_material', 'finished_product')", "(ii.item_type <> 'raw_material' OR ii.is_active=true)"]
     params: list[object] = []
     q = q.strip()
     item_type, item_category = inventory_item_filter(category)
@@ -174,7 +174,7 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
 
 
 def count_inventory_items(q: str = "", category: str = "") -> int:
-    where = ["ii.item_type IN ('raw_material', 'finished_product')"]
+    where = ["ii.item_type IN ('raw_material', 'finished_product')", "(ii.item_type <> 'raw_material' OR ii.is_active=true)"]
     params: list[object] = []
     q = q.strip()
     item_type, item_category = inventory_item_filter(category)
@@ -197,7 +197,7 @@ def count_inventory_items(q: str = "", category: str = "") -> int:
 
 
 def list_inventory_batches(q: str = "", category: str = "", page: int | None = None, page_size: int = 10, sort: str = "") -> list[dict]:
-    where = ["ii.item_type = 'finished_product'"]
+    where = ["ii.item_type = 'finished_product'", "ib.removed_at IS NULL"]
     params: list[object] = []
     q = q.strip()
     category = category.strip()
@@ -232,7 +232,7 @@ def list_inventory_batches(q: str = "", category: str = "", page: int | None = N
 
 
 def count_inventory_batches(q: str = "", category: str = "") -> int:
-    where = ["ii.item_type = 'finished_product'"]
+    where = ["ii.item_type = 'finished_product'", "ib.removed_at IS NULL"]
     params: list[object] = []
     q = q.strip()
     category = category.strip()

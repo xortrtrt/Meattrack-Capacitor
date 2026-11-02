@@ -32,7 +32,7 @@
     {% for product in products %}
     <article class="owner-product-card">
       <span class="owner-product-image">
-        <img src="{{ product.name|product_image|media_url }}" alt="{{ product.name }}" loading="lazy">
+        <img src="{{ product.name|product_photo_url }}" alt="{{ product.name }}" loading="lazy">
       </span>
       <div class="owner-product-copy">
         <span class="owner-chip">{{ product.category }}</span>

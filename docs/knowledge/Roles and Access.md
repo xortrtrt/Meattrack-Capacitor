@@ -68,3 +68,33 @@ Inventory receives approved goods, prepares cleared replacements, and records
 physical release; Supervisor/Owner records delivery. Existing cases and refund-
 only requests retain their earlier role rules. Sources:
 `app/repositories/replacement_workflow.py`, `app/repositories/replacement_messages.py`.
+
+Inventory's Stock alerts destination uses `inventory.view` and is listed only in
+Inventory navigation. Sales, Supervisor, and Reseller roles do not gain this page.
+It reads shared stock alert episodes without another Owner's personal review state;
+review, closure, and policy-edit endpoints remain Owner-only. Checked 2026-11-01
+against `app/capabilities.py`, `app/portal_config.py`, and
+`tests/test_inventory_alert_workspace.py`. See [[Owner Portal]] and
+[[Orders and Inventory]].
+
+
+Inventory tools (2026-11-01) is an Inventory navigation destination guarded by
+`inventory.view`; writes additionally require `inventory.manage` and an active
+Inventory actor. Stock write repositories also validate the actor. Sales,
+Supervisor, and Reseller do not gain adjustment, package-dispatch, batch-removal,
+or photo-upload permissions. Product images are public catalog media; private
+return/payment media access is unchanged. Sources: `app/capabilities.py`,
+`app/portals/inventory_tools.py`, `app/repositories/inventory/tools.py`.
+See [[Orders and Inventory]].
+
+## Login form CSRF recovery (2026-11-02)
+
+Password, OTP, and Use another account forms render CSRF hidden fields on the
+server; they do not depend on client-side injection. Login responses use
+`Cache-Control: no-store`. Invalid/missing login tokens still reject authentication
+with HTTP 403, but browser requests receive a fresh sign-in form and retry message.
+Explicit JSON requests retain the machine-readable 403. Successful authentication
+still rotates the session. Sources: `app/templates/login.html`,
+`app/routers/auth.py`, `app/application.py`, `app/security_controls.py`,
+`tests/test_login_csrf.py`. The live browser showed a token on the fresh login form;
+38 login/account-action checks passed. See [[Testing and Change Impact]].

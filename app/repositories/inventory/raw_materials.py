@@ -34,7 +34,7 @@ def add_raw_inventory_item(
     with get_transaction_cursor() as cur:
         actor_name = _inventory_actor_name(cur, actor_account_id)
         cur.execute("""
-            SELECT item_id, name, unit
+            SELECT item_id, name, unit, is_active
             FROM inventory_items
             WHERE item_type = 'raw_material'
               AND lower(name) = lower(%s)
@@ -45,6 +45,8 @@ def add_raw_inventory_item(
 
         if matches:
             existing = matches[0]
+            if not existing["is_active"]:
+                raise ValueError("This material was removed. Reactivate it in Inventory tools instead.")
             mismatched = next(
                 (item for item in matches if canonical_inventory_unit(item["unit"]) != canonical_inventory_unit(item_unit)),
                 None,

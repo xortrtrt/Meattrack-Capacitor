@@ -45,7 +45,7 @@ async def replacement_receipt_scan(request: Request, return_id: int):
     actor = shared.session_account_id(request)
     try:
         case = await run_in_threadpool(returns.get_product_return,return_id,actor)
-        if case.get("replacement_workflow_version")!=2 or not case["sales_authorized"] or not case["verified_at"] or case["payment_verified_at"]:
+        if case["resolution"] != "replace" or not case["sales_authorized"] or not case["verified_at"] or case["payment_verified_at"]:
             raise ValueError("Complete receipt and approval are required before payment.")
         form = await request.form()
         attachments = await shared.parse_payment_proof_attachments([u for u in form.getlist("payment_proofs") if getattr(u,"filename","")])
@@ -53,6 +53,7 @@ async def replacement_receipt_scan(request: Request, return_id: int):
             raise ValueError("Choose a payment receipt screenshot.")
         scan = await run_in_threadpool(receipt_ocr.scan_payment_proofs,attachments)
         scan["scan_token"] = receipt_ocr.create_scan_token(actor,attachments,scan,context=f"replacement:{return_id}")
+        scan["ok"] = True
         return JSONResponse(scan,headers={"Cache-Control":"no-store"})
     except ValueError as exc:
         return JSONResponse({"error":str(exc)},status_code=400)
@@ -204,8 +205,14 @@ def returns_context(request: Request) -> dict:
 
 def expired_context(request: Request) -> dict:
     workspace = returns.expired_stock_workspace()
+    batch_id = shared.optional_positive_id(request.query_params.get("batch_id"))
+    focus = returns.expired_pullout_progress(batch_id) if batch_id else None
+    if "batch_id" in request.query_params and not focus:
+        raise HTTPException(404, "Expired batch was not found.")
     return {
         **workspace,
+        "pullout_focus": focus,
+        "pullout_from_alerts": request.query_params.get("from_alerts") == "1",
         "return_holdings": [row for row in workspace["holdings"] if row["source"] == "return"],
         "warehouse_holdings": [row for row in workspace["holdings"] if row["source"] != "return"],
         "operation_key": lambda: str(uuid4()),
@@ -249,7 +256,8 @@ def product_details_context(request: Request) -> dict:
                 for number in range(first_page, min(pagination["total_pages"], first_page + 4) + 1)
             ],
         )
-    return {"lifecycle_product": product}
+    from uuid import uuid4
+    return {"lifecycle_product": product, "new_reference": lambda: str(uuid4())}
 
 
 def _pairs(form, id_name: str, quantity_name: str) -> list[tuple[int, str]]:
@@ -406,21 +414,30 @@ async def return_action(request: Request, role_key: str, action: str):
                 [u for u in form.getlist("payment_proofs") if getattr(u, "filename", "")]
             )
             case = await run_in_threadpool(returns.get_product_return,return_id,actor_id)
-            details = None
-            if case.get("replacement_workflow_version")==2:
-                details = receipt_ocr.confirmed_payment_details(actor_id,attachments,str(form.get("receipt_scan_token","")),
-                    str(form.get("transaction_number","")),str(form.get("payment_date","")),str(form.get("payment_time","")),
-                    str(form.get("payment_amount","")),form.get("payment_details_confirmed")=="yes",context=f"replacement:{return_id}")
-            await run_in_threadpool(returns.record_return_payment, return_id, actor_id, attachments, **({"payment_details":details} if details else {}))
+            details = receipt_ocr.confirmed_payment_details(actor_id,attachments,str(form.get("receipt_scan_token","")),
+                str(form.get("transaction_number","")),str(form.get("payment_date","")),str(form.get("payment_time","")),
+                str(form.get("payment_amount","")),form.get("payment_details_confirmed")=="yes",context=f"replacement:{return_id}")
+            details.update(payment_date=str(form.get("payment_date", "")), payment_time=str(form.get("payment_time", "")))
+            await run_in_threadpool(returns.record_return_payment, return_id, actor_id, attachments, payment_details=details)
         elif action == "verify-payment":
+            case = await run_in_threadpool(returns.get_product_return, return_id, actor_id)
+            submitted = case.get("replacement_payment_details") or {}
+            if not submitted.get("transaction_number") or submitted.get("revision") != case["quote_revision"]:
+                raise ValueError("The reseller must resubmit the receipt with confirmed payment details before verification.")
+            if form.get("funds_received") != "yes":
+                raise ValueError("Confirm receipt of funds in the payment provider before verifying this payment.")
+            review_version = str(form.get("payment_review_version", ""))
+            if not review_version:
+                raise ValueError("Reload the case and review the current receipt before confirming funds.")
             await run_in_threadpool(
                 returns.verify_return_payment,
                 return_id,
                 actor_id,
-                str(form.get("reference", "")),
-                str(form.get("amount", "")),
+                str(submitted.get("transaction_number", "")),
+                str(submitted.get("payment_amount", "")),
                 str(form.get("remarks", "")),
                 funds_received=form.get("funds_received")=="yes",
+                review_version=review_version,
             )
         elif action == "legacy":
             await run_in_threadpool(
@@ -457,6 +474,11 @@ async def expired_action(request: Request, role_key: str, action: str):
         return guard
     form = await request.form()
     actor_id = shared.session_account_id(request)
+    focus_params = {}
+    if action == "pullout" and form.get("from_alerts") == "1":
+        batch_id = shared.optional_positive_id(str(form.get("batch_id", "")))
+        if batch_id:
+            focus_params = {"batch_id": str(batch_id), "from_alerts": "1"}
     try:
         common = {
             "actor_id": actor_id,
@@ -482,9 +504,13 @@ async def expired_action(request: Request, role_key: str, action: str):
                 role_key,
                 "expired-stock",
                 error=str(exc) if isinstance(exc, ValueError) else "This operation has already been recorded.",
+                **focus_params,
             )
         )
-    return shared.redirect_to(shared.safe_portal_path(role_key, "expired-stock", message="Stock custody updated."))
+    return shared.redirect_to(shared.safe_portal_path(
+        role_key, "expired-stock", message="Physical pull-out recorded." if focus_params else "Stock custody updated.",
+        **focus_params,
+    ))
 
 
 @router.get("/portal/return-attachments/{attachment_id}")

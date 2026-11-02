@@ -5,6 +5,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Request
 
+from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
+from app.uploads import parse_product_image
 from app import live_chat
 from app import reseller_messaging
 from app import repositories as data
@@ -226,6 +229,14 @@ def inventory_context(request: Request) -> dict:
     }
 
 
+def alerts_context(request: Request) -> dict:
+    from app.repositories.stock_alerts import stock_alert_workspace
+    category = request.query_params.get("category", "")
+    if category not in {"", "expired", "expiring", "low-stock"}:
+        raise HTTPException(status_code=404)
+    return {**stock_alert_workspace(), "stock_alert_category": category}
+
+
 def batches_context(request: Request) -> dict:
     page = inventory_batches_page(request)
     return {
@@ -326,6 +337,7 @@ SECTION_LOADERS = {
     ("team-leader", "raw-materials"): raw_materials_inventory_context,
     ("team-leader", "finished-products"): finished_products_inventory_context,
     ("team-leader", "batches"): batches_context,
+    ("team-leader", "alerts"): alerts_context,
     ("team-leader", "logs"): logs_context,
     ("team-leader", "live-chat"): live_chat_context,
     ("team-leader", "messages"): reseller_messages_context,
@@ -524,7 +536,9 @@ async def team_product(request: Request):
     quantity_required_units = [value for value in form.getlist("quantity_required_unit[]") if str(value).strip()]
 
     try:
-        data.create_product_with_recipe(
+        upload = form.get("photo")
+        photo = await parse_product_image(upload if isinstance(upload, UploadFile) else None)
+        await run_in_threadpool(data.create_product_with_recipe,
             str(form.get("name", "")),
             str(form.get("category", "")),
             "0",
@@ -534,6 +548,7 @@ async def team_product(request: Request):
             form.get("pack_size", ""),
             str(form.get("pack_size_unit", "")),
             actor_account_id=shared.session_account_id(request),
+            product_photo=photo,
         )
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("team-leader", "inventory", error=str(exc)))

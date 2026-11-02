@@ -859,13 +859,13 @@ def record_return_payment(return_id: int, actor_id: int, attachments: list[dict]
             or case["payment_verified_at"]
         ):
             raise ValueError("This return is not awaiting an additional payment.")
-        if case.get("replacement_workflow_version") == 2:
+        if case.get("replacement_workflow_version") != 2 and not _valid_reservation(cur, case):
+            raise ValueError("Inventory must reserve valid replacement stock before payment.")
+        if payment_details is not None or case.get("replacement_workflow_version") == 2:
             if not payment_details or Decimal(str(payment_details["payment_amount"])) != case["replacement_total"]-case["credit"]:
                 raise ValueError("The receipt amount must equal the comparison's additional payment.")
             import json
             cur.execute("UPDATE product_returns SET replacement_payment_details=%s::jsonb WHERE return_id=%s",(json.dumps({**payment_details,"revision":case["quote_revision"]},default=str),return_id))
-        elif not _valid_reservation(cur, case):
-            raise ValueError("Inventory must reserve valid replacement stock before payment.")
         _attachments(cur, return_id, actor_id, attachments, "payment", case["quote_revision"])
         _event(cur, case, actor_id, "payment_uploaded", "Additional-payment evidence uploaded for sales verification.")
 
@@ -883,19 +883,34 @@ def _valid_reservation(cur, case: dict) -> bool:
     return bool(rows) and all(r["quantity"] == r["reserved"] for r in rows)
 
 
-def verify_return_payment(return_id: int, actor_id: int, reference: str, amount: object, remarks: str, *, funds_received: bool = False) -> None:
+def _payment_review_version(case: dict, attachments: list[dict]) -> str:
+    proof_ids = sorted(a["attachment_id"] for a in attachments
+                       if a["purpose"] == "payment" and a["revision"] == case["quote_revision"])
+    return fingerprint(case["return_id"], case["quote_revision"], case.get("replacement_payment_details"), proof_ids)
+
+
+def verify_return_payment(return_id: int, actor_id: int, reference: str, amount: object, remarks: str, *,
+                          funds_received: bool = False, review_version: str | None = None) -> None:
     from .refunds import _normalize_reference
 
-    _, reference_key = _normalize_reference(reference)
-    try:
-        amount = Decimal(str(amount))
-    except Exception as exc:
-        raise ValueError("Enter the exact additional payment amount.") from exc
-    if not amount.is_finite():
-        raise ValueError("Enter a valid payment amount.")
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"sales", "sales-supervisor"})
+        if case.get("replacement_workflow_version") == 2 or case.get("replacement_payment_details"):
+            submitted = case.get("replacement_payment_details") or {}
+            reference = submitted.get("transaction_number", "")
+            amount = submitted.get("payment_amount", "")
+        _, reference_key = _normalize_reference(reference)
+        try:
+            amount = Decimal(str(amount))
+        except Exception as exc:
+            raise ValueError("Enter the exact additional payment amount.") from exc
+        if not amount.is_finite():
+            raise ValueError("Enter a valid payment amount.")
         require_settlement_authorization(case)
+        if review_version is not None:
+            cur.execute("SELECT attachment_id,purpose,revision FROM return_attachments WHERE return_id=%s", (return_id,))
+            if review_version != _payment_review_version(case, cur.fetchall()):
+                raise ValueError("Payment submission changed. Reload the case and review the current receipt before confirming funds.")
         if case["payment_verified_at"]:
             raise ValueError("Additional payment is already verified.")
         if (
@@ -912,7 +927,7 @@ def verify_return_payment(return_id: int, actor_id: int, reference: str, amount:
         )
         if not cur.fetchone() or (case.get("replacement_workflow_version") != 2 and not _valid_reservation(cur, case)):
             raise ValueError("Current payment proof and valid reserved stock are required.")
-        if case.get("replacement_workflow_version") == 2:
+        if case.get("replacement_workflow_version") == 2 or case.get("replacement_payment_details"):
             if not funds_received:
                 raise ValueError("Confirm receipt of funds in the payment provider before verifying this payment.")
             details = case.get("replacement_payment_details") or {}
@@ -1298,6 +1313,7 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
             (return_id,),
         )
         case["attachments"] = clean_row(cur.fetchall())
+        case["payment_review_version"] = _payment_review_version(case, case["attachments"])
         case["has_reservations"] = _valid_reservation(cur, case)
         if case.get("replacement_workflow_version") == 2:
             from .replacement_workflow import progress
@@ -1428,11 +1444,21 @@ def reseller_return_order(order_id: int, actor_id: int) -> dict | None:
     return clean_row(result)
 
 
+def expired_pullout_progress(batch_id: int) -> dict | None:
+    """Live warehouse/holding balances for an expired batch, including after pull-out."""
+    return clean_row(fetch_one("""SELECT b.batch_id,b.batch_code,b.quantity_available,i.name,
+        COALESCE((SELECT SUM(h.quantity_remaining) FROM expired_holdings h
+                  WHERE h.batch_id=b.batch_id AND h.source='pullout'),0) holding_quantity
+        FROM inventory_batches b JOIN inventory_items i ON i.item_id=b.item_id
+        WHERE b.batch_id=%s AND b.expiry_date<=(now() AT TIME ZONE 'Asia/Manila')::date;""", (batch_id,)))
+
+
 def expired_stock_workspace() -> dict:
     return {
         "pullouts": clean_row(
-            fetch_all("""SELECT p.*,b.item_id,b.batch_code,b.quantity_available,b.expiry_date,i.name
-            FROM expired_pullouts p JOIN inventory_batches b USING(batch_id) JOIN inventory_items i ON i.item_id=b.item_id
+            fetch_all("""SELECT p.*,b.batch_id,b.item_id,b.batch_code,b.quantity_available,b.expiry_date,i.name
+            FROM inventory_batches b JOIN inventory_items i ON i.item_id=b.item_id
+            LEFT JOIN expired_pullouts p USING(batch_id)
             WHERE b.quantity_available>0 AND b.expiry_date<=(now() AT TIME ZONE 'Asia/Manila')::date ORDER BY b.expiry_date,b.batch_id;""")
         ),
         "holdings": clean_row(
