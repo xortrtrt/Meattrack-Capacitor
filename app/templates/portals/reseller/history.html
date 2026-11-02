@@ -1,3 +1,6 @@
+{% if orders_page.filters.view=='returns' and return_case and not return_request_open %}
+{% set case=return_case %}{% set action_base='/portal/reseller/returns/actions/' %}{% include 'portals/reseller/_return_details_page.html' %}
+{% else %}
 <section class="panel reseller-history-panel order-ledger">
   <header class="order-ledger-heading">
     <div><span class="eyebrow">Purchases</span><h2>Order history</h2><p>Track payments, orders, and your return history in one place.</p></div>
@@ -68,13 +71,14 @@
               {% endif %}
             </div>
             <div class="order-followup-actions">
+              <a class="button secondary" href="/portal/reseller/inbox?inquire_order={{ order.order_id }}"><i data-lucide="message-circle" aria-hidden="true"></i>Inquire about this order</a>
               {% include "portals/reseller/_order_cancel_action.html" %}
               {% if order.status=='fulfilled' %}
                 {% if order.order_received_at %}<p class="hint"><i data-lucide="package-check" aria-hidden="true"></i> Order received {{ order.order_received_at|nice_date }}</p>
                 {% else %}<form method="post" action="/portal/reseller/orders/{{ order.order_id }}/received"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="button secondary" type="submit"><i data-lucide="package-check" aria-hidden="true"></i>Order received</button></form>{% endif %}
               {% endif %}
               {% if order.return_case_ids %}<div class="order-return-action"><a class="button order-return-trigger" href="/portal/reseller/history?view=returns&amp;source_order={{ order.order_id }}&amp;case={{ order.return_case_ids[0] }}"><i data-lucide="file-search" aria-hidden="true"></i>Details</a></div>
-              {% elif order.status == "fulfilled" %}<div class="order-return-action">{% if order.request_window_open %}<a class="button order-return-trigger" href="/portal/reseller/history?view=returns&order={{ order.order_id }}"><i data-lucide="undo-2" aria-hidden="true"></i>Return / Refund / Replace</a><p class="hint">Request before {{ order.request_deadline|nice_date }} (Manila time).</p>{% else %}<p class="hint">{{ order.request_window_reason }}</p>{% endif %}</div>{% endif %}
+              {% elif order.status == "fulfilled" %}<div class="order-return-action">{% if order.request_window_open %}<a class="button order-return-trigger" href="/portal/reseller/history?view=returns&order={{ order.order_id }}"><i data-lucide="undo-2" aria-hidden="true"></i>Request return</a><p class="hint">Request before {{ order.request_deadline|nice_date }} (Manila time).</p>{% else %}<p class="hint">{{ order.request_window_reason }}</p>{% endif %}</div>{% endif %}
               {% if order.refunded_amount %}<p class="hint">{{ "Full refund" if order.refunded_amount >= order.total_amount else "Partial refund" }}: {{ order.refunded_amount|currency }}</p>{% endif %}
             </div>
           </aside>
@@ -90,3 +94,4 @@
   </div>
 {% endif %}
 </section>
+{% endif %}

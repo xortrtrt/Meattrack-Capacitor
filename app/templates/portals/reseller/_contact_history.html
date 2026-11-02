@@ -1,0 +1,27 @@
+<section class="reseller-chat-thread" data-contact-stage hidden aria-label="Shared contact conversation">
+  <header class="reseller-chat-context">
+    <button class="reseller-chat-back" type="button" data-contact-back aria-label="Back to conversations"><i data-lucide="arrow-left"></i></button>
+    <span class="internal-person-avatar" data-contact-avatar></span>
+    <div><strong data-contact-name></strong><small>Replacement contact · Shared history</small></div>
+    <details class="inbox-conversation-actions">
+      <summary aria-label="Conversation actions" title="Conversation actions"><i data-lucide="ellipsis" aria-hidden="true"></i></summary>
+      <div class="inbox-actions-menu"><button class="message-delete-button" type="button" data-contact-delete hidden>Delete direct messages</button></div>
+    </details>
+  </header>
+  <details class="inbox-replacement-summary" data-contact-summary><summary>Replacement details</summary><div data-contact-context></div></details>
+  <div class="reseller-chat-messages" data-contact-log role="log" aria-label="Contact messages" aria-live="polite" tabindex="0"></div>
+  <p class="replacement-message-feedback" data-contact-status role="status" hidden></p>
+  <div class="inbox-compose-area">
+  <div class="inbox-context-controls">
+    <label>Replacement<select data-contact-case></select></label>
+    <label>Regarding<select data-contact-regarding><option value="">No order selected</option></select></label>
+  </div>
+  <section class="inbox-order-inquiry-card" data-order-inquiry-card hidden aria-label="Selected order" aria-live="polite"></section>
+  <form class="reseller-chat-composer" data-contact-form>
+    <label class="sr-only" for="contact-message">Message</label>
+    <textarea id="contact-message" rows="1" maxlength="1000" placeholder="Write a message..."></textarea>
+    <button class="button primary" type="submit" aria-label="Send message"><i data-lucide="send"></i></button>
+  </form>
+  <p class="replacement-composer-help">Case evidence and payment actions remain in return details.</p>
+  </div>
+</section>

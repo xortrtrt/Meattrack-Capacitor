@@ -71,10 +71,12 @@ def refunds_context(request: Request) -> dict:
                 "refunds_returns_workspace": True}
     filters = shared.portal_filters(request)
     status = filters["status"] if filters["status"] in data.REFUND_STATUSES else ""
-    total = data.count_order_refunds(role_key, account_id, status=status, q=filters["q"])
+    coverage = {"owner_only": True} if role_key == 'owner' and request.query_params.get('owner_only') == '1' else {}
+    total = data.count_order_refunds(role_key, account_id, status=status, q=filters["q"], **coverage)
     filters["page"] = shared.clamp_page(total, filters["page"], 12)
     items = data.list_order_refunds(
         role_key, account_id, status=status, q=filters["q"], page=filters["page"], page_size=12,
+        **coverage,
     )
     selected = None
     refund_value = request.query_params.get("refund", "")

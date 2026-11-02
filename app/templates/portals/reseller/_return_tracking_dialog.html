@@ -6,7 +6,7 @@
   <div class="return-tracking-content">
 
     {% if error or (message and message != 'Return action recorded.') %}<div class="returns-dialog-notice {{ 'is-error' if error else '' }}" role="{{ 'alert' if error else 'status' }}"><p>{{ error or message }}</p></div>{% endif %}
-    {% include 'portals/returns/_next_step.html' %}
+    {% include 'portals/returns/_workflow_timeline.html' %}
     {% include 'portals/returns/_replacement_actions.html' %}
     {% if case.needs_review %}<div class="order-action-note" role="status"><i data-lucide="info" aria-hidden="true"></i><span><strong>Your return is being reviewed</strong><small>Sales will contact you if any details need clarification.</small></span></div>{% endif %}
     <div class="return-tracking-grid">

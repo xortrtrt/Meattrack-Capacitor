@@ -1,0 +1,3 @@
+{% if dashboard_queue_label|default('') %}
+<p class="hint" role="status">Showing: <strong>{{ dashboard_queue_label }}</strong> · <a href="{{ dashboard_queue_clear_url }}">Clear dashboard filter</a></p>
+{% endif %}

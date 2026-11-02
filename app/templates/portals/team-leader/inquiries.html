@@ -9,6 +9,7 @@
                     <label>Status
                         <select name="status">
                             <option value="">All</option>
+                            <option value="open" {{ 'selected' if inquiries_page.filters.status == 'open' else '' }}>Unresolved</option>
                             <option value="assigned" {{ 'selected' if inquiries_page.filters.status == 'assigned' else '' }}>Assigned</option>
                             <option value="approved" {{ 'selected' if inquiries_page.filters.status == 'approved' else '' }}>Approved</option>
                             <option value="rejected" {{ 'selected' if inquiries_page.filters.status == 'rejected' else '' }}>Rejected</option>

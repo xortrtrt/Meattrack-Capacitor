@@ -2,21 +2,19 @@
 
 from app.database import clean_row, fetch_all, fetch_one
 from .superuser import business_setting
+from .coverage_filters import INQUIRY_COVERAGE, RESELLER_COVERAGE, REFUND_COVERAGE
 
 
 def owner_business_snapshot() -> dict:
-    row = fetch_one("""SELECT
+    row = fetch_one(f"""SELECT
         (SELECT COUNT(*) FROM orders WHERE order_type='reseller' AND status='to_pay') unpaid_orders,
         (SELECT COUNT(*) FROM orders WHERE order_type='reseller' AND status='pending') paid_review,
         (SELECT COUNT(*) FROM orders WHERE order_type='reseller' AND status='approved') ready_fulfillment,
         (SELECT COUNT(*) FROM inquiries WHERE status IN ('pending','assigned','contacted')) open_inquiries,
-        (SELECT COUNT(*) FROM inquiries i LEFT JOIN accounts a ON a.account_id=i.assigned_team_leader_account_id
-          WHERE i.status IN ('pending','assigned','contacted')
-          AND (a.account_id IS NULL OR NOT a.is_active OR a.team_leader_role NOT IN ('sales','sales-supervisor'))) unassigned_inquiries,
+        (SELECT COUNT(*) FROM inquiries i WHERE {INQUIRY_COVERAGE}) unassigned_inquiries,
         (SELECT COUNT(*) FROM resellers WHERE reseller_status='active') active_resellers,
-        (SELECT COUNT(*) FROM resellers r LEFT JOIN accounts a ON a.account_id=r.team_leader_account_id
-          WHERE r.reseller_status='active'
-          AND (a.account_id IS NULL OR NOT a.is_active OR a.team_leader_role NOT IN ('sales','sales-supervisor'))) unassigned_resellers,
+        (SELECT COUNT(*) FROM resellers r WHERE r.reseller_status='active'
+          AND {RESELLER_COVERAGE}) unassigned_resellers,
         (SELECT COUNT(*) FROM product_returns WHERE status='submitted') new_returns,
         (SELECT COUNT(*) FROM product_returns WHERE status='discrepancy') return_mismatches,
         (SELECT COUNT(*) FROM product_returns r LEFT JOIN accounts a ON a.account_id=r.processing_supervisor_account_id
@@ -27,9 +25,7 @@ def owner_business_snapshot() -> dict:
         (SELECT COUNT(*) FROM order_refunds WHERE status='pending') pending_refunds,
         (SELECT COUNT(*) FROM order_refunds WHERE status='processing') processing_refunds,
         (SELECT COUNT(*) FROM order_refunds WHERE status='failed') failed_refunds,
-        (SELECT COUNT(*) FROM order_refunds f LEFT JOIN accounts a ON a.account_id=f.assigned_supervisor_account_id
-          WHERE f.status IN ('pending','processing','failed') AND
-          (a.account_id IS NULL OR NOT a.is_active OR a.team_leader_role IS DISTINCT FROM 'sales-supervisor')) owner_refunds,
+        (SELECT COUNT(*) FROM order_refunds r WHERE {REFUND_COVERAGE}) owner_refunds,
         (SELECT COUNT(*) FROM alerts WHERE status IN ('open','acknowledged')) open_alerts,
         (SELECT COUNT(*) FROM accounts WHERE activation_status='pending' AND is_active) pending_activations
     """)

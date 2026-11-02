@@ -1,0 +1,33 @@
+{% macro queue_rows(rows, portal) %}
+<nav class="dash-queues" aria-label="Work queues">
+  {% for item in rows %}
+  <a class="dash-queue {{ 'has-work' if item.count else '' }} {{ 'is-urgent' if item.urgent|default(false) and item.count else '' }} {{ 'is-waiting' if item.waiting|default(false) else '' }}" href="/portal/{{ portal }}/{{ item.path }}" data-dashboard-queue data-count="{{ item.count }}">
+    <span class="dash-queue-icon"><i data-lucide="{{ item.icon }}" aria-hidden="true"></i></span>
+    <span class="dash-queue-copy"><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
+    <b>{{ item.count|number }}</b><i data-lucide="chevron-right" aria-hidden="true"></i>
+  </a>
+  {% endfor %}
+</nav>
+{% endmacro %}
+
+{% macro summary_card(label, value, icon, path, detail='', tone='') %}
+<a class="ops-kpi {{ tone }}" href="{{ path }}">
+  <span class="ops-icon"><i data-lucide="{{ icon }}" aria-hidden="true"></i></span>
+  <span><strong>{{ value|number }}</strong><span>{{ label }}</span><small>{{ detail }}</small></span>
+  <i data-lucide="chevron-right" class="ops-kpi-arrow" aria-hidden="true"></i>
+</a>
+{% endmacro %}
+
+{% macro recent_orders(rows, portal, customer=false) %}
+<div class="dash-order-list">
+  {% for order in rows %}
+  {% set shown_status='refunded' if order.refund_status|default('')=='completed' and order.refunded_amount|default(0)>=order.total_amount else 'completed' if customer and order.status=='fulfilled' else order.status %}
+  <a class="dash-order" href="/portal/{{ portal }}/{{ 'history?view=all&' if customer else 'orders?' }}q={{ order.order_id }}&order={{ order.order_id }}#order-{{ order.order_id }}">
+    <span class="dash-order-icon"><i data-lucide="package" aria-hidden="true"></i></span>
+    <span class="dash-order-copy"><strong>Order #{{ order.order_id }}</strong><small>{{ order.order_date|nice_date }}{% if not customer %} · {{ order.reseller }}{% endif %}</small></span>
+    <span class="status-badge {{ shown_status }}">{{ 'To pay' if shown_status=='to_pay' else shown_status|replace('_',' ')|capitalize }}</span>
+    <strong class="dash-order-amount">{{ order.total_amount|currency }}</strong><i data-lucide="chevron-right" aria-hidden="true"></i>
+  </a>
+  {% else %}<p class="dash-empty">{{ 'Your orders will appear here after you add products and check out.' if customer else 'No assigned paid orders yet.' }}</p>{% endfor %}
+</div>
+{% endmacro %}

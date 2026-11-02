@@ -40,7 +40,7 @@ def test_non_expired_fulfilled_products_offer_both_choices_and_remain_subject_to
         assert 'type="radio" name="resolution" value="refund"' in response.text
         assert 'type="radio" name="resolution" value="replace"' in response.text
         assert 'aria-label="Return quantity for Test Product batch TEST-1"' in response.text
-        assert "Replacement requests go directly to Supervisor/Owner review." in response.text
+        assert "Choose products for Supervisor review." in response.text
     request_options = {}
     reviewer = d["sales"]
     if resolution == "replace":
@@ -115,7 +115,7 @@ def test_collection_breakdown_explains_small_payment_without_rewriting_order_val
         response = client.get(f"/portal/reseller/returns?order={order}")
         assert 'action="/portal/reseller/returns/actions/submit"' in response.text
         assert "PHP 370.00" not in response.text and "recorded payment is" not in response.text
-        assert "Replacement requests go directly to Supervisor/Owner review." in response.text
+        assert "Choose products for Supervisor review." in response.text
     assert fetch_one("SELECT payment_amount FROM orders WHERE order_id=%s", (order,))["payment_amount"] == 50
 
 

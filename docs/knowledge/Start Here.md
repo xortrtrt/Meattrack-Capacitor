@@ -20,6 +20,7 @@ revision `5291e25` on 2026-10-28. It is not a production health or deployment re
 | System and process diagrams | [[System Diagrams]]                | Mermaid IPO, architecture levels, module flows and ERDs |
 | Roles or permissions   | [[Roles and Access]]                 | Ownership, capabilities, evidence access               |
 | Owner workspace        | [[Owner Portal]]                     | Overview, contextual navigation, work queues, handover |
+| Portal dashboards      | [[Role Dashboards]]                  | Role priorities, counter definitions, linked queues    |
 | Ordering or stock      | [[Orders and Inventory]]             | Production, FEFO, expiry, transactions                 |
 | Returns or money       | [[Returns and Financials]]           | Custody, Sales confirmation, refunds, report snapshots |
 | Replacement requests   | [[Replacement Workflow]]            | Product choice, Supervisor conversation, top-up, FEFO, delivery |

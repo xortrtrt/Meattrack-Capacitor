@@ -1182,8 +1182,9 @@ def sync_expired_custody(cur) -> None:
 
 
 def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reconciliation_only: bool = False,
-                         queue: str | None = None, order_id: int | None = None, owner_only: bool = False) -> list[dict]:
-    from app.return_experience import QUEUE_SQL, PAYMENT_PROOF_SQL, FOLLOWUP_SQL, VALID_RESERVATION_SQL, experience, normalize_queue
+                         queue: str | None = None, order_id: int | None = None, owner_only: bool = False,
+                         dashboard_queue: str = "") -> list[dict]:
+    from app.return_experience import PAYMENT_PROOF_SQL, FOLLOWUP_SQL, VALID_RESERVATION_SQL, experience, normalize_queue
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"reseller", "sales", "sales-supervisor", "inventory"})
         scope, params = "", []
@@ -1195,26 +1196,26 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
                     SELECT 1 FROM return_customer_followups f WHERE f.return_id=r.return_id AND f.status='open'))
                 AND NOT EXISTS(SELECT 1 FROM accounts p WHERE p.account_id=r.processing_supervisor_account_id
                     AND p.is_active AND p.team_leader_role='sales-supervisor')"""
-        if role == "reseller":
-            scope, params = " AND o.created_by_account_id=%s", [actor_id]
-        elif role == "sales-supervisor":
-            scope, params = (
-                " AND (o.team_leader_account_id=%s OR r.processing_supervisor_account_id=%s OR EXISTS(SELECT 1 FROM order_refunds f WHERE f.return_id=r.return_id AND f.assigned_supervisor_account_id=%s))",
-                [actor_id, actor_id, actor_id],
-            )
-        elif role == "sales":
-            scope, params = " AND o.team_leader_account_id=%s", [actor_id]
+        from .dashboard_queues import dashboard_predicate, return_scope, review_predicate
+        role_scope, role_params = return_scope(role, actor_id)
+        scope += role_scope
+        params += role_params
+        if dashboard_queue:
+            predicate, bound = dashboard_predicate(role, dashboard_queue, actor_id)
+            scope += " AND " + predicate
+            params += bound
         if order_id:
             scope += " AND r.order_id=%s"
             params.append(order_id)
-        if role == "sales":
-            from app.return_experience import assigned_leader_queue_sql
-            QUEUE_SQL = assigned_leader_queue_sql()
         if queue is not None and role != "inventory":
-            scope += f" AND ({QUEUE_SQL})=%s" if normalize_queue(queue) != "all" else ""
             if normalize_queue(queue) != "all":
-                params.append(normalize_queue(queue))
-        if status:
+                predicate, bound = review_predicate(role, normalize_queue(queue), actor_id)
+                scope += " AND " + predicate
+                params += bound
+        if status == 'open' and role == 'sales-supervisor':
+            from .dashboard_queues import OPEN_RETURNS
+            scope += ' AND ' + OPEN_RETURNS
+        elif status:
             stage_sql = INVENTORY_STATUS_SQL if role == "inventory" else SALES_STAGE_SQL if role != "reseller" else "r.status"
             scope += f" AND ({stage_sql})=%s"
             params.append(status)
@@ -1267,23 +1268,14 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
 
 
 def return_queue_counts(actor_id: int) -> dict:
-    from app.return_experience import QUEUE_SQL
+    from .portal_dashboard import return_dashboard_counts
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"sales", "sales-supervisor"})
-        if role == "sales":
-            from app.return_experience import assigned_leader_queue_sql
-            QUEUE_SQL = assigned_leader_queue_sql()
-        scope = "" if role == "owner" else " AND o.team_leader_account_id=%s"
-        params = (actor_id,) if scope else None
-        if role == "sales-supervisor":
-            scope = " AND (o.team_leader_account_id=%s OR r.processing_supervisor_account_id=%s)"
-            params = (actor_id,actor_id)
-        cur.execute(f"""SELECT {QUEUE_SQL} queue,COUNT(*) total FROM product_returns r
-            JOIN orders o USING(order_id) JOIN product_return_review_reconciliation checks USING(return_id)
-            WHERE true {scope} GROUP BY 1""", params)
-        counts = {row["queue"]: row["total"] for row in cur.fetchall()}
-        counts["all"] = sum(counts.values())
-        return counts
+    counts = return_dashboard_counts(actor_id, role, ('needs_review', 'mismatch', 'payment', 'waiting', 'completed'))
+    from .dashboard_queues import RETURN_FROM, return_scope
+    scope, params = return_scope(role, actor_id)
+    counts['all'] = int(fetch_one("SELECT COUNT(*) total" + RETURN_FROM + " WHERE true" + scope, tuple(params))["total"])
+    return counts
 
 
 def get_product_return(return_id: int, actor_id: int) -> dict:
@@ -1388,11 +1380,17 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
                 case["inventory_can_reserve"] = bool(case["inventory_can_reserve"] and
                     (case["replacement_total"]<=case["credit"] or case["payment_verified_at"]))
                 case["inventory_can_release"] = bool(case["inventory_can_release"] and case.get("replacement_prepared_at"))
-            return clean_row(inventory_return_view(case))
+            from app.return_timeline import workflow_steps
+            inventory_view = inventory_return_view(case)
+            inventory_view["workflow_steps"] = workflow_steps(
+                {**case, "reconciliation_flags": inventory_view["reconciliation_flags"]}, inventory_only=True)
+            return clean_row(inventory_view)
         from .return_customer import enrich_case
         enrich_case(cur, case)
         from .replacement_workflow import enrich_progress
         enrich_progress(case)
+        from app.return_timeline import workflow_steps
+        case["workflow_steps"] = workflow_steps(case)
         if role == "reseller":
             return clean_row(reseller_return_view(case))
         if role == "sales" and case.get("handed_off_at"):

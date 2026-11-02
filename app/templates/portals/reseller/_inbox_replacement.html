@@ -1,0 +1,30 @@
+    <section class="sales-message-stage replacement-message-stage" data-inbox-replacement-stage aria-label="Replacement #{{ replacement_chat.return_id }}">
+      <header class="sales-message-thread-head replacement-thread-head">
+        <button class="replacement-list-back" type="button" data-replacement-list-toggle aria-controls="inbox-replacement-list" aria-expanded="false" aria-label="Back to conversations"><i data-lucide="arrow-left" aria-hidden="true"></i></button>
+        {{ participant_avatar(replacement_chat) }}
+        <div class="replacement-participant"><h3>{{ replacement_chat.processor_name }}</h3><small>{{ 'Assigned Supervisor' if role_key == 'reseller' else 'Reseller' }} · Replacement #{{ replacement_chat.return_id }}</small></div>
+      </header>
+      <div class="replacement-case-context">
+        <span><i data-lucide="package-open" aria-hidden="true"></i>Order #{{ replacement_chat.order_id }}<span class="replacement-case-status">{{ replacement_chat.status|replace('_',' ')|title }}</span></span>
+        <a href="/portal/{{ role_key }}/{{ 'history?view=returns&' if role_key == 'reseller' else 'returns?' }}case={{ replacement_chat.return_id }}">Open return details<i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+      </div>
+      {% if inbox_replacement_case|default(none) %}
+      <details class="inbox-replacement-summary" open>
+        <summary>Replacement #{{ replacement_chat.return_id }} <span>Price comparison</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+        <dl>
+          <div><dt>Return credit</dt><dd>{{ inbox_replacement_case.credit|currency }}</dd></div>
+          <div><dt>Replacement value</dt><dd>{{ inbox_replacement_case.replacement_total|currency }}</dd></div>
+          <div><dt>Additional payment</dt><dd>{{ inbox_replacement_case.additional_due|currency }}</dd></div>
+          <div><dt>Difference refund</dt><dd>{{ inbox_replacement_case.unused_credit|currency }}</dd></div>
+        </dl>
+      </details>
+      {% endif %}
+      <div class="reseller-chat-messages sales-message-feed replacement-message-log" data-replacement-message-log role="log" aria-label="Replacement messages" aria-live="polite" aria-relevant="additions" aria-busy="true" tabindex="0"><p class="replacement-message-empty" data-replacement-message-loading>Loading messages…</p></div>
+      <div class="replacement-message-feedback" hidden><p data-replacement-message-error role="status"></p><button type="button" data-replacement-retry hidden>Retry loading</button></div>
+      <form class="reseller-chat-composer" data-replacement-message-form>
+        <label class="sr-only" for="replacement-message">Message</label>
+        <textarea id="replacement-message" name="content" required minlength="1" maxlength="1000" rows="1" placeholder="Write a message…" aria-describedby="replacement-composer-help"></textarea>
+        <button class="button primary" type="submit"><span class="sr-only">Send message</span><i data-lucide="send" aria-hidden="true"></i></button>
+      </form>
+      <p class="replacement-composer-help" id="replacement-composer-help">Photos and payment evidence are in return details.<span>Enter to send · Shift + Enter for a new line</span></p>
+    </section>

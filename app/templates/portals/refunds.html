@@ -1,4 +1,6 @@
 <section class="refund-workspace refund-theme-business" data-refund-workspace>
+  {% set owner_coverage=role_key=='owner' and request.query_params.get('owner_only')=='1' %}
+  {% if owner_coverage %}<p class="hint" role="status">Showing refunds without an active Supervisor. <a href="{{ request.url.remove_query_params(['owner_only','page','refund']) }}">Clear coverage filter</a></p>{% endif %}
   {% if not refund_read_only %}
   <header class="refund-hero">
     <div>
@@ -13,7 +15,7 @@
 
   <div class="refund-status-strip" aria-label="Refund totals">
     {% for status in refund_statuses %}
-    <a href="?status={{ status }}" class="refund-status-summary {{ status }} {{ 'is-active' if refunds_page.filters.status == status else '' }}">
+    <a href="?{% if owner_coverage %}owner_only=1&{% endif %}status={{ status }}" class="refund-status-summary {{ status }} {{ 'is-active' if refunds_page.filters.status == status else '' }}">
       <span>{{ {'pending':'Refund pending','processing':'Processing refund','completed':'Refund completed','failed':'Refund failed'}[status] }}</span>
       <strong>{{ refund_counts[status] }}</strong>
     </a>
@@ -24,6 +26,7 @@
   <div class="refund-layout">
     <aside class="refund-case-browser" aria-label="Refund cases">
       <form class="refund-filters" method="get">
+        {% if owner_coverage %}<input type="hidden" name="owner_only" value="1">{% endif %}
         <label><span class="sr-only">Search refunds</span><i data-lucide="search"></i><input name="q" value="{{ refunds_page.filters.q }}" placeholder="Order or reseller"></label>
         <select name="status" aria-label="Refund status">
           <option value="">All status</option>
@@ -49,9 +52,9 @@
       </div>
       {% if refunds_page.pagination.total_pages > 1 %}
       <nav class="pagination" aria-label="Refund pages">
-        {% if refunds_page.pagination.has_prev %}<a href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&page={{ refunds_page.pagination.page - 1 }}">Previous</a>{% endif %}
+        {% if refunds_page.pagination.has_prev %}<a href="{{ request.url.include_query_params(page=refunds_page.pagination.page-1) }}">Previous</a>{% endif %}
         <span>Page {{ refunds_page.pagination.page }} of {{ refunds_page.pagination.total_pages }}</span>
-        {% if refunds_page.pagination.has_next %}<a href="?q={{ refunds_page.filters.q|urlencode }}&status={{ refunds_page.filters.status }}&page={{ refunds_page.pagination.page + 1 }}">Next</a>{% endif %}
+        {% if refunds_page.pagination.has_next %}<a href="{{ request.url.include_query_params(page=refunds_page.pagination.page+1) }}">Next</a>{% endif %}
       </nav>
       {% endif %}
     </aside>

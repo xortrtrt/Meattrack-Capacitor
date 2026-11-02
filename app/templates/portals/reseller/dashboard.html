@@ -1,66 +1,14 @@
-<section class="metric-grid">
-  <article class="metric-card">
-    <span>Pending orders</span>
-    <strong>{{ metrics.pending_reseller_orders }}</strong>
-    <small>Awaiting team leader review</small>
-  </article>
-  <article class="metric-card">
-    <span>Assigned team leader</span>
-    <strong
-      >{{ reseller_profile.team_leader_name if reseller_profile and
-      reseller_profile.team_leader_name else "Unassigned" }}</strong
-    >
-    <small
-      >{{ reseller_profile.team_leader_email if reseller_profile and
-      reseller_profile.team_leader_email else "Contact owner before submitting
-      orders" }}</small
-    >
-  </article>
-</section>
-<section class="content-grid">
-  <article class="panel">
-    <div class="panel-heading">
-      <h2>Most bought products</h2>
-      <a href="/portal/reseller/order">Order products</a>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Category</th>
-            <th>Total qty</th>
-            <th>Orders</th>
-            <th>Total amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for product in most_bought_products %}
-          <tr>
-            <td>
-              <strong>{{ product.name }}</strong><br />
-              <span class="hint"
-                >{{ product.base_price|currency }}/{{ product.unit }}</span
-              >
-            </td>
-            <td>{{ product.category }}</td>
-            <td>{{ product.total_quantity|number }} {{ product.unit }}</td>
-            <td>{{ product.order_count|number }}</td>
-            <td>{{ product.total_amount|currency }}</td>
-          </tr>
-          {% else %}
-          <tr>
-            <td>
-              <span class="hint">No reseller purchases yet.</span>
-            </td>
-            <td></td>
-            <td></td>
-            <td></td>
-            <td></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </article>
-</section>
+{% from 'portals/_dashboard_components.html' import queue_rows, recent_orders %}
+{% set summary=dashboard|default({'queue':[],'recent_orders':[],'actions':[]}) %}
+<div class="role-dashboard dash-reseller">
+  <header class="dash-heading"><div><span class="dash-kicker">Reseller workspace</span><h2>Your store at a glance</h2><p>Your purchases, next steps, and Sales contact.</p></div><a class="button primary" href="/portal/reseller/order"><i data-lucide="shopping-basket" aria-hidden="true"></i>Browse products</a></header>
+  <section class="dash-panel" aria-labelledby="purchase-next-title"><header class="dash-panel-head"><div><span class="dash-kicker">Current orders and requests</span><h3 id="purchase-next-title">Your next steps</h3></div><a href="/portal/reseller/history">Order history <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></header>{{ queue_rows(summary.queue,'reseller') }}
+  {% if summary.actions %}<div class="dash-action-preview">{% for item in summary.actions %}<a href="/portal/reseller/history?view=returns&case={{ item.return_id }}"><span><strong>{{ item.next_step }}</strong><small>Return #{{ item.return_id }} · Order #{{ item.order_id }}</small></span><i data-lucide="arrow-right" aria-hidden="true"></i></a>{% endfor %}</div>{% endif %}</section>
+  <div class="dash-secondary-grid">
+    <section class="dash-panel" aria-labelledby="recent-purchases-title"><header class="dash-panel-head"><div><span class="dash-kicker">Latest five purchases</span><h3 id="recent-purchases-title">Recent orders</h3></div><a href="/portal/reseller/history">All orders <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></header>{{ recent_orders(summary.recent_orders,'reseller',true) }}</section>
+    <section class="dash-panel dash-contact" aria-labelledby="sales-contact-title"><header class="dash-panel-head"><div><span class="dash-kicker">Here to help</span><h3 id="sales-contact-title">Your Sales contact</h3></div></header><div class="dash-contact-body"><span class="dash-person"><i data-lucide="user-round" aria-hidden="true"></i></span><div><strong>{{ reseller_profile.team_leader_name if reseller_profile and reseller_profile.team_leader_name else 'No Sales Leader assigned' }}</strong><p>{{ reseller_profile.team_leader_email if reseller_profile and reseller_profile.team_leader_email else 'Contact the owner to arrange your Sales assignment.' }}</p></div></div>{% if reseller_profile and reseller_profile.team_leader_name %}<a class="button secondary dash-contact-action" href="/portal/reseller/inbox"><i data-lucide="message-circle" aria-hidden="true"></i>Message leader</a>{% else %}<a class="button secondary dash-contact-action" href="/portal/reseller/profile">View account details</a>{% endif %}</section>
+  </div>
+  <section class="dash-panel" aria-labelledby="ordered-products-title"><header class="dash-panel-head"><div><span class="dash-kicker">Fulfilled purchases · all time</span><h3 id="ordered-products-title">Your most-ordered products</h3></div><a href="/portal/reseller/order">View catalog <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></header><div class="dash-products">
+  {% for product in most_bought_products %}<a class="dash-product" href="{{ '/portal/reseller/order?q=' if product.is_active|default(true) else '/portal/reseller/history?view=all&q=' }}{{ product.name|urlencode }}"><img src="{{ product.name|product_photo_url }}" alt="{{ product.name }}" loading="lazy" /><div><span class="dash-kicker">{{ product.category }}</span><h4>{{ product.name }}</h4><p>{{ product.total_quantity|number }} {{ 'packs' if product.unit=='pack' and product.total_quantity!=1 else product.unit }} across {{ product.order_count|number }} order{{ '' if product.order_count==1 else 's' }}</p><strong>{{ product.total_amount|currency }} <small>purchase total</small></strong><small class="dash-current-price">Current catalog price: {{ product.base_price|currency }} / {{ product.unit }}</small><span class="dash-product-link">{{ 'View product' if product.is_active|default(true) else 'View purchase history' }} <i data-lucide="arrow-up-right" aria-hidden="true"></i></span></div></a>{% else %}<p class="dash-empty">Products from your fulfilled purchases will appear here. Browse the catalog to start an order.</p>{% endfor %}
+  </div></section>
+</div>

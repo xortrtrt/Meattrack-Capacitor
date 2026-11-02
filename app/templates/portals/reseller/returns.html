@@ -1,6 +1,7 @@
 {% set action_base='/portal/reseller/returns/actions/' %}
 <section class="panel lifecycle-workspace lifecycle-returns-page reseller-returns-page reseller-return-ledger">
   <div class="order-ledger-results" aria-label="Your return requests">
+    {% include 'portals/returns/_dashboard_filter.html' %}
     <h3 class="sr-only" tabindex="-1" data-return-list-heading>Your return requests</h3>
     {% if return_cases %}
     <div class="order-card-list">
@@ -23,14 +24,14 @@
           <aside class="order-card-actions" aria-label="Return progress and actions">
             <header><span class="eyebrow">Return progress</span><div class="order-card-action-status"><span class="status-badge lifecycle-status" data-state="{{ case.status }}">{{ case.customer_status_label }}</span></div></header>
             <div class="order-action-note"><i data-lucide="undo-2" aria-hidden="true"></i><span><strong>Track your return</strong><small>{{ case.experience.reseller.title if case.experience else 'View returned items, updates, and any refund or replacement details.' }}</small></span></div>
-            <div class="order-followup-actions"><a class="button order-return-trigger" href="{{ request.url.remove_query_params(['order','request','case','message','error']).include_query_params(view='returns',case=case.return_id) }}" data-return-open="{{ case.return_id }}" aria-haspopup="dialog"><i data-lucide="arrow-up-right" aria-hidden="true"></i>Track return</a></div>
+            <div class="order-followup-actions"><a class="button order-return-trigger" href="{{ request.url.remove_query_params(['order','request','case','message','error','tab']).include_query_params(view='returns',case=case.return_id) }}" data-return-open="{{ case.return_id }}"><i data-lucide="arrow-up-right" aria-hidden="true"></i>Track return</a></div>
           </aside>
         </div>
       </details>
       {% endfor %}
     </div>
     {% else %}
-    <div class="history-empty-state"><span><i data-lucide="undo-2" aria-hidden="true"></i></span><strong>{{ 'No return requests match this status.' if request.query_params.get('status') else 'No return requests yet.' }}</strong><small>{{ 'Open My Returns again to see all requests.' if request.query_params.get('status') else 'To request a return, open an eligible order in the Fulfilled tab.' }}</small></div>
+    <div class="history-empty-state"><span><i data-lucide="undo-2" aria-hidden="true"></i></span><strong>{{ 'No return requests match this status.' if request.query_params.get('status') else 'No return requests yet.' }}</strong><small>{{ 'Open My Returns again to see all requests.' if request.query_params.get('status') else 'To request a return, open an eligible order in the Completed tab.' }}</small></div>
     {% endif %}
     {% if return_cases_page.pagination.total_pages>1 %}<nav class="pagination order-ledger-pagination" aria-label="Your return request pages">{% if return_cases_page.pagination.has_prev %}<a href="{{ request.url.include_query_params(page=return_cases_page.pagination.page-1) }}"><i data-lucide="chevron-left" aria-hidden="true"></i>Previous</a>{% endif %}<span>Page {{ return_cases_page.pagination.page }} of {{ return_cases_page.pagination.total_pages }}</span>{% if return_cases_page.pagination.has_next %}<a href="{{ request.url.include_query_params(page=return_cases_page.pagination.page+1) }}">Next<i data-lucide="chevron-right" aria-hidden="true"></i></a>{% endif %}</nav>{% endif %}
   </div>

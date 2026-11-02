@@ -80,7 +80,7 @@ def inventory_return_view(case: dict) -> dict:
         approved_by_account_id verified_at verified_by_account_id verified_by_name verification_remarks
         replacement_released_at replacement_workflow_version replacement_prepared_at quote_revision accepted_revision has_reservations reseller_name
         team_leader_account_id created_at updated_at list_total list_page requested_quantity received_quantity
-        inventory_can_reserve inventory_can_release inventory_can_confirm_receipt sales_authorized receipt_confirmed receipt_review_version""")
+        inventory_can_reserve inventory_can_release inventory_can_confirm_receipt sales_authorized receipt_confirmed receipt_review_version workflow_steps""")
     result["status"] = case["inventory_status"]
     for key, fields in {
         "lines": "return_line_id allocation_id batch_id product_id name batch_code expiry_date quantity received_quantity",
@@ -111,7 +111,7 @@ def reseller_return_view(case: dict) -> dict:
         replacement_workflow_version replacement_progress replacement_prepared_at replacement_delivered_at
         created_at completed_at updated_at has_reservations list_total list_page requested_quantity received_quantity
         additional_due unused_credit sales_authorized experience replacement_received_at has_open_followup
-        has_payment_proof offer_snapshot offer_changes previous_offer""")
+        has_payment_proof offer_snapshot offer_changes previous_offer workflow_steps""")
     result["followups"] = [_pick(row, "followup_id message status resolution_message created_at resolved_at messages") for row in case.get("followups", [])]
     status = case["status"]
     if status == "completed":

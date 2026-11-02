@@ -13,6 +13,7 @@ from app import receipt_ocr
 from app.business_time import business_today, business_now
 from app.portals import shared
 from app.repositories.product_returns import return_request_window
+from app.repositories.portal_dashboard import reseller_dashboard_summary
 
 
 router = APIRouter()
@@ -126,6 +127,8 @@ def dashboard_context(request: Request) -> dict:
         row["bar_percent"] = 0 if max_sales <= 0 else max(6, round((row["total_sales"] / max_sales) * 100, 2))
 
     return {
+        "dashboard": reseller_dashboard_summary(account_id),
+        "dashboard_date": business_today(),
         "metrics": data.current_metrics(reseller_account_id=account_id),
         "reseller_profile": reseller_profile,
         "most_bought_products": data.reseller_most_bought_products(limit=3, account_id=account_id),
@@ -259,6 +262,14 @@ def _group_order_system_messages(
 
 def inbox_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
+    inbox_replacement_case = None
+    replacement_id = shared.optional_positive_id(request.query_params.get("replacement"))
+    if replacement_id:
+        from app.repositories.product_returns import get_product_return
+        try:
+            inbox_replacement_case = get_product_return(replacement_id, account_id)
+        except ValueError as exc:
+            raise HTTPException(404) from exc
     return_contact = None
     return_id = shared.optional_positive_id(request.query_params.get("return_id"))
     if return_id:
@@ -296,6 +307,7 @@ def inbox_context(request: Request) -> dict:
         else:
             open_system_message_id = None
     return {
+        "inbox_replacement_case": inbox_replacement_case,
         "return_contact": return_contact,
         "return_report_issue": bool(return_contact and return_contact.get("replacement_released_at") and request.query_params.get("report_issue") == "1"),
         "system_messages": system_messages,

@@ -137,16 +137,16 @@ def test_replacement_messenger_layout_switching_retry_and_role_views(lifecycle, 
 
         as_role("reseller")
         page.goto(f"http://conversation.test/portal/reseller/inbox?replacement={case}", wait_until="networkidle")
-        expect(page.locator(".replacement-participant h3")).to_have_text("Supervisor")
-        expect(page.get_by_role("log")).to_contain_text("Please keep the packs separate.")
-        expect(page.locator(".replacement-thread-head img")).to_be_visible()
-        expect(page.get_by_role("link", name="Open return details")).to_have_attribute("href", f"/portal/reseller/history?view=returns&case={case}")
+        expect(page.locator("[data-contact-name]")).to_have_text("Supervisor")
+        log = page.locator("[data-contact-log]")
+        expect(log).to_contain_text("Please keep the packs separate.")
+        expect(log).to_contain_text("Separate replacement conversation")
+        expect(page.locator("[data-contact-avatar] img")).to_be_visible()
         page.screenshot(path=str(output / f"reseller-{width}.png"), full_page=True)
-        # Long unbroken text and literal markup remain wrapped, plain message text.
         long_text = "<script>literal text</script> " + "x" * 900
         messages.send(case, d["supervisor"], long_text, str(uuid4()))
-        expect(page.get_by_role("log")).to_contain_text(long_text, timeout=10000)
-        assert page.get_by_role("log").evaluate("el => el.scrollWidth <= el.clientWidth")
+        expect(log).to_contain_text(long_text, timeout=10000)
+        assert log.evaluate("el => el.scrollWidth <= el.clientWidth")
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
         as_role("owner")
@@ -161,7 +161,7 @@ def test_replacement_messenger_layout_switching_retry_and_role_views(lifecycle, 
         )
         as_role("reseller")
         page.goto(f"http://conversation.test/portal/reseller/inbox?replacement={other}", wait_until="networkidle")
-        expect(page.locator("[data-replacement-message-error]")).to_have_text("This declined request is read-only.")
-        expect(page.get_by_label("Message", exact=True)).to_be_hidden()
+        expect(page.locator("[data-contact-status]")).to_contain_text("read-only")
+        expect(page.locator("#contact-message")).to_be_disabled()
         assert not errors
         browser.close()

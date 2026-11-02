@@ -125,6 +125,7 @@ def _list_messages(
         """
         SELECT m.reseller_message_id, m.client_message_id, m.sender_account_id,
                m.content, m.created_at, m.read_at, m.return_id,
+               COALESCE(m.order_id,(SELECT r.order_id FROM product_returns r WHERE r.return_id=m.return_id)) AS order_id,
                a.name AS sender_name, a.account_type AS sender_account_type,
                COALESCE((SELECT jsonb_agg(jsonb_build_object('attachment_id',f.attachment_id,
                    'filename',f.filename,'content_type',f.content_type,'size_bytes',f.size_bytes,
@@ -218,14 +219,14 @@ def delete_for_reseller(account_id: int) -> bool:
 
 
 def send_from_reseller(account_id: int, client_message_id: str, content: str, *, return_id: int | None = None,
-                       report_issue: bool = False, attachments: list[dict] | None = None) -> dict:
+                       report_issue: bool = False, attachments: list[dict] | None = None, order_id: int | None = None) -> dict:
     return _send_message(
         sender_account_id=account_id,
         reseller_account_id=account_id,
         client_message_id=client_message_id,
         content=content,
         leader_account_id=None,
-        return_id=return_id, report_issue=report_issue, attachments=attachments,
+        return_id=return_id, report_issue=report_issue, attachments=attachments, order_id=order_id,
     )
 
 
@@ -256,6 +257,7 @@ def _send_message(
     return_id: int | None = None,
     report_issue: bool = False,
     attachments: list[dict] | None = None,
+    order_id: int | None = None,
 ) -> dict:
     attachments = attachments or []
     if len(attachments)>3 or sum(a["size_bytes"] for a in attachments)>30*1024*1024:
@@ -269,11 +271,17 @@ def _send_message(
     if report_issue and (not return_id or leader_account_id is not None):
         raise ResellerMessagingError("Select your released replacement to report an issue.")
     with get_transaction_cursor() as cur:
+        if order_id is not None:
+            cur.execute("SELECT 1 FROM orders WHERE order_id=%s AND created_by_account_id=%s", (order_id, reseller_account_id))
+            if not cur.fetchone():
+                raise ResellerMessagingError("This order does not belong to this conversation.")
         if return_id:
             from app.repositories.product_returns import _case
             case = _case(cur, return_id, sender_account_id, {"reseller"} if leader_account_id is None else {"sales", "sales-supervisor"}, read_only=leader_account_id is not None)
             if case["reseller_account_id"] != reseller_account_id:
                 raise ResellerMessagingError("This return does not belong to this conversation.")
+            if order_id is not None and case["order_id"] != order_id:
+                raise ResellerMessagingError("This order does not match the selected return.")
             cur.execute("""SELECT m.*,a.name sender_name,a.account_type sender_account_type,
                 EXISTS(SELECT 1 FROM return_followup_messages f WHERE f.reseller_message_id=m.reseller_message_id) reported_issue
                 FROM reseller_messages m JOIN accounts a ON a.account_id=m.sender_account_id
@@ -281,7 +289,7 @@ def _send_message(
                 (sender_account_id, message_uuid))
             previous = cur.fetchone()
             if previous:
-                if previous["return_id"] != return_id or previous["content"] != cleaned or previous["reported_issue"] != report_issue:
+                if previous["return_id"] != return_id or previous.get("order_id") != order_id or previous["content"] != cleaned or previous["reported_issue"] != report_issue:
                     raise ResellerMessagingError("This message reference was used with different details.")
                 previous = dict(previous)
                 previous["attachments"] = _message_attachments(cur, previous["reseller_message_id"])
@@ -313,12 +321,12 @@ def _send_message(
         cur.execute(
             """
             INSERT INTO reseller_messages (
-                conversation_id, client_message_id, sender_account_id, content, return_id, attachment_count
-            ) VALUES (%s, %s, %s, %s, %s, %s)
+                conversation_id, client_message_id, sender_account_id, content, return_id, attachment_count, order_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (conversation_id, client_message_id) DO NOTHING
             RETURNING *;
             """,
-            (conversation["conversation_id"], message_uuid, sender_account_id, cleaned, return_id,len(attachments)),
+            (conversation["conversation_id"], message_uuid, sender_account_id, cleaned, return_id,len(attachments),order_id),
         )
         message = cur.fetchone()
         inserted = bool(message)
@@ -331,7 +339,7 @@ def _send_message(
                 (conversation["conversation_id"], message_uuid),
             )
             message = cur.fetchone()
-            if message["content"] != cleaned or message["return_id"] != return_id or message["sender_account_id"] != sender_account_id:
+            if message["content"] != cleaned or message.get("order_id") != order_id or message["return_id"] != return_id or message["sender_account_id"] != sender_account_id:
                 raise ResellerMessagingError("This message reference was used with different details.")
         if inserted:
             for attachment in attachments:
@@ -364,10 +372,16 @@ def _send_message(
     return serialized
 
 
-def leader_conversations(account_id: int) -> list[dict]:
+def leader_conversations(account_id: int, *, limit: int | None = None, messages_only: bool = False) -> list[dict]:
+    """Existing inbox visibility, optionally bounded for read-only dashboard previews."""
+    preview_filter = " AND c.last_message_at IS NOT NULL" if messages_only else ""
+    limit_sql = " LIMIT %s" if limit is not None else ""
+    params = [account_id, account_id, account_id]
+    if limit is not None:
+        params.append(min(max(int(limit), 1), 20))
     with get_transaction_cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT a.account_id AS reseller_account_id,
                    a.name AS reseller_name,
                a.profile_image_path AS reseller_profile_image_path,
@@ -413,9 +427,10 @@ def leader_conversations(account_id: int) -> list[dict]:
                       AND (c.team_leader_deleted_at IS NULL OR c.last_message_at > c.team_leader_deleted_at)
                   )
               )
-            ORDER BY c.last_message_at DESC NULLS LAST, r.business_name, a.account_id;
+              {preview_filter}
+            ORDER BY c.last_message_at DESC NULLS LAST, r.business_name, a.account_id{limit_sql};
             """,
-            (account_id, account_id, account_id),
+            tuple(params),
         )
         return [_serialize(dict(row)) for row in cur.fetchall()]
 

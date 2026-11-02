@@ -1,46 +1,27 @@
-{% if replacement_chat|default(none) %}
-{% include 'portals/_replacement_conversation.html' %}
-{% else %}
-{% include 'portals/_replacement_conversation_links.html' %}
-<section class="reseller-inbox" data-reseller-inbox data-open-system-message="{{ open_system_message_id or '' }}" data-open-refund="{{ open_refund_id or '' }}" data-return-id="{{ return_contact.return_id if return_contact else '' }}" data-report-issue="{{ '1' if return_report_issue else '' }}">
+{% from 'portals/_replacement_thread_rows.html' import participant_avatar with context %}
+<span hidden data-contact-actor="{{ replacement_chat_actor|default('') }}"></span>
+<section class="reseller-inbox unified-inbox"  data-reseller-inbox data-open-system-message="{{ open_system_message_id or '' }}" data-open-refund="{{ open_refund_id or '' }}" data-return-id="{{ replacement_chat.return_id if replacement_chat|default(none) else '' }}" data-return-contact-id="{{ return_contact.return_id if return_contact else '' }}" data-report-issue="{{ '1' if return_report_issue else '' }}">
   <header class="reseller-inbox-hero">
-    <div>
-      <span class="eyebrow">Reseller communications</span>
-      <h2>Inbox</h2>
-      <p>Messages from your sales leader and order updates, organized in one place.</p>
-    </div>
-    <div class="reseller-inbox-status" data-reseller-chat-status aria-live="polite">
-      <span class="reseller-inbox-status-dot"></span>
-      <span>Checking availability…</span>
-    </div>
+    <span class="inbox-title-icon"><i data-lucide="mail" aria-hidden="true"></i></span>
+    <div><h2>Inbox</h2><p>Manage your conversations, replacements, and order updates.</p></div>
+    <div class="reseller-inbox-status" data-reseller-chat-status aria-live="polite"><span class="reseller-inbox-status-dot"></span><span>Loading conversations…</span></div>
   </header>
-
   <div class="reseller-inbox-workspace">
-    <nav class="reseller-folder-rail" aria-label="Inbox folders">
-      <div class="reseller-folder-heading">
-        <span class="eyebrow">Mailbox</span>
-        <h3>Folders</h3>
-      </div>
-      <button class="reseller-folder-button is-active" type="button" aria-pressed="true" data-reseller-inbox-tab="messages">
-        <span class="reseller-folder-icon"><i data-lucide="messages-square"></i></span>
-        <span><strong>Sales leader</strong><small>Direct messages</small></span>
-        <i class="reseller-folder-chevron" data-lucide="chevron-right" aria-hidden="true"></i>
-      </button>
-      <button class="reseller-folder-button" type="button" aria-pressed="false" data-reseller-inbox-tab="system">
-        <span class="reseller-folder-icon"><i data-lucide="folder-clock"></i></span>
-        <span><strong>System messages</strong><small>Order updates</small></span>
-        {% if system_message_unread_count %}<b data-system-unread-count>{{ system_message_unread_count }}</b>{% else %}<i class="reseller-folder-chevron" data-lucide="chevron-right" aria-hidden="true"></i>{% endif %}
-      </button>
-    </nav>
+    <aside class="inbox-conversations" aria-label="Conversations">
+      <header class="inbox-list-heading"><h3>Inbox</h3><button class="icon-button" type="button" aria-label="Refresh conversations" title="Refresh conversations" data-reseller-chat-refresh><i data-lucide="refresh-cw"></i></button></header>
+      <label class="inbox-search"><i data-lucide="search" aria-hidden="true"></i><span class="sr-only">Search conversations</span><input type="search" placeholder="Search name, order, or return…" data-inbox-search></label>
+      <nav class="reseller-folder-rail" aria-label="Inbox categories">
+        <button class="reseller-folder-button is-active" type="button" aria-pressed="true" data-reseller-inbox-tab="all"><i data-lucide="inbox" aria-hidden="true"></i><strong>All</strong><b data-inbox-unread-count hidden></b></button>
+        <button class="reseller-folder-button" type="button" aria-pressed="false" data-reseller-inbox-tab="messages"><i data-lucide="messages-square" aria-hidden="true"></i><strong>Direct</strong><b data-direct-unread-count hidden></b></button>
+        <button class="reseller-folder-button" type="button" aria-pressed="false" data-reseller-inbox-tab="replacements"><i data-lucide="package" aria-hidden="true"></i><strong>Replacements</strong><b data-replacement-unread-count hidden></b></button>
+        <button class="reseller-folder-button" type="button" aria-pressed="false" data-reseller-inbox-tab="system"><i data-lucide="bell" aria-hidden="true"></i><strong>System</strong><b data-system-unread-count {% if not system_message_unread_count %}hidden{% endif %}>{{ system_message_unread_count or 0 }}</b></button>
+      </nav>
 
+      <p class="inbox-list-caption" data-inbox-list-caption>All conversations</p>
     <div class="reseller-conversation-browser">
-      <section class="reseller-folder-panel is-active" aria-labelledby="reseller-sales-folder-title" data-reseller-inbox-panel="messages">
-        <header class="reseller-list-head">
-          <div><span class="eyebrow">Direct messages</span><h3 id="reseller-sales-folder-title">Sales leader</h3></div>
-          <button class="icon-button" type="button" title="Refresh conversations" aria-label="Refresh conversations" data-reseller-chat-refresh><i data-lucide="refresh-cw"></i></button>
-        </header>
+      <section class="reseller-folder-panel is-active" aria-label="Direct messages" data-reseller-inbox-panel="messages">
         <div class="reseller-conversation-list">
-          <button class="reseller-conversation-row" type="button" aria-expanded="false" aria-controls="reseller-chat-thread" data-reseller-conversation-open>
+          <button class="reseller-conversation-row" data-inbox-row="messages" type="button" aria-expanded="false" aria-controls="reseller-chat-thread" data-reseller-conversation-open>
             <span class="reseller-conversation-avatar internal-person-avatar" data-reseller-chat-avatar><i data-lucide="user-round"></i></span>
             <span class="reseller-conversation-copy">
               <span><strong data-reseller-chat-agent>Sales leader</strong><time data-reseller-conversation-time></time></span>
@@ -51,14 +32,19 @@
         </div>
       </section>
 
-      <section class="reseller-folder-panel" aria-labelledby="reseller-system-title" data-reseller-inbox-panel="system" hidden>
-        <header class="reseller-list-head">
-          <div><span class="eyebrow">Order activity</span><h3 id="reseller-system-title">System messages</h3></div>
-          <span class="reseller-system-label"><i data-lucide="shield-check"></i> Order updates</span>
-        </header>
+      <section class="reseller-folder-panel" id="inbox-replacement-list" data-reseller-inbox-panel="replacements">
+        {% for thread in replacement_threads|default([]) %}
+        <a class="sales-message-row inbox-replacement-row{{ ' is-active' if replacement_chat|default(none) and replacement_chat.return_id == thread.return_id else '' }}" href="?replacement={{ thread.return_id }}" data-contact-id="{{ thread.processor_account_id or 'owner' }}" data-inbox-row="replacements" data-inbox-search-text="Return #{{ thread.return_id }}" data-replacement-thread-id="{{ thread.return_id }}" {% if replacement_chat|default(none) and replacement_chat.return_id == thread.return_id %}aria-current="page"{% endif %}>
+          {{ participant_avatar(thread) }}
+          <span class="sales-message-row-copy"><strong>{{ thread.processor_name }}</strong><span class="replacement-row-reference">Replacement #{{ thread.return_id }} · Order #{{ thread.order_id }}</span><small data-replacement-thread-preview>{{ thread.last_message or 'Start a conversation' }}</small></span>
+          <span class="inbox-row-meta">{% if thread.last_message_at|default(none) %}<time data-inbox-time datetime="{{ thread.last_message_at }}">{{ thread.last_message_at|nice_date }}</time>{% endif %}{% if thread.unread_count %}<b data-replacement-thread-unread aria-label="{{ thread.unread_count }} unread messages">{{ thread.unread_count }}</b>{% endif %}</span>
+        </a>
+        {% endfor %}
+      </section>
+      <section class="reseller-folder-panel" aria-label="System messages" data-reseller-inbox-panel="system" hidden>
         <div class="reseller-system-list">
           {% for conversation in system_conversations %}
-          <article class="reseller-system-entry" {% if loop.index > 5 %}hidden{% endif %}>
+          <article class="reseller-system-entry" data-inbox-row="system">
             {% for item in conversation.messages %}<span id="system-message-{{ item.order_system_message_id }}" data-system-message-marker hidden></span>{% endfor %}
             <button
               class="reseller-system-message {{ conversation.severity }} {{ 'is-unread' if conversation.unread_count else '' }}"
@@ -83,21 +69,18 @@
               {% if conversation.unread_count %}<b class="reseller-system-count" aria-label="{{ conversation.unread_count }} unread updates">{{ conversation.unread_count }}</b>{% else %}<i class="reseller-system-arrow" data-lucide="chevron-right" aria-hidden="true"></i>{% endif %}
             </button>
           </article>
-          {% else %}
-          <div class="reseller-system-empty"><span><i data-lucide="inbox"></i></span><strong>No system messages</strong><p>Order approvals, rejections, and fulfillment updates will appear here.</p></div>
           {% endfor %}
         </div>
-        {% if system_conversations|length > 5 %}
-        <button class="reseller-system-older" type="button" data-system-messages-older><i data-lucide="history"></i><span>Show {{ system_conversations|length - 5 }} older order{{ '' if system_conversations|length - 5 == 1 else 's' }}</span></button>
-        {% endif %}
       </section>
     </div>
 
+      <p class="inbox-search-empty" data-inbox-search-empty role="status" hidden>No conversations found. Try another name or order number.</p>
+    </aside>
     <section class="reseller-message-stage" aria-label="Message details">
       <div class="reseller-stage-placeholder" data-reseller-chat-placeholder>
         <span><i data-lucide="message-square-dashed"></i></span>
         <h3>Select a conversation</h3>
-        <p>Choose your sales leader from the list to see your messages.</p>
+        <p>Choose a conversation to view messages and keep things moving.</p>
       </div>
 
       <div class="reseller-chat-thread" id="reseller-chat-thread" data-reseller-chat-thread hidden>
@@ -105,17 +88,24 @@
           <button class="reseller-chat-back" type="button" aria-label="Back to conversations" data-reseller-chat-close><i data-lucide="arrow-left"></i></button>
           <span class="reseller-chat-agent-icon internal-person-avatar" data-reseller-chat-avatar><i data-lucide="user-round"></i></span>
           <div><strong data-reseller-chat-agent>Sales leader</strong><small data-reseller-chat-detail>This conversation stays in your inbox</small></div>
-          <button class="message-delete-button" type="button" title="Delete conversation" data-reseller-message-delete hidden><i data-lucide="trash-2"></i><span>Delete</span></button>
+          <details class="inbox-conversation-actions">
+            <summary aria-label="Conversation actions" title="Conversation actions"><i data-lucide="ellipsis" aria-hidden="true"></i></summary>
+            <div class="inbox-actions-menu"><button class="message-delete-button" type="button" title="Delete conversation" data-reseller-message-delete hidden><i data-lucide="trash-2"></i><span>Delete</span></button></div>
+          </details>
         </div>
         <div class="reseller-chat-messages" role="log" aria-live="polite" aria-label="Messages with your sales leader" data-reseller-chat-messages>
           <div class="reseller-message-empty" data-reseller-message-empty><span><i data-lucide="message-circle"></i></span><strong>Your conversation starts here</strong><p>Messages between you and your assigned sales leader stay available in this inbox.</p></div>
         </div>
         {% if return_contact %}<div class="return-chat-context" data-return-chat-context><a href="/portal/reseller/history?view=returns&amp;case={{ return_contact.return_id }}">Return #{{ return_contact.return_id }} · Order #{{ return_contact.order_id }}</a><span>{{ 'Reporting a replacement issue' if return_report_issue else 'Contacting Sales about this return' }}</span><p role="status" data-return-chat-notice></p></div>{% endif %}
+        <div class="inbox-compose-area">
+        <label class="inbox-order-control">Regarding<select data-direct-order><option value="">No order selected</option></select></label>
+        <section class="inbox-order-inquiry-card" data-order-inquiry-card hidden aria-label="Selected order" aria-live="polite"></section>
         <form class="reseller-chat-composer" data-reseller-chat-form data-async-form>
           <label class="sr-only" for="reseller-chat-message">Your message</label>
           <textarea id="reseller-chat-message" name="message" maxlength="500" rows="1" placeholder="Message your sales leader…" required disabled></textarea>
           <button class="button primary" type="submit" disabled data-reseller-chat-send><span class="sr-only">Send message</span><i data-lucide="send"></i></button>
         </form>
+        </div>
       </div>
 
       {% for conversation in system_conversations %}
@@ -179,8 +169,7 @@
         <footer class="reseller-order-thread-foot"><span><i data-lucide="shield-check"></i> Updates are grouped by order to keep its history together.</span></footer>
       </section>
       {% endfor %}
+      {% include 'portals/reseller/_contact_history.html' %}
     </section>
   </div>
 </section>
-
-{% endif %}

@@ -1,0 +1,49 @@
+{% set is_processor = false %}
+{% set is_replacement = case.resolution=='replace' %}
+{% set is_v2 = case.replacement_workflow_version|default(1)==2 %}
+{% set requested = case.lines|sum(attribute='quantity') %}
+{% set received = case.lines|sum(attribute='received_quantity') %}
+<dialog class="returns-case-dialog sales-return-dialog sales-case-dialog" data-return-dialog="{{ case.return_id }}" aria-labelledby="return-case-title">
+  <div class="returns-dialog-bar"><div><span class="eyebrow">Order #{{ case.order_id }}</span><h3 id="return-case-title">Return #{{ case.return_id }}</h3></div><button type="button" class="returns-dialog-close" data-return-close aria-label="Close return details" autofocus><i data-lucide="x" aria-hidden="true"></i></button></div>
+  <div class="lifecycle-case-detail return-task-dialog sales-case-content">
+    {% if message or error %}<div class="returns-dialog-notice {{ 'is-error' if error else '' }}" role="{{ 'alert' if error else 'status' }}"><p>{{ error or message }}</p></div>{% endif %}
+    {% include 'portals/returns/_workflow_timeline.html' %}
+    <section class="sales-case-card" aria-labelledby="sales-request-title">
+      <header><h4 id="sales-request-title">Request summary</h4><a href="/portal/{{ role_key }}/orders?q={{ case.order_id }}#order-{{ case.order_id }}">View order #{{ case.order_id }}<i data-lucide="arrow-up-right" aria-hidden="true"></i></a></header>
+      <dl class="sales-case-facts"><div><dt>Reseller</dt><dd>{{ case.reseller_name }}</dd></div><div><dt>Returned packs</dt><dd>{{ received|number }} / {{ requested|number }} received</dd></div><div><dt>Submitted</dt><dd>{{ case.created_at|nice_date }}</dd></div>{% if not is_processor %}<div><dt>Access</dt><dd>{{ 'Tracking only' if case.handed_off_at else 'Assigned Sales review' }}</dd></div>{% endif %}<div><dt>Goods verification</dt><dd>{{ 'Verified' if case.verified_at else 'Mismatch reported' if case.status=='discrepancy' else 'Pending' }}</dd></div></dl>
+      {% if case.remarks %}<div class="sales-case-reason"><strong>Reason</strong><p>{{ case.remarks }}</p></div>{% endif %}
+      {% if case.reconciliation_flags %}<div class="sales-case-warning" role="alert"><strong>Records need review</strong><ul>{% for flag in case.reconciliation_flags %}<li>{{ flag }}</li>{% endfor %}</ul></div>{% endif %}
+    </section>
+
+    {% include 'portals/returns/_followups.html' %}
+
+    <div class="sales-case-product-grid">
+      <section class="sales-case-card" aria-labelledby="sales-originals-title"><header><h4 id="sales-originals-title">Products to return</h4><span>{{ requested|number }} packs</span></header>
+        <ul class="sales-case-products">{% for line in case.lines %}<li><strong>{{ line.name }}</strong><span>{{ line.quantity|number }} pack{{ '' if line.quantity==1 else 's' }} · {{ line.unit_price|currency }} / pack</span><small>Batch {{ line.batch_code }} · expires {{ line.expiry_date|nice_date }}</small><small>{{ line.received_quantity|number }} received</small></li>{% endfor %}</ul>
+      </section>
+      {% if is_replacement %}<section class="sales-case-card" aria-labelledby="sales-replacements-title"><header><h4 id="sales-replacements-title">Replacement selection</h4>{% if case.quote_revision %}<span>Revision {{ case.quote_revision }}</span>{% endif %}</header>
+        <ul class="sales-case-products">{% for line in case.quote_lines %}<li><strong>{{ line.name }}</strong><span>{{ line.quantity|number }} pack{{ '' if line.quantity==1 else 's' }} · {{ line.line_total|currency }}</span>{% for part in line.pricing_components|default([]) %}<small>{{ part.quantity }} × {{ part.unit_price|float|currency }} · {{ 'Original paid price' if part.basis=='original' else 'Catalog price' }}</small>{% endfor %}</li>{% else %}<li>Products will be recorded after request approval.</li>{% endfor %}</ul>
+        {% if case.quote_revision %}<p class="sales-case-caption">{{ 'Accepted by reseller' if case.accepted_revision==case.quote_revision else 'Awaiting reseller acceptance' }}</p>{% endif %}
+      </section>{% endif %}
+    </div>
+
+    {% if not is_processor %}{% include 'portals/returns/_case_financial_card.html' %}{% endif %}
+
+    {% set photos = case.attachments|selectattr('purpose','equalto','evidence')|list %}
+    {% if photos %}<section class="sales-case-card" aria-labelledby="sales-photos-title"><header><h4 id="sales-photos-title">Supporting photos</h4><span>{{ photos|length }} attached</span></header><div class="sales-case-files">{% for photo in photos %}<a href="/portal/return-attachments/{{ photo.attachment_id }}" target="_blank" rel="noopener"><i data-lucide="image" aria-hidden="true"></i><span>Photo {{ loop.index }}<small>{{ photo.filename }}</small></span><i data-lucide="external-link" aria-hidden="true"></i></a>{% endfor %}</div></section>{% endif %}
+
+    {% if return_can_review %}{% with review_as_card=true %}{% include 'portals/returns/_case_review.html' %}{% endwith %}{% endif %}
+
+    {% if case.offer_changes %}<section class="sales-case-card"><header><h4>Selection changes</h4></header><ul class="sales-case-records">{% for change in case.offer_changes %}<li><strong>{{ change.label }}</strong>{% if change.field in ['credit','replacement_total'] %}<span>{{ change.before|currency }} → {{ change.after|currency }}</span>{% else %}<span>Previously: {% for item in change.before %}{{ item.name }} × {{ item.quantity|number }}{% if not loop.last %}; {% endif %}{% endfor %}</span><span>Now: {% for item in change.after %}{{ item.name }} × {{ item.quantity|number }}{% if not loop.last %}; {% endif %}{% endfor %}</span>{% endif %}</li>{% endfor %}</ul></section>{% endif %}
+
+    {% if case.receipts or case.released_batches or case.reserved_batches or case.custody_movements %}<section class="sales-case-card" aria-labelledby="sales-inventory-title"><header><h4 id="sales-inventory-title">Inventory records</h4></header><ul class="sales-case-records">
+      {% for receipt in case.receipts %}<li><strong>Receipt #{{ receipt.receipt_id }}</strong><span>{{ receipt.received_by_name }} · {{ receipt.received_at|nice_date }}</span><small>{{ receipt.location }}</small>{% for item in case.receipt_lines if item.receipt_id==receipt.receipt_id %}<small>{{ item.name }} · {{ item.quantity|number }} received · {{ item.quantity_remaining|number }} held · {{ item.disposed_quantity|number }} disposed</small>{% endfor %}</li>{% endfor %}
+      {% for batch in case.released_batches %}<li><strong>{{ batch.name }} · {{ batch.quantity|number }} packs released</strong><span>Batch {{ batch.batch_code }} · {{ batch.released_at|nice_date }}</span></li>{% endfor %}
+      {% if not case.replacement_released_at %}{% for batch in case.reserved_batches %}<li><strong>{{ batch.name }} · {{ batch.quantity|number }} packs reserved</strong><span>Batch {{ batch.batch_code }} · {{ 'Eligible stock' if batch.eligible else 'Stock needs review' }}</span></li>{% endfor %}{% endif %}
+      {% for movement in case.custody_movements %}<li><strong>Movement #{{ movement.movement_id }} · {{ movement.action|replace('_',' ')|title }}</strong><span>{{ movement.quantity|number }} packs · Holding #{{ movement.holding_id }}</span><small>{{ movement.actor_name }} · {{ movement.created_at|nice_date }}</small></li>{% endfor %}
+    </ul></section>{% endif %}
+
+    <section class="sales-case-card" aria-labelledby="sales-history-title"><header><h4 id="sales-history-title">Activity timeline</h4><span>Latest first</span></header>{% with activity_notes_expanded=true %}{% include 'portals/returns/_activity_timeline.html' %}{% endwith %}</section>
+    <footer class="sales-case-footer">{% if not is_processor %}<a class="button secondary" href="/portal/team-leader/messages?reseller={{ case.reseller_account_id }}"><i data-lucide="messages-square" aria-hidden="true"></i>Open Sales conversation</a>{% endif %}<button class="button secondary" type="button" data-return-close>Close details</button></footer>
+  </div>
+</dialog>

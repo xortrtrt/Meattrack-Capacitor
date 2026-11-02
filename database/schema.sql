@@ -1104,6 +1104,7 @@ CREATE TABLE reseller_conversations (
 );
 
 CREATE TABLE reseller_messages (
+    order_id bigint REFERENCES orders(order_id),
     reseller_message_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     conversation_id bigint NOT NULL
         REFERENCES reseller_conversations(conversation_id) ON UPDATE CASCADE ON DELETE CASCADE,

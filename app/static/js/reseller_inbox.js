@@ -11,7 +11,7 @@
     const deleteButton = root.querySelector("[data-reseller-message-delete]");
     const form = root.querySelector("[data-reseller-chat-form]");
     const input = form.querySelector("textarea");
-    const returnId = Number(root.dataset.returnId) || null;
+    const returnId = Number(root.dataset.returnContactId ?? root.dataset.returnId) || null;
     let reportIssue = root.dataset.reportIssue === "1";
     let pendingSend = null;
     let sending=false;
@@ -32,12 +32,93 @@
     const refundOrderTabGroups = Array.from(root.querySelectorAll("[data-refund-order-tabs]"));
     const olderMessagesButton = root.querySelector("[data-system-messages-older]");
     let lastMessageId = 0;
+    let lastMessageDay = "";
+    let directScroll = null;
     let canMessage = false;
     let refreshTimer = null;
     let openConversationType = null;
     let activeSystemConversationButton = null;
     let hasUnreadMessages = false;
+    let activeCategory = "all";
+    const replacementStage = root.querySelector("[data-inbox-replacement-stage]");
+    const search = root.querySelector("[data-inbox-search]");
+    const rows = Array.from(root.querySelectorAll("[data-inbox-row]"));
+    rows.forEach(row => root.querySelector(".reseller-conversation-browser").append(row));
+    root.querySelectorAll("[data-inbox-time]").forEach(time => {
+        const date = new Date(time.dateTime);
+        if (!Number.isNaN(date.valueOf())) time.textContent = date.toLocaleString("en-PH", {
+            timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+        });
+    });
+    document.addEventListener("conversations:unread", event => {
+        const summary = event.detail;
+        const counts = {
+            "data-inbox-unread-count": Math.max(0, summary.unread_conversations - (summary.orders?.length || 0)),
+            "data-direct-unread-count": summary.sales_unread_count,
+            "data-replacement-unread-count": (summary.replacement_threads || []).reduce((sum, row) => sum + row.unread_count, 0),
+            "data-system-unread-count": summary.orders?.reduce((sum, row) => sum + row.unread_count, 0),
+        };
+        Object.entries(counts).forEach(([attribute, count]) => {
+            const badge = root.querySelector(`[${attribute}]`);
+            if (!badge || count == null) return;
+            badge.textContent = String(count);
+            badge.hidden = !count;
+            badge.setAttribute("aria-label", `${count} unread ${attribute === "data-inbox-unread-count" ? "conversations" : "messages"}`);
+        });
+    });
 
+    function filterConversations() {
+        const query = (search?.value || "").trim().toLocaleLowerCase();
+        rows.forEach(row => {
+            const searchable = `${row.textContent} ${row.dataset.inboxSearchText || ""}`.toLocaleLowerCase();
+            row.hidden = (row.dataset.inboxRow === "system" && activeCategory !== "system") || row.dataset.inboxDuplicate === "1" || (activeCategory !== "all" && row.dataset.inboxRow !== activeCategory && !(activeCategory === "messages" && row.dataset.hasDirect === "1"))
+                || !searchable.includes(query);
+        });
+        const empty = root.querySelector("[data-inbox-search-empty]");
+        if (empty) empty.hidden = rows.some(row => !row.hidden);
+        const caption = root.querySelector("[data-inbox-list-caption]");
+        if (caption) caption.textContent = {all:"All conversations",messages:"Direct messages",replacements:"Replacement conversations",system:"Order updates"}[activeCategory];
+    }
+    search?.addEventListener("input", filterConversations);
+    root.addEventListener("replacement:list", event => {
+        if (event.detail.open) closeConversation({focus:true});
+        else openReplacementConversation();
+    });
+    function openReplacementConversation() {
+        if (!replacementStage) return;
+        closeConversation();
+        replacementStage.hidden = false;
+        chatPlaceholder.hidden = true;
+        root.classList.add("is-chat-open");
+        root.classList.remove("is-list-open");
+        openConversationType = "replacement";
+        root.querySelector("[data-replacement-thread-id][aria-current='page']")?.classList.add("is-active");
+    }
+
+    root.addEventListener("inbox:contact-open", () => {
+        closeConversation(); openConversationType = "contact";
+        chatPlaceholder.hidden = true; root.classList.add("is-chat-open");
+        root.querySelector("[data-contact-stage]").hidden = false;
+    });
+    root.addEventListener("inbox:list-change", filterConversations);
+    root.addEventListener("inbox:close", () => closeConversation());
+    const orderSelect = root.querySelector("[data-direct-order]");
+    const orderCard = orderSelect ? window.OrderInquiryCards?.create(chatThread, orderSelect) : null;
+    fetch("/api/portal/reseller/inbox/orders").then(response => response.ok ? response.json() : Promise.reject())
+        .then(data => {
+            data.orders.forEach(order => orderSelect?.add(new Option(`Order #${order.order_id}`, String(order.order_id))));
+            const explicitOrder = new URLSearchParams(location.search).get("inquire_order");
+            if (explicitOrder && [...orderSelect.options].some(option => option.value === explicitOrder)) {
+                orderSelect.value = explicitOrder; orderCard?.show(explicitOrder);
+                const openInquiry = () => {
+                    if (root.querySelector('[data-contact-id][data-has-direct="1"]')) {
+                        root.dispatchEvent(new CustomEvent("inbox:inquire-order", {detail:{orderId:explicitOrder}}));
+                    } else if (canMessage) openConversation();
+                };
+                if (canMessage) openInquiry();
+                else root.addEventListener("inbox:direct", openInquiry, {once:true});
+            }
+        }).catch(() => {});
     function messageUuid() {
         if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
         const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -83,8 +164,13 @@
     });
 
     function closeConversation({ focus = false } = {}) {
+        const previousType = openConversationType;
+        if (previousType === "sales") directScroll = {top:messages.scrollTop, atBottom:messages.scrollHeight-messages.scrollTop-messages.clientHeight < 65};
         openConversationType = null;
+        if (replacementStage) replacementStage.hidden = true;
+        root.querySelectorAll(".inbox-replacement-row").forEach(row => row.classList.remove("is-active"));
         root.classList.remove("is-chat-open");
+        root.classList.remove("is-list-open");
         chatThread.hidden = true;
         systemConversationThreads.forEach((thread) => { thread.hidden = true; });
         chatPlaceholder.hidden = false;
@@ -94,10 +180,12 @@
             button.classList.remove("is-active");
             button.setAttribute("aria-expanded", "false");
         });
+        root.querySelector("[data-contact-stage]")?.setAttribute("hidden", "");
         input.disabled = true;
         sendButton.disabled = true;
         if (focus) {
-            const target = activeSystemConversationButton || conversationButton;
+            const target = activeSystemConversationButton || (previousType === "replacement"
+                ? root.querySelector("[data-replacement-thread-id][aria-current='page']") : null) || conversationButton;
             target.focus();
         }
         activeSystemConversationButton = null;
@@ -108,17 +196,20 @@
         const copy = chatPlaceholder.querySelector("p");
         if (folder === "system") {
             title.textContent = "System messages";
-            copy.textContent = "Order approvals, rejections, and fulfillment updates are kept in this separate folder.";
+            copy.textContent = "Choose an order to see its updates and refund conversation.";
         } else {
             title.textContent = "Select a conversation";
-            copy.textContent = "Choose your sales leader from the list to see your messages.";
+            copy.textContent = folder === "replacements"
+                ? "Choose a replacement to coordinate your return and delivery."
+                : "Choose a conversation to view messages and keep things moving.";
         }
     }
 
     function activateInboxTab(name, { focus = false } = {}) {
-        if ((name === "system" && openConversationType === "sales") || (name === "messages" && openConversationType === "system")) {
-            closeConversation();
-        }
+        activeCategory = name;
+        if ((openConversationType === "system" && name !== "system") || (openConversationType === "contact" && name === "system")) closeConversation();
+        if (name !== "all" && openConversationType &&
+            openConversationType !== "contact" && name !== {sales:"messages",system:"system",replacement:"replacements"}[openConversationType]) closeConversation();
         inboxTabs.forEach((tab) => {
             const selected = tab.dataset.resellerInboxTab === name;
             tab.classList.toggle("is-active", selected);
@@ -126,11 +217,12 @@
             if (selected && focus) tab.focus();
         });
         inboxPanels.forEach((panel) => {
-            const selected = panel.dataset.resellerInboxPanel === name;
+            const selected = true;
             panel.classList.toggle("is-active", selected);
             panel.hidden = !selected;
         });
         setPlaceholder(name);
+        filterConversations();
     }
 
     inboxTabs.forEach((tab, index) => {
@@ -143,7 +235,7 @@
             activateInboxTab(nextTab.dataset.resellerInboxTab, { focus: true });
         });
     });
-    activateInboxTab("messages");
+    activateInboxTab("all");
 
     async function api(url, options = {}) {
         const response = await fetch(url, {
@@ -185,20 +277,13 @@
         const badge = root.querySelector("[data-system-unread-count]");
         if (!badge) return;
         const remaining = Math.max(0, (Number.parseInt(badge.textContent, 10) || 0) - readCount);
-        if (remaining) badge.textContent = String(remaining);
-        else {
-            const arrow = document.createElement("i");
-            arrow.className = "reseller-folder-chevron";
-            arrow.dataset.lucide = "chevron-right";
-            arrow.setAttribute("aria-hidden", "true");
-            badge.replaceWith(arrow);
-            window.lucide?.createIcons();
-        }
+        badge.textContent = String(remaining);
+        badge.hidden = !remaining;
     }
 
     async function openSystemConversation(button) {
         if (!button) return;
-        activateInboxTab("system");
+        if (activeCategory !== "all") activateInboxTab("system");
         closeConversation();
         activeSystemConversationButton = button;
         openConversationType = "system";
@@ -252,13 +337,22 @@
 
     function appendMessage(item) {
         if (messages.querySelector(`[data-message-id="${item.reseller_message_id}"]`)) return;
+        const stickToBottom = !messages.querySelector("[data-message-id]") || messages.scrollHeight - messages.scrollTop - messages.clientHeight < 65;
+        const day = new Date(item.created_at).toLocaleDateString("en-PH", {timeZone:"Asia/Manila",month:"short",day:"numeric",year:"numeric"});
+        if (day !== lastMessageDay) {
+            const divider = document.createElement("p"); divider.className = "inbox-date-divider"; divider.textContent = day;
+            messages.append(divider); lastMessageDay = day;
+        }
         messages.querySelector("[data-reseller-message-empty]")?.remove();
         const row = document.createElement("article");
         row.className = "reseller-chat-message";
         row.dataset.messageId = String(item.reseller_message_id);
+        row.dataset.orderId = String(item.order_id || "");
+        row.dataset.groupSender = String(item.sender_account_id); row.dataset.createdAt = item.created_at;
         const mine = item.sender_account_type === "reseller";
         row.classList.toggle("is-mine", mine);
         const meta = document.createElement("small");
+        meta.className = "inbox-message-author";
         meta.textContent = mine ? "You" : (item.sender_name || "Sales leader");
         const bubble = document.createElement("p");
         bubble.textContent = item.content || "";
@@ -275,11 +369,16 @@
             link.textContent = `Return #${item.return_id}`;
             row.prepend(link);
         }
+        if (item.order_id && window.OrderInquiryCards) messages.append(window.OrderInquiryCards.reference(item.order_id));
         messages.append(row);
+        window.OrderInquiryCards?.group(messages);
         lastMessageId = Math.max(lastMessageId, Number(item.reseller_message_id) || 0);
         conversationPreview.textContent = item.content || (item.attachments?.length ? "Attachment" : "Open conversation");
         conversationTime.textContent = messageTime(item.created_at);
-        messages.scrollTop = messages.scrollHeight;
+        conversationButton.dataset.activity = item.created_at;
+        root.dispatchEvent(new CustomEvent("inbox:sort"));
+        if (stickToBottom && !chatThread.hidden) messages.scrollTop = messages.scrollHeight;
+        filterConversations();
     }
 
     function showEmptyState() {
@@ -316,12 +415,13 @@
         media.disable(sendButton.disabled);
         conversationButton.disabled = !(canMessage || reportIssue);
         if (!canMessage) conversationPreview.textContent = "Waiting for a sales leader assignment";
+        filterConversations();
         const conversation = result.conversation;
         const deletedAt = conversation?.reseller_deleted_at ? new Date(conversation.reseller_deleted_at).valueOf() : 0;
         const lastMessageAt = conversation?.last_message_at ? new Date(conversation.last_message_at).valueOf() : 0;
         deleteButton.hidden = !conversation || (deletedAt > 0 && lastMessageAt <= deletedAt);
         setStatus(
-            canMessage ? `${participantName} is available` : "Waiting for a sales leader assignment",
+            canMessage ? "Direct messages ready" : "Waiting for a sales leader assignment",
             canMessage ? "live" : "waiting",
         );
     }
@@ -329,10 +429,12 @@
     async function refreshMessages({ reset = false } = {}) {
         if (reset) {
             lastMessageId = 0;
+            lastMessageDay = "";
             messages.querySelectorAll("[data-message-id]").forEach((node) => node.remove());
         }
         const result = await api(`/api/portal/reseller/inbox?after_id=${lastMessageId}`);
         renderParticipant(result);
+        root.dispatchEvent(new CustomEvent("inbox:direct", {detail:result}));
         result.messages.forEach(appendMessage);
         if (reset && !result.messages.length && canMessage) {
             conversationPreview.textContent = "No messages yet";
@@ -350,12 +452,14 @@
 
     async function openConversation() {
         if (!canMessage && !reportIssue) return;
-        activateInboxTab("messages");
+        if (activeCategory !== "all") activateInboxTab("messages");
+        closeConversation();
         openConversationType = "sales";
         root.classList.add("is-chat-open");
         chatPlaceholder.hidden = true;
         chatThread.hidden = false;
         conversationButton.classList.add("is-active");
+        messages.scrollTop = !directScroll || directScroll.atBottom ? messages.scrollHeight : directScroll.top;
         conversationButton.setAttribute("aria-expanded", "true");
         input.disabled = false;
         sendButton.disabled = false;
@@ -364,7 +468,7 @@
             try {
                 await api("/api/portal/reseller/inbox/read", { method: "POST", body: JSON.stringify({through_id:lastMessageId}) });
                 hasUnreadMessages = false;
-            window.refreshConversationBadges?.();
+                window.refreshConversationBadges?.();
             } catch (_) {
                 // A later refresh retries read state without interrupting the conversation.
             }
@@ -381,7 +485,7 @@
         const content = input.value.trim();
         if (sending || (!content && !media.hasFiles()) || (!canMessage && !reportIssue)) return;
         sending=true;
-        if (!pendingSend || pendingSend.message !== content || pendingSend.signature !== media.signature()) pendingSend = { message: content, signature:media.signature(), client_message_id: messageUuid(), ...(returnId ? {return_id: returnId, report_issue: reportIssue} : {}) };
+        if (!pendingSend || pendingSend.message !== content || pendingSend.signature !== media.signature() || pendingSend.order_id !== (Number(orderSelect?.value) || null)) pendingSend = { order_id: Number(orderSelect?.value) || null, message: content, signature:media.signature(), client_message_id: messageUuid(), ...(returnId ? {return_id: returnId, report_issue: reportIssue} : {}) };
         input.disabled = true;
         sendButton.disabled = true;
         media.disable(true);
@@ -393,6 +497,9 @@
             });
             if (!result.attachments_not_sent) {
                 input.value = "";
+                if (orderSelect && (Number(orderSelect.value) || null) === pendingSend.order_id) {
+                    orderSelect.value = ""; orderCard?.show("");
+                }
                 media.clear();
             }
             if (result.message) appendMessage(result.message);
@@ -400,7 +507,7 @@
             if (note) note.textContent = result.warning || (reportIssue ? "Your issue is saved for Supervisor/Owner review. Inventory and settlement are unchanged." : "Message sent about this return.");
             if (!result.attachments_not_sent) pendingSend = null;
             deleteButton.hidden = false;
-            setStatus(`${agentLabels[0].textContent} is available`, "live");
+            setStatus(`Messaging ${agentLabels[0].textContent}`, "live");
         } catch (error) {
             setStatus(error.message, "error");
             const note = root.querySelector("[data-return-chat-notice]");
@@ -430,13 +537,15 @@
             lastMessageId = 0;
             showEmptyState();
             deleteButton.hidden = true;
-            setStatus(`${agentLabels[0].textContent} is available`, "live");
+            setStatus(`Messaging ${agentLabels[0].textContent}`, "live");
         } catch (error) {
             setStatus(error.message, "error");
         } finally {
             deleteButton.disabled = false;
         }
     });
+
+    if (replacementStage) openReplacementConversation();
 
     const linkedSystemMessageId = root.dataset.openSystemMessage;
     const linkedRefundId = root.dataset.openRefund;

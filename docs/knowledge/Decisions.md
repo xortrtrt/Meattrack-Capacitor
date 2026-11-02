@@ -4,6 +4,60 @@ verified: 2026-10-28
 ---
 # Decisions
 
+## 2026-11-02 — Define role-dashboard counts from destination eligibility
+
+Use shared read-only scopes/predicates for counts and linked lists. Do not add
+overlapping queues as a job total. Inventory expiry reads live warehouse batches
+before worker pull-out records; payment/clearance waiting is separate from stock
+actions. Stock rings count mutually exclusive active finished products, not packs
+mixed with product counts. Low-stock KPI retains the destination's inclusion of
+zero. Supervisor open cases count distinct authorized returns, including open
+follow-ups after completion; pending refunds remain a separate entity/queue.
+Unresolved inquiries include assigned and contacted prospects, not only pending.
+
+Bound message previews through existing inbox helpers without advancing read
+cursors. Preserve historic-assignment visibility rather than inventing a narrower
+dashboard-only permission model. Purchase history uses recorded fulfilled line
+prices separately from current catalog prices. These are projection definitions;
+no payment, stock reservation or transition rule changed. See [[Role Dashboards]].
+
+## 2026-11-02 — Follow the full Messenger refinement brief
+
+The later pasted request explicitly groups Regarding and its order card above
+the composer and replaces plain order links with message badges. This supersedes
+the earlier top-selection and link-removal preferences. Keep case routing separate
+from optional order association, preserve each message record, and place existing
+hide/delete actions behind a native overflow menu with their existing confirmation.
+See [[Background Work and Integrations]].
+
+## 2026-11-02 — Show order context without splitting or filtering chat
+
+Replace order filters with a scoped order inquiry card above the composer. Keep
+Regarding at the top of the chat, default it to no order, and clear it after a
+successful send. Historical card viewing alone does not select an order for the
+next message. All lists person conversations; System alone lists automated order
+notifications. This refines the earlier order-filter decision without changing
+message IDs, pair identity, or financial workflows. See
+[[Background Work and Integrations]].
+
+## 2026-11-02 — Aggregate eligible histories by contact, retain case records
+
+Group the reseller's replacement histories by current processor account and merge
+the direct view only when that same account is the authorized direct participant.
+Use a read projection rather than rewriting append-only case history. Replies and
+read cursors keep their original case IDs, preserving handover and read-only rules.
+Add nullable per-message order context to the existing unique direct pair instead
+of creating order conversations. See [[Background Work and Integrations]].
+
+## 2026-11-02 — Keep reseller conversations in one Inbox
+
+Use one filterable conversation list and message stage for direct messages,
+replacement cases, and order/refund updates. This removes the large replacement
+index and banner above messaging while retaining separate conversation records,
+assignment checks, and read cursors. Reuse the authorized return read for the
+collapsible financial summary; keep payment and evidence actions in return details.
+See [[Background Work and Integrations]] and [[Replacement Workflow]].
+
 ## 2026-10-29: Hide opening balances from Inventory Logs
 
 The user requested hiding all opening data in Inventory Logs. Exclude opening
@@ -156,3 +210,25 @@ preserving historical version-1 reservation rules. See [[Replacement Workflow]].
 Read-only payment fields must not silently confirm a newer reseller submission.
 Compare a reviewed-state fingerprint under the case lock before recording funds.
 Changed metadata, quote, or evidence requires a reload. See [[Replacement Workflow]].
+
+## 2026-11-02 — Give Supervisor return review a dedicated page
+
+Use the existing case query route as a full details page rather than a long modal.
+Separate overview, review, stock, settlement, and audit history with tabs, and keep
+available decisions in a persistent action bar. This makes evidence and money
+comparisons easier to review while preserving existing handlers, permissions,
+required reasons, signed review tokens, and audit records. A five-stage summary
+may show interleaved work; it must not advance the underlying workflow.
+See [[Sales and Reseller Returns]] and [[Replacement Workflow]].
+
+
+## 2026-11-02 — Share the dedicated return layout with resellers
+
+Keep the history ledger and new-request dialog, but use a dedicated page when a
+reseller tracks a case. Group public facts, replacement/delivery, payment/refunds,
+evidence, and activity into tabs, with the same milestone summary and persistent
+actions as Supervisor review. Reuse the signed order receipt form and existing
+role projections rather than adding a separate upload or staff-style editing path.
+Show replacement pricing once within its tab; use confirmations for the existing
+revision acceptance and optional acknowledgment actions. See
+[[Sales and Reseller Returns]] and [[Replacement Workflow]].

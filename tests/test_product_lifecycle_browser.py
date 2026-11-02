@@ -83,6 +83,7 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         expect(page.locator('textarea[name="remarks"]:invalid')).to_be_visible()
         page.get_by_label("Return quantity for Test Product batch TEST-1").fill("2")
         page.get_by_role("radio", name="Replacement", exact=True).check()
+        page.locator("[data-replacement-catalog] > summary").click()
         page.get_by_label("Replacement packs for Test Product", exact=True).fill("2")
         page.get_by_label("Reason and remarks").fill("Expired two packs from original delivered batch")
         photo = supporting_photo()
@@ -92,10 +93,10 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         page.get_by_role("button", name="Request return", exact=True).click()
         page.wait_for_load_state("networkidle")
         page.screenshot(path=str(output / "request-result.png"), full_page=True)
-        assert page.get_by_role("heading", name="Return #1", exact=True).count(), (
+        assert page.get_by_role("heading", name="Return #1 Order #1", exact=True).count(), (
             f"{page.url}\n{page.locator('body').inner_text()[:5000]}\n{errors}\n{network}"
         )
-        expect(page.get_by_role("heading", name="Return #1", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", name="Return #1 Order #1", exact=True)).to_be_visible()
         page.screenshot(path=str(output / "reseller-return-390.png"), full_page=True)
 
         as_role(d["supervisor"], "sales-supervisor", "sales-supervisor")
@@ -105,16 +106,17 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         page.locator('[data-return-open="1"]').focus()
         page.keyboard.press("Enter")
         page.wait_for_load_state("networkidle")
-        expect(page.get_by_role("dialog", name="Return #1", exact=True)).to_be_visible()
+        expect(page.locator("[data-return-details]")).to_be_visible()
         expect(page.locator(".return-request-step")).to_have_count(0)
-        expect(page.locator(".sales-return-photo-grid img")).to_have_count(1)
+        expect(page.locator('[data-return-panel="overview"] [data-return-photo] img')).to_have_count(1)
         expect(page.locator(".sales-return-substitutions")).not_to_have_attribute("open", "")
-        expect(page.locator(".sales-return-receipts")).not_to_have_attribute("open", "")
+        page.get_by_role("tab", name="Review Decision", exact=True).click()
         page.screenshot(path=str(output / "sales-request-review-390.png"), full_page=True)
         page.get_by_label("Internal review notes", exact=True).fill("Approved after checking expired batch details")
         page.get_by_role("button", name="Approve return request", exact=True).click()
+        page.get_by_role("dialog", name="Approve return request?", exact=True).get_by_role("button", name="Confirm approval", exact=True).click()
         page.wait_for_load_state("networkidle")
-        expect(page.locator(".lifecycle-case-detail .status-badge").first).to_have_text("In progress")
+        expect(page.get_by_role("heading", name="Recorded decision", exact=True)).to_be_visible()
         page.screenshot(path=str(output / "sales-review-390.png"), full_page=True)
 
         as_role(d["inventory"], "team-leader", "inventory")
@@ -124,7 +126,7 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
         page.get_by_label("I checked every approved product, quantity, batch, and supporting photo. Everything matches.").check()
         page.get_by_role("button",name="Confirm complete receipt",exact=True).click()
         page.wait_for_load_state("networkidle")
-        expect(page.locator(".inventory-return-status .status-badge")).to_have_text("Awaiting Replacement Release")
+        expect(page.locator('[data-workflow-step="prepare"]')).to_have_attribute("aria-current", "step")
 
         worker.scan_batch_expiry()
         # Give the supervisor a real assigned financial case to inspect.
@@ -157,6 +159,14 @@ def test_return_forms_and_portal_layouts_in_browser(lifecycle, monkeypatch):  # 
                 page.set_viewport_size({"width": width, "height": 900})
                 page.goto("http://lifecycle.test" + path)
                 page.wait_for_load_state("networkidle")
+                if label in {"supervisor", "reseller"}:
+                    expect(page.locator("[data-return-details]")).to_be_visible()
+                    expect(page.locator("[data-return-dialog]")).to_have_count(0)
+                    assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
+                    if label == "reseller":
+                        assert "Original sales" not in page.locator("body").inner_text()
+                    page.screenshot(path=str(output / f"{label}-page-{width}.png"), full_page=True)
+                    continue
                 expect(page.locator(".lifecycle-workspace")).to_be_visible()
                 if label in {"reseller", "sales", "owner", "supervisor"}:
                     dialog = page.locator("[data-return-dialog]")

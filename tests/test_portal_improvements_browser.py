@@ -80,7 +80,7 @@ def test_dashboards_and_internal_conversations_in_browser(lifecycle, monkeypatch
                 page.set_viewport_size({"width": width, "height": 1000 if width == 1440 else 844})
                 page.goto(f"http://portal-improvements.test/portal/{portal}/dashboard")
                 page.wait_for_load_state("networkidle")
-                expect(page.get_by_role("heading", name="Your work at a glance")).to_be_visible()
+                expect(page.get_by_role("heading", name={"sales": "Your work at a glance", "inventory": "Warehouse Overview", "supervisor": "Operations Overview"}[role])).to_be_visible()
                 page.screenshot(path=str(output / f"{role}-{width}.png"), full_page=True)
                 assert page.evaluate("document.documentElement.scrollWidth<=window.innerWidth"), page.evaluate(
                     "Array.from(document.querySelectorAll('*')).filter(e=>e.getBoundingClientRect().right>innerWidth+2).slice(0,10).map(e=>[e.tagName,e.className,e.getBoundingClientRect().width])"

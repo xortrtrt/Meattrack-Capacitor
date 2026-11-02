@@ -549,7 +549,7 @@ def test_sales_leader_orders_filter_and_label_completed_refunds(monkeypatch):
 
     assert dashboard_response.status_code == 200
     assert 'class="status-badge refunded"' in dashboard_response.text
-    assert ">refunded</span" in dashboard_response.text
+    assert ">Refunded</span" in dashboard_response.text
 
 
 def test_approved_order_review_allows_fulfillment_only(monkeypatch):
@@ -2039,7 +2039,7 @@ def test_team_leader_dashboard_uses_priority_led_workspace():
     assert "operations-attention" in template
     assert "operations-heading" in template
     assert "operations-totals" in template
-    assert "operations-columns" in template
+    assert "dash-primary-grid" in template
     assert "dashboard-ledger" in template
     assert "metric-card" not in template
     assert 'section-{{ section }}' in base_template

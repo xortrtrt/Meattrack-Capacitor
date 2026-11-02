@@ -645,7 +645,7 @@ def get_order_payment_proof(proof_id: int, account_id: int | None, role_key: str
 def reseller_most_bought_products(limit: int = 6, account_id: int | None = None) -> list[dict]:
     if limit < 1:
         raise ValueError("limit must be positive")
-    where = ["o.order_type = 'reseller'", "p.item_type = 'finished_product'"]
+    where = ["o.order_type = 'reseller'", "o.status = 'fulfilled'", "p.item_type = 'finished_product'"]
     params: list[object] = []
     if account_id is not None:
         profile = reseller_account_profile(account_id)
@@ -657,7 +657,7 @@ def reseller_most_bought_products(limit: int = 6, account_id: int | None = None)
                p.name,
                p.category,
                p.unit,
-               p.base_price,
+               p.base_price, p.is_active,
                COALESCE(SUM(oi.quantity), 0) AS total_quantity,
                COALESCE(SUM(oi.line_total), 0) AS total_amount,
                COUNT(DISTINCT o.order_id) AS order_count

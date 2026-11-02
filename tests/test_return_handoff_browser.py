@@ -104,7 +104,9 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
                 page.set_viewport_size({"width": width, "height": 900})
                 prefix = "reseller" if role == "reseller" else "team-leader"
                 page.goto(f"http://handoff.test/portal/{prefix}/returns?case={replacement}", wait_until="networkidle")
-                dialog = page.get_by_role("dialog", name=f"Return #{replacement}", exact=True)
+                dialog = page.locator("[data-return-details]") if role == "reseller" else page.get_by_role("dialog", name=f"Return #{replacement}", exact=True)
+                if role == "reseller":
+                    page.get_by_role("tab", name="Replacement & Delivery", exact=True).click()
                 expect(dialog).to_be_visible()
                 expect(dialog).to_contain_text("TEST-2")
                 if role == "inventory":
@@ -114,7 +116,8 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
                     expect(dialog).to_contain_text("Your replacement delivery batches")
                     assert "Holding #" not in dialog.inner_text() and "Original sales" not in page.locator("body").inner_text()
                 else:
-                    dialog.locator("summary", has_text="Approval and Inventory handoff").click()
+                    expect(dialog.get_by_role("heading", name="Inventory records", exact=True)).to_be_visible()
+                    expect(dialog.locator("details")).to_have_count(0)
                     expect(dialog).to_contain_text("Movement #")
                 assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
                 assert dialog.evaluate("el=>el.scrollWidth<=el.clientWidth+1")

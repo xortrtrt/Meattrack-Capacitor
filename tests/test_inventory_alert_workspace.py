@@ -59,7 +59,7 @@ def test_dashboard_uses_same_live_threshold_even_before_worker_scan(lifecycle):
     dashboard = leader_work_summary(d['inventory'], 'inventory')
     owner, inventory = assert_shared(d)
     assert dashboard['counts']['low_stock'] == len(inventory['low_stock']) == 1
-    assert next(q for q in dashboard['queue'] if q['label'] == 'Low-stock products')['path'] == 'alerts#replenishment'
+    assert next(q for q in dashboard['queue'] if q['label'] == 'Low-stock products')['path'] == 'alerts?category=low-stock'
     superuser.update_business_settings({'inventory.low_stock_packs':19}, d['owner'], 'Lower shared warning policy')
     assert leader_work_summary(d['inventory'], 'inventory')['counts']['low_stock'] == 0
     assert stock_alerts.stock_alert_workspace()['low_stock'] == []

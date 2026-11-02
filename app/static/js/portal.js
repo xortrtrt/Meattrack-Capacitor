@@ -1668,6 +1668,11 @@
                 return;
             }
             if (form.hasAttribute("data-receipt-native-submit")) {
+                isSubmitting = true;
+                updateActionState();
+                submitButton.setAttribute("aria-busy", "true");
+                submitButton.querySelector("span").textContent = "Submitting payment...";
+                cardStatus.textContent = "Submitting your receipt and payment details…";
                 HTMLFormElement.prototype.submit.call(form);
                 return;
             }

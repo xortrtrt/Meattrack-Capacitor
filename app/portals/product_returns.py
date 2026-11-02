@@ -110,8 +110,17 @@ def _returns_context(request: Request) -> dict:
     actor_id = shared.session_account_id(request)
     role = capability_role_key(request)
     inventory_only = role == "team-leader:inventory"
-    queue = normalize_queue(request.query_params.get("queue")) if role == "team-leader:sales" else None
+    queue = normalize_queue(request.query_params.get("queue")) if (
+        role == "team-leader:sales" or (role == "sales-supervisor" and "queue" in request.query_params)
+    ) else None
     case_options = {"queue": queue} if queue is not None else {}
+    dashboard_queue = request.query_params.get("dashboard_queue", "")
+    if dashboard_queue:
+        from app.repositories.dashboard_queues import ALLOWED, LABELS
+        queue_role = "inventory" if inventory_only else role
+        if dashboard_queue not in ALLOWED.get(queue_role, set()):
+            raise HTTPException(400, "This dashboard queue is not available for your role.")
+        case_options["dashboard_queue"] = dashboard_queue
     if role == "owner" and request.query_params.get("owner_only") == "1":
         case_options["owner_only"] = True
     if role == "reseller" and request.query_params.get("source_order"):
@@ -154,6 +163,8 @@ def _returns_context(request: Request) -> dict:
     ):
         can_review = False
     return {
+        "dashboard_queue_label": LABELS[dashboard_queue] if dashboard_queue else "",
+        "dashboard_queue_clear_url": str(request.url.remove_query_params(["dashboard_queue", "page", "case"])),
         "return_queue": queue,
         "return_queue_options": QUEUES,
         "return_queue_counts": returns.return_queue_counts(actor_id) if queue is not None else {},

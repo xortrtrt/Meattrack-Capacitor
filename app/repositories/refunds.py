@@ -58,9 +58,15 @@ def list_order_refunds(
     q: str = "",
     page: int = 1,
     page_size: int = 12,
+    owner_only: bool = False,
 ) -> list[dict]:
     scope, params = _refund_scope(role_key, account_id)
     filters = ""
+    if owner_only:
+        if role_key != 'owner':
+            raise ValueError('Only an Owner can view missing Supervisor coverage.')
+        from .coverage_filters import REFUND_COVERAGE
+        filters += ' AND ' + REFUND_COVERAGE
     if status in REFUND_STATUSES:
         filters += " AND r.status = %s"
         params.append(status)
@@ -103,9 +109,14 @@ def list_order_refunds(
     ))
 
 
-def count_order_refunds(role_key: str, account_id: int | None, *, status: str = "", q: str = "") -> int:
+def count_order_refunds(role_key: str, account_id: int | None, *, status: str = "", q: str = "", owner_only: bool = False) -> int:
     scope, params = _refund_scope(role_key, account_id)
     filters = ""
+    if owner_only:
+        if role_key != 'owner':
+            raise ValueError('Only an Owner can view missing Supervisor coverage.')
+        from .coverage_filters import REFUND_COVERAGE
+        filters += ' AND ' + REFUND_COVERAGE
     if status in REFUND_STATUSES:
         filters += " AND r.status = %s"
         params.append(status)

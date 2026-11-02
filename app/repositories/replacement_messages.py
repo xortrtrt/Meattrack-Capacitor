@@ -114,7 +114,7 @@ def mark_read(return_id: int, actor_id: int, through_id: int) -> int:
         return _unread_count(cur, return_id, actor_id)
 
 
-def threads(actor_id: int) -> list[dict]:
+def threads(actor_id: int, *, limit: int | None = None, messages_only: bool = False) -> list[dict]:
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"reseller", "sales-supervisor"})
         scope, params = (
@@ -125,7 +125,7 @@ def threads(actor_id: int) -> list[dict]:
             else (" AND r.processing_supervisor_account_id=%s", [actor_id])
         )
         cur.execute(
-            """SELECT r.return_id,r.order_id,r.status,a.name reseller_name,
+            """SELECT r.return_id,r.order_id,r.status,r.processing_supervisor_account_id processor_account_id,a.name reseller_name,
             COALESCE(p.name,'Owner') processor_name,
             a.profile_image_path reseller_profile_image_path,
             a.profile_image_position_x reseller_profile_image_position_x,
@@ -135,7 +135,7 @@ def threads(actor_id: int) -> list[dict]:
             p.profile_image_position_x processor_profile_image_position_x,
             p.profile_image_position_y processor_profile_image_position_y,
             p.profile_image_scale processor_profile_image_scale,
-            latest.content last_message,
+            latest.content last_message, latest.created_at::text last_message_at,
             (SELECT COUNT(*) FROM return_conversation_messages m WHERE m.return_id=r.return_id
              AND m.sender_account_id IS DISTINCT FROM %s AND m.message_id>COALESCE(rd.last_message_id,0)) unread_count
             FROM product_returns r JOIN accounts a ON a.account_id=r.requested_by_account_id
@@ -147,8 +147,10 @@ def threads(actor_id: int) -> list[dict]:
             LEFT JOIN return_conversation_reads rd ON rd.return_id=r.return_id AND rd.account_id=%s
             WHERE r.replacement_workflow_version=2"""
             + scope
-            + " ORDER BY COALESCE(latest.created_at,r.updated_at) DESC,r.return_id DESC",
-            [actor_id, actor_id, *params],
+            + (" AND latest.created_at IS NOT NULL" if messages_only else "")
+            + " ORDER BY COALESCE(latest.created_at,r.updated_at) DESC,r.return_id DESC"
+            + (" LIMIT %s" if limit is not None else ""),
+            [actor_id, actor_id, *params, *([min(max(int(limit), 1), 20)] if limit is not None else [])],
         )
         return clean_row(cur.fetchall())
 

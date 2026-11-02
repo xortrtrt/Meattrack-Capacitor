@@ -4,6 +4,129 @@ verified: 2026-10-30
 ---
 # Testing and change impact
 
+## Local Apache JMeter system verification (2026-11-02)
+
+Installed JMeter 5.6.3 exercised the existing localhost public app and a separate
+native instance using synthetic accounts in disposable PostgreSQL schemas. The
+final serial functional run passed 274 HTTP samples and all post-run database
+checks: paid-order fulfillment, completed replacement, unreserved unpaid checkout,
+once-only message storage, preserved refund retry history, and expected stock.
+Coverage also included all five roles, navigation/guards, CSRF/login throttling,
+report exports, multipart evidence submission, and Inventory/Sales handoff.
+
+Performance is not a clean pass. Initial public load recorded 3,861 samples with
+11 host-aborted connections at 30 users; the 1/5/15-user stages had no failures.
+A 30-user repeat passed 672 samples but had a 5.9-second p95. The authenticated
+15-second pass recorded eight read timeouts and dependent session/CSRF failures.
+With a longer timeout, serial Owner/Supervisor dashboards still took 17.6/24.6
+seconds. These are development-machine observations, not production capacity or
+a diagnosed root cause. Earlier harness expectation errors were corrected and
+their raw artifacts retained separately.
+
+Local report, JMX plans, JTL files, dashboards and reusable runner are under
+`outputs/jmeter-system-2026-11-02/`; `REPORT.md` distinguishes each run. The runner
+uses the existing isolated-schema/lifecycle fixtures, requires a loopback database
+and a fresh output directory, and removes its temporary server/schema after use.
+Existing business records were not targeted by write scenarios. Browser JavaScript,
+external delivery/payment services, worker processing and the full pytest suite
+were not verified by this task. See [[Architecture]], [[Roles and Access]],
+[[Orders and Inventory]], and [[Returns and Financials]]. Sources:
+`tests/test_inventory_postgres.py`, `tests/test_product_lifecycle.py`,
+`app/portal_config.py`, and the local JMeter artifacts.
+
+## Reseller catalog redesign (2026-11-02)
+
+136 distinct focused checks passed: three new catalog browser/HTTP checks in
+`tests/test_reseller_catalog_browser.py`, 120 portal-context checks, and 13 existing
+catalog/cart/checkout/payment checks selected from `test_inventory_postgres.py`
+and `test_portal_improvements.py`. Browser coverage verifies name/description
+search, all categories and sort options, filtered pagination, empty results,
+details values, expired-stock exclusion, image loading, quantity validation,
+cart pricing, and unpaid stock remaining unreserved. Layout checks cover 320,
+390, 560, 768, 1440, and 1920 pixels, including modal width and no page overflow.
+HTTP checks retain session/role guards and authoritative cart stock validation.
+
+The follow-up refinement passed 123 distinct checks: all three expanded catalog
+checks and 120 portal-context checks. New assertions cover numbered navigation,
+filter reset preserving sort, two-column phone browsing, quantity-button limits,
+keyboard focus wrapping/restoration, unavailable-product focus, full image bounds,
+and reachable Close with a long description. A final responsive-details recheck
+passed after the phone image-size adjustment. JavaScript syntax and Ruff passed.
+Reports: `outputs/reseller-catalog/refined-final.xml`, `refined-context.xml`, and
+`refined-details-final.xml` in the same directory.
+
+The final catalog run passed all three checks. Ruff, changed-template compilation,
+and whitespace checks passed. Tests wrote only disposable PostgreSQL schemas;
+the existing catalog records and payment/reservation rules were not changed.
+Screenshots and JUnit reports are local artifacts under
+`outputs/reseller-catalog/`. These results do not establish deployment.
+See [[Orders and Inventory]] and [[Roles and Access]].
+
+## Full Messenger refinement verification (2026-11-02)
+
+The expanded `test_unified_contact_inbox.py` passed five cases, covering separate
+and merged participants at desktop and phone widths. Checks include bottom
+composer placement, collapsed/expanded cards, message badges without association
+side effects, general replies without badges, failed-send draft/order/UUID retention,
+overflow open/Escape behavior, grouped bubbles, and scroll preservation during
+incoming replies. The compatibility run passed 130 portal-context, attachment,
+replacement-role, and refund tests. This supersedes the earlier UI expectations
+about top-mounted selectors and removed message links. JavaScript syntax, Ruff,
+and diff checks passed; no backend or migration changes were required. Screenshots
+and JUnit files are under `outputs/unified-inbox/`. See
+[[Background Work and Integrations]].
+
+## Order inquiry cards and category isolation (2026-11-02)
+
+The revised `test_unified_contact_inbox.py` passed five cases, including desktop/
+phone checks for both separate and merged direct participants. They verify scoped
+order data, no default selection, post-send clearing, general replies without an
+order, historical card opening, explicit inquiry deep links, System-only entries,
+removed Show controls, and top-mounted selectors with an accessible composer.
+The 120 portal-context checks and ten existing attachment/refund/replacement
+browser checks also passed across separate focused runs. Ruff, targeted mypy,
+and JavaScript syntax checks passed. Updated screenshots and JUnit results live
+under `outputs/unified-inbox/`. No new schema migration was required. See
+[[Background Work and Integrations]].
+
+## Contact-grouped Inbox refinement (2026-11-02)
+
+`tests/test_unified_contact_inbox.py` passed three focused cases: shared case
+history with ownership/pair/retry checks, plus desktop and phone browser flows.
+The browser checks cover one row for two cases, selection without navigation,
+case-targeted replies, order-context sends, filtering, and composer visibility.
+The updated `test_replacement_conversation_browser.py` passed both widths while
+retaining staff role, retry, hidden-read, and read-only checks.
+
+Separate compatibility runs passed 134 portal-context/replacement-workflow checks
+and 13 attachment/refund/browser checks. The broader `test_portal_improvements.py`
+run passed 19 tests but its unrelated legacy returns-layout assertion
+`test_existing_return_details_keep_multiple_cases_selectable_and_default_closed`
+still expects old `return-ID` dialog markup from the ongoing dedicated returns-page
+changes. It was not changed to claim a clean full suite. Ruff, targeted mypy, and
+JavaScript syntax checks passed. Local screenshots/JUnit output are under
+`outputs/unified-inbox/`. See [[Background Work and Integrations]].
+
+## Unified reseller Inbox verification (2026-11-02)
+
+Focused checks passed across separate runs: `tests/test_portal_context.py` (120),
+`tests/e2e/test_refund_workspace.py` (7),
+`tests/test_portal_improvements_browser.py` (1), and
+`tests/test_replacement_conversation_browser.py` (2). A timestamp serialization
+failure introduced by the preview field was corrected before the replacement
+browser recheck passed. The expanded browser checks cover categories, search by
+return/case number, empty results, unread-summary display, switching conversation
+types, collapsible prices, and composer visibility/no horizontal overflow at
+390, 768, and 1440 pixels. Existing checks retain send retry, attachments,
+refund deep links, role views, and declined-case read-only behavior.
+
+Node syntax checks passed for both inbox/replacement scripts; Ruff passed for
+the changed Python files and browser test, and mypy passed for the two changed
+Python modules. Screenshots and the final browser/compatibility JUnit results are
+local artifacts in `outputs/replacement-conversation/`. These checks used disposable
+database schemas and do not establish deployment. See
+[[Background Work and Integrations]] and [[Replacement Workflow]].
+
 Choose verification from the behavior changed and the connections it touches.
 Documentation setup does not establish that application tests or production pass.
 
@@ -461,3 +584,116 @@ The aggregate is recorded in ignored `outputs/audit-summary.json`; detailed JUni
 reports are `outputs/audit-*.xml`. Test schemas and the isolated browser server were
 cleaned up. These results verify local source and test behavior. See
 [[Replacement Workflow]], [[Orders and Inventory]], and [[Database and Operations]].
+
+Return-request interaction correction (2026-11-02): 43 focused PostgreSQL/browser
+checks passed across the request-options/lifecycle suite (7) and replacement,
+history, receipt, eligibility-window, and portal regressions (36). Updated browser
+checks exercise missing quantities/details/photos, catalog search, failed comparison
+retry, comparison invalidation after quantity edits, visible mobile footer buttons,
+and successful replacement submission through delivery. The live authenticated
+history form was inspected on desktop and phone; only price previews were requested,
+without submitting a real return. Screenshots are in ignored
+`outputs/return-request-desktop.jpg` and `outputs/return-request-mobile.jpg`.
+Ruff, JavaScript syntax, all-template compilation, and whitespace checks passed.
+Reports: `outputs/return-request-options-final.xml` and
+`outputs/return-request-regressions.xml`. See [[Sales and Reseller Returns]].
+
+Sales case cards (2026-11-02): 134 distinct focused checks passed across initial
+and final rechecks. Nine presentation regressions cover visible facts, role
+boundaries, workflow-version step order, terminal states, payment progression,
+parallel delivery/refund work, and escaped customer text. Existing portal context,
+replacement, customer-action, and refund/handoff browser checks passed after
+replacing obsolete dropdown clicks and counting submit actions separately from
+the new Close button. Actual case 3 was inspected on desktop and phone: no
+disclosures or horizontal overflow, and Close/reopen preserves the All queue.
+No live case decision was submitted. All templates compile; focused Ruff and
+whitespace checks passed. Ignored artifacts: `outputs/sales-case-cards.xml`,
+`outputs/sales-case-actions.xml`, `outputs/sales-case-final.xml`, and
+`outputs/sales-case-3-{desktop,mobile}.jpg`. See [[Sales and Reseller Returns]].
+
+Shared return timeline (2026-11-02): 182 distinct focused checks passed across
+initial runs and final rechecks. Fourteen new presenter tests cover payment
+submission versus verification, current receipt metadata, both stock/payment
+orders, Inventory privacy and physical completion, mismatch/terminal behavior,
+recorded dates, and concurrent delivery/refund work. Existing portal context,
+Inventory separation, replacement browser, customer actions, history, Sales cards,
+and Supervisor facts passed after replacing prose expectations with milestone
+state assertions. One summary fixture now explicitly records its accepted quote.
+Desktop/phone browser checks cover Sales, Reseller, and Inventory timeline states;
+the live Sales dialog was visually inspected at both sizes without case mutations.
+Ruff, mypy (79 files), all-template compilation, and whitespace checks passed.
+Ignored reports: `outputs/shared-return-timeline.xml`,
+`outputs/return-timeline-followup.xml`, `outputs/return-timeline-final.xml`,
+`outputs/return-timeline-summary-final.xml`. Captures:
+`outputs/shared-return-timeline-{desktop,mobile}.jpg`.
+See [[Sales and Reseller Returns]] and [[Replacement Workflow]].
+
+Supervisor dedicated page (2026-11-02): 160 distinct focused checks passed across
+initial runs and final targeted rechecks. Coverage includes context rendering,
+responsive Sales/Owner/Inventory pages, full replacement approval/payment/delivery,
+follow-up resolution, legacy clearance, empty/error/completed states, and the
+five-stage mapping. New browser coverage verifies dashboard filter preservation,
+keyboard tabs, photo preview, required rejection fields, confirmation cancellation,
+actual rejection, alternative-product approval with authoritative repricing, and
+explicit revision of processed requests. Test data lives only in disposable schemas.
+The actual authenticated Supervisor case page was inspected on desktop and mobile;
+no live approval, rejection, transfer, or case mutation was submitted.
+Ruff, mypy (79 files), template compilation, JavaScript syntax, and whitespace checks
+passed. Ignored reports: `outputs/supervisor-page-final-unit.xml`,
+`outputs/supervisor-page-final-browser.xml`, `outputs/supervisor-page-offer-final.xml`,
+`outputs/supervisor-page-states.xml`, `outputs/supervisor-details-page.xml`.
+See [[Sales and Reseller Returns]].
+
+
+Reseller dedicated page (2026-11-02): 191 distinct focused checks passed across
+final unit/context/receipt runs and browser rechecks. Coverage includes the five
+tabs, public role projection, current-revision acceptance and cancellation,
+legacy image-only resubmission, recognition and confirmation gates, replacement
+payment/funds/delivery flow, optional acknowledgment, follow-ups, history navigation,
+keyboard tabs, photo preview, and responsive layouts. Browser actions used disposable
+schemas; the actual authenticated reseller page was inspected at desktop and phone
+sizes with no live acceptance, payment, acknowledgment, or message submitted.
+Ruff, mypy (79 files), template compilation, JavaScript syntax, and whitespace
+checks passed. Ignored reports: `outputs/reseller-details-checks-final.xml`,
+`outputs/reseller-details-browser-final.xml`, `outputs/reseller-details-flow-final.xml`.
+Captures include
+`outputs/reseller-returns-tab/track-return-{375,768,1440}.png` and
+`outputs/reseller-details-page-desktop.png`. See [[Sales and Reseller Returns]].
+
+
+Return activity layout correction (2026-11-02): 16 focused history-browser and
+Reseller/Supervisor presentation checks passed. Actual reseller Activity History
+was inspected on desktop and phone: matching timeline/event cards, no horizontal
+overflow, and the action bar fully inside the viewport. Changed templates compile;
+whitespace checks passed. Report: `outputs/return-activity-layout.xml`.
+
+
+Conversation button design (2026-11-02): 17 focused presentation and connected
+browser checks passed, plus a targeted phone recheck using the new Supervisor
+footer button to open its case conversation. Both dedicated pages use the same
+shared link component and existing role-specific destinations. Desktop and phone
+captures were inspected using disposable test records. No live messages were sent.
+Templates compile; focused Ruff and whitespace checks passed. Reports:
+`outputs/return-conversation-button.xml`, `outputs/return-conversation-navigation.xml`.
+
+
+## Role-dashboard verification (2026-11-02)
+
+[[Role Dashboards]] uses real templates with disposable PostgreSQL schemas.
+Focused runs recorded 128 passing domain/context checks, 11 passing final
+role-dashboard domain/browser checks, 11 connected alert/conversation checks,
+and 30 replacement/Owner/inventory/catalog/cart/checkout regressions. These overlap;
+there are 172 distinct passing cases across these runs, not a full-suite result.
+Ignored JUnit reports and the exact commands/results are in
+`outputs/role-dashboards/VERIFICATION.md` and its linked XML files.
+
+Browser coverage spans all five roles at 320/390/768/1024/1440/1920px, DPR-2
+zoom-equivalent reflow, zero queues, keyboard disclosures, chart data, destination
+links, image loads and missing-contact/long-content states. No console errors,
+failed HTTP requests or horizontal document overflow occurred in the final run.
+Screenshots show disposable fixture data, not live customer records. Manual
+browser zoom, physical-device and screen-reader verification were not performed.
+Ruff, selected mypy, fifteen-template compilation, token mapping and whitespace
+checks passed. DESIGN lint had zero errors and six unused-token warnings. The
+Premium strict audit script became unavailable in its loaded cache path; separate
+targeted static checks do not claim to replace it. No deployment was performed.

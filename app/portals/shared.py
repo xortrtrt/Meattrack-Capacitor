@@ -252,9 +252,12 @@ def inquiries_page(
     page_size: int = 10,
     assigned_team_leader_account_id: int | None = None,
     include_unassigned: bool = False,
+    missing_coverage: bool = False,
 ) -> dict:
     filters = portal_filters(request)
+    coverage = {"missing_coverage": True} if missing_coverage else {}
     total = data.count_inquiries(
+        **coverage,
         q=filters["q"],
         status=filters["status"],
         assigned_team_leader_account_id=assigned_team_leader_account_id,
@@ -262,6 +265,7 @@ def inquiries_page(
     )
     filters["page"] = clamp_page(total, filters["page"], page_size)
     items = data.list_inquiries(
+        **coverage,
         q=filters["q"],
         status=filters["status"],
         assigned_team_leader_account_id=assigned_team_leader_account_id,

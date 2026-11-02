@@ -15,6 +15,7 @@ def list_inquiries(
     page: int | None = None,
     page_size: int = 10,
     sort: str = "",
+    missing_coverage: bool = False,
 ) -> list[dict]:
     query = """
         SELECT i.inquiry_id, i.name, i.contact_number, i.email, i.business_name, i.message,
@@ -24,6 +25,9 @@ def list_inquiries(
         LEFT JOIN accounts a ON a.account_id = i.assigned_team_leader_account_id
     """
     where = []
+    if missing_coverage:
+        from .coverage_filters import INQUIRY_COVERAGE
+        where.append(INQUIRY_COVERAGE)
     params: list[object] = []
     q = q.strip()
     status = status.strip()
@@ -31,7 +35,9 @@ def list_inquiries(
         where.append("(i.name ILIKE %s OR i.email ILIKE %s OR i.business_name ILIKE %s OR i.contact_number ILIKE %s)")
         search = f"%{q}%"
         params.extend([search, search, search, search])
-    if status:
+    if status == 'open':
+        where.append("i.status IN ('pending','assigned','contacted')")
+    elif status:
         where.append("i.status = %s")
         params.append(status)
     if assigned_team_leader_account_id is not None:
@@ -64,9 +70,13 @@ def count_inquiries(
     status: str = "",
     assigned_team_leader_account_id: int | None = None,
     include_unassigned: bool = False,
+    missing_coverage: bool = False,
 ) -> int:
     query = "SELECT COUNT(*) AS total FROM inquiries i"
     where = []
+    if missing_coverage:
+        from .coverage_filters import INQUIRY_COVERAGE
+        where.append(INQUIRY_COVERAGE)
     params: list[object] = []
     q = q.strip()
     status = status.strip()
@@ -74,7 +84,9 @@ def count_inquiries(
         where.append("(i.name ILIKE %s OR i.email ILIKE %s OR i.business_name ILIKE %s OR i.contact_number ILIKE %s)")
         search = f"%{q}%"
         params.extend([search, search, search, search])
-    if status:
+    if status == 'open':
+        where.append("i.status IN ('pending','assigned','contacted')")
+    elif status:
         where.append("i.status = %s")
         params.append(status)
     if assigned_team_leader_account_id is not None:

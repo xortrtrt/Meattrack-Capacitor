@@ -135,6 +135,84 @@
 .return-payment-missing p { margin:4px 0 0; font-size:.85rem; line-height:1.5; }
 @media(max-width:600px) { .supervisor-return-dialog .payment-review-details { grid-template-columns:1fr; } }
 
+/* One connected milestone timeline across return portals. */
+.return-workflow { --workflow-line:var(--border,#e6e0d3); --workflow-ink:var(--text,#241f19); --workflow-muted:var(--text-light,#6f675d); --workflow-accent:var(--gold,#d7b621); --workflow-paper:var(--surface,#fff); --workflow-wash:var(--surface-muted,#faf8ef); min-width:0; color:var(--workflow-ink); }
+.portal-body .returns-case-dialog .return-workflow { padding:20px; border:1px solid var(--workflow-line); border-radius:12px; background:var(--workflow-paper); }
+.return-workflow>header { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.portal-body .returns-case-dialog .return-workflow h4 { margin:0; font-size:1rem; }
+.return-workflow>header>span { font-size:.75rem; color:var(--workflow-muted); }
+.return-workflow-steps { list-style:none; margin:0; padding:0; }
+.return-workflow-steps>li { position:relative; display:flex; align-items:flex-start; gap:14px; min-width:0; margin:0; padding:0 0 18px; }
+.return-workflow-steps>li::before { content:''; position:absolute; width:2px; top:30px; bottom:0; left:14px; background:var(--workflow-line); }
+.return-workflow-steps>li:last-child { padding-bottom:0; }
+.return-workflow-steps>li:last-child::before { display:none; }
+.return-workflow-marker { display:grid; place-items:center; position:relative; flex:0 0 30px; height:30px; border:1px solid var(--workflow-line); border-radius:50%; background:var(--workflow-paper); color:var(--workflow-muted); font-size:.75rem; }
+.return-workflow-marker svg { width:16px; height:16px; }
+.return-workflow-steps>.is-done .return-workflow-marker { background:var(--workflow-ink); border-color:var(--workflow-ink); color:var(--workflow-paper); }
+.return-workflow-steps>.is-done::before { background:var(--workflow-ink); }
+.return-workflow-steps>.is-current .return-workflow-marker { border:2px solid var(--workflow-accent); background:var(--workflow-wash); color:var(--workflow-ink); box-shadow:0 0 0 4px var(--workflow-wash); }
+.return-workflow-content { min-width:0; flex:1; padding-top:3px; }
+.return-workflow-content strong { display:block; font-size:.875rem; line-height:1.4; }
+.return-workflow-content small,.return-workflow-content time { display:block; color:var(--workflow-muted); font-size:.75rem; margin-top:4px; line-height:1.4; }
+.return-workflow-state { flex-shrink:0; padding:4px 8px; border-radius:6px; font-size:.7rem; color:var(--workflow-muted); }
+.is-current>.return-workflow-state { background:var(--workflow-wash); color:var(--workflow-ink); font-weight:700; }
+.is-declined .return-workflow-marker { color:var(--danger,#a12b28); border-color:currentColor; }
+.supervisor-case-summary>.return-workflow { border:0!important; border-bottom:1px solid var(--workflow-line)!important; border-radius:0!important; }
+@media(max-width:600px) { .portal-body .returns-case-dialog .return-workflow { padding:16px; } .return-workflow-steps>li { gap:10px; } .return-workflow-state { font-size:.65rem; padding-inline:4px; } }
+
+/* Sales tracking uses visible cards and evidence-based workflow steps. */
+.portal-body .sales-case-dialog { width:min(1020px,calc(100% - 48px)); }
+.sales-case-dialog .returns-dialog-bar h3 { margin:4px 0 0; font-size:1.2rem; }
+.sales-case-dialog .sales-case-content { display:grid; gap:18px; padding:24px; }
+.portal-body .sales-case-dialog .sales-case-status { padding:18px 20px; border:1px solid var(--return-line); border-left:4px solid var(--return-accent); border-radius:12px; background:var(--return-wash); }
+.sales-case-dialog .sales-case-status h4 { font-size:1.2rem; margin:5px 0 12px; }
+.sales-case-status-meta { display:flex; flex-wrap:wrap; align-items:center; gap:12px; font-size:.8rem; color:var(--return-muted); }
+.portal-body .sales-case-dialog .sales-case-card { min-width:0; padding:20px; border:1px solid var(--return-line); border-radius:12px; background:var(--return-paper); }
+.sales-case-card>header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:18px; }
+.sales-case-dialog .sales-case-card h4 { margin:0; font-size:1rem; }
+.sales-case-card>header>span,.sales-case-card>header>a { color:var(--return-muted); font-size:.75rem; }
+.sales-case-card>header>a { display:inline-flex; align-items:center; gap:4px; min-height:44px; text-decoration:underline; text-underline-offset:3px; }
+.sales-case-card>header>a svg { width:16px; height:16px; }
+.sales-case-facts,.sales-case-money { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px; margin:0; }
+.sales-case-card dt { margin-bottom:6px; font-size:.75rem; color:var(--return-muted); }
+.sales-case-card dd { margin:0; font-size:.875rem; font-weight:650; overflow-wrap:anywhere; }
+.sales-case-money dd { font-size:1rem; font-variant-numeric:tabular-nums; }
+.sales-case-reason { display:grid; gap:6px; margin-top:18px; padding-top:14px; border-top:1px solid var(--return-line); font-size:.85rem; }
+.sales-case-dialog .sales-case-reason p { margin:0; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+.sales-case-warning { padding:14px; margin-top:16px; border-left:3px solid var(--return-accent); background:var(--return-wash); font-size:.85rem; }
+.sales-case-steps { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; list-style:none; padding:0; margin:0; }
+.sales-case-steps>li { display:flex; align-items:center; gap:10px; padding:12px; min-width:0; border:1px solid var(--return-line); border-radius:10px; }
+.sales-case-steps>li.is-current { border-color:var(--return-accent); background:var(--return-wash); }
+.sales-case-step-number { display:grid; place-items:center; flex:0 0 28px; height:28px; border:1px solid var(--return-line); border-radius:50%; font-size:.8rem; }
+.sales-case-steps .is-done .sales-case-step-number { background:var(--return-ink); color:var(--return-paper); border-color:var(--return-ink); }
+.sales-case-step-number svg { width:16px; height:16px; }
+.sales-case-steps>li>div { min-width:0; }
+.sales-case-steps strong { display:block; font-size:.8rem; line-height:1.4; }
+.sales-case-steps small { display:block; margin-top:4px; color:var(--return-muted); font-size:.7rem; }
+.sales-case-step-state { margin-left:auto; font-size:.68rem; color:var(--return-muted); }
+.sales-case-steps .is-current .sales-case-step-state { color:var(--return-ink); font-weight:700; }
+.sales-case-product-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.sales-case-products,.sales-case-records { display:grid; gap:14px; margin:0; padding:0; list-style:none; }
+.sales-case-products>li,.sales-case-records>li { display:grid; gap:6px; min-width:0; font-size:.85rem; overflow-wrap:anywhere; }
+.sales-case-products>li+li,.sales-case-records>li+li { border-top:1px solid var(--return-line); padding-top:14px; }
+.sales-case-products small,.sales-case-records small { color:var(--return-muted); font-size:.75rem; line-height:1.5; }
+.sales-case-dialog .sales-case-caption { color:var(--return-muted); font-size:.8rem; line-height:1.5; margin:14px 0 0; }
+.sales-case-files { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:10px; }
+.sales-case-files a { display:flex; align-items:center; gap:12px; min-width:0; min-height:60px; padding:12px; border:1px solid var(--return-line); border-radius:10px; color:var(--return-ink); font-size:.85rem; }
+.sales-case-files a>span { min-width:0; flex:1; }
+.sales-case-files small { display:block; color:var(--return-muted); font-size:.7rem; margin-top:4px; overflow-wrap:anywhere; }
+.sales-case-files svg { width:18px; height:18px; flex-shrink:0; }
+.sales-case-footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.sales-case-footer .button { min-height:48px; }
+.sales-case-dialog .return-activity-list li:last-child { padding-bottom:0; }
+@media(max-width:700px) {
+ .sales-case-dialog .sales-case-content { padding:16px; gap:14px; }
+ .portal-body .sales-case-dialog .sales-case-card { padding:16px; }
+ .sales-case-facts,.sales-case-money { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+ .sales-case-product-grid,.sales-case-steps { grid-template-columns:minmax(0,1fr); }
+ .sales-case-footer .button { flex:1 1 100%; }
+}
+
 /* Supervisor case overview keeps decision facts visible above reference cards. */
 .supervisor-case-summary { border:1px solid var(--return-line); border-radius:12px; overflow:hidden; background:var(--return-paper); }
 .supervisor-case-summary > header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 20px; background:var(--return-wash); border-bottom:1px solid var(--return-line); }

@@ -1,0 +1,11 @@
+{% set workflow = case.workflow_steps if case.workflow_steps is defined else return_workflow_steps(case, return_inventory_only|default(false)) %}
+<section class="return-workflow" aria-labelledby="return-workflow-title" data-return-next-step>
+  <header><h4 id="return-workflow-title">Return timeline</h4><span>{{ 'Request declined' if case.status=='rejected' else 'Inventory steps' if return_inventory_only|default(false) else 'Replacement' if case.resolution=='replace' else 'Refund' }}</span></header>
+  <ol class="return-workflow-steps" aria-label="Return workflow steps">
+    {% for step in workflow %}<li class="is-{{ step.state }}" data-workflow-step="{{ step.key }}" {% if step.state=='current' %}aria-current="step"{% endif %}>
+      <span class="return-workflow-marker" aria-hidden="true">{% if step.state=='done' %}<i data-lucide="check"></i>{% elif step.state=='declined' %}<i data-lucide="x"></i>{% else %}{{ loop.index }}{% endif %}</span>
+      <div class="return-workflow-content"><strong>{{ step.label }}</strong><small>{{ step.owner }}</small>{% if step.note %}<small class="return-workflow-note">{{ step.note }}</small>{% endif %}{% if step.at %}<time datetime="{{ step.at.isoformat() }}">{{ step.at|nice_date }}</time>{% endif %}</div>
+      <span class="return-workflow-state">{{ {'done':'Done','current':'Current','pending':'Pending','declined':'Declined','stopped':'Not continued'}[step.state] }}</span>
+    </li>{% endfor %}
+  </ol>
+</section>

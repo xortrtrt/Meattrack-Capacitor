@@ -244,3 +244,36 @@ their existing evidence. History keeps expandable order cards and shows a compac
 dated progress timeline. See [[Replacement Workflow]]. Sources:
 `app/portals/reseller.py`, `app/repositories/orders.py`,
 `app/templates/portals/reseller/history.html`.
+
+## Reseller catalog presentation (2026-11-02)
+
+Products uses an image-first responsive grid with a single reservation notice
+above the catalog. Search, category links, sorting, and pagination still use
+`shared.product_page` and the existing eight-item reseller page. Category tabs
+and the hidden category field synchronize through the existing asynchronous
+filter hooks. The details modal retains the same quantity limits and cart POST;
+adding to cart does not reserve stock. Prices, image URLs, and availability still
+come from the existing backend values. No ordering or payment rule changed.
+
+The refined catalog uses two columns on phones with enough content width and
+one on narrower screens. Numbered page links retain search/category/sort values;
+Reset filters clears search/category while keeping sort. The page-only
+`app/static/js/reseller_catalog.js` keeps keyboard focus within open details,
+focuses Close for unavailable products, and disables quantity step buttons at
+the existing limits. Long descriptions scroll beneath a pinned dialog header.
+
+Checked against `app/templates/portals/reseller/order.html`,
+`app/static/css/portals/reseller-catalog.css`, `app/static/js/reseller_catalog.js`,
+`app/static/js/portal.js`,
+`app/portals/reseller.py`, `app/portals/shared.py`, and
+`app/repositories/inventory/queries.py`. See [[Testing and Change Impact]] for
+the disposable-schema browser and cart/payment checks.
+
+
+## Role-dashboard stock summaries (2026-11-02)
+
+[[Role Dashboards]] documents the read-only Inventory stock partitions, saved
+expiry thresholds, live expired-batch count before worker scans, and linked
+receipt/preparation/release eligibility. Physical, reserved and available stock
+remain distinct; no inventory or reservation transition changed. Sources:
+`app/repositories/portal_dashboard.py`, `app/repositories/dashboard_queues.py`.

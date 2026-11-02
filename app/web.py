@@ -93,6 +93,9 @@ def media_url(filename: str) -> str:
 
 def configure_templates(csrf_token) -> None:
     from app.business_time import business_today
+    from app.return_timeline import overview_stages, workflow_steps
+    templates.env.globals["return_workflow_steps"] = workflow_steps
+    templates.env.globals["return_overview_stages"] = overview_stages
     templates.env.globals["business_today"] = business_today
     templates.env.globals["csrf_token"] = csrf_token
     templates.env.filters.update(

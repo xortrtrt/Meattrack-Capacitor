@@ -210,7 +210,7 @@ def test_existing_return_details_keep_multiple_cases_selectable_and_default_clos
         for view in ("all", "fulfilled"):
             html = client.get(f"/portal/reseller/history?view={view}").text
             assert ">Details</a>" in html
-            assert ">Return / Refund / Replace</a>" not in html
+            assert ">Request return</a>" not in html
             assert f"source_order={d['order']}&amp;case={cases[-1]}" in html
             assert not re.search(r'<details class="order-history-card"[^>]*\bopen\b', html)
         html = client.get("/portal/reseller/history?view=returns").text
@@ -324,7 +324,8 @@ def test_all_leader_dashboards_render_scoped_priorities(lifecycle, monkeypatch, 
     with TestClient(main.app) as client:
         response = client.get(f"/portal/{portal}/dashboard")
     assert response.status_code == 200
-    assert "Your work at a glance" in response.text and "Needs attention" in response.text
+    assert {"sales": "Your work at a glance", "inventory": "Warehouse Overview", "supervisor": "Operations Overview"}[role] in response.text
+    assert "data-dashboard-queue" in response.text
     summary = leader_work_summary(d[role], specialized)
     assert summary["queue"]
 

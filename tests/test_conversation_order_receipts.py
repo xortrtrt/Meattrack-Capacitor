@@ -35,7 +35,7 @@ def test_order_received_is_once_only_and_keeps_the_original_return_window(lifecy
         page = client.get("/portal/reseller/history?view=completed")
         assert page.status_code == 200
         assert "Completed</a>" in page.text and ">completed</span>" in page.text
-        assert "Order received" in page.text and ">Return / Refund / Replace</a>" in page.text
+        assert "Order received" in page.text and ">Request return</a>" in page.text
         assert f'action="/portal/reseller/orders/{d["order"]}/received"' not in page.text
     with pytest.raises(psycopg2.errors.RaiseException, match="immutable|trace|append"):
         with get_transaction_cursor() as cur:

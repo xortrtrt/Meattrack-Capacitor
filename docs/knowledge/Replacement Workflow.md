@@ -4,6 +4,17 @@ verified: 2026-10-30
 ---
 # Replacement workflow
 
+The later 2026-11-02 Inbox refinement groups eligible reseller histories by current
+processor account, including existing direct messages when that account is also
+the current direct-chat leader. It retains each case's underlying messages,
+permissions, identifiers, read cursor, and declined-case write restriction.
+The reseller chooses a case in the shared view when replying about a replacement.
+Regular Sales does not gain access to a different Supervisor's private case chat.
+This supersedes the earlier reseller case-row navigation description; staff views
+retain their existing layout. See [[Background Work and Integrations]]. Sources:
+`app/reseller_contact_history.py`, `app/static/js/reseller_contact_history.js`,
+`app/repositories/replacement_messages.py`.
+
 New reseller replacement submissions use **replacement workflow version 2**.
 Existing cases and refund-only requests keep version 1 and their original rules,
 quotes, evidence, approvals, stock history, and completion behavior. This is the
@@ -136,8 +147,13 @@ fallback. Rows show the last message and unread count, ordered by latest message
 activity. The message/read endpoints return the current case unread count so
 reading displayed messages clears the badge and incoming messages remain unread
 while the mobile list hides the thread. A compact strip identifies the original order and case status and links
-to **Open return details**. The inbox index uses the same participant rows without
-replacing ordinary Sales conversations.
+to **Open return details**. The reseller Inbox integrates these rows with direct
+and order/refund conversations in one searchable list. Selecting a case retains
+the unified workspace and shows a collapsible comparison from the authorized
+return read. Staff views retain their existing case list. Checked 2026-11-02 against
+`app/templates/portals/reseller/inbox.html`,
+`app/templates/portals/reseller/_inbox_replacement.html`, and
+`app/portals/reseller.py`; see [[Background Work and Integrations]].
 
 Own replies use the standard outgoing bubble, counterpart replies the incoming
 bubble, and automatic case messages the existing system style. Enter sends,
@@ -238,3 +254,14 @@ cases with invalid/expired reservations first wait on Inventory, preserving thei
 reservation prerequisite. Sources: `app/repositories/product_returns.py`,
 `app/portals/product_returns.py`, `app/templates/portals/returns/_payment_review.html`,
 `tests/test_replacement_workflow.py`.
+
+
+## Role-dashboard queue projections (2026-11-02)
+
+[[Role Dashboards]] shares read-only version-1/version-2 eligibility predicates
+with filtered return destinations. Preparation/release remain separate from
+payment or clearance waiting, and Supervisor delivery follows Inventory release.
+Open follow-ups remain visible after completion. Transaction handlers still
+authorize every action; dashboard reads do not advance state or message cursors.
+Sources: `app/repositories/dashboard_queues.py`, `app/repositories/portal_dashboard.py`,
+`app/portals/product_returns.py`.

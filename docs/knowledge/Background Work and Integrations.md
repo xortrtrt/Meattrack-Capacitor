@@ -4,6 +4,77 @@ verified: 2026-10-30
 ---
 # Background work and integrations
 
+## Reseller unified inbox (2026-11-02)
+
+### Participant grouping refinement
+
+The reseller list now uses compact All/Direct/Replacements/System tabs under
+search, one list scrollbar, and activity ordering. Multiple replacement histories
+with the same current processor appear under one contact. The aggregate contact
+read reauthorizes each case and keeps source message IDs and per-case read cursors.
+If the current direct-chat leader is that same account, direct history joins that
+contact; a different Sales account remains separate. Staff case views retain their
+existing case-specific permissions. No history is copied, deleted, or reassigned.
+
+Direct messages can carry an optional owned `order_id` via migration 047. The
+backend checks order ownership and retry context. The reseller can select an order
+to display a read-only inquiry card above the composer. Regarding defaults to
+**No order selected**, resets after a successful send, and does not filter history.
+Order references appear as centered, system-style context rows between messages,
+rather than badges attached above a sender's bubble. They are presentation of the
+existing message association, not additional stored system notifications. Clicking opens
+the scoped preview without selecting an order for the next message or changing
+conversation/history. Regarding and replacement selectors now share the bottom
+composer area with the card; this follows the later full refinement brief.
+Private case-chat context rows use the actual **Replacement #return_id** rather
+than the original order number. Clicking expands that case's existing authorized
+comparison without changing the composer case selection. Direct order inquiries
+retain their order references.
+Cards start collapsed with products, status, total, details link, and dismiss;
+native expansion shows the existing date, item, and receipt/fulfillment facts.
+Consecutive same-sender messages within five minutes are visually grouped while
+their original rows and timestamps remain intact. Direct refresh preserves an
+older reading position. Existing Delete actions now live in a native overflow
+menu and still use the same confirmation and soft-hide endpoints. Desktop omits
+the mobile Back controls. System notification entries appear exclusively in the System
+tab, including during search; All counts exclude those order-update threads.
+Replacement replies
+still target an explicit case; declined cases remain read-only. General/private
+media replies are available only through an existing authorized direct relationship.
+Selecting a contact does not navigate away from Inbox. Case details stay linked.
+Order History's inquiry action opens the existing chat with explicit order context.
+The card endpoint checks `created_by_account_id` before returning products, quantities,
+status, date, total, and actual receipt/fulfillment facts. No payment evidence is
+returned. Source: `app/static/js/order_inquiry_cards.js`,
+`app/reseller_contact_history.py`, and `app/templates/portals/reseller/history.html`.
+
+Sources checked: `app/reseller_contact_history.py`, `app/reseller_messaging.py`,
+`app/routers/live_chat.py`, `app/conversation_notifications.py`,
+`app/static/js/reseller_contact_history.js`, `app/static/js/reseller_inbox.js`,
+`app/templates/portals/reseller/_contact_history.html`, migration
+`047_message_order_context.sql`. This section supersedes the earlier per-case
+reseller list description below. See [[Roles and Access]] and [[Replacement Workflow]].
+
+The reseller Inbox uses one conversation rail with All Messages, Direct Messages,
+Replacements, and System Messages filters and local search by participant, preview,
+order, or return number. Replacement links retain `?replacement=ID` and the existing
+case-specific message/read endpoints; they no longer replace the entire Inbox.
+Direct messages and order/refund conversations retain their existing handlers and
+identifiers. Mobile shows the list first unless a conversation is deep-linked,
+then offers a Back control. Switching types hides the previous message log.
+
+The selected replacement shows its existing status and a collapsible price
+comparison from the authorized `get_product_return` read. Payment actions and
+supporting evidence remain in the linked return details. No presence provider is
+available: the direct-chat indicator describes messaging readiness, not online
+status. Search covers records loaded into the existing workspace; it is not an
+archive search. See [[Replacement Workflow]] and [[Testing and Change Impact]].
+
+Sources checked: `app/templates/portals/reseller/inbox.html`,
+`app/templates/portals/reseller/_inbox_replacement.html`, `app/portals/reseller.py`,
+`app/repositories/replacement_messages.py`, `app/static/js/reseller_inbox.js`,
+`app/static/js/replacement_workflow.js`, `app/static/css/reseller_inbox_workspace.css`.
+
 `app/worker.py` runs separately from HTTP requests. Its fast cycle expires unpaid
 orders, drains the notification outbox, processes a forecast run, and retries
 live-chat publication. Maintenance handles inquiry follow-ups, batch expiry,

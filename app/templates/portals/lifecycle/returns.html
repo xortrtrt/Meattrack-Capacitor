@@ -1,4 +1,5 @@
 {% if return_inventory_only|default(false) %}
+{% include 'portals/returns/_dashboard_filter.html' %}
 {% include 'portals/lifecycle/inventory-returns.html' %}
 {% elif return_is_reseller %}
 {% include 'portals/reseller/returns.html' %}

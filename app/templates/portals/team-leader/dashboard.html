@@ -1,68 +1,23 @@
-{% set inventory = team_leader_role == 'inventory' %}
-{% set supervisor = team_leader_role == 'sales-supervisor' %}
-{% set work = work_summary|default({'counts':{},'queue':[],'attention_total':0,'recent':[]}) %}
-{% set financials = settlement_summary|default({}) %}
-<div class="operations-dashboard {{ 'operations-dashboard--inventory' if inventory else '' }}">
-  <header class="operations-heading">
-    <div><span class="dashboard-kicker">{{ 'Inventory control' if inventory else 'Supervisor desk' if supervisor else 'Sales operations' }}</span><h2>Your work at a glance</h2><p>{{ 'Stock, custody, and releases in one working view.' if inventory else 'The orders, conversations, and requests that need your attention.' }}</p></div>
-    <span class="operations-date"><i data-lucide="calendar-days" aria-hidden="true"></i>{{ dashboard_date.strftime('%d %B %Y') if dashboard_date else '' }}<small>Manila time</small></span>
-  </header>
-
-  <section class="operations-attention" aria-labelledby="attention-title">
-    <header><div><span class="dashboard-kicker">Needs attention</span><h3 id="attention-title">{{ 'Your queues are clear' if not work.attention_total else 'Start here' }}</h3><p>Current actionable queues. Select a row to continue.</p></div><span class="operations-attention-total"><strong>{{ work.attention_total|number }}</strong>queued items</span></header>
-    <div class="operations-queue">
-      {% for item in work.queue %}
-      <a class="operations-task {{ 'has-work' if item.count else '' }}" href="/portal/{{ role_key }}/{{ item.path }}">
-        <span class="operations-task-icon"><i data-lucide="{{ item.icon }}" aria-hidden="true"></i></span>
-        <span class="operations-task-copy"><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
-        <b>{{ item.count|number }}</b><i data-lucide="chevron-right" aria-hidden="true"></i>
-      </a>
-      {% endfor %}
-    </div>
-  </section>
-
+{% from 'portals/_dashboard_components.html' import queue_rows, recent_orders, summary_card %}
+{% set inventory=team_leader_role=='inventory' %}
+{% set supervisor=team_leader_role=='sales-supervisor' %}
+{% set work=work_summary|default({'counts':{},'queue':[],'recent':[],'cases':[],'messages':[]}) %}
+{% set financials=settlement_summary|default({}) %}
+{% set risk=work.risk|default({'batches':[],'near_days':0}) %}
+<div class="role-dashboard operations-dashboard {{ 'operations-dashboard--inventory' if inventory else 'operations-dashboard--supervisor' if supervisor else '' }}">
+  <header class="dash-heading operations-heading"><div><span class="dash-kicker">{{ 'Inventory control' if inventory else 'Supervisor desk' if supervisor else 'Sales operations' }}</span><h2>{{ 'Warehouse Overview' if inventory else 'Operations Overview' if supervisor else 'Your work at a glance' }}</h2><p>{{ 'Monitor stock levels, batch validity, and inventory activities.' if inventory else 'Handle approvals, refunds, inquiries, and reseller concerns.' if supervisor else 'Your assigned orders, customers, and requests.' }}</p></div><span class="dash-date"><i data-lucide="calendar-days" aria-hidden="true"></i>{{ dashboard_date.strftime('%d %B %Y') if dashboard_date else '' }}<small>Manila time</small></span></header>
   {% if inventory %}
-  <section class="operations-totals" aria-label="Current stock summary">
-    <div><span>Available to sell</span><strong>{{ metrics.total_available|number }}</strong><small>Eligible packs after reservations</small></div>
-    <div><span>Reserved packs</span><strong>{{ work.counts.get('reserved',0)|number }}</strong><small>Paid orders and replacements</small></div>
-    <div><span>Physical stock</span><strong>{{ work.counts.get('physical_stock',0)|number }}</strong><small>Finished packs including blocked batches</small></div>
-  </section>
-  <div class="operations-columns">
-    <section class="dashboard-ledger inventory-analytics-panel" aria-labelledby="movement-title">
-      <header class="dashboard-section-head"><div><span class="dashboard-kicker">Last 30 days</span><h3 id="movement-title">Product movement</h3><p>Stock received and released, by product.</p></div><a class="dashboard-text-link" href="/portal/{{ role_key }}/logs">Inventory logs <i data-lucide="arrow-up-right"></i></a></header>
-      <script type="application/json" data-inventory-movement-json>{{ movement_analytics|tojson }}</script>
-      <div class="inventory-movement-chart"><canvas data-inventory-movement-chart aria-label="Product inventory in and out chart" role="img"></canvas></div>
-      <div class="dashboard-legend"><span><i class="is-in"></i>Stock in</span><span><i class="is-out"></i>Stock out</span></div>
-      <div class="inventory-movement-fallback" data-inventory-movement-fallback>
-        <table class="dashboard-table"><thead><tr><th>Product</th><th>In</th><th>Out</th><th>Available</th></tr></thead><tbody>{% for row in movement_analytics %}<tr><td>{{ row.name }}</td><td>{{ row.total_in|number }}</td><td>{{ row.total_out|number }}</td><td>{{ row.total_available|number }}</td></tr>{% else %}<tr><td colspan="4">No product movement in the last 30 days.</td></tr>{% endfor %}</tbody></table>
-      </div>
-    </section>
-    <section class="dashboard-ledger" aria-labelledby="inventory-recent-title"><header class="dashboard-section-head"><div><span class="dashboard-kicker">Latest 5 movements</span><h3 id="inventory-recent-title">Recent stock activity</h3></div></header>
-      <ol class="operations-activity">{% for item in work.recent %}<li><div><strong>{{ item.entity }}</strong><small>{{ item.action.replace('_',' ')|title }} · {{ item.created_at|nice_date }}</small></div><b>{{ '+' if item.quantity_delta>0 else '' }}{{ item.quantity_delta|number }}</b></li>{% else %}<li class="operations-empty">Recorded stock movements will appear here.</li>{% endfor %}</ol>
-    </section>
-  </div>
+    {% include 'portals/team-leader/_inventory_dashboard.html' %}
+  {% elif supervisor %}
+    {% include 'portals/team-leader/_supervisor_dashboard.html' %}
   {% else %}
-  <section class="operations-totals" aria-label="All-time assigned financial summary">
-    <div><span>Original fulfilled sales</span><strong>{{ financials.get('original_sales',metrics.fulfilled_sales)|currency }}</strong><small>All time · assigned orders</small></div>
-    <div><span>Money refunded</span><strong>{{ financials.get('completed_refunds',0)|currency }}</strong><small>Completed transfers only</small></div>
-    <div><span>Retained sales</span><strong>{{ financials.get('retained_sales',0)|currency }}</strong><small>Fulfilled sales after return refunds</small></div>
-    <div><span>Active resellers</span><strong>{{ metrics.active_resellers|number }}</strong><small>Currently assigned to you</small></div>
-  </section>
-  <div class="operations-columns">
-    <section class="dashboard-ledger" aria-labelledby="orders-title">
-      <header class="dashboard-section-head"><div><span class="dashboard-kicker">Latest 5 assigned orders</span><h3 id="orders-title">Recent orders</h3><p>Unpaid orders remain in the reseller's payment window.</p></div><a class="dashboard-text-link" href="/portal/{{ role_key }}/orders">All orders <i data-lucide="arrow-up-right"></i></a></header>
-      <div class="dashboard-table-wrap"><table class="dashboard-table"><thead><tr><th>Order</th><th>Reseller</th><th>Status</th><th>Total</th></tr></thead><tbody>
-      {% for order in orders %}{% set shown_status='refunded' if order.refund_status=='completed' and order.refunded_amount>=order.total_amount else order.status %}<tr><td><a href="/portal/{{ role_key }}/orders?order={{ order.order_id }}">#{{ order.order_id }}</a></td><td>{{ order.reseller }}</td><td><span class="status-badge {{ shown_status }}">{{ shown_status }}</span></td><td>{{ order.total_amount|currency }}</td></tr>{% else %}<tr><td colspan="4">No paid reseller orders yet.</td></tr>{% endfor %}
-      </tbody></table></div>
-    </section>
-    <section class="dashboard-ledger" aria-labelledby="sales-financials-title">
-      <header class="dashboard-section-head"><div><span class="dashboard-kicker">All time · assigned orders</span><h3 id="sales-financials-title">Sales and refunded money</h3><p>Collections and obligations remain separate.</p></div></header>
-      <dl class="operations-money">{% for label,key in [('Confirmed original collections','original_collections'),('Additional replacement payments','additional_collections'),('Pending refund obligations','pending_refunds'),('Net collections after refunds','net_collections')] %}<div><dt>{{ label }}</dt><dd>{{ financials.get(key,0)|currency }}</dd></div>{% endfor %}</dl>
-      <details class="operations-financial-details"><summary>Refund breakdown and calculation</summary><dl class="operations-money">{% for label,key in [('Cancelled orders','cancellation_refunds'),('Returned products','return_refunds'),('Replacement differences','replacement_refunds')] %}<div><dt>{{ label }}</dt><dd>{{ financials.get(key,0)|currency }}</dd></div>{% endfor %}</dl><p>Cancellation refunds do not reduce fulfilled sales. Pending refunds do not reduce completed totals. Net collections = confirmed payments + additional payments − completed refunds.</p></details>
-      {% if financials.get('reconciliation_count',0) %}<p class="dashboard-financial-warning" role="alert">{{ financials.reconciliation_count }} order(s) need financial reconciliation.</p>{% endif %}
-      <a class="dashboard-text-link" href="/portal/{{ role_key }}/{{ 'refunds' if supervisor else 'returns' }}">{{ 'Review refunds' if supervisor else 'Track assigned returns' }} <i data-lucide="arrow-up-right"></i></a>
-    </section>
+  <div class="dash-primary-grid">
+    <section class="dash-panel operations-attention" aria-labelledby="attention-title"><header class="dash-panel-head"><div><span class="dash-kicker">Needs attention</span><h3 id="attention-title">Your work queues</h3></div><span class="dash-live-label">Current work</span></header>{{ queue_rows(work.queue,role_key) }}</section>
+    <section class="dash-panel" aria-label="Assigned business summary"><header class="dash-panel-head"><div><span class="dash-kicker">All time · assigned orders</span><h3>Your reseller network</h3></div></header><div class="dash-stat-stack operations-totals"><div><span>Active resellers</span><strong>{{ metrics.active_resellers|number }}</strong><p>Currently assigned to you</p></div><div><span>Retained sales</span><strong>{{ financials.get('retained_sales',0)|currency }}</strong><p>Fulfilled sales after return refunds · all time</p></div></div></section>
   </div>
-  {% if supervisor %}<section class="dashboard-ledger"><header class="dashboard-section-head"><div><span class="dashboard-kicker">Latest assigned prospects</span><h3>Reseller inquiries</h3></div><a class="dashboard-text-link" href="/portal/{{ role_key }}/inquiries">View inquiries <i data-lucide="arrow-up-right"></i></a></header><div class="dashboard-inquiry-list">{% for inquiry in inquiries %}<a class="dashboard-inquiry-row" href="/portal/{{ role_key }}/inquiries"><span class="dashboard-inquiry-copy"><strong>{{ inquiry.business_name }}</strong><small>{{ inquiry.name }}</small></span><span class="status-badge {{ inquiry.status }}">{{ inquiry.status }}</span></a>{% else %}<p class="operations-empty">No assigned inquiries yet.</p>{% endfor %}</div></section>{% endif %}
+  {% endif %}
+  {% if not inventory %}
+  <section class="dash-panel dashboard-ledger" aria-labelledby="orders-title"><header class="dash-panel-head"><div><span class="dash-kicker">Latest five assigned orders</span><h3 id="orders-title">Recent orders</h3></div><a href="/portal/{{ role_key }}/orders">All orders <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></header>{{ recent_orders(orders,role_key) }}</section>
+  {% include 'portals/team-leader/_dashboard_financials.html' %}
   {% endif %}
 </div>

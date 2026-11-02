@@ -19,7 +19,7 @@ def _legacy_unread_summary(account_id: int, role_key: str) -> dict:
     if role_key != "reseller":
         return {"unread_conversations": 0, "threads": []}
     sales = fetch_one(
-        """SELECT COUNT(*) unread_count FROM reseller_conversations c
+        """SELECT COUNT(*) unread_count,MAX(c.team_leader_account_id) peer_account_id FROM reseller_conversations c
         JOIN reseller_messages m USING(conversation_id)
         JOIN accounts a ON a.account_id=c.reseller_account_id
         JOIN resellers r ON (r.reseller_id=a.reseller_id OR (a.reseller_id IS NULL AND lower(r.email)=lower(a.email))) AND r.team_leader_account_id=c.team_leader_account_id
@@ -43,6 +43,7 @@ def _legacy_unread_summary(account_id: int, role_key: str) -> dict:
     return {
         "unread_conversations": len(orders) + int(sales["unread_count"] > 0),
         "sales_unread_count": int(sales["unread_count"]),
+        "sales_peer_account_id": sales["peer_account_id"],
         "orders": orders,
     }
 
@@ -54,7 +55,12 @@ def unread_summary(account_id: int, role_key: str) -> dict:
         incoming = [row for row in threads(account_id) if row["unread_count"]>0]
         if incoming:
             result["replacement_threads"] = incoming
-            result["unread_conversations"] += len(incoming)
+            if role_key == "reseller":
+                peers = {row["processor_account_id"] for row in incoming}
+                overlap = int(result.get("sales_unread_count", 0) > 0 and result.get("sales_peer_account_id") in peers)
+                result["unread_conversations"] += len(peers) - overlap
+            else:
+                result["unread_conversations"] += len(incoming)
     return result
 
 

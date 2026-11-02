@@ -1,4 +1,15 @@
 <section class="reseller-order-page">
+  <header class="reseller-catalog-heading">
+    <span class="reseller-catalog-heading-icon"><i data-lucide="shopping-basket" aria-hidden="true"></i></span>
+    <div>
+      <h2>Products</h2>
+      <p>Find your next bestsellers.</p>
+    </div>
+  </header>
+  <div class="reseller-catalog-notice" role="note">
+    <i data-lucide="info" aria-hidden="true"></i>
+    <p><strong>Stock is reserved after sufficient payment.</strong> Adding to cart does not reserve stock.</p>
+  </div>
   <article class="panel reseller-order-panel">
     <form
       class="reseller-product-search"
@@ -6,14 +17,14 @@
       action="/portal/reseller/order"
       data-async-filter-target="[data-async-filter-results]"
     >
-      <label>
+      <label class="reseller-catalog-search">
         <i data-lucide="search"></i>
         <span>Search products</span>
         <input
           type="search"
           name="q"
           value="{{ products_page.filters.q }}"
-          placeholder="Search by product name or category"
+          placeholder="Search products…"
         />
       </label>
       <input
@@ -22,6 +33,20 @@
         value="{{ products_page.filters.type }}"
         data-async-filter-sync="reseller-product-type"
       />
+      <nav class="reseller-category-tabs" aria-label="Product categories" data-async-filter-sync="reseller-catalog-categories">
+        <a
+          class="{{ 'active' if not products_page.filters.type else '' }}"
+          {% if not products_page.filters.type %}aria-current="true"{% endif %}
+          href="/portal/reseller/order?sort={{ products_page.filters.sort|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
+        >All</a>
+        {% for category in product_categories %}
+        <a
+          class="{{ 'active' if products_page.filters.type == category else '' }}"
+          {% if products_page.filters.type == category %}aria-current="true"{% endif %}
+          href="/portal/reseller/order?type={{ category|urlencode }}&sort={{ products_page.filters.sort|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
+        >{{ category }}</a>
+        {% endfor %}
+      </nav>
       <label class="reseller-product-sort">
         <span>Sort products</span>
         <select name="sort">
@@ -33,21 +58,24 @@
         </select>
       </label>
     </form>
-    <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
-    <nav class="reseller-category-tabs" aria-label="Product categories">
-      <a
-        class="{{ 'active' if not products_page.filters.type else '' }}"
-        href="/portal/reseller/order?sort={{ products_page.filters.sort|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
-        >All</a
-      >
-      {% for category in product_categories %}
-      <a
-        class="{{ 'active' if products_page.filters.type == category else '' }}"
-        href="/portal/reseller/order?type={{ category|urlencode }}&sort={{ products_page.filters.sort|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
-        >{{ category }}</a
-      >
-      {% endfor %}
-    </nav>
+    <div class="reseller-catalog-results" data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
+    {% set pagination = products_page.pagination %}
+    <div class="reseller-catalog-summary">
+    <p class="reseller-catalog-count">
+      {% if pagination.total %}
+      Showing <strong>{{ (pagination.page - 1) * pagination.page_size + 1 }}–{{ (pagination.page - 1) * pagination.page_size + products|length }}</strong> of <strong>{{ pagination.total }}</strong> products
+      {% else %}
+      <strong>0</strong> products
+      {% endif %}
+    </p>
+    {% if products_page.filters.q or products_page.filters.type %}
+    <div class="reseller-catalog-active-filters" aria-label="Active product filters">
+      {% if products_page.filters.q %}<span>Search: {{ products_page.filters.q }}</span>{% endif %}
+      {% if products_page.filters.type %}<span>{{ products_page.filters.type }}</span>{% endif %}
+      <a href="/portal/reseller/order?sort={{ products_page.filters.sort|urlencode }}">Reset filters <i data-lucide="x" aria-hidden="true"></i></a>
+    </div>
+    {% endif %}
+    </div>
     <div class="reseller-product-cards" data-product-grid>
       {% for product in products %}
       <article
@@ -81,38 +109,71 @@
               >{{ product.category }}</span
             >
             <strong>{{ product.name }}</strong>
-            <h3>{{ product.base_price|currency }}/{{ product.unit }}</h3>
-            <em>{{ product.available|number }} {{ product.unit }} currently available</em>
-            <small>Stock is reserved after sufficient payment.</small>
-            <small>Tap to view details</small>
+            <span class="reseller-catalog-price">{{ product.base_price|currency }} <span>/ {{ product.unit }}</span></span>
+            <span class="reseller-catalog-stock {{ 'is-unavailable' if product.available|float < 1 else '' }}">
+              <i data-lucide="{{ 'circle-x' if product.available|float < 1 else 'circle-check' }}" aria-hidden="true"></i>
+              {% if product.available|float < 1 %}Out of stock · {% endif %}{{ product.available|number }} {{ 'packs' if product.unit == 'pack' and product.available|float != 1 else product.unit }}{% if product.available|float >= 1 %} available{% endif %}
+            </span>
+            <span class="reseller-catalog-details">View details <i data-lucide="arrow-up-right" aria-hidden="true"></i></span>
           </span>
         </button>
       </article>
       {% else %}
-      <p class="hint">No products are available for ordering yet.</p>
+      <div class="reseller-catalog-empty">
+        <i data-lucide="search" aria-hidden="true"></i>
+        {% if products_page.filters.q or products_page.filters.type %}
+        <h2>No matching products</h2>
+        <p>Try another search or category.</p>
+        <a class="button secondary" href="/portal/reseller/order">Clear filters</a>
+        {% else %}
+        <h2>No products available yet</h2>
+        <p>Check back later for available products.</p>
+        {% endif %}
+      </div>
       {% endfor %}
     </div>
     <p class="reseller-no-products" data-product-empty hidden>
       No products match your search.
     </p>
-    <div class="pagination reseller-product-pagination">
+    {% if pagination.total_pages > 1 %}
+    <nav class="pagination reseller-product-pagination" aria-label="Product pages">
       {% if products_page.pagination.has_prev %}
       <a
+        rel="prev"
         href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ products_page.pagination.page - 1 }}"
         >Previous</a
       >
+      {% else %}
+      <span class="reseller-page-disabled" aria-disabled="true">Previous</span>
       {% endif %}
-      <span
-        >Page {{ products_page.pagination.page }} of {{
-        products_page.pagination.total_pages }}</span
-      >
+      {% set first_page = [1, pagination.page - 1]|max %}
+      {% set last_page = [pagination.total_pages, pagination.page + 1]|min %}
+      {% if first_page > 1 %}
+      <a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page=1" aria-label="Page 1">1</a>
+      {% if first_page > 2 %}<span class="reseller-page-gap" aria-hidden="true">…</span>{% endif %}
+      {% endif %}
+      {% for number in range(first_page, last_page + 1) %}
+      {% if number == pagination.page %}
+      <span class="reseller-page-current" aria-current="page" aria-label="Page {{ number }}">{{ number }}</span>
+      {% else %}
+      <a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ number }}" aria-label="Page {{ number }}">{{ number }}</a>
+      {% endif %}
+      {% endfor %}
+      {% if last_page < pagination.total_pages %}
+      {% if last_page < pagination.total_pages - 1 %}<span class="reseller-page-gap" aria-hidden="true">…</span>{% endif %}
+      <a href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ pagination.total_pages }}" aria-label="Page {{ pagination.total_pages }}">{{ pagination.total_pages }}</a>
+      {% endif %}
       {% if products_page.pagination.has_next %}
       <a
+        rel="next"
         href="?q={{ products_page.filters.q|urlencode }}&type={{ products_page.filters.type|urlencode }}&sort={{ products_page.filters.sort|urlencode }}&page={{ products_page.pagination.page + 1 }}"
         >Next</a
       >
+      {% else %}
+      <span class="reseller-page-disabled" aria-disabled="true">Next</span>
       {% endif %}
-    </div>
+    </nav>
+    {% endif %}
     </div>
     <div class="reseller-product-modal" data-product-modal hidden>
       <button
@@ -126,7 +187,11 @@
         role="dialog"
         aria-modal="true"
         aria-labelledby="reseller-product-modal-title"
+        aria-describedby="reseller-catalog-dialog-description"
+        tabindex="-1"
       >
+        <div class="reseller-catalog-dialog-heading">
+        <span>Product details</span>
         <button
           class="icon-button reseller-product-modal-close"
           type="button"
@@ -135,6 +200,7 @@
         >
           <i data-lucide="x"></i>
         </button>
+        </div>
         <span class="reseller-product-modal-image">
           <img src="" alt="" data-product-modal-image />
         </span>
@@ -145,7 +211,7 @@
           ></span>
           <h3 id="reseller-product-modal-title" data-product-modal-name></h3>
           <h3 id="reseller-product-modal-price" data-product-modal-price></h3>
-          <p data-product-modal-description></p>
+          <p id="reseller-catalog-dialog-description" data-product-modal-description></p>
           <div class="reseller-product-modal-meta">
             <span>
               <small>Current stock (not reserved)</small>
@@ -156,6 +222,7 @@
               <strong data-product-modal-category-label></strong>
             </span>
           </div>
+          <p class="reseller-catalog-payment-note"><i data-lucide="info" aria-hidden="true"></i>Adding to cart does not reserve stock. Stock is reserved after sufficient payment.</p>
           <form
             class="reseller-add-cart-form reseller-product-modal-form"
             action="/portal/reseller/order"
@@ -163,7 +230,7 @@
           >
             <input type="hidden" name="product_id" data-product-modal-id />
             <label class="reseller-quantity-stepper">
-              Qty
+              Quantity
               <span>
                 <button
                   type="button"
@@ -202,6 +269,7 @@
               data-keep-label="true"
             >
               <i data-lucide="shopping-cart"></i>
+              <span>Add to cart</span>
             </button>
           </form>
         </div>

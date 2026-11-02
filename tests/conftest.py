@@ -19,6 +19,8 @@ def isolate_web_session_store(monkeypatch, request):
     if request.node.get_closest_marker("postgres"):
         return
     from app.portals import team_leader
+    from app.portals import reseller
+    monkeypatch.setattr(reseller, "reseller_dashboard_summary", lambda *args: {"queue": [], "recent_orders": [], "actions": []})
     monkeypatch.setattr(team_leader,"leader_work_summary",lambda *args:{"counts":{},"queue":[],"attention_total":0,"recent":[]})
     from app import web_sessions
     from app import repositories

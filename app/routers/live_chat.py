@@ -33,6 +33,7 @@ router = APIRouter()
 class ResellerMessagePayload(BaseModel):
     message: str = Field(default="", max_length=500)
     client_message_id: uuid.UUID
+    order_id: int | None = Field(default=None, gt=0)
     return_id: int | None = Field(default=None, gt=0)
     report_issue: bool = False
 
@@ -358,6 +359,30 @@ def reseller_inbox_workspace(request: Request, after_id: int = 0):
     return reseller_messaging.reseller_workspace(account_id, after_id=after_id)
 
 
+@router.get("/api/portal/reseller/inbox/orders")
+def reseller_message_orders(request: Request):
+    from app.reseller_contact_history import orders
+    return {"orders": orders(_reseller_message_account(request))}
+
+
+@router.get("/api/portal/reseller/inbox/orders/{order_id}")
+def reseller_message_order_card(request: Request, order_id: int):
+    from app.reseller_contact_history import order_card
+    try:
+        return order_card(_reseller_message_account(request), order_id)
+    except ValueError as exc:
+        raise HTTPException(404, detail="Order unavailable.") from exc
+
+
+@router.get("/api/portal/reseller/inbox/contacts/{return_id}")
+def reseller_contact_history(request: Request, return_id: int, after_id: int = 0, direct_after_id: int = 0):
+    from app.reseller_contact_history import workspace
+    try:
+        return workspace(_reseller_message_account(request), return_id, after_id, direct_after_id)
+    except ValueError as exc:
+        raise HTTPException(404, detail="This conversation is unavailable.") from exc
+
+
 async def _internal_message_payload(request: Request) -> tuple[ResellerMessagePayload,list[dict]]:
     try:
         if request.headers.get("content-type","").startswith("multipart/form-data"):
@@ -384,7 +409,7 @@ async def reseller_inbox_send(request: Request):
         enforce_live_message(request, account_id=account_id)
         message = await run_in_threadpool(reseller_messaging.send_from_reseller,account_id,
             str(payload.client_message_id),payload.message,return_id=payload.return_id,
-            report_issue=payload.report_issue,attachments=attachments)
+            report_issue=payload.report_issue,attachments=attachments,order_id=payload.order_id)
     except RateLimitExceeded as exc:
         return rate_limit_response(exc)
     except ValueError as exc:

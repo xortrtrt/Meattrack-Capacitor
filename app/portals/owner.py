@@ -275,7 +275,8 @@ def operations_context(request: Request) -> dict:
 
 
 def inquiries_context(request: Request) -> dict:
-    page = shared.inquiries_page(request)
+    coverage = {"missing_coverage": True} if request.query_params.get('coverage') == 'missing' else {}
+    page = shared.inquiries_page(request, **coverage)
     return {"inquiries_page": page, "inquiries": page["items"]}
 
 

@@ -244,3 +244,13 @@ full available width. Review, closure, policy, and notification behavior on the
 Owner overview is unchanged. See [[Orders and Inventory]] and
 [[Testing and Change Impact]]. Sources: `app/portals/owner.py`,
 `app/templates/portals/owner/alerts.html`, and `tests/test_inventory_alert_workspace.py`.
+
+
+## Role-dashboard intervention reads (2026-11-02)
+
+The dashboard keeps all exception rows, including zeros, with financial detail
+collapsed. Missing Sales/Supervisor coverage reads share predicates with their
+linked filtered lists and include inactive assignees. Other Owner sections and
+transaction rules remain unchanged. See [[Role Dashboards]] and [[Decisions]].
+Sources: `app/repositories/coverage_filters.py`, `app/repositories/owner_insights.py`,
+`app/templates/portals/owner/dashboard.html`.

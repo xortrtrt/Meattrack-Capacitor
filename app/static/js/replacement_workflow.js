@@ -14,64 +14,158 @@
     const selection = request.querySelector('[data-replacement-selection]');
     const token = request.elements.comparison_token;
     const output = request.querySelector('[data-replacement-comparison]');
-    const button = request.querySelector('[data-replacement-preview]');
-    let revision = 0;
+    const button = request.querySelector('[data-return-request-submit]');
+    const buttonLabel = button.querySelector('[data-return-submit-label]');
+    const feedback = request.querySelector('[data-return-request-feedback]');
+    const catalog = selection.querySelector('[data-replacement-catalog]');
+    const search = selection.querySelector('[data-replacement-search]');
+    const rows = [...selection.querySelectorAll('[data-replacement-product]')];
+    const quantities = [...request.querySelectorAll('[name="quantity"]')];
+    const replacements = rows.map(row => row.querySelector('[name="replacement_quantity"]'));
+    let revision = 0, calculating = false;
+    // Validate explicitly so comparison review can happen before required photos/details.
+    request.noValidate = true;
+    const message = (text, error = false) => {
+      feedback.textContent = text;
+      feedback.classList.toggle('is-error', error);
+    };
+    const updateButton = () => {
+      button.disabled = calculating;
+      buttonLabel.textContent = calculating ? 'Calculating…' : !selection.hidden && !token.value ? 'Review price comparison' : 'Request return';
+    };
+    const updateSelected = () => {
+      const list = selection.querySelector('[data-replacement-selected]');
+      list.replaceChildren();
+      let packs = 0, products = 0;
+      rows.forEach((row, index) => {
+        const quantity = Number(replacements[index].value);
+        if (quantity <= 0) return;
+        products += 1; packs += quantity;
+        const item = document.createElement('li');
+        const name = document.createElement('span'); name.textContent = row.dataset.replacementProduct;
+        const count = document.createElement('strong'); count.textContent = `${quantity} pack${quantity === 1 ? '' : 's'}`;
+        item.append(name, count); list.append(item);
+      });
+      selection.querySelector('[data-replacement-count]').textContent = products ? `${products} product${products === 1 ? '' : 's'} · ${packs} pack${packs === 1 ? '' : 's'} selected` : 'No products selected';
+    };
     const reset = () => {
       revision += 1;
       token.value = '';
       selection.hidden = request.elements.resolution.value !== 'replace';
-      output.textContent = selection.hidden ? '' : 'Review the comparison after choosing your returned and replacement quantities.';
+      output.replaceChildren();
+      quantities.concat(replacements).forEach(input => input.setCustomValidity(''));
+      message(selection.hidden ? 'Add returned packs, a reason, and supporting photos.' : 'Choose replacement products, then review the price comparison.');
+      updateSelected(); updateButton();
     };
     request.addEventListener('input', event => {
       if (['resolution','quantity','replacement_quantity'].includes(event.target.name)) reset();
+      else if (event.target !== search) {
+        event.target.setCustomValidity?.('');
+        message(token.value ? 'Comparison ready. Add your details, then request the return.' : 'Complete the required details before requesting the return.');
+      }
     });
-    reset();
-    button?.addEventListener('click', async () => {
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLocaleLowerCase();
+      let matches = 0;
+      rows.forEach(row => {
+        row.hidden = !row.dataset.replacementProduct.toLocaleLowerCase().includes(query);
+        if (!row.hidden) matches += 1;
+      });
+      selection.querySelector('[data-replacement-empty]').hidden = matches > 0;
+    });
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Enter') event.preventDefault();
+    });
+    const reveal = input => {
+      if (selection.contains(input)) {
+        catalog.open = true;
+        // A selected product must remain reachable even after a different search.
+        rows.forEach(row => { row.hidden = false; }); search.value = '';
+        selection.querySelector('[data-replacement-empty]').hidden = true;
+      }
+      input.scrollIntoView({block:'center'});
+      input.focus(); input.reportValidity();
+    };
+    const validatePacks = (inputs, text) => {
+      inputs.forEach(input => input.setCustomValidity(''));
+      const invalid = inputs.find(input => !input.validity.valid);
+      if (invalid) { message(invalid.validationMessage, true); reveal(invalid); return false; }
+      if (!inputs.some(input => Number(input.value) > 0)) {
+        message(text, true);
+        if (inputs[0]) { inputs[0].setCustomValidity(text); reveal(inputs[0]); }
+        return false;
+      }
+      return true;
+    };
+    const compare = async () => {
       const version = revision;
       const data = new FormData();
       for (const [key,value] of new FormData(request)) {
         if (['order_id','allocation_id','quantity','replacement_product_id','replacement_quantity'].includes(key)) data.append(key,value);
       }
-      button.disabled = true;
-      output.textContent = 'Calculating the current comparison…';
+      calculating = true; updateButton(); message('Calculating the current comparison…');
       try {
-        const response = await fetch('/portal/reseller/returns/replacement-preview',{method:'POST',headers:headers(),body:data});
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'The comparison could not be loaded.');
+        const response = await fetch('/portal/reseller/returns/replacement-preview',{method:'POST',headers:headers(),body:data,signal:AbortSignal.timeout(20000)});
+        const result = await response.json().catch(() => ({}));
         if (version !== revision) return;
+        if (!response.ok) throw new Error(result.error || 'The comparison could not be loaded. Try again.');
         output.replaceChildren();
-        const list = document.createElement('dl');
+        const heading = document.createElement('h4'); heading.textContent = 'Price comparison'; output.append(heading);
+        const totals = document.createElement('dl'); totals.className = 'return-comparison-totals';
+        for (const [label, value] of [['Return credit',result.credit],['Replacement value',result.total],['Extra payment',result.additional_due],['Difference refund',result.refund_due]]) {
+          const row = document.createElement('div');
+          const name = document.createElement('dt'); name.textContent = label;
+          const amount = document.createElement('dd'); amount.textContent = money(value);
+          row.append(name,amount); totals.append(row);
+        }
+        output.append(totals);
+        const details = document.createElement('details'); details.className = 'return-pricing-help';
+        const summary = document.createElement('summary'); summary.textContent = 'Price details'; details.append(summary);
+        const list = document.createElement('ul');
         for (const item of result.originals) {
-          const row = document.createElement('p');
+          const row = document.createElement('li');
           row.textContent = `Returned: ${item.name} · ${item.quantity} packs × ${money(item.unit_price)} = ${money(item.line_total)}`;
           list.append(row);
         }
         for (const item of result.items) {
-          const row = document.createElement('p');
+          const row = document.createElement('li');
           row.textContent = `Replacement: ${item.name} · ${item.quantity} packs = ${money(item.line_total)}`;
-          list.append(row);
           for (const part of item.pricing_components) {
             const detail = document.createElement('small');
-            detail.textContent = `${part.quantity} × ${money(part.unit_price)} (${part.basis === 'original' ? 'original paid price' : 'current catalog price'}) `;
-            list.append(detail);
+            detail.textContent = `${part.quantity} × ${money(part.unit_price)} (${part.basis === 'original' ? 'original paid price' : 'current catalog price'})`;
+            row.append(detail);
           }
+          list.append(row);
         }
-        output.append(list);
-        const total = document.createElement('p');
-        total.textContent = `Return credit ${money(result.credit)} · Replacement ${money(result.total)} · Extra payment ${money(result.additional_due)} · Difference refund ${money(result.refund_due)}`;
-        output.append(total);
-        token.value = result.token;
+        details.append(list); output.append(details);
+        token.value = result.token; catalog.open = false;
+        message('Comparison ready. Check the totals, add details, then request the return.');
+        output.scrollIntoView({block:'center'}); output.focus({preventScroll:true});
       } catch (error) {
-        output.textContent = error.message;
-      } finally { button.disabled = false; }
-    });
+        if (version === revision) message(error.name === 'TimeoutError' || error instanceof TypeError ? 'Could not load the comparison. Check your connection and try again.' : error.message, true);
+      } finally { calculating = false; updateButton(); }
+    };
     request.addEventListener('submit', event => {
-      if (request.elements.resolution.value === 'replace' && !token.value) {
-        event.preventDefault();
-        output.textContent = 'Review the current price comparison before submitting your replacement request.';
-        button.focus();
+      if (calculating) { event.preventDefault(); return; }
+      if (!validatePacks(quantities, 'Enter at least one pack to return.')) { event.preventDefault(); return; }
+      if (!selection.hidden) {
+        if (!validatePacks(replacements, 'Choose at least one replacement pack.')) { event.preventDefault(); return; }
+        if (!token.value) { event.preventDefault(); compare(); return; }
       }
+      const photos = request.elements.evidence;
+      photos.setCustomValidity('');
+      if (photos.files.length > 3) photos.setCustomValidity('Choose up to 3 supporting photos.');
+      else if ([...photos.files].some(file => file.size > 5 * 1024 * 1024)) photos.setCustomValidity('Each supporting photo must be 5 MB or smaller.');
+      const invalid = [...request.elements].find(input => input.willValidate && !input.validity.valid);
+      if (invalid) {
+        event.preventDefault();
+        const label = invalid === photos ? 'Supporting photos' : invalid.name === 'remarks' ? 'Reason and remarks' : 'Quantity';
+        message(`${label}: ${invalid.validationMessage}`, true); reveal(invalid); return;
+      }
+      button.disabled = true; buttonLabel.textContent = 'Sending request…';
+      message('Sending your return request…');
     });
+    reset();
   }
   document.querySelectorAll('[data-replacement-payment]').forEach(form => {
     const file = form.elements.payment_proofs;
@@ -113,7 +207,7 @@
   const form = chat.querySelector('[data-replacement-message-form]');
   const input = form.elements.content;
   const listToggle = chat.querySelector('[data-replacement-list-toggle]');
-  const selectedRow = chat.querySelector('[aria-current="page"]');
+  const selectedRow = chat.querySelector('[data-replacement-thread-id][aria-current="page"]');
   let last = 0, refreshing = false, sending = false, closed = false;
   let clientId = null, pendingContent = null, readThrough = 0, loadError = '', sendError = '';
   function showUnread(count) {
@@ -131,13 +225,14 @@
   }
   function showList(open) {
     chat.classList.toggle('is-list-open',open);
+    chat.dispatchEvent(new CustomEvent('replacement:list',{detail:{open}}));
     listToggle.setAttribute('aria-expanded',String(open));
     if (open) selectedRow?.focus();
     else { listToggle.focus(); markVisible().catch(() => {}); }
   }
   listToggle.addEventListener('click',() => showList(true));
   selectedRow?.addEventListener('click',event => {
-    if (!matchMedia('(max-width:760px)').matches || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if ((!chat.matches('[data-reseller-inbox]') && !matchMedia('(max-width:760px)').matches) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault(); showList(false);
   });
   chat.addEventListener('keydown',event => {

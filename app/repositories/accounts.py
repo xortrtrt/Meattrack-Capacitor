@@ -171,7 +171,8 @@ def _owner_reseller_filters(q: str, status: str, leader: str) -> tuple[str, list
         where.append("r.reseller_status = %s")
         params.append(status)
     if leader == "unassigned":
-        where.append("r.team_leader_account_id IS NULL")
+        from .coverage_filters import RESELLER_COVERAGE
+        where.append(RESELLER_COVERAGE)
     elif leader:
         where.append("r.team_leader_account_id = %s")
         params.append(int(leader))

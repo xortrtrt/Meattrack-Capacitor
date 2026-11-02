@@ -4,6 +4,14 @@ verified: 2026-10-30
 ---
 # Database and operations
 
+Migration `047_message_order_context.sql` adds nullable `reseller_messages.order_id`
+with an orders foreign key. It does not rewrite historical messages or change
+direct-pair uniqueness. The baseline includes the field for fresh test schemas.
+On 2026-11-02, the migration runner applied 047 after verifying loopback PostgreSQL
+on port 55433 and existing migrations through 046. This is a local development
+upgrade, not a production deployment. Apply 047 before serving the new message
+reads/writes elsewhere. See [[Background Work and Integrations]].
+
 ## Hosting provider
 
 The project owner confirmed on **2026-10-29** that the deployed system uses a
