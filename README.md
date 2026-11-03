@@ -293,7 +293,7 @@ network, while FastAPI binds only to the VPS loopback interface.
 
 1. Install Docker Engine and Docker Compose on the VPS.
 2. Point the domain's DNS records to the VPS.
-3. Clone the repository and check out the release branch.
+3. Clone the repository and check out `main` (or fast-forward the existing production checkout to the desired commit).
 4. Create the private environment file:
 
    ```bash
@@ -301,14 +301,16 @@ network, while FastAPI binds only to the VPS loopback interface.
    chmod 600 .env.production
    ```
 
-5. Add strong values for the required variables listed above.
-6. Start PostgreSQL, apply migrations, and build the application:
+5. Add strong values for the required variables listed above. Keep the file private.
+6. From a clean production checkout with `.env.production` present, run the deployment helper:
 
    ```bash
-   docker compose --env-file .env.production -f compose.prod.yml up -d db
-   docker compose --env-file .env.production -f compose.prod.yml run --rm app python tools/migrate_database.py
-   docker compose --env-file .env.production -f compose.prod.yml up -d --build app worker
+   bash tools/deploy_production.sh
    ```
+
+   It creates a custom-format PostgreSQL backup, builds the release, stops app and
+   worker writes while applying migrations, restarts the new services, and checks
+   `/health`. It does not remove Docker volumes.
 
 7. Copy `deploy/nginx/meattrack.conf` to
    `/etc/nginx/sites-available/meattrack`, replace `YOUR_DOMAIN`, enable the
