@@ -2684,7 +2684,7 @@ def test_legacy_inventory_items_redirects_to_raw_materials(monkeypatch):
 def test_replacement_payment_review_shows_reseller_values_without_edit_fields(workflow_version):
     from app.web import templates
     html = templates.env.get_template("portals/returns/_payment_review.html").render(
-        case={"sales_authorized": True, "additional_due": 100, "has_payment_proof": True,
+        case={"resolution": "replace", "sales_authorized": True, "additional_due": 100, "has_payment_proof": True,
               "payment_verified_at": None, "replacement_workflow_version": workflow_version,
               "return_id": 7, "quote_revision": 1, "attachments": [], "has_reservations": True,
               "replacement_payment_details": {"revision": 1, "transaction_number": "RESELLER123", "payment_amount": "100.00",
@@ -2702,7 +2702,7 @@ def test_replacement_payment_review_shows_reseller_values_without_edit_fields(wo
 def test_legacy_receipt_without_details_cannot_be_verified_from_staff_form():
     from app.web import templates
     html = templates.env.get_template("portals/returns/_payment_review.html").render(
-        case={"sales_authorized": True, "additional_due": 100, "has_payment_proof": True,
+        case={"resolution": "replace", "sales_authorized": True, "additional_due": 100, "has_payment_proof": True,
               "payment_verified_at": None, "replacement_workflow_version": 1,
               "return_id": 7, "quote_revision": 1, "attachments": [], "has_reservations": True, "replacement_payment_details": None},
         return_can_review=True, action_base="/portal/sales-supervisor/returns/actions/",

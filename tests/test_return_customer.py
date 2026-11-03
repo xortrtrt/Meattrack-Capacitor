@@ -146,11 +146,11 @@ def test_queue_filtering_counts_and_pagination_are_scoped(lifecycle):  # noqa: F
         returns.review_product_return(case, d["sales"], False, "Private reason", customer_message="Your request was declined after evidence review.")
     current = create_case(d, "replace")
     counts = returns.return_queue_counts(d["sales"])
-    assert counts == {"completed": 14, "needs_review": 1, "all": 15}
+    assert counts == {"completed": 14, "needs_review": 1, "all": 15, "mismatch": 0, "payment": 0, "waiting": 0}
     assert len(returns.list_product_returns(d["sales"], queue="completed", page=1)) == 12
     assert len(returns.list_product_returns(d["sales"], queue="completed", page=2)) == 2
     assert returns.list_product_returns(d["sales"], queue="needs_review")[0]["return_id"] == current
-    assert returns.return_queue_counts(d["supervisor"]) == {"all": 0}
+    assert returns.return_queue_counts(d["supervisor"]) == {"all": 0, "needs_review": 0, "mismatch": 0, "payment": 0, "waiting": 0, "completed": 0}
 
 
 def test_migration_baseline_preserves_current_offer_and_legacy_public_rejection(lifecycle):  # noqa: F811

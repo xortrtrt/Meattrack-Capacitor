@@ -2,12 +2,14 @@
 
 from datetime import timedelta
 from pathlib import Path
+import re
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
+from legacy_return_fixtures import create_legacy_return
 from app import main, repositories, web_sessions
 from app.business_time import business_now, business_today
 from app.database import fetch_one, get_transaction_cursor
@@ -27,9 +29,9 @@ def sign_in(monkeypatch, actor_id, role, specialization=None):
     monkeypatch.setattr(web_sessions, "_delete_session", lambda *args: None)
 
 
-@pytest.mark.parametrize("resolution", ["refund", "replace"])
-def test_non_expired_fulfilled_products_offer_both_choices_and_remain_subject_to_review(lifecycle, monkeypatch, resolution):  # noqa: F811
+def test_non_expired_fulfilled_products_default_to_replacement_and_remain_subject_to_review(lifecycle, monkeypatch):  # noqa: F811
     d = lifecycle
+    resolution = "replace"
     expiry = business_today() + timedelta(days=3)
     with get_transaction_cursor() as cur:
         cur.execute("UPDATE inventory_batches SET expiry_date=%s WHERE batch_id=%s", (expiry, d["batches"][0]))
@@ -37,10 +39,10 @@ def test_non_expired_fulfilled_products_offer_both_choices_and_remain_subject_to
     with TestClient(main.app) as client:
         response = client.get(f"/portal/reseller/returns?order={d['order']}")
         assert response.status_code == 200
-        assert 'type="radio" name="resolution" value="refund"' in response.text
-        assert 'type="radio" name="resolution" value="replace"' in response.text
+        assert 'name="resolution" value="refund"' not in response.text
+        assert 'name="resolution" value="replace"' in response.text
         assert 'aria-label="Return quantity for Test Product batch TEST-1"' in response.text
-        assert "Choose products for Supervisor review." in response.text
+        assert "same products and quantities" in response.text.lower()
     request_options = {}
     reviewer = d["sales"]
     if resolution == "replace":
@@ -75,7 +77,7 @@ def test_non_expired_fulfilled_products_offer_both_choices_and_remain_subject_to
 
 def test_all_claimed_quantities_show_existing_request_guidance_instead_of_empty_request_form(lifecycle, monkeypatch):  # noqa: F811
     d = lifecycle
-    returns.create_product_return(d["order"], d["reseller"], "refund", [(d["allocation"], 10)], "Full original delivery requested for Sales review", attachments=[supporting_photo()])
+    create_legacy_return(d["order"], d["reseller"], "refund", [(d["allocation"], 10)], "Full original delivery requested for Sales review", attachments=[supporting_photo()])
     sign_in(monkeypatch, d["reseller"], "reseller")
     with TestClient(main.app) as client:
         response = client.get(f"/portal/reseller/returns?order={d['order']}")
@@ -115,7 +117,7 @@ def test_collection_breakdown_explains_small_payment_without_rewriting_order_val
         response = client.get(f"/portal/reseller/returns?order={order}")
         assert 'action="/portal/reseller/returns/actions/submit"' in response.text
         assert "PHP 370.00" not in response.text and "recorded payment is" not in response.text
-        assert "Choose products for Supervisor review." in response.text
+        assert "same products and quantities" in response.text.lower()
     assert fetch_one("SELECT payment_amount FROM orders WHERE order_id=%s", (order,))["payment_amount"] == 50
 
 
@@ -166,31 +168,33 @@ def test_non_expired_request_choices_and_collection_sources_in_browser(strict_in
         page.route("http://options.test/**", bridge)
         sign_in(monkeypatch, reseller, "reseller")
         page.goto(f"http://options.test/portal/reseller/returns?order={order}", wait_until="networkidle")
-        page.get_by_role("radio", name="Refund", exact=True).check()
-        page.get_by_role("radio", name="Replacement", exact=True).check()
-        page.get_by_role("radio", name="Refund", exact=True).check()
+        expect(page.locator('.return-request-form [name="resolution"][value="refund"]')).to_have_count(0)
         page.get_by_label("Return quantity for Test Product batch TEST-1").fill("6")
         page.get_by_label("Reason and remarks").fill("Non-expired product issue submitted for Sales eligibility review")
         photo = supporting_photo()
         page.get_by_label("Supporting photos").set_input_files({"name": photo["filename"], "mimeType": photo["content_type"], "buffer": photo["content"]})
-        expect(page.get_by_role("button", name="Request return", exact=True)).to_be_enabled()
+        expect(page.get_by_role("button", name="Request replacement", exact=True)).to_be_enabled()
         assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
         page.screenshot(path=str(output / "reseller-request-375.png"), full_page=True)
-        page.get_by_role("button", name="Request return", exact=True).click()
-        page.wait_for_load_state("networkidle")
+        page.get_by_role("button", name="Request replacement", exact=True).click()
+        expect(page.locator('[name="comparison_token"]')).not_to_have_value("")
+        page.get_by_role("button", name="Request replacement", exact=True).click()
+        page.wait_for_url(re.compile(r'[?&]case='), wait_until='networkidle')
         case = fetch_one("SELECT return_id,status FROM product_returns WHERE order_id=%s", (order,))
         assert case and case["status"] == "submitted"
         assert fetch_one("SELECT count(*) n FROM order_refunds WHERE order_id=%s", (order,))["n"] == 0
         sign_in(monkeypatch, sales, "team-leader", "sales")
         for width in (375, 1440):
             page.set_viewport_size({"width": width, "height": 900})
-            page.goto("http://options.test/portal/team-leader/returns", wait_until="networkidle")
+            page.goto("http://options.test/portal/team-leader/returns?queue=all", wait_until="networkidle")
             expect(page.locator(".collection-source-breakdown")).to_have_count(0)
             expect(page.locator(".lifecycle-financial-details")).to_have_count(0)
             expect(page.locator(".lifecycle-returns-list")).to_be_visible()
             expect(page.get_by_role("link", name="Open existing refund workflow", exact=True)).to_have_count(0)
             expect(page.locator(".lifecycle-metrics--returns")).to_have_count(0)
             expect(page.locator(".lifecycle-case-items")).to_contain_text("PHP 420.00")
+            expect(page.locator('.lifecycle-case-items')).to_contain_text('Tracking with Supervisor/Owner')
+            expect(page.locator('form[action$="/approve"]')).to_have_count(0)
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
             page.screenshot(path=str(output / f"sales-sources-{width}.png"), full_page=True)
             page.goto("http://options.test/portal/team-leader/dashboard", wait_until="networkidle")

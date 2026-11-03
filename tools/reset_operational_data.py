@@ -17,6 +17,7 @@ from psycopg2 import sql
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.business_time import business_today
 from app.config import database_dsn
+from tools.transaction_reset import reset_transactions, require_loopback
 
 
 PRESERVED = {
@@ -165,13 +166,35 @@ def reset(conn, expiry: date, *, apply: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--expiry-date", type=date.fromisoformat, required=True,
+    parser.add_argument("--expiry-date", type=date.fromisoformat,
                         help="First expiry date; the next four are each 15 days apart")
     parser.add_argument("--apply", action="store_true", help="Commit the permanent reset; default is a full rollback rehearsal")
+    parser.add_argument("--transactions-only", action="store_true", help="Preserve physical stock, catalog, accounts and unrelated conversations")
+    parser.add_argument("--backup", type=Path, help="Private pg_dump archive with a verified restore manifest")
+    parser.add_argument("--maintenance-confirmed", action="store_true", help="App and worker writers are stopped")
     args = parser.parse_args()
+    if args.transactions_only:
+        if args.apply and not args.backup:
+            parser.error("--backup is required before applying a transaction-only reset")
+        if args.apply and not args.maintenance_confirmed:
+            parser.error("Stop writers and specify --maintenance-confirmed")
+        if args.backup:
+            from tools.verified_database_backup import validate_backup
+            validate_backup(args.backup)
+    elif args.expiry_date is None:
+        parser.error("--expiry-date is required for the broad operational reset")
     conn = psycopg2.connect(database_dsn(), connect_timeout=10)
     try:
-        print(json.dumps(reset(conn, args.expiry_date, apply=args.apply), indent=2))
+        require_loopback(conn)
+        if args.transactions_only:
+            preflight = None
+            if args.apply:
+                from tools.verified_database_backup import validate_backup_for_connection
+                def preflight(connection):
+                    validate_backup_for_connection(args.backup, connection)
+            print(json.dumps(reset_transactions(conn, apply=args.apply, preflight=preflight), indent=2))
+        else:
+            print(json.dumps(reset(conn, args.expiry_date, apply=args.apply), indent=2))
     except Exception:
         conn.rollback()
         raise

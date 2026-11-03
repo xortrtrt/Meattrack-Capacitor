@@ -6,9 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 from playwright.sync_api import expect, sync_playwright
 
+from legacy_return_fixtures import create_legacy_return, legacy_preview
 from app import main
 from app.database import fetch_one
-from app.repositories import product_returns, replacement_workflow
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
 from test_product_lifecycle import lifecycle, supporting_photo, substitute  # noqa: F401
 from test_return_request_options import sign_in
@@ -18,8 +18,8 @@ pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
 
 def test_rejection_validation_confirmation_tabs_and_back_filters(lifecycle, monkeypatch):  # noqa: F811
     d = lifecycle
-    comparison = replacement_workflow.preview(d["order"], d["reseller"], [(d["allocation"], 2)], [(d["product"], 2)])
-    case = product_returns.create_product_return(d["order"], d["reseller"], "replace", [(d["allocation"], 2)],
+    comparison = legacy_preview(d["order"], d["reseller"], [(d["allocation"], 2)], [(d["product"], 2)])
+    case = create_legacy_return(d["order"], d["reseller"], "replace", [(d["allocation"], 2)],
         "Synthetic packaging issue for browser review", attachments=[supporting_photo()],
         replacement_items=[(d["product"], 2)], comparison_token=comparison["token"])
     sign_in(monkeypatch, d["supervisor"], "sales-supervisor", "sales-supervisor")
@@ -73,8 +73,8 @@ def test_rejection_validation_confirmation_tabs_and_back_filters(lifecycle, monk
         page.screenshot(path=str(output / "recorded-rejection.png"), full_page=True)
         # A different offer still goes through the existing authoritative pricing path.
         alternative = substitute(250)
-        comparison = replacement_workflow.preview(d["order"], d["reseller"], [(d["allocation"], 2)], [(d["product"], 2)])
-        revised = product_returns.create_product_return(d["order"], d["reseller"], "replace", [(d["allocation"], 2)],
+        comparison = legacy_preview(d["order"], d["reseller"], [(d["allocation"], 2)], [(d["product"], 2)])
+        revised = create_legacy_return(d["order"], d["reseller"], "replace", [(d["allocation"], 2)],
             "Synthetic request with an alternative selection", attachments=[supporting_photo()],
             replacement_items=[(d["product"], 2)], comparison_token=comparison["token"])
         page.goto(f"http://supervisor-page.test/portal/sales-supervisor/returns?case={revised}", wait_until="networkidle")

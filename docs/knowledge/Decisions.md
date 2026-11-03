@@ -1,8 +1,48 @@
 ---
 tags: [meattrack, decisions]
-verified: 2026-10-28
+verified: 2026-11-03
 ---
 # Decisions
+
+## Replacement-first policy (2026-11-03)
+
+The user approved defaulting new returns to the same approved returned products
+and quantities at original paid prices. Supervisor/Owner may offer alternatives
+when original supply is unavailable; reseller acceptance is required, cheaper
+selections are disallowed, and any extra payment must be verified before stock
+preparation. Existing policy cases retain their recorded workflows. A separate
+return-policy version preserves version-2 receipt/payment/preparation behavior.
+
+Before warehouse release, Supervisor/Owner may authorize a refund if no acceptable
+replacement can be supplied. It returns approved credit plus verified extra
+collections, with separate components so returning a top-up does not reduce
+original sales twice. Uncertain payment evidence blocks conversion until resolved.
+Paid rejected-order refunds remain. Stock contention retains the existing paid
+order shortage/refund-review path; replacements may wait for valid restock.
+
+The authorized data reset is local transactions only. Preserve accounts, product
+definitions, settings, unrelated conversations, batch quantities and non-sellable
+custody. Require a private restored backup and reset rehearsal; do not restore
+sold packs or reuse identifiers. This is separate maintenance, never startup.
+
+Local implementation verification is complete: 1,027 regression cases and eight
+post-maintenance synthetic checks passed. After verified private backup restores
+and rehearsals, migrations through 049 and the authorized transaction-only reset
+completed locally with stock/custody/protected data preserved. No production
+deployment or deployed reset occurred. Sources:
+`app/repositories/return_policy.py`, `app/repositories/product_returns.py`,
+`app/repositories/replacement_workflow.py`, `tools/transaction_reset.py`.
+Related: [[Replacement Workflow]], [[Returns and Financials]],
+[[Orders and Inventory]], [[Database and Operations]], [[Testing and Change Impact]].
+
+### Legacy deferred-trigger compatibility
+
+Limit the replacement-first constraint trigger to `NEW.return_policy_version=2`.
+Queuing a no-op deferred check for historical rows unnecessarily prevented their
+reconciliation and migration replay from using DDL in the same transaction.
+Migration 049 applies this correction without editing already applied 048 or
+rewriting historical business state. Source: `database/migrations/049_scope_replacement_policy_trigger.sql`,
+`tests/test_return_workflow_handoff.py`, `tests/test_replacement_first_migration_reset.py`.
 
 ## 2026-11-02 — Define role-dashboard counts from destination eligibility
 

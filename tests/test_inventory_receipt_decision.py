@@ -215,7 +215,9 @@ def test_inventory_modal_complete_or_mismatch_workflow_on_phone_and_desktop(life
                 dialog.get_by_label("Missing products or proof mismatch").fill("Only one pack arrived; two approved packs were expected")
                 dialog.get_by_role("button", name="Report mismatch to Supervisor/Owner", exact=True).click()
                 page.wait_for_load_state("networkidle")
-                expect(page.get_by_role("heading", name="Supervisor/Owner has been notified", exact=True)).to_be_visible()
+                expect(page.locator('[data-workflow-step="mismatch"]')).to_have_attribute("aria-current", "step")
+                assert returns.get_product_return(case, d["supervisor"])["status"] == "discrepancy"
+                assert fetch_one("SELECT count(*) n FROM notifications WHERE source_type='product_returns' AND source_id=%s", (case,))["n"] > 0
                 page.screenshot(path=str(output / "reported-mismatch.png"), full_page=True)
                 returns.review_product_return(case, d["supervisor"], True, "Sales resolved the mismatch and confirmed both approved packs will be returned", customer_message="Please return both approved packs for Inventory to check.")
             else:
@@ -223,7 +225,8 @@ def test_inventory_modal_complete_or_mismatch_workflow_on_phone_and_desktop(life
                 dialog.get_by_label("I checked every approved product, quantity, batch, and supporting photo. Everything matches.").check()
                 dialog.get_by_role("button", name="Confirm complete receipt", exact=True).click()
                 page.wait_for_load_state("networkidle")
-                expect(page.get_by_role("heading", name="Complete receipt confirmed", exact=True)).to_be_visible()
+                expect(page.locator('[data-workflow-step="receipt"]')).to_have_class("is-done")
+                assert returns.get_product_return(case, d["supervisor"])["sales_authorized"]
                 expect(page.get_by_role("heading", name="Prepare the replacement", exact=True)).to_be_visible()
                 page.screenshot(path=str(output / "confirmed-complete.png"), full_page=True)
         current = returns.get_product_return(case, d["sales"])
@@ -234,7 +237,8 @@ def test_inventory_modal_complete_or_mismatch_workflow_on_phone_and_desktop(life
         page.get_by_label("Release remarks").fill("Handed the two replacement packs to the reseller")
         page.get_by_role("button", name="Confirm replacement released", exact=True).click()
         page.wait_for_load_state("networkidle")
-        expect(page.get_by_role("heading", name="Replacement released", exact=True)).to_be_visible()
+        expect(page.locator('[data-workflow-step="release"]')).to_have_class("is-done")
+        assert returns.get_product_return(case, d["supervisor"])["replacement_released_at"]
         assert returns.get_product_return(case, d["sales"])["status"] == "completed"
         for width in (375, 1440):
             page.set_viewport_size({"width": width, "height": 1000})

@@ -1,0 +1,14 @@
+flowchart TD
+    A[Paid order requests stock reservation] --> C[Shared allocator locks products in sorted order]
+    B[Cleared replacement requests FEFO preparation] --> C
+    C --> D[Lock eligible unexpired approved batches]
+    D --> E[Subtract active order and replacement reservations]
+    E --> F{Enough free stock?}
+    F -->|Yes| G[Commit reservation atomically]
+    G --> H[First successful reservation owns the available quantity]
+    H --> I[Revalidate before fulfillment or warehouse release]
+    I --> J[Deduct physical stock once and clear consumed holds]
+    F -->|Replacement shortage| K[Wait for valid restock; preserve accepted offer and verified top-up]
+    K --> B
+    F -->|Order loses stock after payment submission| L[Preserve payment evidence; reject through existing shortage/refund-review flow]
+    M[Submission alone creates no reservation or priority] -.-> C

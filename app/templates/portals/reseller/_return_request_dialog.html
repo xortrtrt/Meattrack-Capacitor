@@ -19,7 +19,7 @@
     </section>
     </div>
     {% if return_order.request_window_open and returnable_batches %}
-    <form class="lifecycle-form return-request-form" method="post" action="{{ action_base }}submit" enctype="multipart/form-data">
+    <form class="lifecycle-form return-request-form" novalidate method="post" action="{{ action_base }}submit" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="order_id" value="{{ return_order_id }}"><input type="hidden" name="operation_key" value="{{ operation_key() }}">
       <fieldset class="return-request-section" aria-describedby="return-products-hint">
         <legend><span class="return-request-step" aria-hidden="true">1</span>Select products</legend>
@@ -35,35 +35,26 @@
         </div>
       </fieldset>
       <fieldset class="return-request-section" aria-describedby="return-resolution-hint">
-        <legend><span class="return-request-step" aria-hidden="true">2</span>Choose an outcome</legend>
-        <p id="return-resolution-hint" class="return-request-instruction">Money back or replacement products?</p>
-        <div class="return-resolution-options">
-          <label class="return-resolution-option" for="return-refund"><input id="return-refund" type="radio" name="resolution" value="refund" required checked aria-labelledby="return-refund-title" aria-describedby="return-refund-description"><span><strong id="return-refund-title">Refund</strong><small id="return-refund-description">Request money back for returned products.</small></span></label>
-          <label class="return-resolution-option" for="return-replacement"><input id="return-replacement" type="radio" name="resolution" value="replace" required aria-labelledby="return-replacement-title" aria-describedby="return-replacement-description"><span><strong id="return-replacement-title">Replacement</strong><small id="return-replacement-description">Choose products for Supervisor review.</small></span></label>
-        </div>
-        <div class="replacement-selection" data-replacement-selection hidden>
-          <details class="return-product-catalog" data-replacement-catalog>
-            <summary><span>Choose replacement products<small data-replacement-count>No products selected</small></span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
-            <label class="return-product-search">Search products<input type="search" placeholder="Find a product" data-replacement-search></label>
-            <div class="replacement-product-picker">{% for product in replacement_products %}<label data-replacement-product="{{ product.name }}"><span>{{ product.name }}<small>{{ product.base_price|currency }} / pack &middot; {{ product.available|number }} available</small></span><span><input type="hidden" name="replacement_product_id" value="{{ product.product_id }}"><input type="number" name="replacement_quantity" min="0" max="999999999" step="1" value="0" aria-label="Replacement packs for {{ product.name }}"></span></label>{% endfor %}</div>
-            <p class="hint" data-replacement-empty hidden>No matching products. Try another name.</p>
-          </details>
-          <ul class="return-selected-products" data-replacement-selected aria-label="Selected replacement products"></ul>
-          <details class="return-pricing-help"><summary>How prices work</summary><p>Same-product packs keep their original paid prices. Extra packs and different products use current prices. Stock is checked during preparation.</p></details>
-          <input type="hidden" name="comparison_token" value=""><div class="return-request-comparison" data-replacement-comparison tabindex="-1" aria-label="Price comparison" aria-live="polite"></div>
+        <legend><span class="return-request-step" aria-hidden="true">2</span>Review your replacement</legend>
+        <p id="return-resolution-hint" class="return-request-instruction">Your replacement uses the same products and quantities you return, at their original paid prices. Catalog price changes add no charge.</p>
+        <input type="hidden" name="resolution" value="replace">
+        <div class="replacement-selection" data-replacement-selection>
+          <p class="hint">If the original products cannot be supplied, Supervisor/Owner may offer an alternative for you to accept or authorize a refund. No stock is reserved when you submit.</p>
+          <input type="hidden" name="comparison_token" value="">
+          <div class="return-request-comparison" data-replacement-comparison tabindex="-1" aria-label="Price comparison" aria-live="polite"></div>
         </div>
       </fieldset>
       <fieldset class="return-request-section">
         <legend><span class="return-request-step" aria-hidden="true">3</span>Add details</legend>
         <p id="return-details-hint" class="return-request-instruction">Tell us what happened and attach photos.</p>
         <div class="return-request-details">
-          <label for="return-reason"><span class="return-request-field-label">Reason and remarks<span class="return-request-required">Required</span></span><textarea id="return-reason" name="remarks" required minlength="5" maxlength="1000" rows="3" aria-describedby="return-details-hint" placeholder="For example: The packaging was damaged when the order arrived."></textarea></label>
+          <label for="return-reason"><span class="return-request-field-label">Reason and remarks<span class="return-request-required">Required</span></span><textarea id="return-reason" name="remarks" required minlength="5" maxlength="1000" rows="3" style="resize: none" aria-describedby="return-details-hint" placeholder="For example: The packaging was damaged when the order arrived."></textarea></label>
           <label for="return-evidence"><span class="return-request-field-label">Supporting photos<span class="return-request-required">Required</span></span><input id="return-evidence" type="file" name="evidence" required multiple accept="image/jpeg,image/png,image/webp" aria-describedby="return-evidence-hint"><small id="return-evidence-hint">Upload 1–3 photos (JPG, PNG, or WebP), up to 5 MB each.</small></label>
         </div>
       </fieldset>
       <footer class="return-request-footer">
-        <p class="return-request-feedback" data-return-request-feedback role="status" aria-live="polite">Select products, choose an outcome, then add details.</p>
-        <div class="return-request-actions"><button class="button secondary" type="button" data-return-close>Cancel</button><button class="button" type="submit" data-keep-label="true" data-return-request-submit><span data-return-submit-label>Request return</span><i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+        <p class="return-request-feedback" data-return-request-feedback role="status" aria-live="polite">Select returned packs, review the replacement, then add details.</p>
+        <div class="return-request-actions"><button class="button secondary" type="button" data-return-close>Cancel</button><button class="button" type="submit" data-keep-label="true" data-return-request-submit><span data-return-submit-label>Request replacement</span><i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
       </footer>
     </form>
     {% else %}
@@ -73,7 +64,7 @@
     {% else %}
     <div class="return-request-intro"><h4>Choose an order</h4><p>Only completed orders within the 5-day return window appear here.</p></div>
     {% if return_order_options %}
-    <form class="lifecycle-form return-request-form" method="get" action="/portal/reseller/history">
+    <form class="lifecycle-form return-request-form" novalidate method="get" action="/portal/reseller/history">
       <input type="hidden" name="view" value="returns">
       <label for="return-order">Order<select id="return-order" name="order" required><option value="">Select an order</option>{% for order in return_order_options %}<option value="{{ order.order_id }}">Order #{{ order.order_id }} &middot; {{ order.total_amount|currency }} &middot; fulfilled {{ order.fulfilled_at|nice_date }}</option>{% endfor %}</select></label>
       <div class="return-request-actions"><button class="button secondary" type="button" data-return-close>Cancel</button><button class="button" type="submit">Continue<i data-lucide="arrow-right" aria-hidden="true"></i></button></div>

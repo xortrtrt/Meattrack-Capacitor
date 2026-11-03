@@ -1,0 +1,20 @@
+{% if case.can_convert_to_refund|default(false) %}
+{% set returned_topup = case.payment_amount|default(0, true) if case.payment_verified_at else 0 %}
+{% set conversion_total = case.credit|float + returned_topup|float %}
+<section class="lifecycle-box rd-card refund-conversion" aria-labelledby="refund-conversion-title">
+  <header><i data-lucide="arrow-left-right" aria-hidden="true"></i><h3 id="refund-conversion-title">Replacement unavailable</h3></header>
+  <p>Convert this return only when no acceptable replacement can be supplied. This stops replacement preparation and release. Complete returned-goods verification is still required before payment.</p>
+  <form class="lifecycle-form" novalidate method="post" action="{{ action_base }}convert-to-refund" data-return-intent="convert-to-refund" data-refund-conversion data-refund-label="{{ conversion_total|currency }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="return_id" value="{{ case.return_id }}">
+    <input type="hidden" name="operation_key" value="{{ operation_key() }}">
+    <input type="hidden" name="review_version" value="{{ case.refund_conversion_version }}">
+    <dl class="payment-review-details"><div><dt>Approved return credit</dt><dd>{{ case.credit|currency }}</dd></div><div><dt>Verified extra payment to return</dt><dd>{{ returned_topup|currency }}</dd></div><div><dt>Total refund</dt><dd><strong>{{ conversion_total|currency }}</strong></dd></div></dl>
+    <label for="conversion-reason-{{ case.return_id }}">Reason replacement cannot be supplied<textarea id="conversion-reason-{{ case.return_id }}" name="remarks" required minlength="5" maxlength="1000" rows="3" style="resize: none" aria-describedby="conversion-internal-help-{{ case.return_id }}"></textarea><small id="conversion-internal-help-{{ case.return_id }}">Internal supply reason, visible only to authorized staff.</small></label>
+    <label for="conversion-message-{{ case.return_id }}">Explanation for the reseller<textarea id="conversion-message-{{ case.return_id }}" name="customer_message" required minlength="5" maxlength="1000" rows="3" style="resize: none"></textarea></label>
+    {% if case.has_payment_proof and not case.payment_verified_at %}<label class="payment-review-funds"><input type="checkbox" name="unreceived_payment" value="yes" required><span>I checked the payment provider and confirm the submitted extra funds were not received.</span></label><p class="hint">If funds arrived, verify the payment first. Do not convert while receipt of funds is uncertain.</p>{% endif %}
+    <p data-conversion-feedback role="status" aria-live="polite">Review the refund total and required explanations before continuing.</p>
+    <button class="button secondary" type="submit" data-keep-label="true">Convert to refund</button>
+  </form>
+</section>
+{% endif %}

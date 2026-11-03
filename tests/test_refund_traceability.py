@@ -9,6 +9,7 @@ import psycopg2
 import pytest
 from fastapi.testclient import TestClient
 
+from legacy_return_fixtures import create_legacy_return
 from app import main, repositories, web_sessions
 from app.business_time import business_now
 from app.database import fetch_one, fetch_all, get_transaction_cursor
@@ -29,10 +30,10 @@ def test_return_operation_replay_rejects_changed_claim(lifecycle):  # noqa: F811
     d = lifecycle
     key = str(uuid4())
     args = (d["order"], d["reseller"], "refund", [(d["allocation"], 2)], "Expired packs returned for review", [supporting_photo()], key)
-    case = returns.create_product_return(*args)
-    assert returns.create_product_return(*args) == case
+    case = create_legacy_return(*args)
+    assert create_legacy_return(*args) == case
     with pytest.raises(ValueError, match="different details"):
-        returns.create_product_return(
+        create_legacy_return(
             d["order"], d["reseller"], "refund", [(d["allocation"], 3)], "Expired packs returned for review", [supporting_photo()], key
         )
     assert fetch_one("SELECT count(*) n FROM product_returns")["n"] == 1
@@ -195,7 +196,7 @@ def test_sales_visibility_scope_proofs_and_http_mutations(lifecycle, monkeypatch
     with TestClient(main.app) as client:
         response = client.get(f"/portal/team-leader/refunds?refund={refund}")
         assert response.status_code == 200, response.text[:1000]
-        assert "Tracking with Supervisor/Owner" in response.text
+        assert "Tracking only" in response.text
         assert 'aria-label="Refund and return views"' not in response.text
         assert 'class="refund-hero"' not in response.text
         assert "Open return review and replacements" not in response.text

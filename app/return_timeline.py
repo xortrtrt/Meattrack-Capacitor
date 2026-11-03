@@ -13,7 +13,7 @@ def workflow_steps(case: dict, inventory_only: bool = False) -> list[dict]:
     verified = bool(case.get("verified_at"))
     authorized = bool(case.get("sales_authorized"))
     due = Decimal(str(case.get("additional_due") or 0))
-    refund_due = Decimal(str(case.get("unused_credit") or 0)) if replacement else Decimal(str(case.get("credit") or 0))
+    refund_due = Decimal(str(case.get("unused_credit") or 0)) if replacement else Decimal(str(case.get("refund_due", case.get("credit")) or 0))
     steps: list[dict] = []
 
     def event_time(*actions):

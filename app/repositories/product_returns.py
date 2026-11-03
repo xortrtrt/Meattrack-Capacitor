@@ -18,6 +18,7 @@ from .notifications import _create_notification_cursor
 from .refund_integrity import (
     fingerprint, receipt_problems, replacement_problems, require_settlement_authorization, settlement_is_authorized,
 )
+from .return_policy import can_convert, refund_components, refund_total, require_replacement_value
 from .return_views import (
     INVENTORY_EVENT_MESSAGES, INVENTORY_STATUS_SQL, SALES_STAGE_SQL, RESELLER_EVENT_MESSAGES,
     inventory_return_view, reseller_return_view,
@@ -196,6 +197,15 @@ def _attachments(cur, return_id: int, actor_id: int, attachments: list[dict], pu
 
 
 def create_product_return(
+    order_id: int, actor_id: int, resolution: str, lines: list[tuple[int, object]], remarks: str,
+    attachments: list[dict] | None = None, operation_key: str | None = None, *,
+    replacement_items: list[tuple[int, object]] | None = None, comparison_token: str = "",
+) -> int:
+    return _create_product_return(order_id, actor_id, resolution, lines, remarks, attachments, operation_key,
+                                  replacement_items=replacement_items, comparison_token=comparison_token, policy_version=2)
+
+
+def _create_product_return(
     order_id: int,
     actor_id: int,
     resolution: str,
@@ -203,7 +213,7 @@ def create_product_return(
     remarks: str,
     attachments: list[dict] | None = None,
     operation_key: str | None = None,
-    *, replacement_items: list[tuple[int, object]] | None = None, comparison_token: str = "",
+    *, replacement_items: list[tuple[int, object]] | None = None, comparison_token: str = "", policy_version: int,
 ) -> int:
     remarks = _text(remarks)
     if resolution not in {"refund", "replace"} or not lines:
@@ -236,16 +246,18 @@ def create_product_return(
         window = return_request_window(order)
         if not window["request_window_open"]:
             raise ValueError(window["request_window_reason"])
+        if policy_version == 2 and resolution != "replace":
+            raise ValueError("New returns use replacement. Supervisor/Owner may authorize a refund if no acceptable replacement can be supplied.")
         if not attachments:
             raise ValueError("Attach at least one supporting photo before submitting your request.")
         if len(attachments) > 3:
             raise ValueError("Attach up to 3 supporting photos only.")
         replacement_comparison = None
-        if replacement_items is not None:
+        if replacement_items is not None or policy_version == 2:
             if resolution != "replace":
                 raise ValueError("Replacement products require the replacement outcome.")
             from .replacement_workflow import comparison, verify_preview
-            replacement_comparison = comparison(cur,order_id,actor_id,lines,replacement_items)
+            replacement_comparison = comparison(cur,order_id,actor_id,lines,replacement_items,policy_version=policy_version)
             verify_preview(comparison_token,order_id,actor_id,replacement_comparison)
         selected = []
         for allocation_id, value in sorted(lines):
@@ -268,9 +280,9 @@ def create_product_return(
                 raise ValueError("Return quantity exceeds the remaining eligible quantity.")
             selected.append((allocation_id, quantity, allocation["unit_price"]))
         cur.execute(
-            """INSERT INTO product_returns(order_id,resolution,remarks,requested_by_account_id,credit,operation_key,request_hash)
-            VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING *;""",
-            (order_id, resolution, remarks, actor_id, sum(q * p for _, q, p in selected), operation_key, request_hash),
+            """INSERT INTO product_returns(order_id,resolution,remarks,requested_by_account_id,credit,operation_key,request_hash,return_policy_version)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *;""",
+            (order_id, resolution, remarks, actor_id, sum(q * p for _, q, p in selected), operation_key, request_hash, policy_version),
         )
         case = dict(cur.fetchone())
         case.update(reseller_account_id=actor_id, team_leader_account_id=order["team_leader_account_id"])
@@ -481,26 +493,85 @@ def _custody(
     )
 
 
+def refund_conversion_version(case: dict) -> str:
+    """Bind the decision to approval, custody, payment, preparation and assignment."""
+    fields = ("return_id", "return_policy_version", "resolution", "status", "quote_revision", "accepted_revision",
+              "approved_by_account_id", "processing_supervisor_account_id", "updated_at", "verified_at",
+              "payment_verified_at", "replacement_prepared_at", "replacement_released_at", "replacement_payment_details")
+    proofs = sorted(a["attachment_id"] for a in case.get("attachments", []) if a["purpose"] == "payment")
+    return fingerprint([case.get(field) for field in fields], proofs)
+
+
+def convert_product_return_to_refund(return_id: int, actor_id: int, remarks: str, customer_message: str,
+                                   operation_key: str, review_version: str, *, unreceived_payment: bool = False) -> None:
+    remarks = _text(remarks, "Reason no acceptable replacement can be supplied")
+    customer_message = _text(customer_message, "Explanation for the reseller")
+    operation_key = str(UUID(operation_key))
+    request_hash = fingerprint(return_id, actor_id, remarks, customer_message, review_version, unreceived_payment)
+    with get_transaction_cursor() as cur:
+        case = _case(cur, return_id, actor_id, {"sales-supervisor"})
+        cur.execute("SELECT * FROM product_return_events WHERE operation_key=%s", (operation_key,))
+        previous = cur.fetchone()
+        if previous:
+            if previous["return_id"] != return_id or previous["actor_account_id"] != actor_id or previous["action"] != "converted_to_refund" or previous["request_hash"] != request_hash:
+                raise ValueError("This conversion reference was already used with different details.")
+            return
+        if case.get("replacement_released_at"):
+            raise ValueError("A replacement cannot be converted after warehouse release.")
+        if not can_convert(case):
+            raise ValueError("Approve and resolve any receipt mismatch before converting an unreleased replacement.")
+        cur.execute("SELECT attachment_id,purpose,revision FROM return_attachments WHERE return_id=%s", (return_id,))
+        case["attachments"] = [dict(a) for a in cur.fetchall()]
+        if not review_version or review_version != refund_conversion_version(case):
+            raise ValueError("This case changed. Reload and review the current receipt, payment and stock before converting.")
+        has_unverified_payment = not case.get("payment_verified_at") and any(a["purpose"] == "payment" for a in case["attachments"])
+        if has_unverified_payment and not unreceived_payment:
+            raise ValueError("Resolve the submitted payment: verify received funds or explicitly confirm funds were not received.")
+        if unreceived_payment and case.get("payment_verified_at"):
+            raise ValueError("Verified funds cannot be declared unreceived. Reload and review the refund total.")
+        if has_unverified_payment:
+            _event(cur, case, actor_id, "payment_not_received", remarks,
+                   customer_message="Supervisor confirmed the submitted extra payment was not received; only the approved return credit is refundable.")
+        if case["verified_at"]:
+            require_settlement_authorization(case)
+            problems = receipt_problems(cur, return_id)
+            if problems:
+                raise ValueError(problems[0])
+        cur.execute("DELETE FROM replacement_stock_reservations WHERE return_id=%s", (return_id,))
+        cur.execute("""UPDATE product_returns SET resolution='refund',refund_converted_at=now(),refund_converted_by_account_id=%s,
+            refund_conversion_reason=%s,replacement_prepared_at=NULL,replacement_prepared_by_account_id=NULL,updated_at=now()
+            WHERE return_id=%s RETURNING *""", (actor_id, remarks, return_id))
+        converted = dict(cur.fetchone())
+        if converted["verified_at"]:
+            _refund(cur, converted)
+        _event(cur, case, actor_id, "converted_to_refund", remarks, operation_key,
+               request_hash=request_hash, customer_message=customer_message)
+
+
 def _refund(cur, case: dict) -> None:
-    amount = (
-        case["credit"]
-        if case["resolution"] == "refund"
-        else max(Decimal(0), case["credit"] - case["replacement_total"])
-    )
+    original, topup = refund_components(case)
+    amount = original + topup
     if amount <= 0:
+        return
+    cur.execute("SELECT order_id,amount,original_credit_amount,topup_amount FROM order_refunds WHERE return_id=%s", (case["return_id"],))
+    existing = cur.fetchone()
+    if existing:
+        if (existing["order_id"], existing["amount"], existing["original_credit_amount"], existing["topup_amount"]) != (
+            case["order_id"], amount, original, topup):
+            raise ValueError("Existing refund does not match the approved settlement components.")
         return
     cur.execute("SELECT payment_amount FROM orders WHERE order_id=%s FOR UPDATE;", (case["order_id"],))
     collected = cur.fetchone()["payment_amount"] or Decimal(0)
-    cur.execute("SELECT COALESCE(SUM(amount),0) total FROM order_refunds WHERE order_id=%s AND return_id IS DISTINCT FROM %s;", (case["order_id"],case["return_id"]))
-    if cur.fetchone()["total"] + amount > collected:
+    cur.execute("SELECT COALESCE(SUM(amount-topup_amount),0) total FROM order_refunds WHERE order_id=%s AND return_id IS DISTINCT FROM %s;", (case["order_id"],case["return_id"]))
+    if cur.fetchone()["total"] + original > collected:
         raise ValueError("Refund obligations exceed the confirmed original payment. Review the sales record.")
     supervisor_id = case.get("processing_supervisor_account_id")
     if not case.get("handed_off_at"):
         supervisor_id = supervisor_for_case(cur, case.get("team_leader_account_id"))
     cur.execute(
-        """INSERT INTO order_refunds(order_id,return_id,amount,requested_by_account_id,assigned_supervisor_account_id)
-        VALUES(%s,%s,%s,%s,%s) ON CONFLICT(return_id) WHERE return_id IS NOT NULL DO NOTHING RETURNING order_refund_id;""",
-        (case["order_id"], case["return_id"], amount, case["requested_by_account_id"], supervisor_id),
+        """INSERT INTO order_refunds(order_id,return_id,amount,requested_by_account_id,assigned_supervisor_account_id,original_credit_amount,topup_amount)
+        VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(return_id) WHERE return_id IS NOT NULL DO NOTHING RETURNING order_refund_id;""",
+        (case["order_id"], case["return_id"], amount, case["requested_by_account_id"], supervisor_id, original, topup),
     )
     refund = cur.fetchone()
     if refund:
@@ -525,16 +596,14 @@ def _complete_if_ready(cur, return_id: int) -> None:
         return
     if case["resolution"] == "replace" and not case["replacement_released_at"]:
         return
-    if case.get("replacement_workflow_version") == 2 and not case["replacement_delivered_at"]:
+    if case["resolution"] == "replace" and case.get("replacement_workflow_version") == 2 and not case["replacement_delivered_at"]:
         return
     if not case["approved_by_account_id"] or not case["verified_by_account_id"]:
         raise ValueError("Sales approval and final Inventory verification are required.")
     problems = receipt_problems(cur, return_id) + replacement_problems(cur, case, require_release=True)
     if problems:
         raise ValueError(problems[0])
-    expected = case["credit"] if case["resolution"] == "refund" else max(
-        Decimal(0), case["credit"] - case["replacement_total"]
-    )
+    expected = refund_total(case)
     cur.execute("SELECT order_id,amount,status FROM order_refunds WHERE return_id=%s;", (return_id,))
     refund = cur.fetchone()
     if expected > 0 and not refund:
@@ -790,6 +859,7 @@ def flag_return_discrepancy(return_id: int, actor_id: int, remarks: str) -> None
 def accept_replacement_quote(return_id: int, actor_id: int, revision: int) -> None:
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"reseller"})
+        require_replacement_value(case)
         if (
             case["resolution"] != "replace"
             or case["status"] not in {"awaiting_receipt", "awaiting_inventory_verification", "settlement_pending"}
@@ -806,6 +876,7 @@ def reserve_replacement(return_id: int, actor_id: int, remarks: str) -> bool:
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"inventory"})
         require_settlement_authorization(case)
+        require_replacement_value(case)
         if (
             case["status"] != "settlement_pending"
             or not case["verified_at"]
@@ -850,6 +921,7 @@ def record_return_payment(return_id: int, actor_id: int, attachments: list[dict]
         raise ValueError("Attach a payment screenshot.")
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"reseller"})
+        require_replacement_value(case)
         require_settlement_authorization(case)
         if (
             case["resolution"] != "replace"
@@ -895,6 +967,7 @@ def verify_return_payment(return_id: int, actor_id: int, reference: str, amount:
 
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"sales", "sales-supervisor"})
+        require_replacement_value(case)
         if case.get("replacement_workflow_version") == 2 or case.get("replacement_payment_details"):
             submitted = case.get("replacement_payment_details") or {}
             reference = submitted.get("transaction_number", "")
@@ -955,6 +1028,7 @@ def release_replacement(return_id: int, actor_id: int, remarks: str) -> None:
         if case["replacement_released_at"]:
             return
         require_settlement_authorization(case)
+        require_replacement_value(case)
         if case.get("replacement_workflow_version") == 2 and not case.get("replacement_prepared_at"):
             raise ValueError("Prepare valid replacement stock before warehouse release.")
         if (
@@ -1235,7 +1309,8 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
             {SALES_STAGE_SQL} sales_stage,
             (SELECT SUM(l.quantity) FROM product_return_lines l WHERE l.return_id=r.return_id) requested_quantity,
             (SELECT SUM(l.received_quantity) FROM product_return_lines l WHERE l.return_id=r.return_id) received_quantity,
-            GREATEST(r.replacement_total-r.credit,0) additional_due,GREATEST(r.credit-r.replacement_total,0) unused_credit,
+            CASE WHEN r.resolution='replace' THEN GREATEST(r.replacement_total-r.credit,0) ELSE 0 END additional_due,
+            CASE WHEN r.resolution='replace' THEN GREATEST(r.credit-r.replacement_total,0) ELSE 0 END unused_credit,
             {VALID_RESERVATION_SQL if role != 'inventory' else 'EXISTS(SELECT 1 FROM replacement_stock_reservations s WHERE s.return_id=r.return_id)'} has_reservations,
             (SELECT status FROM order_refunds f WHERE f.return_id=r.return_id) refund_status,
             (SELECT order_refund_id FROM order_refunds f WHERE f.return_id=r.return_id) order_refund_id,checks.flags reconciliation_flags
@@ -1307,10 +1382,10 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
         case["attachments"] = clean_row(cur.fetchall())
         case["payment_review_version"] = _payment_review_version(case, case["attachments"])
         case["has_reservations"] = _valid_reservation(cur, case)
-        if case.get("replacement_workflow_version") == 2:
+        if case["resolution"] == "replace" and case.get("replacement_workflow_version") == 2:
             from .replacement_workflow import progress
             case["replacement_progress"] = progress(case)
-        cur.execute("SELECT order_refund_id,status,amount,completed_at FROM order_refunds WHERE return_id=%s;", (return_id,))
+        cur.execute("SELECT order_refund_id,status,amount,original_credit_amount,topup_amount,completed_at FROM order_refunds WHERE return_id=%s;", (return_id,))
         case["refund"] = clean_row(cur.fetchone())
         case["sales_authorized"] = settlement_is_authorized(case)
         case["receipt_confirmed"] = bool(case["sales_authorized"] and any(
@@ -1318,8 +1393,9 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
             for event in case["events"]
         ))
         case["sales_stage"] = "ready_for_confirmation" if case["status"] == "settlement_pending" and not case["sales_authorized"] else case["status"]
-        case["additional_due"] = max(Decimal(0), case["replacement_total"] - case["credit"])
-        case["unused_credit"] = max(Decimal(0), case["credit"] - case["replacement_total"])
+        case["additional_due"] = max(Decimal(0), case["replacement_total"] - case["credit"]) if case["resolution"] == "replace" else Decimal(0)
+        case["unused_credit"] = max(Decimal(0), case["credit"] - case["replacement_total"]) if case["resolution"] == "replace" else Decimal(0)
+        case["refund_due"] = refund_total(case)
         cur.execute("""SELECT s.batch_id,b.batch_code,b.item_id product_id,i.name,b.expiry_date,s.quantity,
             (b.quality_status='approved' AND b.expiry_date>(now() AT TIME ZONE 'Asia/Manila')::date
              AND b.quantity_available>=s.quantity) eligible
@@ -1353,7 +1429,7 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
         case["reconciliation_flags"] = receipt_problems(cur, return_id) if case["verified_at"] or case["status"] == "awaiting_inventory_verification" else []
         if case["status"] == "completed" and (not case["verified_at"] or (case["resolution"] == "replace" and not case["replacement_released_at"]) or (case["refund"] and case["refund"]["status"] != "completed")):
             case["reconciliation_flags"].append("Case is marked complete before its required steps are complete.")
-        expected_refund = case["credit"] if case["resolution"] == "refund" else max(0,case["credit"]-case["replacement_total"])
+        expected_refund = refund_total(case)
         if case["refund"] and case["refund"]["amount"] != expected_refund:
             case["reconciliation_flags"].append("Refund amount does not match the verified credit.")
         if case["verified_at"] and expected_refund > 0 and not case["refund"] and (case["resolution"] == "refund" or case["replacement_released_at"]):
@@ -1391,6 +1467,9 @@ def get_product_return(return_id: int, actor_id: int) -> dict:
         enrich_progress(case)
         from app.return_timeline import workflow_steps
         case["workflow_steps"] = workflow_steps(case)
+        case["can_convert_to_refund"] = bool(role in {"owner", "sales-supervisor"} and can_convert(case)
+            and (role == "owner" or case.get("processing_supervisor_account_id") == actor_id))
+        case["refund_conversion_version"] = refund_conversion_version(case)
         if role == "reseller":
             return clean_row(reseller_return_view(case))
         if role == "sales" and case.get("handed_off_at"):

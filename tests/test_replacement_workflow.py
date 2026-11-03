@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from legacy_return_fixtures import create_legacy_return, legacy_preview
 from app import repositories
 from app.database import fetch_one, get_transaction_cursor
 from app.business_time import business_now, business_today
@@ -22,8 +23,8 @@ pytestmark = pytest.mark.postgres
 def request(d, items=None):
     items = items or [(d["product"], 2)]
     lines = [(d["allocation"], 2)]
-    comparison = workflow.preview(d["order"], d["reseller"], lines, items)
-    case = returns.create_product_return(
+    comparison = legacy_preview(d["order"], d["reseller"], lines, items)
+    case = create_legacy_return(
         d["order"],
         d["reseller"],
         "replace",
@@ -193,10 +194,10 @@ def test_stale_comparison_and_paid_stock_shortage_preserve_payment(lifecycle):  
     d = lifecycle
     product = substitute(300)
     lines = [(d["allocation"], 2)]
-    comparison = workflow.preview(d["order"], d["reseller"], lines, [(product, 1)])
+    comparison = legacy_preview(d["order"], d["reseller"], lines, [(product, 1)])
     repositories.update_product_price(product, "350")
     with pytest.raises(ValueError, match="changed"):
-        returns.create_product_return(
+        create_legacy_return(
             d["order"],
             d["reseller"],
             "replace",
@@ -316,8 +317,8 @@ def test_migration_preserves_legacy_cases_and_conversation_history_is_immutable(
     assert dict(fetch_one("SELECT * FROM product_returns WHERE return_id=%s", (legacy,))) == dict(before)
     # Claim another original pack; the legacy case already claims two.
     lines = [(d["allocation"], 1)]
-    comparison = workflow.preview(d["order"], d["reseller"], lines, [(d["product"], 1)])
-    case = returns.create_product_return(
+    comparison = legacy_preview(d["order"], d["reseller"], lines, [(d["product"], 1)])
+    case = create_legacy_return(
         d["order"],
         d["reseller"],
         "replace",

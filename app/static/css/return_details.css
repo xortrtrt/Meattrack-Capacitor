@@ -1,3 +1,7 @@
+.rd-confirm-dialog, .rd-photo-dialog, .refund-conversion {
+  --rd-ink:var(--text); --rd-gold:var(--gold); --rd-cream:var(--surface-muted); --rd-paper:var(--surface);
+  --rd-line:var(--border); --rd-muted:var(--text-light); --rd-success:var(--success); --rd-error:var(--error);
+}
 .return-details-page {
   --rd-ink:#28231d; --rd-gold:#c69a2f; --rd-cream:#f7f5f0; --rd-paper:#fff;
   --rd-line:#e4e0d8; --rd-muted:#6b665e; --rd-success:#168052; --rd-error:#c2493f;

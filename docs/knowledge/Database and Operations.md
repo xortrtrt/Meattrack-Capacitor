@@ -1,8 +1,41 @@
 ---
 tags: [meattrack, database, operations]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Database and operations
+
+## Replacement-first local maintenance completed (2026-11-03)
+
+Migrations 048 and 049 are applied to the verified loopback local development
+database. Migration 049 scopes the deferred replacement-first check to policy-2
+rows, preserving legacy reconciliation/DDL compatibility; applied 048 was not edited.
+The final 1,027-case regression passed before maintenance. App/worker writes were
+paused; fresh private backups before and after 049 were actually restored, the
+narrow reset rehearsed, and extra preservation/FK postchecks rehearsed on another
+restored disposable database before the working reset.
+
+The authorized **transaction-only** reset committed: 37 transaction tables empty,
+160 foreign keys valid, protected accounts/catalog/settings/recipes/packages and
+unrelated conversations unchanged, batch identities/expiry/quality/physical quantities
+and non-sellable custody preserved, no backward identifier sequences. Physical
+movements were retained while archived transaction attribution was detached; sold
+or released stock was not restored. Scratch schemas outside public were untouched.
+App/worker resumed and health returned HTTP 200. Eight synthetic post-maintenance
+checks passed in disposable schemas, then public preservation/empty-table checks
+and read-only queues for all five roles passed. No deployed reset or upgrade occurred.
+
+`tools/verified_database_backup.py` verifies archive identity, a real restore,
+table/sequence contents and reset rehearsal. The transaction-only mode in
+`tools/reset_operational_data.py` requires a private verified backup and maintenance
+confirmation; it rechecks backup-bound state under table locks. Unknown dependencies
+fail closed and validation failures roll back. The maintenance execution also checked
+cross-schema dependencies and all public foreign keys before/after reset. Keep backup
+archives/manifests private and outside this vault. The historical broad reset below
+is a separate mode and must not be substituted for transaction-only maintenance.
+Sources: migrations 048–049, `tools/transaction_reset.py`,
+`tools/verified_database_backup.py`, `tools/reset_operational_data.py`,
+`tests/test_replacement_first_migration_reset.py`.
+See [[Decisions]], [[Replacement Workflow]], [[Testing and Change Impact]].
 
 Migration `047_message_order_context.sql` adds nullable `reseller_messages.order_id`
 with an orders foreign key. It does not rewrite historical messages or change

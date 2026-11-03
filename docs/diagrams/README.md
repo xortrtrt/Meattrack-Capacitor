@@ -4,6 +4,12 @@ Analyzed on **2026-10-31** against the current local working tree, including bas
 
 ## Open the diagrams
 
+The [replacement-first policy addendum](05-replacement-first-policy.md) documents the
+2026-11-03 local change separately from the original 42-diagram snapshot below.
+It includes replacement defaults, pre-release refund conversion and concurrent
+order/replacement stock allocation. Its local verification passed all 1,027 regression
+cases plus eight post-maintenance smoke checks; the original snapshot remains historical.
+
 | Requested material | Document | Contents |
 | --- | --- | --- |
 | Conceptual framework / IPO | [Conceptual framework and IPO](01-conceptual-framework.md) | Conceptual model, detailed IPO and common controls |

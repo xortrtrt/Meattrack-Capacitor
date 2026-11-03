@@ -79,8 +79,9 @@ def list_order_refunds(
     params.extend([page_size, offset])
     return clean_row(fetch_all(
         f"""
-        SELECT r.order_refund_id, r.order_id, r.return_id, r.amount, r.currency, r.status,
+        SELECT r.order_refund_id, r.order_id, r.return_id, r.amount, r.original_credit_amount, r.topup_amount, r.currency, r.status,
                CASE WHEN r.return_id IS NULL THEN 'Rejected paid order'
+                    WHEN pr.refund_converted_at IS NOT NULL THEN 'Replacement unavailable — authorized refund'
                     WHEN pr.resolution='replace' THEN 'Replacement refund difference' ELSE 'Returned products' END refund_type,
                r.assigned_supervisor_account_id, r.processing_by_account_id,
                r.requested_at, r.processing_started_at, r.completed_at, r.failed_at,

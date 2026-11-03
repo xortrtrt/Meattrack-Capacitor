@@ -1,8 +1,43 @@
 ---
 tags: [meattrack, replacement, returns, payments, inventory]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Replacement workflow
+
+## Replacement-first policy update (2026-11-03, verified locally)
+
+New submissions retain workflow version 2 and carry separate `return_policy_version=2`.
+Their initial replacement is derived from the approved returned allocation
+products/quantities at original paid prices, including when catalog prices change.
+New direct refund requests and reseller-selected substitutes are rejected.
+Supervisor/Owner may offer equal/higher-value alternatives with a public explanation;
+changed offers require fresh acceptance. Lower-value selections are rejected.
+
+Authorized conversion before warehouse release preserves history and returns
+approved credit plus any verified top-up through one component-aware refund.
+It clears replacement holds/preparation and blocks further replacement actions.
+Unverified payment evidence must be resolved explicitly first. Complete Inventory
+receipt still gates settlement; converted cases do not require delivery.
+
+The following original selection/difference-refund descriptions apply to historical
+policy-1 cases. Those cases retain their recorded behavior. The current Reseller
+request form derives the replacement and supports input-preserving comparison and
+submission retry. Supervisor pages and Owner dialogs share confirmation, inline
+validation and error recovery for new-policy offers/conversion. Converted offers
+remain historical without acceptance/payment/release actions; the grouped Inbox
+shows refund components. The final 1,027-case regression, verified local restore/reset
+and eight post-maintenance smoke checks passed; all five role queues were checked
+read-only. This does not establish production deployment. Current flow diagrams are in
+`docs/diagrams/05-replacement-first-policy.md`.
+Sources: `app/repositories/return_policy.py`, `app/repositories/replacement_workflow.py`,
+`app/repositories/product_returns.py`, migration 048,
+`app/reseller_contact_history.py`, `app/static/js/reseller_contact_history.js`,
+`app/static/js/forms.js`, `app/static/js/return_details.js`,
+`tests/test_replacement_first_policy.py`, `tests/test_replacement_first_stock.py`,
+`tests/test_replacement_first_portal.py`, `tests/test_replacement_first_converted_history.py`.
+Migration 049 scopes the deferred policy check to new-policy rows; legacy rows
+retain their existing reconciliation/migration behavior. See [[Database and Operations]].
+See [[Decisions]], [[Returns and Financials]], [[Testing and Change Impact]].
 
 The later 2026-11-02 Inbox refinement groups eligible reseller histories by current
 processor account, including existing direct messages when that account is also
@@ -265,3 +300,11 @@ Open follow-ups remain visible after completion. Transaction handlers still
 authorize every action; dashboard reads do not advance state or message cursors.
 Sources: `app/repositories/dashboard_queues.py`, `app/repositories/portal_dashboard.py`,
 `app/portals/product_returns.py`.
+
+
+## Five-outcome live review (2026-11-03)
+
+See [[Return Workflow Gap Review]] for equal/higher alternatives, blocked cheaper
+offers and refunds before receipt/after top-up. It distinguishes live UI actions
+from staged prerequisites and synthetic payout completion. Five open control/UX
+findings and one unresolved operating-policy question are documented, not fixed.

@@ -199,10 +199,22 @@
       (data.direct?.messages || []).forEach(message => { state.messages.set(`direct:${message.reseller_message_id}`,{...message,source:'direct',id:message.reseller_message_id,mine:message.sender_account_type === 'reseller'}); state.directLast = Math.max(state.directLast,message.reseller_message_id); });
       options(data); render();
       const context = stage.querySelector('[data-contact-context]'); context.replaceChildren();
-      const link = document.createElement('a'); link.href = `/portal/reseller/history?view=returns&case=${selected}`; link.textContent = `Replacement #${selected} · Order #${data.context.order_id} · Open return details`; context.append(link);
-      stage.querySelector('[data-contact-summary] summary').textContent = `Replacement #${selected} - ${data.context.status.replaceAll('_',' ')}`;
+      const converted = Boolean(data.context.refund_converted_at);
+      const label = converted ? 'Return' : 'Replacement';
+      const link = document.createElement('a'); link.href = `/portal/reseller/history?view=returns&case=${selected}`; link.textContent = `${label} #${selected} · Order #${data.context.order_id} · Open return details`; context.append(link);
+      stage.querySelector('[data-contact-summary] summary').textContent = `${label} #${selected} - ${data.context.status.replaceAll('_',' ')}`;
       const totals = document.createElement('dl');
-      [['Return credit','credit'],['Replacement value','replacement_total'],['Additional payment','additional_due'],['Difference refund','unused_credit']].forEach(([label,key]) => { const row = document.createElement('div'); const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = money(data.context[key]); row.append(dt,dd); totals.append(row); }); context.append(totals);
+      const rows = [['Return credit','credit']];
+      if (converted) {
+        if (data.context.payment_verified_at) rows.push(['Verified extra payment to return','payment_amount']);
+        rows.push(['Refund amount','refund_due']);
+      } else rows.push(['Replacement value','replacement_total'],['Additional payment','additional_due'],['Difference refund','unused_credit']);
+      rows.forEach(([label,key]) => { const row = document.createElement('div'); const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = money(data.context[key]); row.append(dt,dd); totals.append(row); }); context.append(totals);
+      if (converted) {
+        const note = document.createElement('p');
+        note.textContent = `Replacement stopped. ${data.context.verified_at ? 'Follow the refund status in return details.' : 'Inventory must verify the complete returned goods before the refund transfer.'}`;
+        context.append(note);
+      }
       const latest = [...state.messages.values()].sort((a,b) => Date.parse(b.created_at)-Date.parse(a.created_at))[0];
       if (latest) {
         state.group.row.dataset.activity = latest.created_at;

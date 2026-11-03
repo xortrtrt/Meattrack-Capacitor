@@ -1,4 +1,4 @@
-# MEATTRACK dashboard UX contract
+# MEATTRACK portal UX contract
 
 Scope: five role dashboards and linked read-only queue filters. This does not
 replace the transactional workspaces' specifications. English UI, peso formatting,
@@ -21,8 +21,50 @@ Dashboards change read-only projections, not financial or inventory transitions.
 | Capability | Canonical owner | Source of truth | Allowed variants | Verification |
 |---|---|---|---|---|
 | Date | `app/business_time.py`, `app/web.py:nice_date` | Business clock and formatter | Read-only text; no picker added | Portal context and browser tests |
-| Scrollbar | Native browser and existing `portal_base.css` shell | Existing portal shell | Natural document flow; bounded chart table | Responsive overflow checks |
-| CRUD | Existing guarded portal destinations | Capabilities and action handlers | Dashboard navigation only | Isolated workflow regressions |
+| Scrollbar | Global `portal_base.css` tokens | Existing runtime CSS, mirrored by DESIGN.md | Natural document flow and bounded native dialogs | Responsive overflow and computed-style checks |
+| CRUD | Existing guarded portal destinations; return action/confirmation adapters | Capabilities and transactional repository guards | Read-only dashboard links; guarded return mutations | Isolated workflow and browser regressions |
+| Select/Listbox | Existing native selects in shared return review/order picker | Return templates and server product IDs | Platform-owned popup geometry is accepted | Keyboard/open-popup checks |
+| Form | `app/static/js/forms.js`; request comparison adapter in `replacement_workflow.js` | Server validation and shared field errors | Comparison-first request and processor actions | Invalid fields, focus, retry and discard checks |
+| Toast | Existing server-rendered notice/status regions | Confirmed server response | Persistent actionable errors and polite status messages | Failure and stale-state browser checks |
+
+### Return-workflow extension (2026-11-03)
+
+This extension covers the return request, Reseller/processor detail pages and
+Owner dialog. Business authority: `docs/knowledge/Decisions.md` (replacement-first
+policy), `app/repositories/return_policy.py`, and transactional repository guards.
+Historical cases retain their recorded policy; a client cannot choose one.
+
+| Capability | Canonical owner | Source of truth | Allowed variants | Verification |
+|---|---|---|---|---|
+| Select/Listbox | Existing native selects in shared return review/order picker | Return templates and server product IDs | Platform-owned popup geometry is accepted; no authored select introduced | Browser keyboard/open-popup checks |
+| Date | Existing receipt widget, `app/business_time.py`, `nice_date` | Stored receipt metadata and Manila business time | Native date/time inputs in receipt review; read-only elsewhere | Receipt review and scoped-token tests |
+| Form | `app/static/js/forms.js`; request comparison adapter in `replacement_workflow.js` | Server validation; shared field-error adapter | Standard detail actions and comparison-first request; no native validation bubbles | Invalid fields, labels, first-error focus and retry tests |
+| Toast | Existing server-rendered notice/status regions | Confirmed server response | Persistent actionable errors and polite success/status messages | Browser failure and stale-state tests |
+| CRUD | Existing return actions and shared `return_details.js` confirmation | Capabilities, assignment and case fingerprint | Return to current case/tab; preserve originating list filter | Full replacement/conversion journeys |
+| Scrollbar | Global `portal_base.css` tokens | Existing runtime CSS, mirrored by DESIGN.md | Document scrolling and bounded native dialogs | Computed styles, narrow/short viewport and forced-colors checks |
+
+Requests show the same returned products as the default replacement; Supervisor
+offers alternatives. A comparison is a price review, never a stock reservation.
+Quantity edits invalidate comparison tokens; old responses cannot restore them.
+Failed comparisons preserve inputs and offer an explicit retry. Confirmed receipt
+metadata and provider-funds verification remain separate steps.
+
+Refund conversion uses the existing app-owned confirmation dialog and a shared
+form partial in processor surfaces. Show the return credit, verified top-up and
+refund total; require a customer explanation and internal supply reason. When
+payment evidence is unresolved, require an explicit funds-not-received decision
+or verification before conversion. Initially focus Cancel in the confirmation.
+Never expose these staff actions or payment evidence to Inventory.
+
+New-policy offer review uses the same confirmation and input-preserving server
+error adapter in Supervisor pages and Owner dialogs. An invalid alternative keeps
+the selected products and explanations for correction. Discard resets both values
+and conditional requirements. Field errors do not change a control's accessible name.
+
+Converted cases retain comparisons as offer history without acceptance, payment or
+delivery instructions. The grouped Inbox uses the same public return projection
+for credit, verified top-up and total refund. Receipt work remains available to
+Inventory; monetary fields remain excluded from its projection.
 
 Dashboard tables have no selection, sort controls or editable forms. Data is
 bounded. Destination form/select/toast components remain owned by those workspaces;

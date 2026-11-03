@@ -127,10 +127,10 @@ def list_sales_reports(
         report["attachments"] = attachments_by_report.get(report["sales_report_id"], [])
     order_rows=clean_row(fetch_all("""SELECT s.sales_report_id,s.order_id,s.gross_sales,
         COALESCE(f.amount,0) refunded_sales,GREATEST(0,s.gross_sales-COALESCE(f.amount,0)) retained_sales
-        FROM sales_report_orders s LEFT JOIN LATERAL(SELECT SUM(amount) amount FROM order_refunds
+        FROM sales_report_orders s LEFT JOIN LATERAL(SELECT SUM(original_credit_amount) amount FROM order_refunds
           WHERE order_id=s.order_id AND status='completed') f ON true
         WHERE s.sales_report_id=ANY(%s) ORDER BY s.order_id;""",(report_ids,)))
-    refunds=clean_row(fetch_all("""SELECT s.sales_report_id,f.order_refund_id,f.order_id,f.return_id,f.amount,f.completed_at,
+    refunds=clean_row(fetch_all("""SELECT s.sales_report_id,f.order_refund_id,f.order_id,f.return_id,f.original_credit_amount amount,f.topup_amount,f.completed_at,
         NOT EXISTS(SELECT 1 FROM sales_report_refunds x WHERE x.sales_report_id=s.sales_report_id AND x.order_refund_id=f.order_refund_id) late_adjustment
         FROM sales_report_orders s JOIN order_refunds f ON f.order_id=s.order_id
         WHERE s.sales_report_id=ANY(%s) AND f.status='completed' ORDER BY f.completed_at,f.order_refund_id;""",(report_ids,)))
@@ -456,7 +456,7 @@ def team_sales_report_entries(team_leader_account_id: int | None = None) -> list
         JOIN order_items oi ON oi.order_id = o.order_id
         JOIN inventory_items p ON p.item_id = oi.product_id
         LEFT JOIN resellers r ON r.reseller_id = o.reseller_id
-        LEFT JOIN LATERAL(SELECT SUM(amount) amount FROM order_refunds f WHERE f.order_id=o.order_id AND f.status='completed') refunds ON true
+        LEFT JOIN LATERAL(SELECT SUM(original_credit_amount) amount FROM order_refunds f WHERE f.order_id=o.order_id AND f.status='completed') refunds ON true
         WHERE o.status = 'fulfilled'
           AND p.item_type = 'finished_product'
           {scope_sql}

@@ -43,7 +43,7 @@ def reseller_dashboard_summary(account_id: int | None) -> dict:
                'Review an updated offer or complete receipt details', 'undo-2'),
     ]
     recent = clean_row(fetch_all("""SELECT o.order_id,o.order_date,o.total_amount,
-        CASE WHEN COALESCE((SELECT SUM(f.amount) FROM order_refunds f
+        CASE WHEN COALESCE((SELECT SUM(f.original_credit_amount) FROM order_refunds f
              WHERE f.order_id=o.order_id AND f.status='completed'),0)>=o.total_amount
              AND o.total_amount>0 THEN 'refunded' ELSE o.status END status
         FROM orders o WHERE o.order_type='reseller' AND o.reseller_id=(SELECT reseller_id FROM accounts

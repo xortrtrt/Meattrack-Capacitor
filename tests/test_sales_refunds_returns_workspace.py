@@ -82,7 +82,7 @@ def test_sales_legacy_links_redirect_to_initial_review_and_tracking_only(lifecyc
         approved=client.post("/portal/team-leader/returns/actions/approve",data={"return_id":case,"remarks":"Accepted original delivered goods after review","operation_key":str(uuid4())})
         assert approved.status_code==200
         assert returns.get_product_return(case,d["sales"])["processing_supervisor_account_id"]==d["supervisor"]
-        assert "Tracking with Supervisor/Owner" in approved.text
+        assert "Tracking only" in approved.text
         denied=client.post("/portal/team-leader/returns/actions/proceed",data={"return_id":case,"remarks":"A leader cannot authorize after handoff","operation_key":str(uuid4())})
         assert denied.status_code==403
     assert notification_target_for("team-leader","sales",f"/portal/team-leader/returns?case={case}")==f"/portal/team-leader/returns?case={case}"
@@ -122,12 +122,11 @@ def test_dashboard_separates_completed_pending_and_cancellation_refunds_in_brows
         for width in (375, 768, 1440):
             page.set_viewport_size({"width": width, "height": 1000})
             page.goto("http://sales-workspace.test/portal/team-leader/dashboard", wait_until="networkidle")
-            financials = page.locator(".operations-dashboard")
-            for label, amount in [("Original fulfilled sales", "PHP 1,000.00"), ("Money refunded", "PHP 800.00"), ("Retained sales", "PHP 800.00")]:
-                expect(financials.locator(".operations-totals > div").filter(has=page.get_by_text(label, exact=True)).locator("strong")).to_have_text(amount)
-            page.get_by_text("Refund breakdown and calculation",exact=True).click()
-            for label, amount in [("Cancelled orders", "PHP 600.00"), ("Returned products", "PHP 200.00"), ("Pending refund obligations", "PHP 200.00")]:
-                expect(financials.locator(".operations-money > div").filter(has=page.get_by_text(label, exact=True)).locator("dd")).to_have_text(amount)
+            financials = page.locator(".dash-financial-details")
+            financials.locator("summary").click()
+            for label, amount in [("Original fulfilled sales", "PHP 1,000.00"), ("Money refunded", "PHP 800.00"), ("Retained sales", "PHP 800.00"),
+                                  ("Cancelled order refunds", "PHP 600.00"), ("Returned product refunds", "PHP 200.00"), ("Pending refund obligations", "PHP 200.00")]:
+                expect(financials.locator(".dash-money-grid > div").filter(has=page.get_by_text(label, exact=True)).locator("strong")).to_have_text(amount)
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
             page.screenshot(path=str(output / f"dashboard-{width}.png"), full_page=True)
             page.get_by_role("link",name="Track assigned returns",exact=True).click()

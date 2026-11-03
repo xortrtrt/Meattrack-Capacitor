@@ -51,7 +51,8 @@ def experience(case: dict) -> dict:
     credit = Decimal(str(case.get("credit") or 0))
     total = Decimal(str(case.get("replacement_total") or 0))
     due = max(Decimal(0), total-credit) if replace else Decimal(0)
-    refund_due = max(Decimal(0), credit-total) if replace else credit
+    refund_due = max(Decimal(0), credit-total) if replace else credit + (
+        Decimal(str(case.get("payment_amount") or 0)) if case.get("refund_converted_at") and case.get("payment_verified_at") else Decimal(0))
     refund_status = (case.get("refund") or {}).get("status") or case.get("refund_status")
     refund_complete = refund_status == "completed"
     receipt_ready = payment_submission_ready(case)

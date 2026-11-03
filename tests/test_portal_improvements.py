@@ -218,8 +218,13 @@ def test_existing_return_details_keep_multiple_cases_selectable_and_default_clos
         html = client.get(
             f"/portal/reseller/history?view=returns&source_order={d['order']}&case={cases[-1]}"
         ).text
-        assert all(f'id="return-{case}"' in html for case in cases)
-        assert re.search(rf'<details class="order-history-card" id="return-{cases[-1]}" open>', html)
+        assert 'data-return-details' in html and f'data-return-id="{cases[-1]}"' in html
+        assert "Return history" in html
+        history = client.get(f"/portal/reseller/history?view=returns&source_order={d['order']}").text
+        assert all(f'id="return-{case}"' in history for case in cases)
+        for case in cases:
+            selected = client.get(f"/portal/reseller/history?view=returns&source_order={d['order']}&case={case}").text
+            assert f'data-return-id="{case}"' in selected
 
 
 def test_media_retry_private_access_and_read_cursor(lifecycle):  # noqa: F811

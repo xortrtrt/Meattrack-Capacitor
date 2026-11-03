@@ -1,8 +1,29 @@
 ---
 tags: [meattrack, returns, refunds, reporting]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Returns and financials
+
+## Replacement-first policy update (2026-11-03)
+
+New policy-2 submissions use [[Replacement Workflow]]; refund-only submissions and
+cheaper replacement selections remain historical policy-1 behavior. Paid rejected
+orders retain their existing refund process, including payment review when stock
+is lost during order payment submission.
+
+An authorized unreleased replacement conversion refunds approved original credit
+plus verified extra collection. `order_refunds.original_credit_amount` and
+`topup_amount` sum to the outgoing amount. Original-credit obligations are capped
+by original collections; top-up refunds are bound to that case's verified funds.
+Only the original-credit component reduces retained original sales and report
+adjustments; both components reduce net collections when the transfer completes.
+Submitted report snapshots remain immutable. Conversion and stock/payment races
+are covered by the PostgreSQL acceptance tests. Final regression passed all 1,027
+cases with no skips/errors/failures; eight post-maintenance synthetic checks and
+local empty-queue/preservation checks passed. Production was not deployed. Sources: `app/repositories/refund_integrity.py`,
+`app/repositories/report_settlements.py`, `app/repositories/reporting.py`,
+`app/repositories/activity_reports.py`, migration 048.
+See [[Decisions]] and [[Testing and Change Impact]].
 
 The Sales/reseller task queue, next-step messages, immutable offer comparisons,
 public explanations, existing-chat links, and optional post-release follow-ups
@@ -185,3 +206,11 @@ changed. Sources: `app/templates/portals/returns/_supervisor_case_summary.html`,
 `app/templates/portals/team-leader/returns.html`,
 `app/templates/portals/team-leader/_return_case_dialog.html`,
 `app/static/css/return_experience.css`. See [[Replacement Workflow]].
+
+
+## Payout control review (2026-11-03)
+
+[[Return Workflow Gap Review]] records five further outcomes and flags missing
+structured beneficiary verification and payout component visibility. Exact-amount,
+retry and reconciliation checks passed; the recommendations remain unimplemented.
+No real funds were transferred.

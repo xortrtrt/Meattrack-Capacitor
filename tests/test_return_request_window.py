@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from legacy_return_fixtures import create_legacy_return
 from app import main
 from app.business_time import business_now
 from app.database import fetch_one, get_transaction_cursor
@@ -40,11 +41,11 @@ def test_same_exact_five_day_boundary_for_picker_allocations_and_submission(life
     stock = fetch_one("SELECT quantity_available FROM inventory_batches WHERE batch_id=%s", (d["batches"][0],))
     args = (d["order"], d["reseller"], resolution, [(d["allocation"], 2)], "Request products within the allowed fulfillment window", [supporting_photo()])
     if allowed:
-        case = returns.create_product_return(*args)
+        case = create_legacy_return(*args)
         assert returns.get_product_return(case, d["reseller"])["status"] == "submitted"
     else:
         with pytest.raises(ValueError, match="5-day.*closed"):
-            returns.create_product_return(*args)
+            create_legacy_return(*args)
         assert fetch_one("SELECT count(*) n FROM product_returns WHERE order_id=%s", (d["order"],))["n"] == 0
         assert fetch_one("SELECT count(*) n FROM product_return_events")["n"] == 0
     assert fetch_one("SELECT quantity_available FROM inventory_batches WHERE batch_id=%s", (d["batches"][0],)) == stock
@@ -60,7 +61,7 @@ def test_missing_or_future_fulfillment_time_does_not_grant_a_window(lifecycle, m
     assert not returns.reseller_return_order(d["order"], d["reseller"])["request_window_open"]
     assert returns.reseller_return_orders(d["reseller"]) == returns.returnable_allocations(d["order"], d["reseller"]) == []
     with pytest.raises(ValueError, match="fulfillment time needs verification"):
-        returns.create_product_return(d["order"], d["reseller"], "refund", [(d["allocation"], 2)], "Request with unverified fulfillment time")
+        create_legacy_return(d["order"], d["reseller"], "refund", [(d["allocation"], 2)], "Request with unverified fulfillment time")
 
 
 def test_stale_modal_cannot_bypass_deadline_but_existing_request_and_replay_continue(lifecycle, monkeypatch):  # noqa: F811
@@ -70,9 +71,9 @@ def test_stale_modal_cannot_bypass_deadline_but_existing_request_and_replay_cont
     set_fulfilled_at(d, now-timedelta(days=4))
     key = str(uuid4())
     args = (d["order"], d["reseller"], "refund", [(d["allocation"], 2)], "Request submitted before the window closes", [supporting_photo()])
-    case = returns.create_product_return(*args, operation_key=key)
+    case = create_legacy_return(*args, operation_key=key)
     monkeypatch.setattr(returns, "business_now", lambda: now+timedelta(days=2))
-    assert returns.create_product_return(*args, operation_key=key) == case
+    assert create_legacy_return(*args, operation_key=key) == case
     sign_in(monkeypatch, d["reseller"], "reseller")
     with TestClient(main.app) as client:
         page = client.get(f"/portal/reseller/history?view=returns&order={d['order']}")
@@ -85,7 +86,7 @@ def test_stale_modal_cannot_bypass_deadline_but_existing_request_and_replay_cont
         assert rejected.status_code == 200 and "5-day return/refund/replacement request window has closed" in rejected.text
         assert fetch_one("SELECT count(*) n FROM product_returns WHERE order_id=%s", (d["order"],))["n"] == 1
         tracked = client.get(f"/portal/reseller/history?view=returns&case={case}")
-        assert tracked.status_code == 200 and f'data-return-dialog="{case}"' in tracked.text
+        assert tracked.status_code == 200 and f'data-return-id="{case}"' in tracked.text and 'data-return-details' in tracked.text
         history = client.get("/portal/reseller/history?view=fulfilled")
         assert ">Details</a>" in history.text
         assert "Request return</a>" not in history.text

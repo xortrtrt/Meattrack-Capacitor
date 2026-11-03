@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from legacy_return_fixtures import create_legacy_return
 from app import main, repositories, web_sessions, worker
 from app.business_time import business_now, business_today
 from app.database import fetch_all, fetch_one, get_transaction_cursor
@@ -71,7 +72,7 @@ def supporting_photo():
 
 
 def create_case(d, resolution="refund", quantity=2):
-    return returns.create_product_return(
+    return create_legacy_return(
         d["order"], d["reseller"], resolution, [(d["allocation"], quantity)], "Expired goods returned for review",
         attachments=[supporting_photo()],
     )
@@ -348,7 +349,7 @@ def test_request_and_approval_operation_keys_prevent_duplicate_cases_and_quotes(
     d = lifecycle
     key = str(uuid4())
     ids = [
-        returns.create_product_return(
+        create_legacy_return(
             d["order"],
             d["reseller"],
             "replace",

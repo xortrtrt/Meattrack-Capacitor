@@ -1,8 +1,26 @@
 ---
 tags: [meattrack, testing]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Testing and change impact
+
+## Replacement-first verification completed (2026-11-03)
+
+- Test-first: 34 intended policy failures were recorded before implementation; subsequent browser recovery/history gaps were reproduced before their fixes. Historical cases retain explicit legacy fixtures.
+- Final full regression: **1,027 passed, zero failures/errors/skips**, across three independent disposable PostgreSQL databases/apps. Merged JUnit identities exactly match the collection catalogue, with no missing/duplicate cases; the 404-file application/schema/test checksum stayed unchanged. All three disposable databases/apps were cleaned up.
+- Earlier baseline and serial runs exposed stale expectations, missing external prerequisites and a real deferred-trigger compatibility defect. These were resolved before the final run. Migration 049 scopes the new constraint trigger to policy-2 rows without changing applied 048.
+- Ruff across app/tools/tests, configured mypy (83 sources), five changed JavaScript syntax checks, 122 Jinja template compilations and whitespace checks passed. DESIGN lint: zero errors, six existing unused-token warnings. Premium scan: 341 pre-existing findings, zero newly added findings; this is not a globally clean UI audit.
+- Browser evidence covers Reseller, Supervisor, Owner and Inventory, desktop/mobile widths 320/375/768/1440, keyboard/focus, native selection, stale state, preserved drafts/photos/operation keys, retries, confirmations, converted history and financial privacy. Rendered screenshots and all three new diagrams were inspected. No physical-device or full screen-reader conformance claim.
+- Local maintenance: private backups were actually restored, reset and extra postchecks rehearsed; migration 049 applied; the authorized transaction-only reset committed. All 37 transaction tables were empty, 160 foreign keys passed, physical stock/custody and protected data matched, identifier sequences were retained, and app/worker restarted with HTTP 200.
+- Post-maintenance smoke: eight synthetic checkout/replacement/refund/stock checks passed in disposable schemas in the local database. The schemas were removed, protected public state matched and transaction tables stayed empty. Actual read-only Owner/Supervisor/Sales/Inventory/Reseller queue checks passed.
+
+Evidence is under ignored `outputs/replacement-policy/`: `full-coverage-result.json`,
+`full-isolated.xml`, `full-run-source.json`, `local-maintenance-result.json`,
+`post-maintenance-smoke-result.json`, `local-queues-result.json`, `VERIFICATION.md`
+and `REVIEW.html`. Counts from focused runs overlap and must not be added.
+Windows runs used fresh private `--basetemp`, disabled cache provider and required
+PostgreSQL/browser prerequisites. No production deployment or deployed reset occurred.
+See [[Replacement Workflow]], [[Returns and Financials]], [[Database and Operations]].
 
 ## Local Apache JMeter system verification (2026-11-02)
 
@@ -697,3 +715,14 @@ Ruff, selected mypy, fifteen-template compilation, token mapping and whitespace
 checks passed. DESIGN lint had zero errors and six unused-token warnings. The
 Premium strict audit script became unavailable in its loaded cache path; separate
 targeted static checks do not claim to replace it. No deployment was performed.
+
+
+## Additional five-outcome simulation (2026-11-03)
+
+See [[Return Workflow Gap Review]] for live Chrome decisions in a disposable local
+instance plus explicit fixture/backend-completion limits. Equal/higher alternatives
+and two converted refunds completed; a cheaper offer was rejected without changing
+the stored case. Exact refund amounts, idempotent completion, cleared holds and
+component-aware reconciliation passed supplemental repository checks. This review
+changed documentation only; the full regression was not rerun. Screenshots and
+checks are under ignored `outputs/live-simulation/`.

@@ -24,7 +24,7 @@ def report_order_rows(cur, start, end, actor_id, *, lock=False):
     cur.execute(
         f"""SELECT o.order_id,o.total_amount gross_sales,
         COALESCE(f.refunded,0) refunded_sales,GREATEST(0,o.total_amount-COALESCE(f.refunded,0)) retained_sales
-        FROM orders o LEFT JOIN LATERAL (SELECT SUM(amount) refunded FROM order_refunds f
+        FROM orders o LEFT JOIN LATERAL (SELECT SUM(original_credit_amount) refunded FROM order_refunds f
           WHERE f.order_id=o.order_id AND f.status='completed') f ON true
         WHERE o.status='fulfilled' AND {period} AND {scope} ORDER BY o.order_id;""",
         params,
@@ -52,6 +52,6 @@ def snapshot_report_orders(cur, report_id, rows):
             (report_id, row["order_id"], row["gross_sales"], row["refunded_sales"]),
         )
         cur.execute(
-            "INSERT INTO sales_report_refunds(sales_report_id,order_refund_id,amount) SELECT %s,order_refund_id,amount FROM order_refunds WHERE order_id=%s AND status='completed';",
+            "INSERT INTO sales_report_refunds(sales_report_id,order_refund_id,amount) SELECT %s,order_refund_id,original_credit_amount FROM order_refunds WHERE order_id=%s AND status='completed';",
             (report_id, row["order_id"]),
         )

@@ -16,7 +16,8 @@ def _signer():
     return URLSafeTimedSerializer(SESSION_SECRET_KEY, salt="replacement-comparison-v2")
 
 
-def comparison(cur, order_id: int, actor_id: int, lines: list, replacements: list) -> dict:
+def comparison(cur, order_id: int, actor_id: int, lines: list, replacements: list | None,
+               *, policy_version: int = 2) -> dict:
     from .product_returns import _actor, return_request_window
 
     _actor(cur, actor_id, {"reseller"})
@@ -53,18 +54,32 @@ def comparison(cur, order_id: int, actor_id: int, lines: list, replacements: lis
                 line_total=str(quantity * row["unit_price"]),
             )
         )
+    default = default_selection(originals)
+    if policy_version == 2:
+        selected = sorted((int(i), int(parse_whole_packs(q))) for i, q in replacements) if replacements else default
+        if selected != default:
+            raise ValueError("New requests use the same products and quantities. Supervisor may offer alternatives.")
+        return price_selection(cur, originals, default, allow_inactive_originals=True)
     return price_selection(cur, originals, replacements)
 
 
-def price_selection(cur, originals: list[dict], replacements: list) -> dict:
+def default_selection(originals: list[dict]) -> list[tuple[int, int]]:
+    quantities: dict[int, int] = {}
+    for row in originals:
+        product = int(row["product_id"])
+        quantities[product] = quantities.get(product, 0) + int(row["quantity"])
+    return sorted(quantities.items())
+
+
+def price_selection(cur, originals: list[dict], replacements: list, *, allow_inactive_originals=False) -> dict:
     if not replacements or len({int(i) for i, _ in replacements}) != len(replacements):
         raise ValueError("Choose replacement products once each, with whole-pack quantities.")
     quoted = []
     for product_id, value in sorted(replacements, key=lambda row: int(row[0])):
         quantity = parse_whole_packs(value)
         cur.execute(
-            "SELECT name,base_price FROM inventory_items WHERE item_id=%s AND item_type='finished_product' AND is_active",
-            (product_id,),
+            "SELECT name,base_price FROM inventory_items WHERE item_id=%s AND item_type='finished_product' AND (is_active OR %s)",
+            (product_id, allow_inactive_originals and sorted((int(i), int(q)) for i, q in replacements) == default_selection(originals)),
         )
         product = cur.fetchone()
         if not product:
@@ -113,9 +128,13 @@ def price_selection(cur, originals: list[dict], replacements: list) -> dict:
     )
 
 
-def preview(order_id: int, actor_id: int, lines: list, replacements: list) -> dict:
+def preview(order_id: int, actor_id: int, lines: list, replacements: list | None = None) -> dict:
+    return _preview(order_id, actor_id, lines, replacements, policy_version=2)
+
+
+def _preview(order_id: int, actor_id: int, lines: list, replacements: list | None, *, policy_version: int) -> dict:
     with get_transaction_cursor() as cur:
-        result = comparison(cur, order_id, actor_id, lines, replacements)
+        result = comparison(cur, order_id, actor_id, lines, replacements, policy_version=policy_version)
     return {**result, "token": _signer().dumps(dict(order_id=order_id, actor_id=actor_id, comparison=result))}
 
 
@@ -129,6 +148,9 @@ def verify_preview(token: str, order_id: int, actor_id: int, result: dict) -> No
 
 
 def publish_quote(cur, case: dict, result: dict, *, accepted: bool) -> None:
+    from .return_policy import replacement_first
+    if replacement_first(case) and Decimal(result["total"]) < Decimal(result["credit"]):
+        raise ValueError("Replacement value must equal or exceed the approved return credit.")
     revision = case["quote_revision"] + 1
     for item in result["items"]:
         cur.execute(
@@ -186,12 +208,15 @@ def review(
     request_hash,
 ) -> None:
     from .product_returns import _actor, _text, _event
+    from .return_policy import replacement_first
 
     role = _actor(cur, actor_id, {"sales-supervisor"})
     if role != "owner" and case.get("processing_supervisor_account_id") != actor_id:
         raise ValueError("Only the assigned Supervisor or Owner can review this replacement.")
     if (
-        case["payment_verified_at"]
+        case["resolution"] != "replace"
+        or case.get("refund_converted_at")
+        or case["payment_verified_at"]
         or case["replacement_released_at"]
         or case["status"] not in {"submitted", "discrepancy", "awaiting_receipt", "settlement_pending"}
     ):
@@ -212,6 +237,14 @@ def review(
             request_hash=request_hash,
         )
         return
+    cur.execute("""SELECT l.allocation_id,oi.product_id,l.quantity,l.unit_price FROM product_return_lines l
+        JOIN fulfillment_allocations a USING(allocation_id) JOIN order_items oi USING(order_item_id)
+        WHERE l.return_id=%s ORDER BY l.allocation_id""", (case["return_id"],))
+    old_originals = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT product_id,quantity FROM replacement_quote_lines WHERE return_id=%s AND revision=%s ORDER BY product_id",
+                (case["return_id"], case["quote_revision"]))
+    old_selection = [(int(r["product_id"]), int(r["quantity"])) for r in cur.fetchall()]
+    was_default = old_selection == default_selection(old_originals)
     if revised_quantities:
         if case["status"] != "discrepancy" or case["verified_at"]:
             raise ValueError("Return quantities can be revised only during an unresolved receipt mismatch.")
@@ -258,7 +291,14 @@ def review(
                 WHERE l.return_id=%s ORDER BY l.allocation_id""",
                 (case["return_id"],),
             )
-            publish_quote(cur, case, price_selection(cur, [dict(r) for r in cur.fetchall()], chosen), accepted=False)
+            originals = [dict(r) for r in cur.fetchall()]
+            if replacement_first(case) and was_default and revised_quantities and not replacements:
+                chosen = default_selection(originals)
+            if replacement_first(case) and chosen != default_selection(originals):
+                _text(remarks, "Reason the original products cannot be supplied")
+                customer_message = _text(customer_message, "Explanation for the reseller")
+            publish_quote(cur, case, price_selection(cur, originals, chosen,
+                          allow_inactive_originals=replacement_first(case) and chosen == default_selection(originals)), accepted=False)
     cur.execute("DELETE FROM replacement_stock_reservations WHERE return_id=%s", (case["return_id"],))
     cur.execute(
         """UPDATE product_returns SET approved_by_account_id=%s,
@@ -283,7 +323,7 @@ def deliver(return_id: int, actor_id: int, remarks: str) -> None:
 
     with get_transaction_cursor() as cur:
         case = _case(cur, return_id, actor_id, {"sales-supervisor"})
-        if case.get("replacement_workflow_version") != 2 or not case["replacement_released_at"]:
+        if case["resolution"] != "replace" or case.get("replacement_workflow_version") != 2 or not case["replacement_released_at"]:
             raise ValueError("Inventory must release this replacement before delivery can be recorded.")
         if case["replacement_delivered_at"]:
             return
@@ -328,7 +368,7 @@ def progress(case: dict) -> str:
 
 
 def enrich_progress(case: dict) -> None:
-    if case.get("replacement_workflow_version") != 2:
+    if case["resolution"] != "replace" or case.get("replacement_workflow_version") != 2:
         return
     from app.return_experience import payment_submission_ready
 

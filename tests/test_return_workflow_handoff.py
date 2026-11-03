@@ -150,7 +150,7 @@ def test_distinct_pages_and_server_permissions_link_to_existing_refund(lifecycle
             response = client.get(f"/portal/{prefix}/returns?case={case}")
             assert response.status_code == 200, response.text[:1000]
             if role == "reseller":
-                assert "My Returns" in response.text and "Awaiting Supervisor/Owner confirmation" in response.text
+                assert "Return history" in response.text and "Awaiting Supervisor/Owner confirmation" in response.text
                 assert "Original sales" not in response.text and "Holding #" not in response.text
                 assert "Sales confirmation remarks" not in response.text
             elif role == "inventory":
@@ -158,7 +158,7 @@ def test_distinct_pages_and_server_permissions_link_to_existing_refund(lifecycle
             else:
                 assert "Return Review and Settlement" in response.text and "Proceed with refund" not in response.text
                 assert "Open existing refund workflow" not in response.text
-                assert 'class="returns-case-dialog sales-return-dialog"' in response.text
+                assert 'data-return-dialog=' in response.text and 'sales-case-dialog' in response.text
                 assert "Supporting photos" in response.text
             if role != "sales":
                 denied = client.post(f"/portal/{prefix}/returns/actions/proceed", data={"return_id": case,

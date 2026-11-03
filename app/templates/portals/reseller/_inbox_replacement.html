@@ -10,13 +10,19 @@
       </div>
       {% if inbox_replacement_case|default(none) %}
       <details class="inbox-replacement-summary" open>
-        <summary>Replacement #{{ replacement_chat.return_id }} <span>Price comparison</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+        <summary>{{ 'Return' if inbox_replacement_case.refund_converted_at else 'Replacement' }} #{{ replacement_chat.return_id }} <span>{{ 'Refund summary' if inbox_replacement_case.refund_converted_at else 'Price comparison' }}</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
         <dl>
           <div><dt>Return credit</dt><dd>{{ inbox_replacement_case.credit|currency }}</dd></div>
+          {% if inbox_replacement_case.refund_converted_at %}
+          {% if inbox_replacement_case.payment_verified_at %}<div><dt>Verified extra payment to return</dt><dd>{{ inbox_replacement_case.payment_amount|currency }}</dd></div>{% endif %}
+          <div><dt>Refund amount</dt><dd>{{ inbox_replacement_case.refund_due|currency }}</dd></div>
+          {% else %}
           <div><dt>Replacement value</dt><dd>{{ inbox_replacement_case.replacement_total|currency }}</dd></div>
           <div><dt>Additional payment</dt><dd>{{ inbox_replacement_case.additional_due|currency }}</dd></div>
           <div><dt>Difference refund</dt><dd>{{ inbox_replacement_case.unused_credit|currency }}</dd></div>
+          {% endif %}
         </dl>
+        {% if inbox_replacement_case.refund_converted_at %}<p>Replacement stopped. {{ 'Follow the refund status in return details.' if inbox_replacement_case.verified_at else 'Inventory must verify the complete returned goods before the refund transfer.' }}</p>{% endif %}
       </details>
       {% endif %}
       <div class="reseller-chat-messages sales-message-feed replacement-message-log" data-replacement-message-log role="log" aria-label="Replacement messages" aria-live="polite" aria-relevant="additions" aria-busy="true" tabindex="0"><p class="replacement-message-empty" data-replacement-message-loading>Loading messages…</p></div>

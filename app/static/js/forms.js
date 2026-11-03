@@ -1,6 +1,119 @@
 (function () {
+    let errorSequence = 0;
+    const clearError = input => {
+        const id = input.dataset.portalErrorId;
+        if (id) {
+            document.getElementById(id)?.remove();
+            const help = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(value => value && value !== id);
+            if (help.length) input.setAttribute('aria-describedby', help.join(' '));
+            else input.removeAttribute('aria-describedby');
+        }
+        input.removeAttribute('aria-invalid');
+    };
+    const showError = (input, message) => {
+        clearError(input);
+        const id = input.dataset.portalErrorId ||= `portal-field-error-${++errorSequence}`;
+        const error = document.createElement('small');
+        error.id = id; error.className = 'portal-field-error'; error.textContent = message;
+        // Keep the error outside a wrapping label so the control's name stays stable.
+        (input.closest('label') || input).insertAdjacentElement('afterend', error);
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), id].filter(Boolean).join(' '));
+    };
+    const validate = (form, {focus = true} = {}) => {
+        let first = null;
+        [...form.elements].forEach(input => {
+            if (!input.willValidate) return;
+            clearError(input);
+            if (!input.validity.valid) {
+                const label = input.getAttribute('aria-label') || input.labels?.[0]?.textContent.trim().split('\n')[0] || 'This field';
+                showError(input, `${label}: ${input.validationMessage}`);
+                first ||= input;
+            }
+        });
+        if (first && focus) { first.scrollIntoView({block: 'center'}); first.focus(); }
+        return !first;
+    };
+    const dirty = new Set();
+    let submitted = false, discardPending = false;
+    const confirmDiscard = async scope => {
+        const changed = [...dirty].filter(form => scope.contains(form));
+        if (!changed.length || submitted) return true;
+        if (discardPending) return false;
+        const discardDialog = document.createElement('dialog');
+        discardDialog.className = 'portal-discard-dialog';
+        discardDialog.setAttribute('aria-labelledby', 'portal-discard-title');
+        const title = document.createElement('h3'); title.id = 'portal-discard-title'; title.textContent = 'Discard unsaved changes?';
+        const description = document.createElement('p'); description.textContent = 'Your unsaved return details will be cleared. Stay here to keep editing.';
+        description.id = 'portal-discard-description';
+        discardDialog.setAttribute('aria-describedby', description.id);
+        const actions = document.createElement('div'); actions.className = 'portal-discard-actions';
+        const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'button subtle'; cancel.textContent = 'Keep editing'; cancel.autofocus = true;
+        const discard = document.createElement('button'); discard.type = 'button'; discard.className = 'button primary'; discard.textContent = 'Discard changes';
+        actions.append(cancel, discard); discardDialog.append(title, description, actions); document.body.append(discardDialog);
+        const opener = document.activeElement;
+        const choice = await new Promise(resolve => {
+            discardPending = true;
+            let settled = false;
+            const finish = discardChoice => {
+                if (settled) return;
+                settled = true; discardPending = false;
+                if (discardDialog.open) discardDialog.close();
+                discardDialog.remove(); opener?.focus(); resolve(discardChoice);
+            };
+            cancel.addEventListener('click', () => finish(false));
+            discard.addEventListener('click', () => finish(true));
+            discardDialog.addEventListener('cancel', event => { event.preventDefault(); finish(false); });
+            discardDialog.addEventListener('close', () => finish(false), {once: true});
+            discardDialog.showModal(); cancel.focus();
+        });
+        if (choice) changed.forEach(form => {
+            form.reset();
+            form.querySelectorAll('input,textarea,select').forEach(input => {
+                input.setCustomValidity?.(''); clearError(input);
+            });
+            form.querySelectorAll('select').forEach(input => input.dispatchEvent(new Event('change', {bubbles: true})));
+            form.querySelector('[name="quantity"]')?.dispatchEvent(new Event('input', {bubbles: true}));
+            dirty.delete(form);
+        });
+        return choice;
+    };
+    const allowNavigation = () => { submitted = true; dirty.clear(); };
+    window.PortalForms = {validate, showError, clearError, confirmDiscard, allowNavigation};
+    window.addEventListener('beforeunload', event => {
+        if (!submitted && dirty.size) { event.preventDefault(); event.returnValue = ''; }
+    });
+    document.addEventListener('click', async event => {
+        const link = event.target.closest('a[href]');
+        if (!link || submitted || !dirty.size || event.defaultPrevented || link.target === '_blank' || link.hasAttribute('download') || link.hasAttribute('data-return-tab') || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        if (await confirmDiscard(document)) location.assign(link.href);
+    });
+    const returnFormSelector = '[data-return-details] form, [data-return-confirmation-surface] form, form[data-return-intent], [data-refund-conversion], .return-request-form';
+    document.querySelectorAll('[data-return-details] textarea, [data-return-confirmation-surface] textarea, form[data-return-intent] textarea, [data-refund-conversion] textarea, .return-request-form textarea').forEach(input => {
+        const grow = () => { input.style.height = 'auto'; input.style.height = `${Math.max(88, input.scrollHeight)}px`; };
+        input.addEventListener('input', grow); grow();
+    });
+    document.querySelectorAll(returnFormSelector).forEach(form => {
+        form.noValidate = true;
+        form.addEventListener('submit', event => {
+            if (form.matches('.return-request-form[action$="submit"]') || form.dataset.returnConfirmationBound === 'true') return;
+            if (!validate(form)) event.preventDefault();
+        });
+        form.addEventListener('input', event => {
+            dirty.add(form);
+            if (event.target.hasAttribute('aria-invalid')) { event.target.setCustomValidity?.(''); clearError(event.target); }
+        });
+        form.addEventListener('change', () => dirty.add(form));
+    });
+    // Observe after form-level validation/async handlers have prevented submission.
+    // A microtask in an earlier form listener can run before the next listener.
+    document.addEventListener('submit', event => {
+        if (!event.defaultPrevented && event.target.matches(returnFormSelector)) allowNavigation();
+    });
     document.querySelectorAll("form").forEach((form) => {
-        form.addEventListener("submit", () => {
+        form.addEventListener("submit", event => {
+            if (event.defaultPrevented) return;
             if (form.hasAttribute("data-chatbot-form") || form.hasAttribute("data-async-form")) {
                 return;
             }

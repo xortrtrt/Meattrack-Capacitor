@@ -131,9 +131,6 @@ def _returns_context(request: Request) -> dict:
     if case_id:
         try:
             selected = returns.get_product_return(case_id, actor_id)
-            if not inventory_only:
-                selected["additional_due"] = max(0, selected["replacement_total"] - selected["credit"])
-                selected["unused_credit"] = max(0, selected["credit"] - selected["replacement_total"])
         except ValueError as exc:
             raise HTTPException(404, detail=str(exc)) from exc
     order_id = shared.optional_positive_id(request.query_params.get("order"))
@@ -290,7 +287,7 @@ def return_action_page(request: Request, role_key: str, action: str):
     if action not in {
         "submit", "approve", "reject", "receive", "verify", "discrepancy", "accept",
         "reserve", "release", "payment", "verify-payment", "legacy", "proceed", "inspect",
-        "acknowledge-replacement", "resolve-issue",
+        "acknowledge-replacement", "resolve-issue", "delivered", "convert-to-refund",
     }:
         raise HTTPException(404)
     guard = _guard(request, role_key, "returns.view")
@@ -332,6 +329,7 @@ async def return_action(request: Request, role_key: str, action: str):
         "acknowledge-replacement": "returns.create",
         "resolve-issue": "returns.review",
         "delivered": "returns.authorize",
+        "convert-to-refund": "returns.authorize",
     }
     if action not in capabilities:
         raise HTTPException(404)
@@ -345,7 +343,12 @@ async def return_action(request: Request, role_key: str, action: str):
     sales_workspace = role_key == "team-leader" and shared.session_team_leader_role(request) == "sales"
     destination = "history" if role_key == "reseller" else "returns"
     try:
-        if action == "delivered":
+        if action == "convert-to-refund":
+            await run_in_threadpool(returns.convert_product_return_to_refund, return_id, actor_id,
+                str(form.get("remarks", "")), str(form.get("customer_message", "")),
+                str(form.get("operation_key", "")), str(form.get("review_version", "")),
+                unreceived_payment=form.get("unreceived_payment") == "yes")
+        elif action == "delivered":
             await run_in_threadpool(replacement_workflow.deliver,return_id,actor_id,str(form.get("remarks","")))
         elif action == "acknowledge-replacement":
             await run_in_threadpool(return_customer.acknowledge_replacement, return_id, actor_id)
@@ -472,10 +475,15 @@ async def return_action(request: Request, role_key: str, action: str):
             word in error.lower() for word in ("payment", "refund", "credit", "price", "quote")
         ):
             error = "Supervisor/Owner clearance is required. Ask the assigned processor to review this return before stock release."
+        if action in {"submit", "approve", "reject", "convert-to-refund"} and "application/json" in request.headers.get("accept", ""):
+            return JSONResponse({"error": error}, status_code=422)
         return shared.redirect_to(shared.safe_portal_path(role_key, destination,
             error=error, **({"view": "returns", **params} if role_key == "reseller" or sales_workspace else params)))
-    return shared.redirect_to(shared.safe_portal_path(role_key, destination,
-        message="Return action recorded.", **({"view": "returns", **params} if role_key == "reseller" or sales_workspace else params)))
+    target = shared.safe_portal_path(role_key, destination,
+        message="Return action recorded.", **({"view": "returns", **params} if role_key == "reseller" or sales_workspace else params))
+    if action in {"submit", "approve", "reject", "convert-to-refund"} and "application/json" in request.headers.get("accept", ""):
+        return JSONResponse({"redirect": target})
+    return shared.redirect_to(target)
 
 
 @router.post("/portal/{role_key}/expired-stock/actions/{action}")

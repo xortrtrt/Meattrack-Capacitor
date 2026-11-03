@@ -88,7 +88,8 @@ def test_reseller_repository_list_count_share_predicates_and_safe_sort(monkeypat
     assert "DROP TABLE" not in list_sql
     assert "lower(r.business_name) ASC" in list_sql
     if leader == "unassigned":
-        assert "r.team_leader_account_id IS NULL" in list_sql
+        from app.repositories.coverage_filters import RESELLER_COVERAGE
+        assert RESELLER_COVERAGE in list_sql and RESELLER_COVERAGE in count_sql
 
 
 def test_pagination_links_retain_all_filters():

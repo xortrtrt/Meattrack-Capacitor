@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+from legacy_return_fixtures import create_legacy_return
 from app import repositories, main, web_sessions
 from app.business_time import business_now
 from app.database import fetch_one, get_transaction_cursor
@@ -200,7 +201,7 @@ def test_derived_receipt_queue_pagination_retains_filter(strict_inventory_databa
         cur.execute('SELECT allocation_id FROM fulfillment_allocations a JOIN order_items oi USING(order_item_id) WHERE oi.order_id=%s', (orders[0],))
         allocation = cur.fetchone()['allocation_id']
     for _ in range(15):
-        case = returns.create_product_return(orders[0], reseller, 'refund', [(allocation, 1)],
+        case = create_legacy_return(orders[0], reseller, 'refund', [(allocation, 1)],
                                               'A traceable pack requires receipt checking', [supporting_photo()])
         returns.review_product_return(case, sales, True, 'Approved for complete receipt checking')
     assert return_dashboard_counts(inventory, 'inventory', ('receipts',))['receipts'] == 15

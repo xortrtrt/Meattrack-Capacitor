@@ -24,7 +24,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/refunds.css') }}?v=20261019-business-theme-2" />
     {% endif %}
     {% if section in ['returns','refunds','history','inbox','messages'] %}<link rel="stylesheet" href="{{ url_for('static', path='css/return_experience.css') }}?v=20261102-supervisor-workspace-1">{% endif %}
-    {% if return_case|default(none) and ((role_key=='sales-supervisor' and section in ['returns','refunds']) or (role_key=='reseller' and section=='history' and not return_request_open)) %}<link rel="stylesheet" href="{{ url_for('static', path='css/return_details.css') }}?v=20261102-conversation-button-3">{% endif %}
+    {% if return_case|default(none) and ((role_key in ['sales-supervisor','owner'] and section in ['returns','refunds']) or (role_key=='reseller' and section=='history' and not return_request_open)) %}<link rel="stylesheet" href="{{ url_for('static', path='css/return_details.css') }}?v=20261102-conversation-button-3">{% endif %}
     {% if role_key == "owner" and section == "orders" %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/owner-orders.css') }}?v=20261019-ledger-modal-4">
     {% endif %}
@@ -396,7 +396,7 @@
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261017-dynamic-csrf-2"></script>
-    <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261020-explicit-dates-1"></script>
+    <script src="{{ url_for('static', path='js/forms.js') }}?v=20261103-policy-2" defer></script>
     {% if role_key == 'owner' %}<script src="{{ url_for('static', path='js/owner_recovery.js') }}?v=20261020-2" defer></script>{% endif %}
     <script src="{{ url_for('static', path='js/product_photos.js') }}?v=20261101-1" defer></script>
     <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261102-reseller-details-1"></script>
@@ -404,7 +404,7 @@
     <script src="{{ url_for('static', path='js/owner_modals.js') }}?v=20261019-modal-4" defer></script>
     {% endif %}
     {% if section == "returns" or (section=="refunds" and refund_workspace_view|default('')=="returns") or (role_key=="reseller" and section=="history" and orders_page.filters.view=="returns") %}
-    <script src="{{ url_for('static', path='js/product_returns.js') }}?v=20261102-supervisor-workspace-1" defer></script>
+    <script src="{{ url_for('static', path='js/product_returns.js') }}?v=20261103-policy-2" defer></script>
     {% endif %}
     {% if section == "expired-stock" %}
     <script src="{{ url_for('static', path='js/expired_stock.js') }}?v=20261101-alert-pullout-connection" defer></script>
@@ -422,13 +422,13 @@
     {% if role_key == "reseller" and section == "inbox" %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/reseller_inbox_workspace.css') }}?v=20261102-replacement-context-1">
     <script src="{{ url_for('static', path='js/order_inquiry_cards.js') }}?v=20261102-replacement-context-1"></script>
-    <script src="{{ url_for('static', path='js/reseller_contact_history.js') }}?v=20261102-replacement-context-1" defer></script>
+    <script src="{{ url_for('static', path='js/reseller_contact_history.js') }}?v=20261103-policy-3" defer></script>
     <script src="{{ url_for('static', path='js/reseller_inbox.js') }}?v=20261102-replacement-context-1"></script>
     {% endif %}
     {% if role_key in ["team-leader", "sales-supervisor"] and section == "messages" %}
     <script src="{{ url_for('static', path='js/sales_reseller_messages.js') }}?v=20261102-replacement-context-1"></script>
     {% endif %}
-  <script src="{{ url_for('static', path='js/replacement_workflow.js') }}?v=20261102-replacement-context-1" defer></script>
-  {% if return_case|default(none) and ((role_key=='sales-supervisor' and section in ['returns','refunds']) or (role_key=='reseller' and section=='history' and not return_request_open)) %}<script src="{{ url_for('static', path='js/return_details.js') }}?v=20261102-conversation-button-3" defer></script>{% endif %}
+  <script src="{{ url_for('static', path='js/replacement_workflow.js') }}?v=20261103-policy-1" defer></script>
+  {% if return_case|default(none) and ((role_key in ['sales-supervisor','owner'] and section in ['returns','refunds']) or (role_key=='reseller' and section=='history' and not return_request_open)) %}<script src="{{ url_for('static', path='js/return_details.js') }}?v=20261103-policy-3" defer></script>{% endif %}
   </body>
 </html>

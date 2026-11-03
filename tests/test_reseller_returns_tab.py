@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.database import fetch_one
+from app.repositories import replacement_workflow
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
 from test_product_lifecycle import lifecycle, supporting_photo  # noqa: F401
 from test_return_request_options import sign_in
@@ -38,7 +39,7 @@ def test_returns_tab_legacy_links_and_request_redirects(lifecycle, monkeypatch):
         assert "js/product_returns.js" in page.text and "css/product_lifecycle.css" in page.text
         invalid = client.post("/portal/reseller/returns/actions/submit", data={
             "order_id": d["order"], "allocation_id": d["allocation"], "quantity": 0,
-            "resolution": "refund", "remarks": "Testing invalid empty quantities", "operation_key": str(uuid4()),
+            "resolution": "replace", "remarks": "Testing invalid empty quantities", "operation_key": str(uuid4()),
         }, follow_redirects=False)
         error_url = invalid.headers["location"]
         assert urlsplit(error_url).path == "/portal/reseller/history"
@@ -47,9 +48,11 @@ def test_returns_tab_legacy_links_and_request_redirects(lifecycle, monkeypatch):
         assert failed.status_code == 200 and 'data-auto-open="true"' in failed.text
         assert 'returns-dialog-notice is-error' in failed.text
         photo = supporting_photo()
+        comparison = replacement_workflow.preview(d['order'], d['reseller'], [(d['allocation'], 2)])
         created = client.post("/portal/reseller/returns/actions/submit", files={"evidence": (photo["filename"], photo["content"], photo["content_type"])}, data={
             "order_id": d["order"], "allocation_id": d["allocation"], "quantity": 2,
-            "resolution": "refund", "remarks": "Request two delivered packs for eligibility review", "operation_key": str(uuid4()),
+            "resolution": "replace", "comparison_token": comparison['token'],
+            "remarks": "Request two delivered packs for eligibility review", "operation_key": str(uuid4()),
         }, follow_redirects=False)
         query = parse_qs(urlsplit(created.headers["location"]).query)
         assert created.status_code == 303 and query["view"] == ["returns"] and "case" in query
@@ -58,6 +61,7 @@ def test_returns_tab_legacy_links_and_request_redirects(lifecycle, monkeypatch):
         assert urlsplit(str(tracked.url)).path == "/portal/reseller/history"
         assert 'name="status"' not in tracked.text
         assert 'reseller-return-details' in tracked.text
+        assert fetch_one('SELECT return_policy_version FROM product_returns')['return_policy_version'] == 2
     assert fetch_one("SELECT count(*) n FROM order_refunds WHERE order_id=%s", (d["order"],))["n"] == 0
 
 
@@ -112,18 +116,16 @@ def test_order_history_return_request_and_details_on_mobile_and_desktop(lifecycl
             page.wait_for_load_state("networkidle")
             request = page.locator("[data-return-request-dialog]")
             expect(request).to_be_visible()
-            expect(request.get_by_role("radio", name="Refund", exact=True)).to_be_checked()
+            expect(request.locator('[name="resolution"][value="refund"]')).to_have_count(0)
+            expect(request.locator('[name="resolution"][value="replace"]')).to_have_value("replace")
             expect(request.locator(".return-request-section")).to_have_count(3)
             expect(request.get_by_text("Enter packs for at least one product. Leave the rest at 0.", exact=True)).to_be_visible()
-            page.get_by_role("radio", name="Replacement", exact=True).check()
-            expect(page.get_by_role("radio", name="Replacement", exact=True)).to_be_checked()
-            page.get_by_role("radio", name="Refund", exact=True).check()
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
             page.screenshot(path=str(output / f"request-{width}.png"), full_page=True)
             actions = request.locator(".return-request-actions")
             actions.scroll_into_view_if_needed()
             cancel = actions.get_by_role("button", name="Cancel", exact=True)
-            submit = actions.get_by_role("button", name="Request return", exact=True)
+            submit = actions.get_by_role("button", name="Request replacement", exact=True)
             expect(cancel).to_be_visible()
             expect(submit).to_be_visible()
             cancel_box, submit_box = cancel.bounding_box(), submit.bounding_box()
@@ -153,13 +155,15 @@ def test_order_history_return_request_and_details_on_mobile_and_desktop(lifecycl
         page.get_by_label("Reason and remarks").fill("Return delivered products for Sales eligibility review")
         upload = page.get_by_label("Supporting photos")
         expect(upload).to_have_attribute("required", "")
-        page.get_by_role("button", name="Request return", exact=True).click()
+        page.get_by_role("button", name="Request replacement", exact=True).click()
+        expect(page.locator('[name="comparison_token"]')).not_to_have_value("")
+        page.get_by_role("button", name="Request replacement", exact=True).click()
         expect(upload).to_be_focused()
         assert upload.evaluate("el => el.validity.valueMissing")
         assert fetch_one("SELECT count(*) n FROM product_returns WHERE order_id=%s", (d["order"],))["n"] == 0
         photo = supporting_photo()
         page.get_by_label("Supporting photos").set_input_files({"name": photo["filename"], "mimeType": photo["content_type"], "buffer": photo["content"]})
-        page.get_by_role("button", name="Request return", exact=True).click()
+        page.get_by_role("button", name="Request replacement", exact=True).click()
         page.wait_for_load_state("networkidle")
         case = fetch_one("SELECT return_id,status FROM product_returns WHERE order_id=%s", (d["order"],))
         assert case and case["status"] == "submitted"

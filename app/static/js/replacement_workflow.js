@@ -11,159 +11,104 @@
   const money = value => new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(Number(value));
   const request = document.querySelector('.return-request-form[action$="submit"]');
   if (request) {
-    const selection = request.querySelector('[data-replacement-selection]');
     const token = request.elements.comparison_token;
     const output = request.querySelector('[data-replacement-comparison]');
     const button = request.querySelector('[data-return-request-submit]');
-    const buttonLabel = button.querySelector('[data-return-submit-label]');
     const feedback = request.querySelector('[data-return-request-feedback]');
-    const catalog = selection.querySelector('[data-replacement-catalog]');
-    const search = selection.querySelector('[data-replacement-search]');
-    const rows = [...selection.querySelectorAll('[data-replacement-product]')];
     const quantities = [...request.querySelectorAll('[name="quantity"]')];
-    const replacements = rows.map(row => row.querySelector('[name="replacement_quantity"]'));
-    let revision = 0, calculating = false;
-    // Validate explicitly so comparison review can happen before required photos/details.
-    request.noValidate = true;
+    const fields = window.PortalForms;
+    let revision = 0, controller = null, calculating = false, sending = false;
     const message = (text, error = false) => {
-      feedback.textContent = text;
-      feedback.classList.toggle('is-error', error);
-    };
-    const updateButton = () => {
-      button.disabled = calculating;
-      buttonLabel.textContent = calculating ? 'Calculating…' : !selection.hidden && !token.value ? 'Review price comparison' : 'Request return';
-    };
-    const updateSelected = () => {
-      const list = selection.querySelector('[data-replacement-selected]');
-      list.replaceChildren();
-      let packs = 0, products = 0;
-      rows.forEach((row, index) => {
-        const quantity = Number(replacements[index].value);
-        if (quantity <= 0) return;
-        products += 1; packs += quantity;
-        const item = document.createElement('li');
-        const name = document.createElement('span'); name.textContent = row.dataset.replacementProduct;
-        const count = document.createElement('strong'); count.textContent = `${quantity} pack${quantity === 1 ? '' : 's'}`;
-        item.append(name, count); list.append(item);
-      });
-      selection.querySelector('[data-replacement-count]').textContent = products ? `${products} product${products === 1 ? '' : 's'} · ${packs} pack${packs === 1 ? '' : 's'} selected` : 'No products selected';
+      feedback.textContent = text; feedback.classList.toggle('is-error', error);
     };
     const reset = () => {
-      revision += 1;
-      token.value = '';
-      selection.hidden = request.elements.resolution.value !== 'replace';
-      output.replaceChildren();
-      quantities.concat(replacements).forEach(input => input.setCustomValidity(''));
-      message(selection.hidden ? 'Add returned packs, a reason, and supporting photos.' : 'Choose replacement products, then review the price comparison.');
-      updateSelected(); updateButton();
+      revision += 1; controller?.abort(); calculating = false;
+      token.value = ''; output.replaceChildren(); button.disabled = false;
+      button.removeAttribute('aria-busy');
+      quantities.forEach(input => { input.setCustomValidity(''); fields.clearError(input); });
+      message('Select returned packs, review the replacement, then add details.');
     };
-    request.addEventListener('input', event => {
-      if (['resolution','quantity','replacement_quantity'].includes(event.target.name)) reset();
-      else if (event.target !== search) {
-        event.target.setCustomValidity?.('');
-        message(token.value ? 'Comparison ready. Add your details, then request the return.' : 'Complete the required details before requesting the return.');
-      }
-    });
-    search.addEventListener('input', () => {
-      const query = search.value.trim().toLocaleLowerCase();
-      let matches = 0;
-      rows.forEach(row => {
-        row.hidden = !row.dataset.replacementProduct.toLocaleLowerCase().includes(query);
-        if (!row.hidden) matches += 1;
-      });
-      selection.querySelector('[data-replacement-empty]').hidden = matches > 0;
-    });
-    search.addEventListener('keydown', event => {
-      if (event.key === 'Enter') event.preventDefault();
-    });
-    const reveal = input => {
-      if (selection.contains(input)) {
-        catalog.open = true;
-        // A selected product must remain reachable even after a different search.
-        rows.forEach(row => { row.hidden = false; }); search.value = '';
-        selection.querySelector('[data-replacement-empty]').hidden = true;
-      }
-      input.scrollIntoView({block:'center'});
-      input.focus(); input.reportValidity();
-    };
-    const validatePacks = (inputs, text) => {
-      inputs.forEach(input => input.setCustomValidity(''));
-      const invalid = inputs.find(input => !input.validity.valid);
-      if (invalid) { message(invalid.validationMessage, true); reveal(invalid); return false; }
-      if (!inputs.some(input => Number(input.value) > 0)) {
-        message(text, true);
-        if (inputs[0]) { inputs[0].setCustomValidity(text); reveal(inputs[0]); }
-        return false;
+    quantities.forEach(input => input.addEventListener('input', reset));
+    const validQuantities = () => {
+      quantities.forEach(input => { input.setCustomValidity(''); fields.clearError(input); });
+      const invalid = quantities.find(input => !input.validity.valid);
+      if (invalid || !quantities.some(input => Number(input.value) > 0)) {
+        const target = invalid || quantities[0];
+        const text = invalid ? invalid.validationMessage : 'Enter at least one pack to return.';
+        fields.showError(target, text); message(text, true);
+        target.scrollIntoView({block: 'center'}); target.focus(); return false;
       }
       return true;
     };
     const compare = async () => {
-      const version = revision;
+      if (!validQuantities()) return;
+      const current = ++revision;
+      controller?.abort();
+      const activeController = controller = new AbortController();
+      const timeout = setTimeout(() => activeController.abort(), 20000);
       const data = new FormData();
-      for (const [key,value] of new FormData(request)) {
-        if (['order_id','allocation_id','quantity','replacement_product_id','replacement_quantity'].includes(key)) data.append(key,value);
+      for (const [key, value] of new FormData(request)) {
+        if (['order_id', 'allocation_id', 'quantity'].includes(key)) data.append(key, value);
       }
-      calculating = true; updateButton(); message('Calculating the current comparison…');
+      calculating = true; button.disabled = true; button.setAttribute('aria-busy', 'true');
+      message('Calculating your same-product replacement…');
       try {
-        const response = await fetch('/portal/reseller/returns/replacement-preview',{method:'POST',headers:headers(),body:data,signal:AbortSignal.timeout(20000)});
+        const response = await fetch('/portal/reseller/returns/replacement-preview', {method:'POST', headers:headers(), body:data, signal:controller.signal});
         const result = await response.json().catch(() => ({}));
-        if (version !== revision) return;
-        if (!response.ok) throw new Error(result.error || 'The comparison could not be loaded. Try again.');
+        if (current !== revision) return;
+        if (!response.ok || !result.token) throw new Error(result.error || 'The comparison could not be loaded. Try again.');
         output.replaceChildren();
         const heading = document.createElement('h4'); heading.textContent = 'Price comparison'; output.append(heading);
         const totals = document.createElement('dl'); totals.className = 'return-comparison-totals';
-        for (const [label, value] of [['Return credit',result.credit],['Replacement value',result.total],['Extra payment',result.additional_due],['Difference refund',result.refund_due]]) {
+        for (const [label, value] of [['Return credit',result.credit],['Replacement value',result.total],['Extra payment',result.additional_due]]) {
           const row = document.createElement('div');
           const name = document.createElement('dt'); name.textContent = label;
           const amount = document.createElement('dd'); amount.textContent = money(value);
-          row.append(name,amount); totals.append(row);
+          row.append(name, amount); totals.append(row);
         }
         output.append(totals);
-        const details = document.createElement('details'); details.className = 'return-pricing-help';
-        const summary = document.createElement('summary'); summary.textContent = 'Price details'; details.append(summary);
-        const list = document.createElement('ul');
-        for (const item of result.originals) {
-          const row = document.createElement('li');
-          row.textContent = `Returned: ${item.name} · ${item.quantity} packs × ${money(item.unit_price)} = ${money(item.line_total)}`;
-          list.append(row);
-        }
+        const list = document.createElement('ul'); list.className = 'return-selected-products';
         for (const item of result.items) {
-          const row = document.createElement('li');
-          row.textContent = `Replacement: ${item.name} · ${item.quantity} packs = ${money(item.line_total)}`;
-          for (const part of item.pricing_components) {
-            const detail = document.createElement('small');
-            detail.textContent = `${part.quantity} × ${money(part.unit_price)} (${part.basis === 'original' ? 'original paid price' : 'current catalog price'})`;
-            row.append(detail);
-          }
+          const row = document.createElement('li'); row.textContent = `${item.name} · ${item.quantity} packs · ${money(item.line_total)} (original paid price)`;
           list.append(row);
         }
-        details.append(list); output.append(details);
-        token.value = result.token; catalog.open = false;
-        message('Comparison ready. Check the totals, add details, then request the return.');
+        output.append(list); token.value = result.token;
+        message('Comparison ready. Check the products and totals, then request your replacement.');
         output.scrollIntoView({block:'center'}); output.focus({preventScroll:true});
       } catch (error) {
-        if (version === revision) message(error.name === 'TimeoutError' || error instanceof TypeError ? 'Could not load the comparison. Check your connection and try again.' : error.message, true);
-      } finally { calculating = false; updateButton(); }
-    };
-    request.addEventListener('submit', event => {
-      if (calculating) { event.preventDefault(); return; }
-      if (!validatePacks(quantities, 'Enter at least one pack to return.')) { event.preventDefault(); return; }
-      if (!selection.hidden) {
-        if (!validatePacks(replacements, 'Choose at least one replacement pack.')) { event.preventDefault(); return; }
-        if (!token.value) { event.preventDefault(); compare(); return; }
+        if (current !== revision) return;
+        message(error.name === 'AbortError' ? 'The comparison timed out. Check your connection and try again.' : error.message, true);
+        output.replaceChildren();
+        const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'button secondary';
+        retry.textContent = 'Try comparison again'; retry.addEventListener('click', compare); output.append(retry);
+      } finally {
+        clearTimeout(timeout);
+        if (current === revision) { calculating = false; button.disabled = false; button.removeAttribute('aria-busy'); }
       }
+    };
+    request.addEventListener('submit', async event => {
+      if (calculating || sending) { event.preventDefault(); return; }
+      if (!validQuantities()) { event.preventDefault(); return; }
+      if (!token.value) { event.preventDefault(); compare(); return; }
       const photos = request.elements.evidence;
       photos.setCustomValidity('');
       if (photos.files.length > 3) photos.setCustomValidity('Choose up to 3 supporting photos.');
       else if ([...photos.files].some(file => file.size > 5 * 1024 * 1024)) photos.setCustomValidity('Each supporting photo must be 5 MB or smaller.');
-      const invalid = [...request.elements].find(input => input.willValidate && !input.validity.valid);
-      if (invalid) {
-        event.preventDefault();
-        const label = invalid === photos ? 'Supporting photos' : invalid.name === 'remarks' ? 'Reason and remarks' : 'Quantity';
-        message(`${label}: ${invalid.validationMessage}`, true); reveal(invalid); return;
+      if (!fields.validate(request)) {
+        event.preventDefault(); message('Complete the required fields: Reason and remarks and Supporting photos.', true); return;
       }
-      button.disabled = true; buttonLabel.textContent = 'Sending request…';
-      message('Sending your return request…');
+      event.preventDefault();
+      sending = true; button.disabled = true; button.setAttribute('aria-busy', 'true');
+      message('Sending your replacement request…');
+      try {
+        const response = await fetch(request.action, {method: 'POST', headers: headers(), body: new FormData(request), signal: AbortSignal.timeout(20000)});
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.redirect) throw new Error(result.error || 'The request could not be confirmed. Retry with the same form to check its outcome.');
+        fields.allowNavigation(); location.assign(result.redirect);
+      } catch (error) {
+        sending = false; button.disabled = false; button.removeAttribute('aria-busy');
+        message(error.name === 'TimeoutError' || error instanceof TypeError ? 'The outcome is not confirmed. Check your connection and retry; this request reference prevents duplicates.' : error.message, true);
+      }
     });
     reset();
   }

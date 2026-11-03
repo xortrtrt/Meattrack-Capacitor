@@ -43,7 +43,10 @@
       dialog.scrollTop = 0;
       syncScrollLock();
     };
-    const close = () => dialog.close();
+    const close = async () => {
+      if (!window.PortalForms || await window.PortalForms.confirmDiscard(dialog)) dialog.close();
+    };
+    dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     dialog.querySelectorAll("[data-return-close]").forEach(button => button.addEventListener("click", close));
     let backdropPress = false;
     const outside = event => {

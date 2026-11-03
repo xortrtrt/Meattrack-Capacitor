@@ -1,0 +1,19 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["app"],
+  "locale": "en-PH",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Date", "Form", "Scrollbar", "Toast", "CRUD"],
+  "ownership": {"Select/Listbox": "native", "Date": "native"},
+  "requiredCommands": ["lint", "types", "workflow", "premium"],
+  "commands": {
+    "lint": ".venv/Scripts/python.exe -m ruff check app tools tests",
+    "types": ".venv/Scripts/python.exe -m mypy",
+    "workflow": ".venv/Scripts/python.exe -m pytest tests/test_replacement_first_portal.py tests/test_replacement_first_owner_offers.py tests/test_replacement_first_converted_history.py -q -p no:cacheprovider --basetemp=C:/Users/patri/.codex/tmp/meattrack-premium-final",
+    "premium": "python C:/Users/patri/.codex/plugins/cache/openai-curated-remote/frontend-design-premium/1.4.0/skills/frontend-design-premium/scripts/audit_project.py . --mode strict --output outputs/replacement-policy/premium-audit.json"
+  },
+  "evidence": {
+    "crudFullFlow": "tests/test_replacement_first_portal.py",
+    "failurePaths": "tests/test_replacement_first_policy.py"
+  }
+}

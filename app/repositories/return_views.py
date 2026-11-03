@@ -18,6 +18,7 @@ SALES_STAGE_SQL = """CASE WHEN r.status='settlement_pending' AND (
  THEN 'ready_for_confirmation' ELSE r.status END"""
 
 INVENTORY_EVENT_MESSAGES = {
+    "converted_to_refund": "Replacement preparation is stopped. Receive any outstanding approved returned goods; no replacement stock may be released.",
     "replacement_ready": "Valid FEFO replacement stock is prepared and ready for warehouse release.",
     "submitted": "A return was requested against the original delivery allocations.",
     "sales_approved": "Sales approved the returned products and quantities.",
@@ -35,6 +36,8 @@ INVENTORY_EVENT_MESSAGES = {
 }
 
 RESELLER_EVENT_MESSAGES = {
+    "converted_to_refund": "Supervisor/Owner authorized a refund because no acceptable replacement can be supplied.",
+    "payment_not_received": "Supervisor confirmed the submitted extra payment was not received.",
     "awaiting_valid_stock": "Your agreed replacement is waiting for valid stock. Any verified payment remains recorded.",
     "replacement_received": "You acknowledged receiving your replacement.",
     "customer_issue_reported": "Your replacement issue was sent to Supervisor/Owner for follow-up.",
@@ -108,7 +111,7 @@ def inventory_return_view(case: dict) -> dict:
 def reseller_return_view(case: dict) -> dict:
     result = _pick(case, """return_id order_id resolution status remarks credit replacement_total quote_revision
         accepted_revision verified_at replacement_released_at payment_verified_at payment_amount
-        replacement_workflow_version replacement_progress replacement_prepared_at replacement_delivered_at
+        replacement_workflow_version return_policy_version refund_converted_at refund_due replacement_progress replacement_prepared_at replacement_delivered_at
         created_at completed_at updated_at has_reservations list_total list_page requested_quantity received_quantity
         additional_due unused_credit sales_authorized experience replacement_received_at has_open_followup
         has_payment_proof offer_snapshot offer_changes previous_offer workflow_steps""")
@@ -151,7 +154,7 @@ def reseller_return_view(case: dict) -> dict:
         if key in case:
             result[key] = [_pick(row, fields) for row in case[key]]
     refund = case.get("refund")
-    result["refund"] = _pick(refund, "order_refund_id amount status completed_at") if refund else None
+    result["refund"] = _pick(refund, "order_refund_id amount original_credit_amount topup_amount status completed_at") if refund else None
     result["events"] = [
         {**_pick(event, "action created_at"), "remarks": event.get("customer_message")
          or RESELLER_EVENT_MESSAGES.get(event["action"], "Sales updated your return.")}
@@ -165,7 +168,7 @@ def inventory_context_view(value):
     financial_keys = {
         "base_price", "unit_price", "line_total", "total_amount", "fulfilled_sales", "total_sales",
         "credit", "replacement_total", "payment_amount", "payment_reference", "refund", "refund_status",
-        "order_refund_id", "order_total", "additional_due", "unused_credit", "amount",
+        "order_refund_id", "order_total", "additional_due", "unused_credit", "amount", "refund_due", "original_credit_amount", "topup_amount",
     }
     if isinstance(value, dict):
         return {key: inventory_context_view(item) for key, item in value.items() if key not in financial_keys}

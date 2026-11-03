@@ -109,6 +109,21 @@ mix packs and product counts or overlapping queues in a ring.
 
 ## Components
 
+The return workflow extends the existing operations identity rather than the
+dashboard layout. Its request and processor confirmation use shared native dialogs,
+visible field errors, stable action labels and the existing form/confirmation
+owners documented in `UX-CONTRACT.md`. Return-dialog `--rd-*` aliases consume the
+base runtime palette on standalone Owner surfaces, so dialogs do not depend on
+being nested in a dedicated detail page. The existing detail-page composition
+retains its scoped appearance.
+
+Global scrollbars map `--scrollbar-thumb` to `--text-light`, track to
+`--surface-muted`, hover to `--primary`, and active to `--gold-deep` in
+`portal_base.css`. Standards-based scrollbar color/width and WebKit fallbacks
+apply without an opt-in class; forced colors use system colors. Runtime CSS
+remains canonical. Confirmations show the object, consequence and refund total;
+Cancel receives initial focus. Conversion does not imply the transfer has been made.
+
 `app/templates/portals/_dashboard_components.html` owns dashboard actions and
 order rows. Navigation uses anchors; financial/chart-data disclosures use native
 `details` / `summary`. Links have hover, active and visible-focus states. Zero

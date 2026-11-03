@@ -32,6 +32,7 @@
     {% set photos = case.attachments|selectattr('purpose','equalto','evidence')|list %}
     {% if photos %}<section class="sales-case-card" aria-labelledby="sales-photos-title"><header><h4 id="sales-photos-title">Supporting photos</h4><span>{{ photos|length }} attached</span></header><div class="sales-case-files">{% for photo in photos %}<a href="/portal/return-attachments/{{ photo.attachment_id }}" target="_blank" rel="noopener"><i data-lucide="image" aria-hidden="true"></i><span>Photo {{ loop.index }}<small>{{ photo.filename }}</small></span><i data-lucide="external-link" aria-hidden="true"></i></a>{% endfor %}</div></section>{% endif %}
 
+    {% include 'portals/returns/_refund_conversion.html' %}
     {% if return_can_review %}{% with review_as_card=true %}{% include 'portals/returns/_case_review.html' %}{% endwith %}{% endif %}
 
     {% if case.offer_changes %}<section class="sales-case-card"><header><h4>Selection changes</h4></header><ul class="sales-case-records">{% for change in case.offer_changes %}<li><strong>{{ change.label }}</strong>{% if change.field in ['credit','replacement_total'] %}<span>{{ change.before|currency }} → {{ change.after|currency }}</span>{% else %}<span>Previously: {% for item in change.before %}{{ item.name }} × {{ item.quantity|number }}{% if not loop.last %}; {% endif %}{% endfor %}</span><span>Now: {% for item in change.after %}{{ item.name }} × {{ item.quantity|number }}{% if not loop.last %}; {% endif %}{% endfor %}</span>{% endif %}</li>{% endfor %}</ul></section>{% endif %}

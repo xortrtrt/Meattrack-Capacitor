@@ -6,6 +6,7 @@ import hashlib
 import json
 from decimal import Decimal
 from uuid import UUID
+from .return_policy import refund_components, require_replacement_value
 
 
 def fingerprint(*values) -> str:
@@ -81,6 +82,10 @@ def replacement_problems(cur, case: dict, *, require_release: bool = False) -> l
     problems = []
     if case["quote_revision"] <= 0 or cur.fetchone()["total"] != case["replacement_total"]:
         problems.append("Replacement quote lines do not match the replacement total.")
+    try:
+        require_replacement_value(case)
+    except ValueError as exc:
+        problems.append(str(exc))
     if case["accepted_revision"] != case["quote_revision"]:
         problems.append("The current replacement quote requires reseller acceptance.")
     extra = max(Decimal(0), case["replacement_total"] - case["credit"])
@@ -135,7 +140,7 @@ def check_refund_eligibility(cur, refund: dict) -> None:
     cur.execute("SELECT * FROM orders WHERE order_id=%s;", (refund["order_id"],))
     order = cur.fetchone()
     collected = Decimal(str(order["payment_amount"] or 0))
-    cur.execute("SELECT COALESCE(SUM(amount),0) total FROM order_refunds WHERE order_id=%s;", (refund["order_id"],))
+    cur.execute("SELECT COALESCE(SUM(amount-topup_amount),0) total FROM order_refunds WHERE order_id=%s;", (refund["order_id"],))
     if collected <= 0 or cur.fetchone()["total"] > collected:
         raise ValueError("Refund obligations exceed the confirmed original payment. Review the sales record.")
     if not refund.get("return_id"):
@@ -164,7 +169,8 @@ def check_refund_eligibility(cur, refund: dict) -> None:
     )
     if cur.fetchone()["credit"] != case["credit"]:
         raise ValueError("Return credit does not match the original sale lines.")
-    expected = case["credit"]
+    original, topup = refund_components(case)
+    expected = original + topup
     if case["resolution"] == "replace":
         if not case["replacement_released_at"] or case["accepted_revision"] != case["quote_revision"]:
             raise ValueError("The accepted replacement must be released before its refund is settled.")
@@ -172,6 +178,13 @@ def check_refund_eligibility(cur, refund: dict) -> None:
         if problems:
             raise ValueError(problems[0])
         expected = max(Decimal(0), case["credit"] - case["replacement_total"])
+    if refund.get("topup_amount", 0) != topup or refund.get("original_credit_amount", refund["amount"]) != original:
+        raise ValueError("Refund components do not match the approved credit and verified extra collection.")
+    if topup:
+        cur.execute("SELECT 1 FROM return_attachments WHERE return_id=%s AND purpose='payment' AND revision=%s LIMIT 1",
+                    (case["return_id"], case["quote_revision"]))
+        if not case.get("payment_verified_by_account_id") or not case.get("payment_reference") or not cur.fetchone():
+            raise ValueError("The refundable extra collection requires its verifier, reference and current proof.")
     if refund["amount"] != expected or expected <= 0:
         raise ValueError("Refund amount does not match the verified return credit or replacement difference.")
     check_order_financials(cur, refund["order_id"])

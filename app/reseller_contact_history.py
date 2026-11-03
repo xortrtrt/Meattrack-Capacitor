@@ -31,7 +31,10 @@ def workspace(actor_id: int, return_id: int, after_id: int = 0, direct_after_id:
     return {
         "threads": related, "messages": messages, "direct": direct,
         "orders": orders(actor_id) if direct else [],
-        "context": {key: case.get(key) for key in ("return_id", "order_id", "status", "credit", "replacement_total", "additional_due", "unused_credit")},
+        "context": {key: case.get(key) for key in (
+            "return_id", "order_id", "status", "resolution", "credit", "replacement_total", "additional_due", "unused_credit",
+            "refund_converted_at", "refund_due", "payment_verified_at", "payment_amount", "verified_at",
+        )},
     }
 
 

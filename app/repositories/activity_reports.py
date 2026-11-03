@@ -64,7 +64,7 @@ def _build(cur, actor_id: int, start: date, end: date) -> dict:
             FROM order_items i JOIN inventory_items p ON p.item_id=i.product_id
             WHERE i.order_id=o.order_id),'[]') products
         FROM orders o LEFT JOIN resellers r USING(reseller_id)
-        LEFT JOIN LATERAL (SELECT SUM(amount) amount FROM order_refunds
+        LEFT JOIN LATERAL (SELECT SUM(original_credit_amount) amount FROM order_refunds
             WHERE order_id=o.order_id AND status='completed') f ON true
         WHERE (o.order_date AT TIME ZONE 'Asia/Manila')::date BETWEEN %s AND %s
         AND ((o.order_type='walk_in' AND o.created_by_account_id=%s) OR o.team_leader_account_id=%s)

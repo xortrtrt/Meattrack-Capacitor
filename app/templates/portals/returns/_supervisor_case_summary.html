@@ -1,7 +1,7 @@
 {% set requested_packs = case.lines|sum(attribute='quantity') %}
 {% set received_packs = case.lines|sum(attribute='received_quantity') %}
 {% set payment_details = case.replacement_payment_details or {} %}
-{% set needs_receipt_details = case.status == 'settlement_pending' and case.sales_authorized and case.additional_due > 0 and case.has_payment_proof and not case.payment_verified_at and (case.replacement_workflow_version|default(1)==2 or case.has_reservations) and (not payment_details.transaction_number or payment_details.revision != case.quote_revision) %}
+{% set needs_receipt_details = case.resolution=='replace' and case.status == 'settlement_pending' and case.sales_authorized and case.additional_due > 0 and case.has_payment_proof and not case.payment_verified_at and (case.replacement_workflow_version|default(1)==2 or case.has_reservations) and (not payment_details.transaction_number or payment_details.revision != case.quote_revision) %}
 <section class="supervisor-case-summary" aria-label="Case overview">
   {% include 'portals/returns/_workflow_timeline.html' %}
   <dl class="supervisor-case-facts">

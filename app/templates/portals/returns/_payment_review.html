@@ -1,5 +1,5 @@
-{% if return_can_review and case.sales_authorized and case.additional_due > 0 and case.has_payment_proof and not case.payment_verified_at %}
-<form class="lifecycle-form lifecycle-box" method="post" action="{{ action_base }}verify-payment">
+{% if return_can_review and case.resolution=='replace' and not case.refund_converted_at and case.sales_authorized and case.additional_due > 0 and case.has_payment_proof and not case.payment_verified_at %}
+<form novalidate class="lifecycle-form lifecycle-box" method="post" action="{{ action_base }}verify-payment">
   <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
   <input type="hidden" name="return_id" value="{{ case.return_id }}">
   <h4>Review reseller payment</h4>
@@ -22,7 +22,7 @@
   <label><input required type="checkbox" name="funds_received" value="yes"> Funds received in our payment provider</label>
   {% endif %}
   {% if complete_submission and payment_stock_ready %}
-  <label>Verification remarks<textarea required name="remarks" minlength="5" maxlength="1000" rows="2"></textarea></label>
+  <label>Verification remarks<textarea style="resize: none" required name="remarks" minlength="5" maxlength="1000" rows="2"></textarea></label>
   <button class="button primary" type="submit">Confirm funds received</button>
   {% else %}<button class="button primary" type="button" disabled>{{ 'Awaiting reseller submission' if payment_stock_ready else 'Awaiting Inventory' }}</button>{% endif %}
 </form>

@@ -1,0 +1,22 @@
+flowchart TD
+    A([Approved replacement cannot be supplied]) --> B{Unreleased and current assigned processor?}
+    B -->|No| X[Block conversion]
+    B -->|Yes| C[Review case fingerprint, reason and public explanation]
+    C --> D{Submitted payment unresolved?}
+    D -->|Yes| E[Verify actual received funds or explicitly record funds not received]
+    D -->|No| F[Lock and recheck case and financial state]
+    E --> F
+    F --> G{Review still current and conversion eligible?}
+    G -->|No| X
+    G -->|Yes| H[Atomically convert; clear preparation and stock holds; retain history]
+    H --> I[Block quote acceptance, top-up, preparation, release and delivery]
+    I --> J{Complete receipt and settlement authorization?}
+    J -->|No| K[Wait for Inventory and processor clearance]
+    K --> J
+    J -->|Yes| L[Create one refund: approved credit plus verified top-up]
+    L --> M[Use existing refund attempts, exact transfer and unique proof/reference]
+    M --> N{Transfer completed?}
+    N -->|No| O[Keep obligation and recorded attempt for safe retry]
+    O --> M
+    N -->|Yes| P([Complete refund case; no replacement delivery required])
+    Q[Verify paid rejected-order eligibility and receipt of original funds] --> M
