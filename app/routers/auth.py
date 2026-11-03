@@ -90,28 +90,16 @@ def _set_login_device_cookie(response: RedirectResponse, device_token: str) -> N
     )
 
 
-def _complete_login_or_require_policy(
+def _complete_login(
     request: Request,
     account: dict,
     *,
     remember_me: bool,
     device_token: str = "",
 ):
-    account_id = int(account["account_id"])
-    if data.account_has_current_policy_acceptances(
-        account_id,
-        PRIVACY_NOTICE_VERSION,
-        TERMS_VERSION,
-    ):
-        response = establish_portal_session(request, account, remember_me=remember_me)
-        _set_login_device_cookie(response, device_token)
-        return response
-
-    request.session.clear()
-    request.session["pending_policy_account_id"] = account_id
-    request.session["pending_policy_remember_me"] = remember_me
-    request.session["pending_policy_device_token"] = device_token
-    return redirect_to("/account/policies")
+    response = establish_portal_session(request, account, remember_me=remember_me)
+    _set_login_device_cookie(response, device_token)
+    return response
 
 
 @router.get("/login")
@@ -153,6 +141,11 @@ async def login(request: Request, message: str = "", error: str = ""):
             "terms_version": TERMS_VERSION,
             "login_otp_pending": LOGIN_OTP_ENABLED and bool(pending_login_account_id),
             "pending_login_email": request.session.get("pending_login_email", ""),
+            "otp_resend_after_seconds": (
+                data.login_otp_resend_after_seconds(int(pending_login_account_id))
+                if LOGIN_OTP_ENABLED and pending_login_account_id
+                else 0
+            ),
         },
         headers={"Cache-Control": "no-store"},
     )
@@ -272,7 +265,7 @@ async def submit_login(
         if not has_device_token:
             device_token = secrets.token_urlsafe(32)
         if has_device_token and data.login_device_is_trusted(account["account_id"], device_token):
-            return _complete_login_or_require_policy(
+            return _complete_login(
                 request,
                 account,
                 remember_me=should_remember,
@@ -283,7 +276,7 @@ async def submit_login(
         except ValueError as exc:
             return redirect_to(path_with_query("/login", error=str(exc)))
 
-    return _complete_login_or_require_policy(request, account, remember_me=should_remember)
+    return _complete_login(request, account, remember_me=should_remember)
 
 
 @router.post("/login/otp")
@@ -304,7 +297,7 @@ async def submit_login_otp(request: Request, otp_code: str = Form(...)):
         record_event("otp_verify", f"account:{account_id}")
         return redirect_to(path_with_query("/login", error=str(exc)))
     record_event("otp_verify", f"account:{account_id}", succeeded=True)
-    return _complete_login_or_require_policy(
+    return _complete_login(
         request,
         account,
         remember_me=should_remember,
@@ -312,58 +305,35 @@ async def submit_login_otp(request: Request, otp_code: str = Form(...)):
     )
 
 
-@router.get("/account/policies")
-async def account_policies(request: Request, error: str = ""):
-    account_id = request.session.get("pending_policy_account_id")
-    if not account_id:
-        return redirect_to("/login")
-    if not data.active_session_account(int(account_id)):
+@router.post("/login/otp/resend")
+async def resend_login_otp(request: Request):
+    if not LOGIN_OTP_ENABLED:
+        return redirect_to(path_with_query("/login", error="Login OTP is disabled in this environment."))
+    try:
+        account_id = int(request.session.get("pending_login_account_id"))
+    except (TypeError, ValueError):
+        return redirect_to(path_with_query("/login", error="Login OTP session expired. Please sign in again."))
+    device_token = request.session.get("pending_login_device_token") or ""
+    remember_me = bool(request.session.get("pending_login_remember_me"))
+    account = data.active_session_account(account_id)
+    if not account:
         request.session.clear()
-        return redirect_to(path_with_query("/login", error="Your account is no longer active. Contact the Business Owner."))
-    return templates.TemplateResponse(
-        request,
-        "account_policies.html",
-        {
-            "request": request,
-            "error": error,
-            "privacy_notice_version": PRIVACY_NOTICE_VERSION,
-            "terms_version": TERMS_VERSION,
-        },
-        headers={"Cache-Control": "no-store"},
-    )
+        return redirect_to(path_with_query("/login", error="Account was not found. Please sign in again."))
+    try:
+        return begin_login_otp(request, account, device_token, remember_me)
+    except ValueError as exc:
+        return redirect_to(path_with_query("/login", error=str(exc)))
+
+
+@router.get("/account/policies")
+async def account_policies_legacy():
+    """Send old policy-prompt links back to sign-in; account policies are accepted during signup."""
+    return redirect_to("/login")
 
 
 @router.post("/account/policies")
-async def accept_account_policies(
-    request: Request,
-    privacy_acknowledged: str = Form(""),
-    terms_accepted: str = Form(""),
-    privacy_notice_version: str = Form(""),
-    terms_version: str = Form(""),
-):
-    account_id = request.session.get("pending_policy_account_id")
-    if not account_id:
-        return redirect_to(path_with_query("/login", error="Your sign-in step expired. Please sign in again."))
-    if privacy_acknowledged != "yes" or terms_accepted != "yes":
-        return await account_policies(request, error="Please review and acknowledge both documents to continue.")
-    if privacy_notice_version != PRIVACY_NOTICE_VERSION or terms_version != TERMS_VERSION:
-        return await account_policies(request, error="The policy documents changed. Please review the current versions and try again.")
-
-    account = data.active_session_account(int(account_id))
-    if not account:
-        request.session.clear()
-        return redirect_to(path_with_query("/login", error="Your account is no longer active. Contact the Business Owner."))
-    data.record_policy_acceptances(
-        int(account_id),
-        PRIVACY_NOTICE_VERSION,
-        TERMS_VERSION,
-        "existing_account_login",
-    )
-    remember_me = bool(request.session.get("pending_policy_remember_me"))
-    device_token = str(request.session.get("pending_policy_device_token") or "")
-    response = establish_portal_session(request, account, remember_me=remember_me)
-    _set_login_device_cookie(response, device_token)
-    return response
+async def accept_account_policies_legacy():
+    return redirect_to("/login")
 
 
 @router.post("/logout")

@@ -64,6 +64,8 @@ def _actor(cur, actor_id: int, allowed: set[str]) -> str:
         if row and row["account_type"] == "team_leader"
         else (row["account_type"] if row else "")
     )
+    if role == "owner" and allowed == {"inventory"}:
+        raise ValueError("Owner stock oversight is read-only. Inventory staff manage stock changes.")
     if role not in allowed and role != "owner":
         raise ValueError("Your account cannot perform this action.")
     return role
@@ -1258,7 +1260,8 @@ def sync_expired_custody(cur) -> None:
 
 def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reconciliation_only: bool = False,
                          queue: str | None = None, order_id: int | None = None, owner_only: bool = False,
-                         dashboard_queue: str = "", search: str = "", updated_from=None, updated_to=None) -> list[dict]:
+                         dashboard_queue: str = "", search: str = "", updated_from=None, updated_to=None,
+                         replacement_requests_only: bool = False) -> list[dict]:
     from app.return_experience import PAYMENT_PROOF_SQL, FOLLOWUP_SQL, VALID_RESERVATION_SQL, experience, normalize_queue
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"reseller", "sales", "sales-supervisor", "inventory"})
@@ -1275,6 +1278,8 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
         role_scope, role_params = return_scope(role, actor_id)
         scope += role_scope
         params += role_params
+        if replacement_requests_only:
+            scope += " AND (r.resolution='replace' OR r.refund_converted_at IS NOT NULL)"
         if dashboard_queue:
             predicate, bound = dashboard_predicate(role, dashboard_queue, actor_id)
             scope += " AND " + predicate
@@ -1282,7 +1287,7 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
         if order_id:
             scope += " AND r.order_id=%s"
             params.append(order_id)
-        if role == "inventory":
+        if role in {"inventory", "owner"}:
             term = (search or "").strip()[:100]
             if term:
                 scope += " AND (CAST(r.return_id AS text) ILIKE %s OR a.name ILIKE %s OR CAST(o.order_id AS text) ILIKE %s)"

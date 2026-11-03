@@ -88,7 +88,7 @@ def send_password_change_otp(*, to_email: str, name: str, otp_code: str) -> tupl
             [
                 f"Hello {name},",
                 "",
-                "Use this one-time password to confirm your Batangas Premium reseller portal password change:",
+                "Use this one-time password to verify your email before choosing a new portal password:",
                 "",
                 otp_code,
                 "",
@@ -191,6 +191,63 @@ def send_account_password_reset(*, to_email: str, name: str, reset_url: str) -> 
         ),
         failure_message="Password reset email could not be sent.",
         success_message="Password reset email sent.",
+    )
+
+
+def send_account_deactivation_notice(*, to_email: str, name: str, reason: str) -> tuple[bool, str]:
+    safe_name = escape(name)
+    safe_reason = escape(reason).replace("\n", "<br>")
+    return _send_email(
+        to_email=to_email,
+        subject="Your Batangas Premium portal access was deactivated",
+        body="\n".join(
+            [
+                f"Hello {name},",
+                "",
+                "An Owner has deactivated access to your Batangas Premium portal account.",
+                "",
+                "Reason:",
+                reason,
+                "",
+                "If you have questions or believe this was done in error, contact the Business Owner.",
+                "",
+                "Batangas Premium",
+            ]
+        ),
+        html_body=(
+            f"<p>Hello {safe_name},</p>"
+            "<p>An Owner has deactivated access to your Batangas Premium portal account.</p>"
+            f"<p><strong>Reason:</strong><br>{safe_reason}</p>"
+            "<p>If you have questions or believe this was done in error, contact the Business Owner.</p>"
+            "<p>Batangas Premium</p>"
+        ),
+        failure_message="Account deactivation notice could not be sent.",
+        success_message="Account deactivation notice sent.",
+    )
+
+
+def send_account_reactivation_notice(*, to_email: str, name: str, reason: str) -> tuple[bool, str]:
+    safe_name = escape(name)
+    safe_reason = escape(reason).replace("\n", "<br>")
+    return _send_email(
+        to_email=to_email,
+        subject="Your Batangas Premium portal access was restored",
+        body="\n".join([
+            f"Hello {name},", "",
+            "An Owner has reactivated your Batangas Premium portal account.",
+            "You can sign in again using your existing password.", "",
+            "Reason:", reason, "",
+            "If you have questions, contact the Business Owner.", "", "Batangas Premium",
+        ]),
+        html_body=(
+            f"<p>Hello {safe_name},</p>"
+            "<p>An Owner has reactivated your Batangas Premium portal account.</p>"
+            "<p>You can sign in again using your existing password.</p>"
+            f"<p><strong>Reason:</strong><br>{safe_reason}</p>"
+            "<p>If you have questions, contact the Business Owner.</p><p>Batangas Premium</p>"
+        ),
+        failure_message="Account reactivation notice could not be sent.",
+        success_message="Account reactivation notice sent.",
     )
 
 

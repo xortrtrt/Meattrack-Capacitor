@@ -167,15 +167,15 @@ def test_owner_page_and_routes(lifecycle, monkeypatch):
     with TestClient(main.app) as client:
         response = client.get('/portal/owner/alerts?threshold=0')
         assert response.status_code == 200
-        assert 'Mark reviewed' in response.text and 'Business warning level' in response.text
+        assert 'Mark reviewed' not in response.text and 'Business warning level' in response.text
         assert 'name="threshold"' not in response.text
         response = client.post(f'/portal/owner/alerts/{alert_id}/review', follow_redirects=False)
-        assert response.status_code == 303
-        assert fetch_one('SELECT * FROM owner_alert_reviews WHERE alert_id=%s', (alert_id,))
+        assert response.status_code == 403
+        assert not fetch_one('SELECT * FROM owner_alert_reviews WHERE alert_id=%s', (alert_id,))
         response = client.post(f'/portal/owner/alerts/{alert_id}/status', data={'status':'bogus'}, follow_redirects=False)
-        assert response.status_code == 303 and 'Unknown' in response.headers['location']
+        assert response.status_code == 403
         response = client.post(f'/portal/owner/alerts/{alert_id}/status', data={'status':'resolved'}, follow_redirects=False)
-        assert response.status_code == 303 and 'reason' in response.headers['location']
+        assert response.status_code == 403
         response = client.post('/portal/owner/settings', data={
             'order_payment_window_minutes':15, 'near_expiry_days':14, 'critical_expiry_days':2,
             'low_stock_packs':0, 'forecast_default_horizon_days':7,
@@ -259,9 +259,9 @@ def test_review_and_closure_require_owner_session_and_csrf(lifecycle, monkeypatc
         assert client.post(review).status_code == 403
         assert client.post(close, data={'status':'resolved','reason':'A reason for closure'}).status_code == 403
         response = client.post(review, data={'csrf_token':session['csrf_token']}, follow_redirects=False)
-        assert response.status_code == 303 and 'error=' not in response.headers['location']
+        assert response.status_code == 403
         response = client.post(close, data={'csrf_token':session['csrf_token'],'status':'resolved','reason':'Override active risk'}, follow_redirects=False)
-        assert 'error=' in response.headers['location'] and current(d)
+        assert response.status_code == 403 and current(d)
         session.update(account_id=d['inventory'],role_key='team-leader',team_leader_role='inventory')
         assert client.post(review, data={'csrf_token':session['csrf_token']}, follow_redirects=False).status_code in {303,403}
         assert not fetch_one('SELECT * FROM owner_alert_reviews WHERE alert_id=%s AND account_id=%s', (alert_id,d['inventory']))

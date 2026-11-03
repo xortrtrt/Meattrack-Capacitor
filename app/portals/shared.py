@@ -516,6 +516,9 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         "unread_notifications": data.unread_notification_count(role_key, request.session.get("account_id")),
     }
     context.update(portal_section_context(role_key, section, request))
+    if section == "profile":
+        from app.portals.password_change import context as password_context
+        context.update(password_context(request))
     if role_key == "owner":
         context["page_updates"], context["nav_updates"] = owner_update_badges(session_account_id(request))
         from app import owner_recovery
@@ -524,6 +527,7 @@ async def portal(request: Request, role_key: str, section: str, message: str = "
         request,
         PORTAL_TEMPLATES[role_key],
         context,
+        headers={"Cache-Control": "no-store"} if section == "profile" else None,
     )
 
 

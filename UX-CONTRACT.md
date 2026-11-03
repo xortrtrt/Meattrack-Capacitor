@@ -131,3 +131,31 @@ horizontal overflow at 320/390/768/1024/1440/1920px. It captures desktop/phone
 screenshots for all roles. DPR-2 viewport tests cover zoom-equivalent reflow,
 not physical-device or manual browser-zoom verification. Existing inventory,
 return and payment regressions cover unchanged business transitions.
+
+## Profile password verification
+
+All five roles reuse `portals/_password_change.html`, `forms.js` field validation,
+server notice regions and `app/portals/password_change.py` request/verify/save/
+cancel actions. The stages are current password -> email OTP -> new password.
+Only confirmed provider acceptance shows OTP entry; only a verified, unexpired
+server grant shows password entry. Invalid input uses inline errors, first-error
+focus and no native bubbles. Failed delivery returns to request; wrong codes
+remain at verification; expired or exhausted codes return to request. Password
+values never survive reload or enter URLs. Every form renders its CSRF token.
+Cancellation invalidates the challenge. Saving signs all roles out; profile
+responses use `no-store`. Reuse the profile card's existing colors, typography,
+spacing and document scrolling; no separate OTP overlay or new visual tokens.
+
+## Owner inventory oversight
+
+The Owner Inventory parent groups exactly two primary destinations: editable
+Products & prices and read-only Stock oversight. Oversight uses existing routes
+for Inventory overview, Raw materials, Alerts, Expired, Replacement and Movements
+as secondary views. Replacement shows requests and status, including converted
+requests, with search, status filters, pagination and links to existing case details.
+Batch/product/custody details remain readable through contextual links, with the
+Inventory parent and Stock oversight selected. Preserve searches, filters and
+pagination URLs and aggregate unread stock updates on the Stock oversight tab.
+Reuse the shared Owner tab and table styling, native controls and server errors.
+Stock mutations are hidden and independently blocked by backend capability and
+repository guards. Product pricing retains its existing form and audit reason.

@@ -85,6 +85,6 @@ def test_otp_and_use_another_account_forms_have_tokens(login_client, monkeypatch
     sessions[client.cookies.get(SESSION_COOKIE_NAME)]["pending_login_account_id"] = 42
     monkeypatch.setattr(auth, "LOGIN_OTP_ENABLED", True)
     forms = Forms(client.get("/login").text).forms
-    assert [form["action"] for form in forms] == ["/login/otp", "/logout"]
+    assert [form["action"] for form in forms] == ["/login/otp", "/login/otp/resend", "/logout"]
     assert all(form["token"] for form in forms)
     assert forms[0]["token"] == forms[1]["token"]

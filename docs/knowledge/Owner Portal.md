@@ -21,7 +21,7 @@ keep their parent sidebar item selected.
 | Overview | `dashboard` | Business overview; Work queues (`operations`) |
 | Orders | `orders` | Reseller orders |
 | Returns & refunds | `returns` | Product returns; Money refunds (`refunds`) |
-| Inventory | `inventory` | Stock & production; Raw materials (`materials`); Batches (`batches`); Movements (`movements`); Pull-outs (`expired-stock`); Alerts (`alerts`); Products & prices (`products`) |
+| Inventory | `inventory` | Products & prices (`products`), editable pricing; Stock oversight with Inventory overview, read-only Raw materials (`materials`), Alerts (`alerts`), Expired (`expired-stock`), Replacement (`replacements`), and Movements (`movements`) |
 | Resellers | `resellers` | Assignment directory |
 | Sales reports | `reports` | Submitted Sales activity and legacy reports |
 | Demand planning | `forecasts` | Forecast requests/results, progress, retry/cancellation |
@@ -123,16 +123,29 @@ without an active Supervisor, and missing Sales/Supervisor coverage. The Owner-o
 assigned Supervisor, including completed replacements with open customer follow-ups.
 It persists when applying return status filters and retains normal case authorization.
 
-Production, material receipts, and corrections remain explicit actions. Finished
-stock is searchable/paginated; production choices include all active products.
-Correction choices no longer silently stop at 250 items/batches. Price changes do
-not rewrite order values. Physical pull-out, disposal, return custody, replacement
-release, and money transfers retain their separate transitions.
+Owner inventory now provides read-only stock oversight. Inventory staff record
+production, material receipts, corrections, pull-outs, disposal and physical return
+custody/release. Finished stock remains searchable and paginated. Owner product
+pricing stays editable and does not rewrite order values. Financial return and
+refund decisions retain their separate permissions.
 
 Sources: `app/templates/portals/owner/operations.html`, `app/portals/owner.py`,
 `app/portals/product_returns.py`, `app/repositories/product_returns.py`.
 
 ## Staff handover
+
+Owner account controls let the Owner deactivate and later reactivate active
+accounts, with a required 5–500-character reason and an audit record for each
+transition. Deactivation revokes active sessions. Both deactivation and
+reactivation attempt to email the account holder the reason immediately; the
+reactivation notice confirms that sign-in is available with the existing password. The notice remains in the outbox for
+retry if delivery fails; the Owner sees whether the provider accepted it. The
+Owner account directory no longer offers a password-reset email action; users
+manage their passwords from their own profile. Sources:
+`app/templates/portals/owner/users_access.html`,
+`app/portals/owner.py`, `app/repositories/superuser.py`, `app/worker.py`, and
+`app/emailer.py`. Checked 2026-11-03. See [[Roles and Access]] and
+[[Background Work and Integrations]].
 
 Deactivation checks now include accepted return processing, open post-release
 follow-ups, assigned unfinished refunds, and refunds actively processed by the
@@ -177,8 +190,9 @@ deployment, provider delivery, or real financial transfers.
 
 Some existing Owner overrides commit their domain operation before separately
 writing the detailed reason/audit record. This overhaul does not make every such
-operation atomic. Account status, settings, stock compensation, and work transfer
-already write their detailed audit within their transaction. Audit/monitoring pages
+operation atomic. Account status, settings, and work transfer already write their detailed audit
+within their transaction. Historical stock compensation remains transactional,
+but current Owner stock permissions are read-only. Audit/monitoring pages
 remain absent from navigation.
 
 Sources: `app/portals/owner.py`, `app/repositories/superuser.py`,
@@ -203,9 +217,10 @@ when out of stock. The former view-only `threshold` parameter no longer changes
 warning policy. The shared `finished_stock_availability` view excludes expired and
 unapproved packs and subtracts all active order/replacement reservations.
 
-**Mark reviewed** records awareness for the current Owner only; it changes neither
-shared alert status nor notification read state. Legacy acknowledged records retain
-their historical status without invented personal review timestamps. Stock alerts
+Owner alerts are read-only under the 2026-11-04 stock-oversight policy. Earlier
+personal review timestamps and legacy acknowledged records remain stored;
+current Owner pages no longer display recorded-alert history or offer review
+or closure actions. Stock alerts
 show Inventory team responsibility, age in Manila dates, and current stock progress.
 There is no individual alert assignment or claimed start-of-work event.
 
@@ -215,13 +230,12 @@ inactive; recurrence creates a new episode. A near-expiry episode closes when it
 no longer applies, including transition to a separate expired-stock episode.
 Expired-stock alerts remain active while expired warehouse packs remain, regardless
 of quality reclassification. Physical pull-out clears warehouse quantities; disposal
-of segregated holdings remains separate. The page shows the last successful scan;
+of segregated holdings remains separate. Inventory shows the last successful scan; Owner omits this status section.
 GET requests remain read-only and live stock risks do not depend on a running worker.
 
-Manual **Close recorded alert** is available for cleared/stale conditions and manually
-managed cases, including legacy raw-material alerts. The server rejects closure
-while the stock risk remains. Closure requires 5–500 characters of reason and commits
-with its audit record. Notifications deduplicate by episode, recipient role, and
+Owner HTTP review/closure actions are blocked by the read-only stock policy.
+Worker reconciliation still clears managed stock risks after Inventory changes
+the condition. Historical manually managed alert records remain readable. Notifications deduplicate by episode, recipient role, and
 severity. Inventory receives low-stock notifications; Owner critical notifications
 respect the existing setting. Migration 045 adds personal reviews, closure metadata,
 the shared stock view, and active finished-product low-stock uniqueness; it preserves
@@ -244,8 +258,10 @@ navigation templates. See [[Orders and Inventory]] and [[Testing and Change Impa
 The Alerts page presents three linked summary counts (expired batches, upcoming
 expiry batches, and low-stock products), followed by expiry/replenishment worklists.
 Each batch shows days remaining, the printed date, quantity, and a direct action.
-Recorded alerts use a compact list with active cases first; resolved history is
-collapsed in a native disclosure. Styling is isolated in
+Inventory retains its recorded-alert list and resolved history. Owner Alerts
+omits that history, the live-inventory banner and the scan timestamp. Owner
+Inventory overview also omits the physical/reserved/expired stock explanation
+banner; summary cards and stock tables remain. Styling is isolated in
 `app/static/css/portals/owner-alerts.css`; state transitions and warning rules remain
 as described above. The saved warning level links to Business settings. Visually
 checked on desktop and phone on 2026-11-01.
@@ -258,7 +274,7 @@ live expiry batches, available quantities, saved warning levels, stock episode I
 resolution state, and last successful reconciliation come from the same sources.
 Inventory sees stock alert types only, including legacy material records; Owner-only
 forecast alerts and personal review timestamps are not exposed. Inventory uses its
-own stock-details and pull-out links, with no Owner settings/review/closure controls.
+own stock-details and pull-out links; Owner stock views provide inspection only.
 The worker's existing reconciliation remains authoritative for episode clearance;
 page reads never create a second set of alerts. See [[Orders and Inventory]] and
 [[Roles and Access]]. Sources: `app/repositories/stock_alerts.py`,
@@ -290,3 +306,58 @@ linked filtered lists and include inactive assignees. Other Owner sections and
 transaction rules remain unchanged. See [[Role Dashboards]] and [[Decisions]].
 Sources: `app/repositories/coverage_filters.py`, `app/repositories/owner_insights.py`,
 `app/templates/portals/owner/dashboard.html`.
+
+## Read-only stock oversight (2026-11-04)
+
+The Inventory workspace has exactly two main tabs: Products & prices and Stock
+oversight. The latter groups Inventory overview, Raw materials, Alerts, Expired,
+Replacement, and Movements. Batch/product and pull-out detail URLs remain readable from stock
+links, without standalone main tabs or stock-changing forms. Current availability,
+physical stock, reservations and immutable movement history retain their existing
+queries. Owner production/receipt/correction/pull-out/disposal and physical return
+custody endpoints reject direct requests; Inventory staff retain operational access.
+The Owner can still edit prices and make permitted order/financial decisions.
+Both Owner product lists show five products per page; overview summary totals
+still span the full active catalog. Search and page clamping use the shared
+`app/portals/shared.py:product_page` adapter.
+Manual alert review/closure is no longer available through Owner stock views.
+Sources: `app/portal_config.py`, `app/capabilities.py`, `app/portals/owner.py`,
+`app/portals/product_returns.py`, `app/repositories/inventory/movements.py`,
+`app/repositories/product_returns.py`, `app/repositories/superuser.py`, and
+`app/templates/portals/owner/`. See [[Roles and Access]], [[Orders and Inventory]],
+and [[Decisions]].
+
+
+## Owner return presentation alignment (2026-11-04)
+
+The Owner keeps its existing case dialog and authorized review/delivery actions.
+Policy-2 replacements show no payment or price adjustment in the shared summary;
+historical policy-1 cases retain their recorded extra-payment/difference amounts.
+Converted cases show refund status and amount, with return-verification waiting
+separate from settlement waiting. The list also recognizes the conversion marker.
+Stock-shortage approval already stores `resolution='refund'`; the marker check is
+an explicit presentation safeguard, not a change to conversion or settlement.
+Owner dialogs use the existing Owner replacement conversation link and omit the
+Team Leader Sales-chat link. See [[Replacement Workflow]] and
+[[Returns and Financials]]. Sources: `app/templates/portals/team-leader/returns.html`,
+`app/templates/portals/team-leader/_return_case_dialog.html`,
+`app/templates/portals/returns/_supervisor_case_summary.html`,
+`app/templates/portals/returns/_replacement_actions.html`, and
+`app/repositories/replacement_workflow.py`. Rendering checks:
+`tests/test_sales_case_cards.py` (policy, conversion, custody gate, conversation).
+
+
+The Expired tab opens the existing read-only expired-stock and holding records.
+Replacement lists original replacement requests and their current status, including
+requests later converted to refunds; unrelated refund-only requests stay in Returns
+& refunds. Search, status filtering and pagination happen in the repository query
+before the 12-row page limit. Case links open existing authorized Owner return
+details without adding stock-changing controls to oversight. See [[Replacement Workflow]].
+Sources: `app/portals/owner.py:replacements_context`,
+`app/repositories/product_returns.py:list_product_returns`,
+`app/templates/portals/owner/replacements.html`, and
+`tests/test_owner_stock_oversight.py`. Checked locally 2026-11-04.
+
+The Owner Expired view omits the Custody history tab and timeline. The shared
+Inventory staff view and stored custody movements remain available. Source:
+`app/templates/portals/lifecycle/expired-stock.html`. Checked 2026-11-04.

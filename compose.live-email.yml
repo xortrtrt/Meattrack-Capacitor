@@ -1,7 +1,7 @@
 name: meattrack-local
 
-# Opt-in local override for testing real transactional delivery through Brevo.
-# Use together with compose.yml; the base local stack remains mail-capture only.
+# Optional stricter local override for Brevo delivery.
+# The base compose file already uses Brevo; this file requires explicit sender settings.
 services:
   app:
     environment:

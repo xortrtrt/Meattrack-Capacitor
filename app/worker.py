@@ -7,6 +7,8 @@ from app.config import APP_BASE_URL
 from app.database import get_transaction_cursor
 from app.emailer import (
     send_account_activation,
+    send_account_deactivation_notice,
+    send_account_reactivation_notice,
     send_account_password_reset,
     send_inquiry_rejection,
     send_inquiry_status_update,
@@ -101,6 +103,16 @@ def _deliver(row: dict) -> tuple[bool, str]:
             to_email=payload["to_email"], name=payload["name"],
             reset_url=APP_BASE_URL + payload["reset_path"],
         )
+    if row["event_type"] == "account_deactivated":
+        return send_account_deactivation_notice(
+            to_email=payload["to_email"],
+            name=payload["name"],
+            reason=payload["reason"],
+        )
+    if row["event_type"] == "account_reactivated":
+        return send_account_reactivation_notice(
+            to_email=payload["to_email"], name=payload["name"], reason=payload["reason"],
+        )
     if row["event_type"] == "inquiry_followup":
         return send_inquiry_status_update(
             to_email=payload["to_email"], name=payload["name"], business_name=payload["business_name"],
@@ -154,6 +166,7 @@ def cleanup_ephemeral_security_data() -> None:
         cur.execute("DELETE FROM security_events WHERE created_at < now() - interval '30 days'")
         cur.execute("DELETE FROM account_login_otps WHERE consumed_at < now() - interval '30 days' OR expires_at < now() - interval '30 days'")
         cur.execute("DELETE FROM account_password_otps WHERE consumed_at < now() - interval '30 days'")
+        cur.execute("DELETE FROM account_password_change_challenges WHERE expires_at < now() - interval '30 days'")
         cur.execute("DELETE FROM account_activation_tokens WHERE consumed_at < now() - interval '30 days'")
 
 

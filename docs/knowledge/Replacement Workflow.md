@@ -323,3 +323,15 @@ Sources: `app/repositories/dashboard_queues.py`, `app/repositories/portal_dashbo
 The [[Return Workflow Gap Review]] predates the 2026-11-03 stock-shortage and
 no-money policy change. Its control/UX findings concern separate portal operations
 and remain historical review context.
+
+
+## Owner stock oversight (2026-11-04)
+
+The read-only Replacement tab under Owner Inventory lists replacement requests
+and their status, including requests converted to refunds. Refund-only requests
+remain in Returns & refunds. It reuses the existing case status projections and
+links to authorized Owner case details; it does not change custody, approval,
+release or refund rules. See [[Owner Portal]] and [[Roles and Access]]. Sources:
+`app/portals/owner.py:replacements_context`,
+`app/repositories/product_returns.py:list_product_returns`,
+`app/templates/portals/owner/replacements.html`.

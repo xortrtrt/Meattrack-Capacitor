@@ -129,7 +129,7 @@ Raw-material expiry, supplier returns, and real stock-waiting backorders are out
 - database/migrations: ordered schema upgrades; never modify applied migrations.
 - tests: unit, integration, PostgreSQL and browser tests.
 - tools: migration, seed, import, and operational utilities.
-- compose.yml: local app/database/worker/mail-capture environment.
+- compose.yml: local app/database/worker environment; Brevo email settings come from `.env`.
 - compose.prod.yml: production services.
 - deploy/nginx: reverse proxy configuration.
 
@@ -170,7 +170,7 @@ Requirements: Docker Desktop/Engine and Docker Compose v2.
 2. Ensure no existing local database volume contains data you need to keep.
 3. Start the stack with: docker compose up -d --build
 4. Visit http://127.0.0.1:8000 and confirm http://127.0.0.1:8000/health.
-5. The local stack includes PostgreSQL, app, worker, and mail-capture. View development email/OTP with: docker compose logs -f mail-capture.
+5. The local stack includes PostgreSQL, app, and worker. Configure `BREVO_API_KEY` in the ignored `.env` for OTP and transactional email delivery; the local mail-capture service has been removed.
 
 For native Python development, use the virtual environment and commands in README. The local PostgreSQL port is 55433. Never use tools/seed_database.py against production; it drops and recreates the public schema.
 

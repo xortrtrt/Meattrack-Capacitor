@@ -155,7 +155,6 @@ def profile_context(request: Request) -> dict:
     return {
         "account_profile": account,
         "reseller_profile": reseller_profile,
-        "password_otp_pending": request.query_params.get("otp") == "1",
     }
 
 
@@ -559,51 +558,6 @@ def reseller_cancel_order(
             message=f"Order #{order_id} was cancelled.",
         )
     )
-
-
-@router.post("/portal/reseller/profile/password")
-async def reseller_profile_password(
-    request: Request,
-    current_password: str = Form(...),
-    new_password: str = Form(...),
-    confirm_password: str = Form(...),
-):
-    guard = shared.require_portal_session(request, "reseller")
-    if guard:
-        return guard
-    account_id = shared.session_account_id(request)
-    if account_id is None:
-        return shared.redirect_to(shared.safe_portal_path("reseller", "profile", error="Your session expired. Please sign in again."))
-    try:
-        if new_password != confirm_password:
-            raise ValueError("New password and confirmation do not match.")
-        pending = data.request_reseller_password_change(account_id, current_password, new_password)
-        sent, email_message = shared.send_password_change_otp(
-            to_email=pending["email"],
-            name=pending["name"],
-            otp_code=pending["otp_code"],
-        )
-        if not sent:
-            data.cancel_reseller_password_change(account_id, pending.get("otp_id"))
-            raise ValueError(email_message)
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("reseller", "profile", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("reseller", "profile", otp="1", message="OTP sent to your account email. Enter it below to confirm your password change."))
-
-
-@router.post("/portal/reseller/profile/password/confirm")
-async def reseller_profile_password_confirm(request: Request, otp_code: str = Form(...)):
-    guard = shared.require_portal_session(request, "reseller")
-    if guard:
-        return guard
-    account_id = shared.session_account_id(request)
-    if account_id is None:
-        return shared.redirect_to(shared.safe_portal_path("reseller", "profile", error="Your session expired. Please sign in again."))
-    try:
-        data.confirm_reseller_password_change(account_id, otp_code)
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("reseller", "profile", otp="1", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("reseller", "profile", message="Password updated."))
 
 
 @router.post("/portal/reseller/profile")

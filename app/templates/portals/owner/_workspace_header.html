@@ -5,13 +5,11 @@ Inventory, and refund processors. Step in where responsibility is missing.',
 assigned team needs intervention.', 'returns': 'Follow returned goods,
 replacement decisions, and settlement clearance.', 'refunds': 'Verify
 obligations and record completed transfers with supporting evidence.',
-'inventory': 'Review sellable stock and production readiness across the
-business.', 'materials': 'Inspect material quantities in their own units and
-record incoming deliveries.', 'batches': 'Trace finished stock by batch,
+'inventory': 'Inventory overview, alerts, and movements. Stock oversight is read-only.', 'materials': 'Inspect raw-material quantities. Inventory staff record stock changes.', 'batches': 'Trace finished stock by batch,
 production date, and expiry.', 'movements': 'Follow physical stock and
-reservations. Corrections preserve the original ledger.', 'expired-stock':
+reservations. Inventory staff record stock changes.', 'expired-stock':
 'Track expired-stock pull-outs and returned goods in separate non-sellable
-custody records.', 'alerts': 'Catch expiry risks early, plan replenishment, and follow through on stock exceptions.', 'products': 'Set product prices. Existing orders retain
+custody records.', 'replacements': 'Follow replacement requests and their current status. Stock oversight is read-only.', 'alerts': 'Catch expiry risks early, plan replenishment, and follow through on stock exceptions.', 'products': 'Set product prices. Existing orders retain
 their recorded purchase values.', 'resellers': 'Review the reseller network and
 maintain Sales assignments.', 'accounts': 'Manage account access, team roles,
 and safe handover of active work.', 'reports': 'Review submitted Sales activity.
@@ -29,7 +27,7 @@ behind a product balance.' } %}
     >
     <h2>
       {{ {'dashboard':'Business overview', 'orders':'Orders',
-      'returns':'Returns & refunds', 'inventory':'Inventory', 'alerts':'Inventory alerts'}.get(section,
+      'returns':'Returns & refunds', 'inventory':'Stock oversight', 'expired-stock':'Expired stock', 'alerts':'Inventory alerts'}.get(section,
       section_title) }}
     </h2>
     <p>{{ descriptions.get(section, '') }}</p>
@@ -47,9 +45,15 @@ behind a product balance.' } %}
 <nav class="owner-workspace-tabs" aria-label="Workspace sections">
   {% for slug, label in owner_workspace.tabs %}<a
     href="/portal/owner/{{ slug }}"
-    class="{{ 'is-current' if section == slug else '' }}"
-    aria-current="{{ 'page' if section == slug else 'false' }}"
-    >{{ label }}{% set updates = (page_updates|default({})).get(slug, 0) %}{% if updates %} <span class="owner-update-badge" aria-label="{{ updates }} unread updates">{{ '99+' if updates > 99 else updates }}</span>{% endif %}</a
+    class="{{ 'is-current' if owner_workspace.get('active_tab', section) == slug else '' }}"
+    aria-current="{{ 'page' if owner_workspace.get('active_tab', section) == slug else 'false' }}"
+    >{{ label }}{% set updates = (page_updates|default({})).get(slug, 0) %}{% if slug == 'inventory' and owner_workspace.get('active_tab') %}{% set stock_updates = namespace(total=0) %}{% for child in ['inventory','materials','batches','movements','expired-stock','alerts','product-details','replacements'] %}{% set stock_updates.total = stock_updates.total + (page_updates|default({})).get(child, 0) %}{% endfor %}{% set updates = stock_updates.total %}{% endif %}{% if updates %} <span class="owner-update-badge" aria-label="{{ updates }} unread updates">{{ '99+' if updates > 99 else updates }}</span>{% endif %}</a
   >{% endfor %}
+</nav>
+{% endif %}
+
+{% if owner_workspace.get('subtabs') %}
+<nav class="owner-workspace-tabs owner-stock-subtabs" aria-label="Stock oversight views">
+  {% for slug, label in owner_workspace.subtabs %}<a href="/portal/owner/{{ slug }}" class="{{ 'is-current' if owner_workspace.active_subtab == slug else '' }}" aria-current="{{ 'page' if owner_workspace.active_subtab == slug else 'false' }}">{{ label }}{% set updates = (page_updates|default({})).get(slug, 0) %}{% if updates %}<span class="owner-update-badge" aria-label="{{ updates }} unread updates">{{ '99+' if updates > 99 else updates }}</span>{% endif %}</a>{% endfor %}
 </nav>
 {% endif %}

@@ -32,7 +32,7 @@
   {% include "portals/owner/verify.html" %}
 {% elif section == "notifications" %}
   {% include "portals/notifications.html" %}
-{% elif section in ["materials", "alerts", "settings"] %}
+{% elif section in ["materials", "alerts", "settings", "replacements"] %}
   {% include "portals/owner/" ~ section ~ ".html" %}
 {% endif %}
 </div>

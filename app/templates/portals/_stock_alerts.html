@@ -4,8 +4,10 @@
 {% set active_alerts = alerts|rejectattr('status', 'equalto', 'resolved')|list %}
 {% set resolved_alerts = alerts|selectattr('status', 'equalto', 'resolved')|list %}
 <div class="owner-alerts stock-alerts">
+  {% if not stock_alert_owner %}
   <div class="oa-context"><p><span class="oa-live-dot" aria-hidden="true"></span>Live inventory <span>Live quantities · Asia/Manila</span></p><a href="/portal/{{ stock_alert_role }}/alerts" class="oa-refresh"><i data-lucide="refresh-cw" aria-hidden="true"></i>Refresh</a></div>
   <p class="oa-page-note">{% if not stock_alert_owner %}Shared with Owner &middot; {% if stock_alert_scan %}Checked {{ stock_alert_scan.checked_at|nice_date }}{% else %}First check pending{% endif %}{% elif stock_alert_scan %}Last successful alert check: {{ stock_alert_scan.checked_at|nice_date }}. Checks run about once a minute; live risks remain visible between checks.{% else %}Automatic alert check has not completed yet. Live stock risks remain visible below.{% endif %}</p>
+  {% endif %}
   <div class="oa-summary" aria-label="Stock risk summary">
     <a href="/portal/{{ stock_alert_role }}/alerts?category=expired" class="oa-metric oa-metric-danger"><span class="oa-metric-label"><i data-lucide="circle-alert" aria-hidden="true"></i>Expired stock</span><strong>{{ expired|length }}<small>{{ 'batch' if expired|length == 1 else 'batches' }}</small></strong><span class="oa-metric-foot">{{ 'Arrange physical pull-out' if expired else 'No expired batches in stock' }}<i data-lucide="arrow-up-right" aria-hidden="true"></i></span></a>
     <a href="/portal/{{ stock_alert_role }}/alerts?category=expiring" class="oa-metric oa-metric-warning"><span class="oa-metric-label"><i data-lucide="calendar-clock" aria-hidden="true"></i>Expiring soon</span><strong>{{ upcoming|length }}<small>{{ 'batch' if upcoming|length == 1 else 'batches' }}</small></strong><span class="oa-metric-foot">Within {{ stock_risk.near_days }} days<i data-lucide="arrow-up-right" aria-hidden="true"></i></span></a>
@@ -28,21 +30,19 @@
       <footer class="oa-section-foot"><i data-lucide="info" aria-hidden="true"></i>Expired and unapproved packs are excluded.</footer>
     </section>
   </div>
+  {% if not stock_alert_owner %}
   {% macro alert_row(item) %}
   <article class="oa-log-row" id="stock-alert-{{ item.alert_id }}"><div class="oa-log-content"><div class="oa-log-meta"><span class="oa-status {{ 'oa-status-danger' if item.severity == 'critical' else 'oa-status-warning' if item.severity == 'warning' else '' }}">{{ item.severity|capitalize }}</span><span>{{ item.status|capitalize }}</span><span>#{{ item.alert_id }}</span></div><h3>{{ item.subject }}</h3>{% if stock_alert_owner %}<p>{{ item.message }}</p><p class="oa-progress">{% if item.stock_managed %}Responsible: Inventory team · {{ 'Closed record' if item.status == 'resolved' else 'Awaiting stock action' if item.risk_active else 'Risk cleared' }}{% else %}Owner review required{% endif %} · Raised {{ item.triggered_at|nice_date }}{% if item.triggered_at %} · {{ item.age_days }} day(s) {{ 'since raised' if item.status == 'resolved' else 'pending' }}{% endif %}{% if item.status == 'acknowledged' %} · Legacy acknowledgement{% endif %}{% if item.resolved_at %} · Closed {{ item.resolved_at|nice_date }} ({{ item.resolution_source }}){% endif %}</p>{% if item.resolution_reason %}<p>{{ item.resolution_reason }}</p>{% endif %}{% if item.status != 'resolved' and item.stock_managed and item.risk_active %}<p class="oa-page-note">Closure is blocked while this stock risk remains.</p>{% endif %}{% else %}<p class="oa-progress">{{ item.batch_code or ('Low stock' if item.alert_type == 'low_stock' else 'Stock review') }} &middot; {{ item.triggered_at|nice_date }}</p>{% endif %}</div>
     <div class="oa-log-actions">
       {% if not stock_alert_owner and item.status != 'resolved' %}<a class="oa-record-action" href="/portal/team-leader/{{ 'expired-stock?batch_id=' ~ item.product_batch_id ~ '&from_alerts=1#pullout-' ~ item.product_batch_id if item.alert_type == 'expired_batch' and item.product_batch_id else 'expired-stock#pending-pullout' if item.alert_type == 'expired_batch' else 'product-details?product_id=' ~ item.product_id if item.product_id else 'raw-materials' }}">{{ 'Pull out stock' if item.alert_type == 'expired_batch' else 'Review stock' }}<i data-lucide="arrow-right" aria-hidden="true"></i></a>{% endif %}
-      {% if stock_alert_owner and item.status != 'resolved' %}
-        {% if item.reviewed_at %}<span class="oa-acknowledged"><i data-lucide="check" aria-hidden="true"></i>Reviewed by you · {{ item.reviewed_at|nice_date }}</span>
-        {% else %}<form action="/portal/owner/alerts/{{ item.alert_id }}/review" method="post"><button name="status" value="reviewed" aria-label="Mark alert {{ item.alert_id }} reviewed">Mark reviewed</button></form>{% endif %}
-        {% if not item.risk_active %}<details class="oa-close"><summary>Close recorded alert</summary><form action="/portal/owner/alerts/{{ item.alert_id }}/status" method="post"><input type="hidden" name="status" value="resolved"><label for="alert-reason-{{ item.alert_id }}">Reason for closure</label><textarea id="alert-reason-{{ item.alert_id }}" name="reason" required minlength="5" maxlength="500"></textarea><button type="submit">Close recorded alert</button></form></details>{% endif %}
-      {% endif %}
+      {% if stock_alert_owner and item.reviewed_at %}<span class="oa-acknowledged">Previously reviewed {{ item.reviewed_at|nice_date }}</span>{% endif %}
     </div>
   </article>
   {% endmacro %}
-  <section class="oa-surface oa-recorded" aria-labelledby="recorded-title"><header class="oa-section-head"><div><span class="oa-eyebrow">Follow-through</span><h2 id="recorded-title">Recorded alerts <span class="oa-count">{{ active_alerts|length }} active</span></h2><p>{% if stock_alert_owner %}Mark your review without changing the risk. Stock alerts clear automatically after Inventory changes the stock condition.{% else %}Shared with Owner.{% endif %}</p></div></header>
+  <section class="oa-surface oa-recorded" aria-labelledby="recorded-title"><header class="oa-section-head"><div><span class="oa-eyebrow">Follow-through</span><h2 id="recorded-title">Recorded alerts <span class="oa-count">{{ active_alerts|length }} active</span></h2><p>{% if stock_alert_owner %}Read-only alert history. Stock alerts clear automatically after Inventory changes the stock condition.{% else %}Shared with Owner.{% endif %}</p></div></header>
     {% for item in active_alerts %}{{ alert_row(item) }}{% else %}<div class="oa-log-empty"><i data-lucide="circle-check" aria-hidden="true"></i>No active recorded alerts.</div>{% endfor %}
     {% if resolved_alerts %}<details class="oa-history"><summary>Resolved history <span>{{ resolved_alerts|length }}</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>{% for item in resolved_alerts %}{{ alert_row(item) }}{% endfor %}</details>{% endif %}
   </section>
-  {% if stock_alert_owner %}<p class="oa-page-note"><i data-lucide="bell" aria-hidden="true"></i>Navigation badges show unread updates. Open a notification or mark it read to clear its badge.</p>{% endif %}
+  {% endif %}
+
 </div>

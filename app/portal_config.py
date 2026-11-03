@@ -76,19 +76,29 @@ owner_nav_groups = (
     ("Management", ("reports", "accounts", "settings")),
 )
 
-# Detailed workspaces retain their URLs and authorization, without crowding the sidebar.
+# Detailed workspaces retain their URLs; capability guards enforce each current role policy.
 owner_workspace_tabs = (
     (("dashboard", "Business overview"), ("operations", "Work queues")),
     (("returns", "Product returns"), ("refunds", "Money refunds")),
-    (("inventory", "Stock & production"), ("materials", "Raw materials"),
-     ("batches", "Batches"), ("movements", "Movements"),
-     ("expired-stock", "Pull-outs"), ("alerts", "Alerts"), ("products", "Products & prices")),
+    (("products", "Products & prices"), ("inventory", "Stock oversight")),
 )
 
 
 def owner_workspace_for(section: str) -> dict:
+    stock_sections = {"inventory", "materials", "batches", "movements", "expired-stock", "alerts", "products", "product-details", "replacements"}
+    if section in stock_sections:
+        return {
+            "parent": "inventory",
+            "tabs": owner_workspace_tabs[2],
+            "active_tab": "products" if section == "products" else "inventory",
+            "subtabs": () if section == "products" else (
+                ("inventory", "Inventory overview"), ("materials", "Raw materials"),
+                ("alerts", "Alerts"), ("expired-stock", "Expired"), ("replacements", "Replacement"), ("movements", "Movements"),
+            ),
+            "active_subtab": "inventory" if section in {"batches", "product-details"} else section,
+        }
     for tabs in owner_workspace_tabs:
-        if section in {slug for slug, _label in tabs} or (section == "product-details" and tabs[0][0] == "inventory"):
+        if section in {slug for slug, _label in tabs}:
             return {"parent": tabs[0][0], "tabs": tabs}
     return {"parent": section, "tabs": ()}
 
@@ -103,6 +113,7 @@ portal_secondary_sections = {
         "batches": ("Batches", "package-check"),
         "movements": ("Movements", "arrow-left-right"),
         "expired-stock": ("Pull-outs", "archive"),
+        "replacements": ("Replacement requests", "replace"),
         "alerts": ("Alerts", "triangle-alert"),
         "products": ("Products & prices", "tags"),
         "profile": ("My profile", "user-cog"),

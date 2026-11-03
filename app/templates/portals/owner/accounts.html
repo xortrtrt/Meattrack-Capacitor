@@ -137,10 +137,7 @@
         {% if role_key == "owner" and account.activation_status == "active" %}
         <details class="owner-account-admin">
           <summary>Security actions</summary>
-          <form action="/portal/owner/accounts/{{ account.account_id }}/password-reset" method="post">
-            <label>Reason<input required minlength="5" maxlength="500" name="reason"></label>
-            <button class="button subtle" type="submit">Send password-reset email</button>
-          </form>
+          <p class="hint">Deactivation emails this reason to the account holder. You can reactivate access at any time.</p>
           <form action="/portal/owner/accounts/{{ account.account_id }}/status" method="post">
             <input type="hidden" name="active" value="{{ 'false' if account.status == 'active' else 'true' }}">
             <label>Reason

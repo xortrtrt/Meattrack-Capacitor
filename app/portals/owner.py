@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from app import repositories as data
 from app.business_time import business_today
 from app.capabilities import require_capability
+from app.emailer import send_account_deactivation_notice, send_account_reactivation_notice
 from app.portals import shared
 
 
@@ -27,6 +28,7 @@ OWNER_SALES_PERIOD_OPTIONS = [
 ]
 
 OWNER_ACCOUNT_TYPES = ("owner", "team_leader", "reseller")
+OWNER_PRODUCTS_PAGE_SIZE = 5
 SUPERVISOR_ACCOUNT_TYPES = ("team_leader", "reseller")
 ACCOUNT_TYPE_LABELS = {
     "owner": "Owner",
@@ -232,7 +234,7 @@ def dashboard_context(request: Request) -> dict:
 
 
 def products_context(request: Request) -> dict:
-    page = shared.product_page(request)
+    page = shared.product_page(request, page_size=OWNER_PRODUCTS_PAGE_SIZE)
     return {"products_page": page, "products": page["items"]}
 
 
@@ -281,14 +283,12 @@ def orders_context(request: Request) -> dict:
 
 
 def inventory_context(request: Request) -> dict:
-    page = shared.product_page(request, active_only=True)
+    page = shared.product_page(request, page_size=OWNER_PRODUCTS_PAGE_SIZE, active_only=True)
     return {
         "products_page": page,
         "products": page["items"],
-        "production_products": data.list_products(active_only=True),
         "stock": data.owner_stock_snapshot(),
         "raw_materials": data.list_raw_materials(),
-        "product_recipes": data.list_product_recipes(),
         "alerts": data.list_alerts(),
     }
 
@@ -327,8 +327,6 @@ def movements_context(request: Request) -> dict:
     return {
         "movements_page": shared.paged(items, total, filters["page"], 10, q=filters["q"], type=category, sort=filters["sort"]),
         "movements": items,
-        "inventory_items": data.list_inventory_items(),
-        "inventory_batches": data.list_inventory_batches(),
     }
 
 
@@ -338,6 +336,27 @@ def alerts_context(request: Request) -> dict:
     if category not in {"", "expired", "expiring", "low-stock"}:
         raise HTTPException(status_code=404)
     return {**stock_alert_workspace(shared.session_account_id(request)), "stock_alert_category": category}
+
+
+def replacements_context(request: Request) -> dict:
+    from app.repositories.product_returns import list_product_returns
+    filters = shared.portal_filters(request)
+    statuses = (
+        ("submitted", "Pending review"), ("awaiting_receipt", "Awaiting returned goods"),
+        ("discrepancy", "Receipt issue"), ("ready_for_confirmation", "Awaiting clearance"),
+        ("settlement_pending", "In progress"), ("completed", "Completed"), ("rejected", "Declined"),
+    )
+    status = filters["status"] if filters["status"] in dict(statuses) else ""
+    cases = list_product_returns(
+        shared.session_account_id(request), status, page=filters["page"],
+        search=filters["q"], replacement_requests_only=True,
+    )
+    return {
+        "replacement_requests": cases,
+        "replacement_statuses": statuses,
+        "replacement_page": shared.paged(cases, cases[0]["list_total"] if cases else 0,
+                                         cases[0]["list_page"] if cases else 1, 12, q=filters["q"], status=status),
+    }
 
 
 def resellers_context(request: Request) -> dict:
@@ -383,6 +402,7 @@ SECTION_LOADERS = {
     ("owner", "batches"): batches_context,
     ("owner", "movements"): movements_context,
     ("owner", "alerts"): alerts_context,
+    ("owner", "replacements"): replacements_context,
     ("owner", "products"): products_context,
     ("owner", "reports"): reports_context,
     ("owner", "forecasts"): forecasts_context,
@@ -410,52 +430,6 @@ async def owner_dashboard_sales_chart(request: Request):
             "rows": chart_context["owner_sales_chart"],
         }
     )
-
-
-@router.post("/portal/owner/profile/password")
-async def owner_profile_password(
-    request: Request,
-    current_password: str = Form(...),
-    new_password: str = Form(...),
-    confirm_password: str = Form(...),
-):
-    guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "profile.manage_own", "owner")
-    account_id = shared.session_account_id(request)
-    try:
-        if account_id is None:
-            raise ValueError("Your session expired. Please sign in again.")
-        if new_password != confirm_password:
-            raise ValueError("New password and confirmation do not match.")
-        pending = data.request_account_password_change(account_id, current_password, new_password, ("owner",))
-        sent, email_message = shared.send_password_change_otp(
-            to_email=pending["email"], name=pending["name"], otp_code=pending["otp_code"]
-        )
-        if not sent:
-            data.cancel_account_password_change(account_id, pending.get("otp_id"))
-            raise ValueError(email_message)
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "profile", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("owner", "profile", otp="1", message="OTP sent to your email."))
-
-
-@router.post("/portal/owner/profile/password/confirm")
-async def owner_profile_password_confirm(request: Request, otp_code: str = Form(...)):
-    guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "profile.manage_own", "owner")
-    account_id = shared.session_account_id(request)
-    try:
-        if account_id is None:
-            raise ValueError("Your session expired. Please sign in again.")
-        data.confirm_account_password_change(account_id, otp_code, ("owner",))
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "profile", otp="1", error=str(exc)))
-    request.session.clear()
-    return shared.redirect_to(shared.path_with_query("/login", message="Password updated. Sign in again."))
 
 
 @router.post("/portal/owner/accounts/{account_id}/activation")
@@ -710,11 +684,42 @@ def owner_account_status(
     step_up = require_owner_step_up(request, "accounts")
     if step_up:
         return step_up
+    if active not in {"true", "false"}:
+        return shared.redirect_to(
+            shared.safe_portal_path(
+                "owner",
+                "accounts",
+                error="Choose whether to activate or deactivate the account.",
+            )
+        )
     try:
-        data.set_account_active(account_id, active == "true", shared.session_account_id(request) or 0, reason)
+        is_active = active == "true"
+        account = data.set_account_active(account_id, is_active, shared.session_account_id(request) or 0, reason)
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("owner", "accounts", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("owner", "accounts", message="Account status updated."))
+    status_label = "reactivated" if is_active else "deactivated"
+    send_notice = send_account_reactivation_notice if is_active else send_account_deactivation_notice
+    outbox_id = int(account["status_email_outbox_id"])
+    try:
+        sent, delivery_message = send_notice(
+            to_email=account["email"],
+            name=account["name"],
+            reason=" ".join(reason.strip().split()),
+        )
+    except Exception as exc:
+        sent, delivery_message = False, f"{exc.__class__.__name__}: {exc}"
+    data.finish_account_status_email(outbox_id, sent, delivery_message)
+    if sent:
+        return shared.redirect_to(
+            shared.safe_portal_path("owner", "accounts", message=f"Account {status_label}. Email accepted for delivery.")
+        )
+    return shared.redirect_to(
+        shared.safe_portal_path(
+            "owner",
+            "accounts",
+            error=f"Account {status_label}, but no email was sent. Delivery will retry: {delivery_message}",
+        )
+    )
 
 
 @router.post("/portal/owner/accounts/{account_id}/sessions/revoke")

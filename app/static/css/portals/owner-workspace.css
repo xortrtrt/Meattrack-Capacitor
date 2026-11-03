@@ -30,6 +30,10 @@
 .role-owner .owner-profile-link > small { display: flex; align-items: center; gap: 8px; }
 .role-owner .owner-profile-link svg { height: 14px; width: 14px; }
 .role-owner .owner-workspace { display: grid; gap: 24px; max-width: 1600px; min-width: 0; margin-inline: auto; outline: none; }
+.role-owner.section-profile .owner-workspace { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1040px) {
+  .role-owner .owner-profile-page { grid-template-columns: minmax(0, 1fr); }
+}
 .role-owner .owner-workspace-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-top: 5px; }
 .role-owner .owner-workspace-kicker { display: flex; flex-wrap: wrap; gap: 10px; color: var(--owner-muted); font-size: .75rem; font-weight: 500; }
 .role-owner .owner-workspace-kicker > span { color: var(--owner-accent); }
@@ -171,3 +175,6 @@
 .role-owner .owner-update-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: 2px 7px; border-radius: 999px; background: var(--owner-danger); color: var(--owner-surface); font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .role-owner .portal-nav .owner-update-badge { margin-left: auto; }
 .role-owner .notification-panel[popover] { margin: 0; max-height: calc(100dvh - 24px); color: var(--owner-ink); }
+
+.role-owner .owner-stock-subtabs { gap: 4px; border-bottom: 0; padding-bottom: 0; margin-top: -12px; }
+.role-owner .owner-stock-subtabs a { font-size: .8125rem; }

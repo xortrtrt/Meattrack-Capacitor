@@ -14,8 +14,21 @@ sent through the existing Brevo emailer. The raw token is sent directly and is
 not written to the database; PostgreSQL stores only its SHA-256 hash. Registration
 uses the existing email OTP sender and `account_login_otps` table with a distinct
 `reseller_registration` purpose, ten-minute expiry, 60-second resend cooldown,
-five sends per hour, and at most five attempts per code. See [[Owner Portal]] and
+up to 50 requests per account per hour in local Compose (five by default
+elsewhere), and at most five attempts per code. See [[Owner Portal]] and
 [[Roles and Access]].
+
+Login email OTP uses the same sender and OTP table with its own three-minute
+resend cooldown (up to 50 requests per hour in local Compose, five by default
+elsewhere) and a resend action on the pending login page. Local Compose
+configures the Brevo sender as `noreply@batangaspremium.com` and sends through
+Brevo using `BREVO_API_KEY` from `.env`; the API URL defaults to Brevo's
+transactional endpoint. The local mail-capture service has been removed. Without
+a valid API key, delivery fails visibly and the login OTP is not falsely
+reported as sent. Sources:
+`app/routers/auth.py`, `app/security_controls.py`,
+`app/repositories/accounts.py`, `app/config.py`, `app/emailer.py`, and
+`compose.yml`.
 
 Public visitor-to-Sales Live Chat was retired on 2026-11-03. The chatbot still
 answers product and delivery questions and gives the public phone/email when a
@@ -47,6 +60,17 @@ service and retention statements are reflected in the public privacy notice
 (`app/templates/privacy.html`). Sources checked 2026-11-03:
 `app/chatbot/provider.py`, `app/chatbot/lead_flow.py`, `app/emailer.py`,
 `app/live_chat.py`, and `app/config.py`.
+
+Owner account status changes insert a durable `account_deactivated` or
+`account_reactivated` email event
+in the same transaction as the status change and audit record. The web request
+attempts delivery through Brevo immediately and marks the outbox event complete
+only when the provider accepts the message. A failed attempt is saved with an
+error and retried by the worker; the Owner sees that delivery did not succeed.
+Reactivation sends a restored-access notice containing the reason and explaining
+that the account holder can sign in using their existing password. Sources:
+`app/repositories/superuser.py`, `app/portals/owner.py`, `app/worker.py`, and
+`app/emailer.py`. Checked 2026-11-03. See [[Owner Portal]] and [[Roles and Access]].
 
 ## Reseller unified inbox (2026-11-02)
 
@@ -132,7 +156,7 @@ only the confirmed physical pull-out deducts warehouse quantities. See
 
 | Feature | Persistent/local component | External relationship |
 | --- | --- | --- |
-| Notifications/email | Database outbox and worker delivery | Brevo; local mail capture in development |
+| Notifications/email | Database outbox and worker delivery | Brevo in local and production environments |
 | Demand forecasts | Durable runs, per-product summaries, daily results | Local Prophet/pandas and baseline models |
 | FAQ chatbot | Approved local FAQ and Owner contact details | Optional OpenRouter provider |
 | Historical prospect chat | Retained records and cleanup only | No new Ably publication |
@@ -229,3 +253,13 @@ open. Receipt/production and worker paths retain the same episode deduplication;
 adding the Inventory view creates no separate lifecycle or notification stream.
 Checked 2026-11-01 against `app/repositories/stock_alerts.py` and
 `app/portals/shared.py`. See [[Owner Portal]] and [[Orders and Inventory]].
+
+## Profile password OTP before password entry
+
+All profile roles send password verification OTPs immediately through the shared
+Brevo emailer. A failed send cancels the challenge and renders an actionable
+profile error. Successful provider acceptance advances the profile to OTP entry;
+it does not prove inbox delivery. The user verifies the code before entering a
+new password. Password challenge retention is 30 days after expiry. Sources:
+`app/portals/password_change.py`, `app/repositories/password_changes.py`,
+`app/emailer.py`, and `app/worker.py`. See [[Roles and Access]] and [[Architecture]].

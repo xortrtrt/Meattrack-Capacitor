@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, status
 
-from app.config import APP_ENV, AUTH_RATE_LIMIT_ENABLED, CSRF_PROTECTION_ENABLED, RATE_LIMIT_HASH_KEY
+from app.config import APP_BASE_URL, APP_ENV, AUTH_RATE_LIMIT_ENABLED, CSRF_PROTECTION_ENABLED, OTP_REQUESTS_PER_HOUR, RATE_LIMIT_HASH_KEY
 from app.database import get_transaction_cursor
 
 
@@ -115,7 +115,14 @@ async def enforce_csrf(request: Request) -> None:
     referer = request.headers.get("referer", "")
     source = origin or referer
     if APP_ENV == "production":
-        if not host or not source or urlparse(source).netloc.lower() != host:
+        source_url = urlparse(source)
+        configured_host = urlparse(APP_BASE_URL).netloc.lower()
+        allowed_hosts = {value for value in (host, configured_host) if value}
+        if (
+            not source
+            or source_url.scheme not in {"http", "https"}
+            or source_url.netloc.lower() not in allowed_hosts
+        ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid request origin.")
 
     supplied = request.headers.get("x-csrf-token", "")
@@ -183,8 +190,20 @@ def enforce_otp_attempt(account_id: int, purpose: str = "") -> None:
 
 def enforce_otp_resend(account_id: int, purpose: str = "") -> None:
     subject = _otp_subject(account_id, purpose)
-    enforce_limit("otp_resend_minute", subject, 1, "60 seconds", "Please wait 60 seconds before requesting another OTP.")
-    enforce_limit("otp_resend_hour", subject, 5, "1 hour", "OTP request limit reached. Try again later.")
+    cooldown_interval = "3 minutes" if purpose == "login" else "60 seconds"
+    cooldown_message = (
+        "Please wait 3 minutes before requesting another login OTP."
+        if purpose == "login"
+        else "Please wait 60 seconds before requesting another OTP."
+    )
+    enforce_limit("otp_resend_minute", subject, 1, cooldown_interval, cooldown_message)
+    enforce_limit(
+        "otp_resend_hour",
+        subject,
+        OTP_REQUESTS_PER_HOUR,
+        "1 hour",
+        "OTP request limit reached. Try again later.",
+    )
 
 
 def record_otp_resend(account_id: int, purpose: str = "") -> None:

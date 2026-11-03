@@ -35,9 +35,9 @@ def render(*, role="team-leader", authorize=False, error=None, message=None, **c
         case["workflow_steps"] = workflow_steps(case)
         case = reseller_return_view(case)
     request = Request({"type": "http", "method": "GET", "path": "/", "headers": [], "session": {}})
-    template = "portals/reseller/_return_details_page.html" if role=="reseller" else "portals/returns/_supervisor_case_page.html" if role=="sales-supervisor" else "portals/team-leader/_sales_case_dialog.html"
+    template = "portals/reseller/_return_details_page.html" if role=="reseller" else "portals/returns/_supervisor_case_page.html" if role=="sales-supervisor" else "portals/team-leader/_return_case_dialog.html" if role=="owner" else "portals/team-leader/_sales_case_dialog.html"
     return templates.env.get_template(template).render(
-        case=case, request=request, role_key=role, return_can_review=role=="sales-supervisor",
+        case=case, request=request, role_key=role, return_can_review=role in {"sales-supervisor", "owner"},
         return_can_authorize=authorize, replacement_products=[],
         return_is_reseller=role=="reseller", action_base=f"/portal/{role}/returns/actions/",
         operation_key=lambda: "test-operation", message=message, error=error)
@@ -99,3 +99,45 @@ def test_followup_and_customer_text_remain_visible_and_escaped():
     html = render(has_open_followup=True, remarks="<script>private</script>")
     assert "Resolve reported issue" in html
     assert "<script>private</script>" not in html and "&lt;script&gt;" in html
+
+
+@pytest.mark.parametrize("policy", [1, 2])
+def test_owner_summary_respects_payment_policy_and_uses_owner_conversation(policy):
+    html = render(role="owner", return_policy_version=policy,
+                  replacement_total=Decimal("200") if policy == 2 else Decimal("300"),
+                  additional_due=0 if policy == 2 else Decimal("100"))
+    summary = html.split('class="supervisor-case-money"', 1)[1].split("</dl>", 1)[0]
+    if policy == 2:
+        assert "No payment or price adjustment" in summary
+        assert "Extra payment due" not in summary and "Difference refund" not in summary
+    else:
+        assert "Extra payment due" in summary and "Difference refund" in summary
+    assert '/portal/owner/messages?replacement=3' in html
+    assert '/portal/team-leader/messages' not in html
+
+
+@pytest.mark.parametrize("resolution", ["replace", "refund"])
+@pytest.mark.parametrize("verified", [False, True])
+def test_owner_converted_summary_shows_refund_and_custody_gate(resolution, verified):
+    html = render(role="owner", resolution=resolution, return_policy_version=2,
+                  status="awaiting_receipt" if not verified else "settlement_pending",
+                  refund_converted_at=datetime(2026, 11, 4),
+                  verified_at=datetime(2026, 11, 4) if verified else None)
+    summary = html.split('class="supervisor-case-facts"', 1)[1].split("<footer>", 1)[0]
+    assert "Refund status" in summary and "Refund amount" in summary
+    assert ("Awaiting settlement" if verified else "Awaiting return verification") in summary
+    assert "Replacement stock" not in summary and "Extra payment due" not in summary
+
+
+def test_owner_list_treats_conversion_marker_as_refund():
+    request = Request({"type": "http", "method": "GET", "scheme": "http",
+                       "server": ("test", 80), "path": "/portal/owner/returns",
+                       "query_string": b"", "headers": [], "session": {}})
+    html = templates.env.get_template("portals/team-leader/returns.html").render(
+        request=request, role_key="owner", return_case=None, return_queue=None,
+        return_cases=[dict(return_id=3, order_id=6, reseller_name="Example reseller",
+            status="awaiting_receipt", resolution="replace", credit=Decimal("200"),
+            refund_converted_at=datetime(2026, 11, 4))],
+        return_cases_page=dict(pagination=dict(total_pages=1)), legacy_lines=[])
+    assert "Refund</span>" in html and 'data-lucide="wallet"' in html
+    assert "Replace</span>" not in html

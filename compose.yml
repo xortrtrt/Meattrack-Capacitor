@@ -21,18 +21,6 @@ services:
       retries: 12
       start_period: 2m
 
-  mail-capture:
-    build: .
-    command: ["python", "local_mail_capture.py"]
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8025:8025"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8025), timeout=3).close()"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   migrate:
     build: .
     command: ["python", "tools/migrate_database.py"]
@@ -61,6 +49,7 @@ services:
       BUSINESS_TIMEZONE: Asia/Manila
       APP_BASE_URL: http://127.0.0.1:8000
       LOGIN_OTP_ENABLED: ${LOGIN_OTP_ENABLED:-true}
+      OTP_REQUESTS_PER_HOUR: "50"
       DATABASE_URL: ""
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
@@ -74,9 +63,9 @@ services:
       CONSENT_VERSION: ${CONSENT_VERSION:-2026-11-03}
       PRIVACY_NOTICE_VERSION: ${PRIVACY_NOTICE_VERSION:-${CONSENT_VERSION:-2026-11-03}}
       TERMS_VERSION: ${TERMS_VERSION:-${CONSENT_VERSION:-2026-11-03}}
-      BREVO_API_KEY: local-development
-      BREVO_API_URL: http://mail-capture:8025/v3/smtp/email
-      BREVO_FROM_EMAIL: local@meattrack.test
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
+      BREVO_FROM_EMAIL: noreply@batangaspremium.com
       BREVO_FROM_NAME: ${BREVO_FROM_NAME:-Batangas Premium}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4o-mini}
@@ -91,8 +80,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-      mail-capture:
-        condition: service_started
 
   worker:
     build: .
@@ -116,9 +103,9 @@ services:
       DATABASE_POOL_MAX: 3
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-change-this-local-dev-secret}
       RATE_LIMIT_HASH_KEY: ${RATE_LIMIT_HASH_KEY:-change-this-local-rate-limit-secret}
-      BREVO_API_KEY: local-development
-      BREVO_API_URL: http://mail-capture:8025/v3/smtp/email
-      BREVO_FROM_EMAIL: local@meattrack.test
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      BREVO_API_URL: ${BREVO_API_URL:-https://api.brevo.com/v3/smtp/email}
+      BREVO_FROM_EMAIL: noreply@batangaspremium.com
       BREVO_FROM_NAME: ${BREVO_FROM_NAME:-Batangas Premium}
       CHAT_TRANSCRIPT_RETENTION_DAYS: ${CHAT_TRANSCRIPT_RETENTION_DAYS:-30}
     volumes:
@@ -128,8 +115,6 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-      mail-capture:
-        condition: service_started
 
 volumes:
   postgres_data:

@@ -4,6 +4,96 @@ verified: 2026-11-03
 ---
 # Testing and change impact
 
+## Owner read-only inventory workspace (2026-11-04)
+
+The final backend run passed 38 checks across `tests/test_owner_stock_oversight.py`,
+`tests/test_owner_overhaul.py`, `tests/test_owner_stock_alerts.py`,
+`tests/test_gap_repairs_postgres.py`, and `tests/test_portal_route_audit.py`
+(excluding e2e). A separate Owner stock browser check passed at 320, 390 and
+1440 pixels, exercising two main tabs, secondary views, keyboard navigation,
+price forms, and absence of stock mutation controls. Screenshots in ignored
+`outputs/owner-stock-oversight/` were inspected on desktop and phone.
+
+The tests verify direct HTTP stock writes return 403, rejected repository stock
+writes roll back, Inventory receipts remain available, product prices can still
+be updated, and stock quantities remain unchanged by Owner pricing. Older stock
+correction fixtures now use an active Inventory actor; historical movement types
+are retained and the audit records the actor as Inventory. Owner alert routes
+now reject even valid authenticated manual review/closure submissions.
+
+Authenticated read checks against the current local database returned HTTP 200
+for inventory, products, materials, alerts, movements, batches and pull-out views;
+local app health was 200. Targeted Ruff, whitespace and DESIGN lint passed (six
+existing unused-token warnings). The strict static audit reports 299 repository
+findings, with zero findings in the changed inventory summary/material/movement/
+workspace header views. Full mypy still reports four existing errors in
+`app/routers/auth.py`; the unrelated return-workflow suite was not rerun. No
+production changes or business stock-record mutations were performed by this task.
+See [[Owner Portal]], [[Roles and Access]], [[Orders and Inventory]], and [[Decisions]].
+
+## Local Owner alerts backend check (2026-11-04)
+
+All 28 checks passed in `tests/test_owner_stock_alerts.py`,
+`tests/test_inventory_alert_workspace.py`, and
+`tests/test_alert_pullout_connection.py`. Coverage includes review idempotency,
+Owner/CSRF guards, closure reasons and active-risk rejection, audit rollback,
+reservation-aware stock, deduplicated notifications, category navigation and
+alert-to-pull-out progress. Mutations use disposable PostgreSQL schemas.
+Authenticated handler checks against the current local database returned HTTP
+200 for the Owner alerts summary and expired/expiring/low-stock categories;
+an invalid category returned 404. Stock queries succeeded and the worker's last
+stock reconciliation reported `ok`. Targeted backend Ruff checks passed. No
+backend repair was needed, existing alert records were not changed by these
+checks, and production was not touched. See [[Owner Portal]],
+[[Orders and Inventory]], and [[Background Work and Integrations]].
+
+## OTP verification before profile password entry (2026-11-03)
+
+The final focused run passed 58 checks across
+`tests/test_profile_and_inquiry_actions.py`, `tests/test_password_verification_flow.py`,
+`tests/test_emailer.py`, `tests/test_login_csrf.py`, and
+`tests/test_owner_account_status.py`. One additional browser test passed complete
+request/incorrect-code/verification/new-password/save journeys for Owner,
+Reseller, Sales Leader, Inventory Leader and Sales Supervisor. Screenshots at
+390 and 1440 pixels are in ignored `outputs/password-verification/`; the Owner
+phone layout was inspected and its shrinkable grid fixed. Browser validation
+covers missing fields, mismatched confirmation, keyboard verification and logout.
+
+Disposable PostgreSQL schemas verify challenge expiry, five failed attempts,
+hourly/resend caps, cancellation, replaced challenges, tampered/reused grants,
+password strength, and unchanged credentials after rejection. Email tests capture
+the Brevo request and simulate provider acceptance/failure; they do not establish
+real inbox delivery. Synthetic test recipients do not receive real emails.
+
+Changed-file Ruff, JavaScript syntax, whitespace checks and DESIGN lint passed
+(the latter has six existing unused-token warnings). The strict UI audit still
+reports 311 repository-wide findings, with zero in the new shared password form.
+Full lint reports unrelated unused imports in `inquiries.py` and `live_chat.py`;
+full mypy reports four existing type errors in `routers/auth.py`. This is focused
+verification rather than a globally clean repository claim. The configured return
+workflow suite was not rerun for this password task.
+
+Migration 053 was applied locally, local app health returned 200, and the worker
+was restarted with the challenge cleanup change. Production was not changed.
+See [[Roles and Access]], [[Architecture]], [[Database and Operations]], and
+[[Background Work and Integrations]].
+
+## Local account status and email checks (2026-11-03)
+
+Eleven focused checks passed in `tests/test_owner_account_status.py` and
+`tests/test_emailer.py`. The account status test uses a disposable PostgreSQL
+schema and verifies that deactivation blocks authentication and reactivation
+restores authentication with the original password plus active reseller status.
+Route checks cover provider acceptance versus delivery failure for both status
+changes without sending real test emails. Reactivation email checks cover the
+restored-access text, HTML escaping, outbox payload, and worker dispatch. The local running worker had recorded an unknown-event error
+for `account_deactivated`; it was restarted to load the current handler. The
+affected local account was restored to active access and its saved account,
+reseller, and session eligibility states were checked. The reported latest
+button failure was not reproduced; this is not a browser verification claim.
+Production was not changed. See [[Owner Portal]] and
+[[Background Work and Integrations]].
+
 ## Visitor-to-reseller registration implementation (2026-11-03)
 
 The change affects the chatbot, live-chat inquiry endpoints, Owner accounts,

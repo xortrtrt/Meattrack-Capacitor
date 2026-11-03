@@ -13,13 +13,7 @@
     <div class="owner-section-heading">
       <span class="eyebrow">Account security</span>
       <h2>Change password</h2>
-      <p>Set a new password, then confirm the change with the code sent to your email.</p>
     </div>
-    <form class="form-panel bare" action="/portal/owner/profile/password" method="post">
-      <label>Current password<input required type="password" name="current_password" autocomplete="current-password" /></label>
-      <label>New password<input required type="password" name="new_password" autocomplete="new-password" minlength="8" /></label>
-      <label>Confirm password<input required type="password" name="confirm_password" autocomplete="new-password" minlength="8" /></label>
-      <button class="button primary" type="submit">Send confirmation code</button>
-    </form>
+    {% include "portals/_password_change.html" %}
   </article>
 </section>

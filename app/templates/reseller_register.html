@@ -5,7 +5,7 @@
     <meta name="csrf-token" content="{{ csrf_token(request) }}" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reseller registration | MEATTRACK</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='css/login.css') }}?v=20261103-reseller-registration-2" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/login.css') }}?v=20261103-reseller-registration-3" />
   </head>
   <body class="login-page reseller-registration-page">
     <main class="login-wrapper">
@@ -45,13 +45,25 @@
             <label for="registration-business">Business name</label>
             <input required id="registration-business" name="business_name" minlength="2" maxlength="160" autocomplete="organization">
             <label for="registration-phone">Contact number</label>
-            <input required id="registration-phone" name="contact_number" maxlength="40" autocomplete="tel">
-            <label for="registration-address">Business address <span>(optional)</span></label>
-            <textarea id="registration-address" name="address" maxlength="500" autocomplete="street-address" rows="2"></textarea>
-            <label for="registration-password">Password</label>
-            <input required id="registration-password" name="password" type="password" autocomplete="new-password" minlength="8">
+            <div class="registration-phone-field">
+              <span aria-hidden="true">+63</span>
+              <input required id="registration-phone" name="contact_number" type="tel" inputmode="numeric" pattern="9[0-9]{9}" maxlength="10" aria-label="Philippine mobile number after +63" autocomplete="tel-national" placeholder="9171234567">
+            </div>
+            <label for="registration-address">Business address</label>
+            <textarea required id="registration-address" name="address" minlength="5" maxlength="500" autocomplete="street-address" rows="2"></textarea>
+            <label class="registration-password-field" for="registration-password">
+              <span>Password</span>
+              <input required id="registration-password" name="password" type="password" autocomplete="new-password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." data-password-rules-input>
+              <ul class="password-rule-list" data-password-rule-list aria-live="polite">
+                <li data-password-rule="length">8+ characters</li>
+                <li data-password-rule="uppercase">Uppercase letter</li>
+                <li data-password-rule="lowercase">Lowercase letter</li>
+                <li data-password-rule="number">Number</li>
+                <li data-password-rule="special">Special character</li>
+              </ul>
+            </label>
             <label for="registration-confirm-password">Confirm password</label>
-            <input required id="registration-confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="8">
+            <input required id="registration-confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character.">
             <label class="policy-check">
               <input required type="checkbox" name="privacy_acknowledged" value="yes">
               <span>I have read the <a href="/privacy" target="_blank" rel="noopener">Privacy Notice</a> and understand how my personal information is handled.</span>

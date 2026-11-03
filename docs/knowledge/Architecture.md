@@ -51,13 +51,19 @@ polling does not. Migration 051 adds the device-trust table. See [[Roles and Acc
 
 Policy acknowledgements are collected during reseller registration or staff
 account activation and recorded per account, policy type, and version in
-`account_policy_acceptances` (migration 052). A verified existing account
-missing either current version completes a one-time confirmation step after
-password and configured OTP verification but before a portal session is
-created. `/login` itself only contains Remember me and policy links. Sources:
-`app/routers/auth.py`, `app/routers/reseller_registration.py`,
-`app/repositories/accounts.py`, `app/repositories/reseller_invitations.py`, and
-`app/templates/account_policies.html`. See [[Roles and Access]].
+`account_policy_acceptances` (migration 052). Existing accounts proceed to a
+portal session after password and configured OTP verification; login does not
+prompt them to accept a newer policy version. Sources: `app/routers/auth.py`,
+`app/routers/reseller_registration.py`, `app/repositories/accounts.py`,
+`app/repositories/reseller_invitations.py`, and
+`app/templates/reseller_register.html`. See [[Roles and Access]].
+
+Unsafe production requests pass token validation and a same-site origin check.
+The origin check compares the browser source with the incoming request host and
+the configured public `APP_BASE_URL` host, which supports deployments behind the
+project's reverse proxy. Reseller registration applies password, Philippine
+mobile number, and required business-address rules in both the form and
+`app/repositories/reseller_invitations.py`. See [[Roles and Access]].
 
 [[Sales Activity Reports]] use `app/repositories/activity_reports.py` for source
 selection and immutable submission, `app/portals/activity_reports.py` for scoped
@@ -83,3 +89,16 @@ registered by FastAPI. The documentation HTML pages alone allow jsDelivr in
 normal application policy remains restricted to local scripts/styles. Checked
 2026-11-01 against `app/application.py`; regression coverage:
 `tests/test_api_docs.py`.
+
+## Shared profile password verification
+
+`app/portals/password_change.py` owns password request/verify/save/cancel routes
+for all portal roles. `app/repositories/password_changes.py` enforces database
+challenge expiry, attempt and resend limits, hashed single-use grants, and the
+credential update. `app/templates/portals/_password_change.html` renders three
+stages inside each existing profile card. The shared profile loader derives the
+stage from the current account/session and the database, and marks profile pages
+`no-store`. Profile forms use the existing field-error adapter in `forms.js`.
+Migration 053 adds `account_password_change_challenges`; worker maintenance
+removes challenges expired more than 30 days ago. See [[Roles and Access]] and
+[[Background Work and Integrations]].

@@ -171,7 +171,6 @@ def profile_context(request: Request) -> dict:
     account = data.account_portal_profile(account_id) if account_id is not None else None
     return {
         "account_profile": account,
-        "password_otp_pending": request.query_params.get("otp") == "1",
     }
 
 
@@ -397,55 +396,6 @@ async def team_inventory_products_partial(request: Request):
             ],
         },
     )
-
-
-@router.post("/portal/sales-supervisor/profile/password")
-@router.post("/portal/team-leader/profile/password")
-async def team_leader_profile_password(
-    request: Request,
-    current_password: str = Form(...),
-    new_password: str = Form(...),
-    confirm_password: str = Form(...),
-):
-    role_key = request.session.get("role_key") if request.session.get("role_key") in {"team-leader", "sales-supervisor"} else "team-leader"
-    guard = shared.require_portal_session(request, role_key)
-    if guard:
-        return guard
-    account_id = shared.session_account_id(request)
-    if account_id is None:
-        return shared.redirect_to(shared.safe_portal_path(role_key, "profile", error="Your session expired. Please sign in again."))
-    try:
-        if new_password != confirm_password:
-            raise ValueError("New password and confirmation do not match.")
-        pending = data.request_account_password_change(account_id, current_password, new_password, ("team_leader",))
-        sent, email_message = shared.send_password_change_otp(
-            to_email=pending["email"],
-            name=pending["name"],
-            otp_code=pending["otp_code"],
-        )
-        if not sent:
-            data.cancel_account_password_change(account_id, pending.get("otp_id"))
-            raise ValueError(email_message)
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path(role_key, "profile", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path(role_key, "profile", otp="1", message="OTP sent to your account email. Enter it below to confirm your password change."))
-
-
-@router.post("/portal/sales-supervisor/profile/password/confirm")
-@router.post("/portal/team-leader/profile/password/confirm")
-async def team_leader_profile_password_confirm(request: Request, otp_code: str = Form(...)):
-    role_key = request.session.get("role_key") if request.session.get("role_key") in {"team-leader", "sales-supervisor"} else "team-leader"
-    guard = shared.require_portal_session(request, role_key)
-    if guard:
-        return guard
-    account_id = shared.session_account_id(request)
-    if account_id is None:
-        return shared.redirect_to(shared.safe_portal_path(role_key, "profile", error="Your session expired. Please sign in again."))
-    try:
-        data.confirm_account_password_change(account_id, otp_code, ("team_leader",))
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path(role_key, "profile", otp="1", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path(role_key, "profile", message="Password updated."))
 
 
 @router.post("/portal/sales-supervisor/sales")

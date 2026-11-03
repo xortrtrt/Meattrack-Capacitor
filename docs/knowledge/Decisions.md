@@ -4,16 +4,108 @@ verified: 2026-11-03
 ---
 # Decisions
 
+## 2026-11-04 — Separate Owner pricing from read-only stock oversight
+
+The user confirmed that Owner stock oversight is fully read-only, including
+production, corrections, raw materials, batches and pull-outs. Keep only Products
+& prices and Stock oversight as the Inventory workspace's main tabs. Put overview,
+raw materials, alerts and movements inside Stock oversight. Preserve readable
+batch/product/custody detail links, existing stock calculations and historical
+records; reject direct Owner stock mutations as well as removing their controls.
+Inventory staff retain physical operations, while Owner pricing and financial
+permissions remain separate. Sources: `app/portal_config.py`, `app/capabilities.py`,
+`app/portals/owner.py`, `app/repositories/inventory/movements.py`,
+`app/repositories/superuser.py`, `app/repositories/product_returns.py`, and
+`app/templates/portals/owner/`. See [[Owner Portal]], [[Roles and Access]], and
+[[Orders and Inventory]].
+
+## 2026-11-03 — Verify email before allowing password entry in every portal
+
+Use one three-stage profile workflow for every role: current password and email
+OTP request, OTP verification, then new-password entry/save. This supersedes the
+previous flow that stored the chosen password before sending OTP. Enforce the
+verification grant on the server and bind it to the signed-in account/session;
+show email delivery failures immediately. Preserve the existing password policy,
+ten-minute OTP expiry, one-minute resend cooldown and configured hourly cap;
+limit each code to five incorrect attempts. Saving consumes the grant, revokes
+portal sessions and trusted-device tokens, and requires a fresh login for every
+role. Sources: `app/portals/password_change.py`,
+`app/repositories/password_changes.py`, migration
+`database/migrations/053_password_change_verification.sql`, and
+`app/templates/portals/_password_change.html`. See [[Roles and Access]] and
+[[Architecture]].
+
+## 2026-11-03 — Email users when account access is restored
+
+Reactivation sends a notice with the Owner's reason and confirms that the user
+can sign in with the existing password. Attempt delivery immediately and retain
+a durable `account_reactivated` outbox event for retries if the provider rejects
+the attempt. Report provider acceptance or failure separately from the saved
+status change. Sources: `app/portals/owner.py`, `app/repositories/superuser.py`,
+`app/emailer.py`, and `app/worker.py`. See [[Owner Portal]], [[Roles and Access]],
+and [[Background Work and Integrations]].
+
+## 2026-11-03 — Notify users when the Owner deactivates their account
+
+Remove the Owner directory's password-reset email action because users can
+manage passwords from their own portal profile. Keep Owner deactivation and
+reactivation controls, requiring a reason for each transition. On deactivation,
+revoke existing sessions and queue an email that includes the reason in the same
+database transaction as the status and audit update. Attempt delivery immediately
+and report provider acceptance or failure to the Owner; failed notices remain
+queued for worker retries. Sources:
+`app/templates/portals/owner/users_access.html`, `app/portals/owner.py`,
+`app/repositories/superuser.py`, `app/worker.py`, and `app/emailer.py`. See
+[[Owner Portal]], [[Roles and Access]], and [[Background Work and Integrations]].
+
+## 2026-11-03 — Validate invited reseller registration details and public origin
+
+Require reseller passwords to meet the existing account password policy, store
+contact numbers as `+63` plus ten digits beginning with 9, and require a
+5–500-character business address. Enforce these rules in the repository as well
+as in the form so direct requests cannot bypass them. For production CSRF checks,
+accept the request host or the configured public `APP_BASE_URL` host; the latter
+is needed when the app receives requests through the reverse proxy. Sources:
+`app/templates/reseller_register.html`,
+`app/repositories/reseller_invitations.py`, `app/security_controls.py`, and
+`app/config.py`. See [[Roles and Access]] and [[Architecture]].
+
+## 2026-11-03 — Raise the local OTP request cap temporarily
+
+Set local Compose to allow up to 50 OTP requests per account per hour so local
+sign-in and registration can be retried during development. Keep the shared
+configuration default at five for other environments, and apply the same value
+to both security-event throttling and the database-backed login/registration
+OTP guard. The three-minute login resend cooldown and 60-second registration
+cooldown remain unchanged. Sources: `app/config.py`, `app/security_controls.py`,
+`app/repositories/accounts.py`, and `compose.yml`. See [[Roles and Access]] and
+[[Background Work and Integrations]].
+
+## 2026-11-03 — Add login OTP resend with a three-minute cooldown
+
+Let users request a replacement login code from the pending OTP page, while
+enforcing one send per three minutes and retaining the five-per-hour limit in
+both security controls and OTP persistence. Keep reseller-registration OTP's
+existing 60-second cooldown separate. Set local app and worker Brevo sender
+configuration to `noreply@batangaspremium.com`; use local `.env` Brevo credentials
+and API URL for local transactional email. Remove mail capture so missing Brevo
+configuration reports a delivery error rather than a false successful send. Show
+the remaining cooldown as a live countdown. Sources: `app/routers/auth.py`,
+`app/security_controls.py`, `app/repositories/accounts.py`,
+`app/templates/login.html`, `app/static/js/login.js`, and `compose.yml`. See
+[[Roles and Access]] and [[Background Work and Integrations]].
+
 ## 2026-11-03 — Align public policies with current MEATTRACK flows
 
 Update the Privacy Notice and Terms to describe the invitation-only reseller
 registration, current order and return workflows, the public chatbot and its
 external answer provider, transactional email, and the retention periods the
 worker actually enforces. Keep the notice explicit that business records do not
-share one configured deletion period. Separate required Privacy Notice
-acknowledgment from Terms acceptance at sign-in, and bump the shared policy
-version so existing users see and confirm the revised text. The repository does
-not identify the registered legal entity or designated Data Protection Officer;
+share one configured deletion period. Separate Privacy Notice acknowledgment
+from Terms acceptance during signup/activation. At the time, bump the shared
+policy version to request confirmation from existing users; the later
+2026-11-03 decision below supersedes that re-prompt. The repository does not
+identify the registered legal entity or designated Data Protection Officer;
 confirm those publication details with the business. Sources:
 `app/templates/privacy.html`, `app/templates/terms.html`,
 `app/templates/login.html`, `app/routers/auth.py`, `app/config.py`,
@@ -34,15 +126,28 @@ and `database/schema.sql`. See [[Roles and Access]].
 
 Supersede the sign-in checkboxes: collect distinct Privacy Notice
 acknowledgement and Terms acceptance during account creation/activation. Keep
-routine login to Remember me and links. Prompt existing accounts after their
-credentials and configured OTP have been verified when either current policy
-version is missing. Store both acknowledgements separately by policy type,
+routine login to Remember me and links. The initial implementation prompted
+existing accounts when either policy version was missing; this is superseded by
+the decision below. Store signup acknowledgements separately by policy type,
 version, source, and timestamp. Do not represent a Privacy Notice
 acknowledgement as data-processing consent in `user_consents`; specific consent
 requirements remain governed by the applicable processing purpose and basis.
 Sources: migration `database/migrations/052_account_policy_acceptances.sql`,
 `app/routers/auth.py`, `app/routers/reseller_registration.py`, and
 `app/repositories/accounts.py`. See [[Roles and Access]] and [[Architecture]].
+
+## 2026-11-03 — Do not re-prompt registered accounts for policy acceptance
+
+Treat account creation/activation as the point where the account holder reviews
+and acknowledges the Privacy Notice and Terms. After a successful password and
+any required login OTP, establish the portal session without checking current
+policy versions or showing the separate account-policy screen. Keep capturing
+the acknowledgements for new reseller registration and staff activation. This
+avoids interrupting existing users with a repeat agreement prompt. Sources:
+`app/routers/auth.py`, `app/routers/reseller_registration.py`,
+`app/repositories/reseller_invitations.py`, `app/repositories/accounts.py`, and
+migration `database/migrations/052_account_policy_acceptances.sql`. See
+[[Roles and Access]] and [[Architecture]].
 
 ## 2026-11-03 — Trust login devices for 30 days and expire idle sessions
 
@@ -393,3 +498,14 @@ Live Chat workspace, and visitor conversation APIs while retaining historical
 chat data for the existing retention job. See [[Background Work and Integrations]]
 and [[Roles and Access]]. Sources: `app/chatbot/lead_flow.py`,
 `app/routers/chatbot.py`, `app/routers/live_chat.py`, `app/portal_config.py`.
+
+
+## 2026-11-04 — Owner expiry and replacement visibility
+
+Add Expired and Replacement to read-only Stock oversight so the Owner can inspect
+non-sellable holding records and replacement request status together. Replacement
+includes converted requests for continuity, excludes refund-only cases, and links
+to the existing authorized case workspace. Physical stock responsibilities remain
+with Inventory. See [[Owner Portal]] and [[Replacement Workflow]]. Sources:
+`app/portal_config.py`, `app/portals/owner.py`,
+`app/templates/portals/owner/replacements.html`.

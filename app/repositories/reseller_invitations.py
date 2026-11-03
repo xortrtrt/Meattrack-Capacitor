@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 
 from app.security import hash_password, validate_password_policy
 
@@ -135,16 +136,17 @@ def begin_invited_reseller_registration(
 ) -> dict:
     name = " ".join(full_name.strip().split())
     business = " ".join(business_name.strip().split())
-    phone = " ".join(contact_number.strip().split())
+    phone_input = "".join(contact_number.strip().split())
     location = " ".join(address.strip().split())
     if len(name) < 2 or len(name) > 120:
         raise ValueError("Enter your name using 2 to 120 characters.")
     if len(business) < 2 or len(business) > 160:
         raise ValueError("Enter your business name using 2 to 160 characters.")
-    if not phone or len(phone) > 40:
-        raise ValueError("Enter a valid contact number using up to 40 characters.")
-    if len(location) > 500:
-        raise ValueError("Keep your address under 500 characters.")
+    if not re.fullmatch(r"9\d{9}", phone_input):
+        raise ValueError("Enter a Philippine mobile number as 10 digits after +63 (for example, 9171234567).")
+    phone = f"+63{phone_input}"
+    if len(location) < 5 or len(location) > 500:
+        raise ValueError("Enter your business address using 5 to 500 characters.")
     if not privacy_notice_version.strip() or not terms_version.strip():
         raise ValueError("The policy versions are missing. Reload your invitation and try again.")
     password_hash = hash_password(validate_password_policy(password))
@@ -165,7 +167,7 @@ def begin_invited_reseller_registration(
             INSERT INTO resellers (business_name, contact_person, email, contact_number, address, reseller_status)
             VALUES (%s, %s, %s, %s, %s, 'pending') RETURNING reseller_id;
             """,
-            (business, name, invitation["invited_email"], phone, location or None),
+            (business, name, invitation["invited_email"], phone, location),
         )
         reseller_id = int(cur.fetchone()["reseller_id"])
         cur.execute(

@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 from app import main, portal_dependencies, repositories
 from app.routers import auth as auth_routes
 from app.portals import shared as shared_portal
+from app.portals import password_change as password_flow
+from app.repositories import password_changes as password_data
 from app.repositories import accounts as account_repository
 from app.repositories import inquiries as inquiry_repository
 from app.repositories import orders as order_repository
@@ -76,7 +78,10 @@ def test_profile_password_fields_render_live_rule_tracking():
     app_js = open("app/static/js/forms.js", encoding="utf-8").read()
     portal_css = open("app/static/css/portal_base.css", encoding="utf-8").read()
 
-    for template in (reseller_profile, team_profile):
+    shared_password = open("app/templates/portals/_password_change.html", encoding="utf-8").read()
+    for profile in (reseller_profile, team_profile):
+        assert 'include "portals/_password_change.html"' in profile
+    for template in (shared_password,):
         assert "data-password-rules-input" in template
         assert "data-password-rule-list" in template
         assert 'data-password-rule="length"' in template
@@ -170,108 +175,47 @@ def test_profile_picture_upload_route_updates_account(monkeypatch, role_key):
     ) in calls
 
 
-def test_reseller_password_route_rejects_mismatched_confirmation(monkeypatch):
-    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
-    monkeypatch.setattr(repositories, "request_reseller_password_change", lambda *args, **kwargs: pytest.fail("otp request must not run"))
-
-    response = TestClient(main.app).post(
-        "/portal/reseller/profile/password",
-        data={
-            "current_password": "old-password",
-            "new_password": STRONG_NEW_PASSWORD,
-            "confirm_password": "different-password",
-        },
-        follow_redirects=False,
-    )
-
+def test_reseller_password_route_requires_verification_before_new_password(monkeypatch):
+    monkeypatch.setattr(password_flow, "guard", lambda *args: None)
+    response = TestClient(main.app).post("/portal/reseller/profile/password/save", data={"new_password": STRONG_NEW_PASSWORD, "confirm_password": "different"}, follow_redirects=False)
     assert response.status_code == 303
-    assert "/portal/reseller/profile" in response.headers["location"]
-    assert "do+not+match" in response.headers["location"]
+    assert "Verify+an+email+OTP" in response.headers["location"]
 
 
 def test_reseller_password_route_sends_otp(monkeypatch):
     calls = []
-    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(password_flow, "guard", lambda *args: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
-    monkeypatch.setattr(
-        repositories,
-        "request_reseller_password_change",
-        lambda *args: calls.append(args) or {
-            "otp_id": 22,
-            "account_id": 7,
-            "name": "Demo Reseller",
-            "email": "reseller@example.test",
-            "otp_code": "123456",
-        },
-    )
+    monkeypatch.setattr(password_data, "request_password_verification", lambda *args: calls.append(args) or {"challenge_id": 22, "name": "Demo Reseller", "email": "reseller@example.test", "otp_code": "123456"})
     monkeypatch.setattr(shared_portal, "send_password_change_otp", lambda **kwargs: (True, "sent"))
-
-    response = TestClient(main.app).post(
-        "/portal/reseller/profile/password",
-        data={
-            "current_password": "old-password",
-            "new_password": STRONG_NEW_PASSWORD,
-            "confirm_password": STRONG_NEW_PASSWORD,
-        },
-        follow_redirects=False,
-    )
-
+    response = TestClient(main.app).post("/portal/reseller/profile/password", data={"current_password": "old-password"}, follow_redirects=False)
     assert response.status_code == 303
-    assert calls == [(7, "old-password", STRONG_NEW_PASSWORD)]
-    query = parse_qs(urlsplit(response.headers["location"]).query)
-    assert query["otp"] == ["1"]
-    assert query["message"] == ["OTP sent to your account email. Enter it below to confirm your password change."]
+    assert calls == [(7, "old-password")]
+    assert "OTP+sent+to+your+account+email" in response.headers["location"]
 
 
 def test_reseller_password_route_cancels_pending_otp_when_email_fails(monkeypatch):
     cancelled = []
-    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(password_flow, "guard", lambda *args: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
-    monkeypatch.setattr(
-        repositories,
-        "request_reseller_password_change",
-        lambda *args: {
-            "otp_id": 22,
-            "account_id": 7,
-            "name": "Demo Reseller",
-            "email": "reseller@example.test",
-            "otp_code": "123456",
-        },
-    )
+    monkeypatch.setattr(password_data, "request_password_verification", lambda *args: {"challenge_id": 22, "name": "Demo", "email": "reseller@example.test", "otp_code": "123456"})
     monkeypatch.setattr(shared_portal, "send_password_change_otp", lambda **kwargs: (False, "Email failed."))
-    monkeypatch.setattr(repositories, "cancel_reseller_password_change", lambda *args: cancelled.append(args))
-
-    response = TestClient(main.app).post(
-        "/portal/reseller/profile/password",
-        data={
-            "current_password": "old-password",
-            "new_password": STRONG_NEW_PASSWORD,
-            "confirm_password": STRONG_NEW_PASSWORD,
-        },
-        follow_redirects=False,
-    )
-
+    monkeypatch.setattr(password_data, "cancel_password_verification", lambda *args: cancelled.append(args))
+    response = TestClient(main.app).post("/portal/reseller/profile/password", data={"current_password": "old-password"}, follow_redirects=False)
     assert response.status_code == 303
     assert cancelled == [(7, 22)]
     assert parse_qs(urlsplit(response.headers["location"]).query)["error"] == ["Email failed."]
 
 
-def test_reseller_password_confirm_route_success(monkeypatch):
+def test_reseller_password_confirm_route_only_unlocks_password_entry(monkeypatch):
     calls = []
-    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 7)
-    monkeypatch.setattr(repositories, "confirm_reseller_password_change", lambda *args: calls.append(args))
-
-    response = TestClient(main.app).post(
-        "/portal/reseller/profile/password/confirm",
-        data={"otp_code": "123456"},
-        follow_redirects=False,
-    )
-
+    monkeypatch.setattr(password_flow, "guard", lambda *args: None)
+    monkeypatch.setattr(password_flow, "state", lambda request: {"account_id": 7, "challenge_id": 22})
+    monkeypatch.setattr(password_data, "verify_password_challenge", lambda *args: calls.append(args) or "verified-grant")
+    response = TestClient(main.app).post("/portal/reseller/profile/password/confirm", data={"otp_code": "123456"}, follow_redirects=False)
     assert response.status_code == 303
-    assert calls == [(7, "123456")]
-    assert parse_qs(urlsplit(response.headers["location"]).query)["message"] == ["Password updated."]
+    assert calls == [(7, 22, "123456")]
+    assert "Email+verified" in response.headers["location"]
 
 
 def test_reseller_profile_update_route_success(monkeypatch):
@@ -395,36 +339,14 @@ def test_inquiry_followups_are_not_dispatched_by_web_requests():
 
 def test_team_leader_password_route_sends_otp(monkeypatch):
     calls = []
-    monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
+    monkeypatch.setattr(password_flow, "guard", lambda *args: None)
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 9)
-    monkeypatch.setattr(
-        repositories,
-        "request_account_password_change",
-        lambda *args: calls.append(args) or {
-            "otp_id": 33,
-            "account_id": 9,
-            "account_type": "team_leader",
-            "name": "Sales Leader",
-            "email": "sales@example.test",
-            "otp_code": "456789",
-        },
-    )
+    monkeypatch.setattr(password_data, "request_password_verification", lambda *args: calls.append(args) or {"challenge_id": 33, "name": "Sales Leader", "email": "sales@example.test", "otp_code": "456789"})
     monkeypatch.setattr(shared_portal, "send_password_change_otp", lambda **kwargs: (True, "sent"))
-
-    response = TestClient(main.app).post(
-        "/portal/team-leader/profile/password",
-        data={
-            "current_password": "old-password",
-            "new_password": STRONG_NEW_PASSWORD,
-            "confirm_password": STRONG_NEW_PASSWORD,
-        },
-        follow_redirects=False,
-    )
-
+    response = TestClient(main.app).post("/portal/team-leader/profile/password", data={"current_password": "old-password"}, follow_redirects=False)
     assert response.status_code == 303
-    assert calls == [(9, "old-password", STRONG_NEW_PASSWORD, ("team_leader",))]
-    query = parse_qs(urlsplit(response.headers["location"]).query)
-    assert query["otp"] == ["1"]
+    assert calls == [(9, "old-password")]
+    assert "OTP+sent" in response.headers["location"]
 
 
 def test_legacy_inquiry_approval_requires_owner_invitation():

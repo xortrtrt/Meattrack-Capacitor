@@ -19,7 +19,7 @@ def corrected_stock(strict_inventory_database):
     with psycopg2.connect(strict_inventory_database) as conn:
         with conn.cursor() as cur:
             cur.execute(Path("database/migrations/027_owner_superuser.sql").read_text(encoding="utf-8"))
-            cur.execute("INSERT INTO accounts(account_type,name,email,password_hash) VALUES ('owner','Test Owner','owner@audit.test','hash') RETURNING account_id")
+            cur.execute("INSERT INTO accounts(account_type,team_leader_role,name,email,password_hash) VALUES ('team_leader','inventory','Test Inventory','inventory@audit.test','hash') RETURNING account_id")
             actor = cur.fetchone()[0]
     leader, product, batches, order_ids = _seed_fulfillment(strict_inventory_database, batch_quantities=[10], order_quantities=[8])
     return {"dsn": strict_inventory_database, "actor": actor, "leader": leader, "product": product, "batch": batches[0], "order": order_ids[0]}
@@ -52,7 +52,7 @@ def test_finished_corrections_use_batches_and_preserve_historical_movements(corr
             cur.execute("SELECT actor_role,before_state,after_state FROM activity_logs WHERE action='compensated_inventory' ORDER BY activity_log_id")
             logs = cur.fetchall()
             assert len(logs) == 2
-            assert logs[0][0] == "owner"
+            assert logs[0][0] == "inventory"
             assert logs[0][1]["sellable_stock"] == "10.000"
             assert logs[0][2]["sellable_stock"] == "13.000"
 

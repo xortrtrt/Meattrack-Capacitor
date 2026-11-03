@@ -4,6 +4,7 @@ from fastapi import HTTPException, Request
 
 
 OWNER_CAPABILITIES = frozenset({"*"})
+OWNER_READ_ONLY_STOCK = frozenset({"inventory.manage", "inventory.override", "returns.receive"})
 
 CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
     "owner": OWNER_CAPABILITIES,
@@ -92,6 +93,7 @@ OWNER_SECTION_CAPABILITIES = {
     "materials": "inventory.view_all",
     "batches": "inventory.view_all",
     "movements": "inventory.view_all",
+    "replacements": "inventory.view_all",
     "alerts": "inventory.view_all",
     "products": "inventory.prices",
     "reports": "reports.view_all",
@@ -115,12 +117,17 @@ def capability_role_key(request: Request, role_key: str | None = None) -> str:
 
 
 def has_capability(request: Request, capability: str, role_key: str | None = None) -> bool:
-    capabilities = CAPABILITIES_BY_ROLE.get(capability_role_key(request, role_key), frozenset())
+    role = capability_role_key(request, role_key)
+    if role == "owner" and capability in OWNER_READ_ONLY_STOCK:
+        return False
+    capabilities = CAPABILITIES_BY_ROLE.get(role, frozenset())
     return "*" in capabilities or capability in capabilities
 
 
 def require_capability(request: Request, capability: str, role_key: str | None = None) -> None:
     if not has_capability(request, capability, role_key):
+        if capability_role_key(request, role_key) == "owner" and capability in OWNER_READ_ONLY_STOCK:
+            raise HTTPException(status_code=403, detail="Owner stock oversight is read-only. Inventory staff manage stock changes.")
         raise HTTPException(status_code=403, detail="Your account cannot perform this action.")
 
 

@@ -277,3 +277,17 @@ expiry thresholds, live expired-batch count before worker scans, and linked
 receipt/preparation/release eligibility. Physical, reserved and available stock
 remain distinct; no inventory or reservation transition changed. Sources:
 `app/repositories/portal_dashboard.py`, `app/repositories/dashboard_queues.py`.
+
+## Owner inventory oversight (2026-11-04)
+
+Owner inventory groups editable Products & prices and read-only Stock oversight.
+Overview, raw materials, alerts and movements are observational. Inventory staff
+record physical production/receipts/adjustments, pull-outs, disposal and return
+custody/release. Owner stock mutation endpoints reject direct submissions, and
+stock-writer repositories reject Owner actors. Shared views, stock calculations,
+reservations and historical movement rows are unchanged. This does not remove
+permitted Owner order/financial decisions that trigger automatic stock effects.
+Sources: `app/capabilities.py`, `app/portals/owner.py`,
+`app/repositories/inventory/movements.py`, `app/repositories/superuser.py`,
+`app/repositories/product_returns.py`, and `app/templates/portals/owner/`.
+See [[Owner Portal]], [[Roles and Access]], and [[Decisions]].

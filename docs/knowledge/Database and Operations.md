@@ -4,6 +4,16 @@ verified: 2026-11-03
 ---
 # Database and operations
 
+## Password change verification (2026-11-03)
+
+Migration `053_password_change_verification.sql` adds account-bound OTP challenges,
+hashed verification grants, expiry and attempt counts. It was applied to the
+local development database for the profile password workflow. Apply it before
+starting this app revision in other environments; production is unchanged.
+Fresh databases include the table in `database/schema.sql`. No existing account
+passwords are changed by this migration. See [[Roles and Access]] and
+[[Architecture]].
+
 ## Versioned account policy acknowledgements (2026-11-03)
 
 Migration `052_account_policy_acceptances.sql` adds separate versioned records
@@ -144,7 +154,6 @@ deployed history. Verify both fresh baseline and upgrade behavior.
 ```powershell
 docker compose up -d --build
 docker compose logs -f app
-docker compose logs -f mail-capture
 docker compose exec app python tools/migrate_database.py
 .venv\Scripts\python.exe -m pytest -q
 ```
@@ -276,11 +285,12 @@ IPv4 address and app port; the host can continue using localhost. Revert the loc
 binding to loopback and recreate the app to end sharing.
 
 Check the active Windows firewall profile and Docker Desktop Backend allowance.
-Keep PostgreSQL and local mail-capture ports on loopback. Sharing the browser UI
-does not change the configured base URL used for emailed links. The host computer
-and Docker must keep running; visitors use the same local database. Checked against
-Compose and the local network setup on 2026-11-01. See [[Architecture]] and
-[[Testing and Change Impact]]. Source: `compose.yml`.
+PostgreSQL remains loopback-bound. Sharing the browser UI does not change the
+configured base URL used for emailed links. The host computer and Docker must keep
+running; visitors use the same local database. Local transactional email uses the
+Brevo API configured in `.env`. Checked against Compose and the local network setup
+on 2026-11-01. See [[Architecture]] and [[Testing and Change Impact]]. Source:
+`compose.yml`.
 
 ## Local Owner alert schema, 2026-11-01
 

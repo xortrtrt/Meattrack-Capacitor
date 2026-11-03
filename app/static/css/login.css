@@ -214,6 +214,20 @@ button {
   accent-color: var(--gold-deep);
 }
 
+.login-resend-form {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.login-resend-form p {
+  margin-bottom: 8px;
+}
+
+.login-resend-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .login-field {
   display: grid;
   gap: 7px;
@@ -331,6 +345,16 @@ button {
 .reseller-registration-form > textarea { min-height: 76px; resize: vertical; }
 .reseller-registration-form > input[readonly] { background: #f2eee3; color: #574f42; }
 .reseller-registration-form > :is(input, textarea):focus-visible { border-color: var(--gold-deep); outline: 3px solid rgba(170, 134, 22, 0.22); outline-offset: 1px; }
+.registration-phone-field { display: flex; align-items: stretch; min-height: 46px; border: 1px solid #c9c0ab; border-radius: 8px; overflow: hidden; background: #fff; }
+.registration-phone-field > span { display: grid; place-items: center; padding: 0 12px; color: #574f42; background: #f2eee3; border-right: 1px solid #c9c0ab; font-weight: 700; }
+.registration-phone-field > input { flex: 1; width: 0; min-width: 0; border: 0; padding: 10px 12px; color: var(--ink); background: transparent; font: inherit; }
+.registration-phone-field:focus-within { border-color: var(--gold-deep); outline: 3px solid rgba(170, 134, 22, 0.22); outline-offset: 1px; }
+.registration-password-field { display: grid; gap: 8px; color: #494238; font-size: 0.84rem; font-weight: 700; }
+.registration-password-field input { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #c9c0ab; border-radius: 8px; background: #fff; color: var(--ink); font: inherit; }
+.registration-password-field input:focus-visible { border-color: var(--gold-deep); outline: 3px solid rgba(170, 134, 22, 0.22); outline-offset: 1px; }
+.registration-password-field .password-rule-list { margin: 0; padding-left: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; color: #736b5d; font-size: 0.76rem; font-weight: 500; }
+.registration-password-field .password-rule-list li.is-met { color: #23633d; }
+.registration-password-field .password-rule-list li.is-missing { color: #736b5d; }
 .reseller-registration-page .login-btn { min-height: 50px; margin-top: 4px; border-radius: 9px; }
 .reseller-registration-page .login-back { color: #6b5320; }
 .reseller-registration-page .login-back:hover { color: var(--black); }

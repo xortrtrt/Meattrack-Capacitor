@@ -17,6 +17,7 @@ from app.portals import refunds as refunds_portal
 from app.portals import product_returns as returns_portal
 from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
+from app.portals import password_change
 from app.portals import inventory_tools
 from app.portals import team_leader as team_leader_portal
 from app.portals import activity_reports as activity_reports_portal
@@ -167,6 +168,7 @@ def create_app() -> FastAPI:
         refunds_portal.router,
         returns_portal.router,
         activity_reports_portal.router,
+        password_change.router,
         shared_portal.router,
     ):
         application.include_router(portal_router)

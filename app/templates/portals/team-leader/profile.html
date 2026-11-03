@@ -24,33 +24,8 @@
   <article class="panel sales-profile-security">
     <div class="panel-heading">
       <h2>Change password</h2>
-      <span class="hint">Use 8+ characters with uppercase, lowercase, number, and special character. A 6-digit OTP will be sent after submitting.</span>
     </div>
-    <form class="form-panel bare" action="/portal/{{ role_key }}/profile/password" method="post">
-      <label>
-        Current password
-        <input required type="password" name="current_password" autocomplete="current-password" />
-      </label>
-      <label>
-        New password
-        <input required type="password" name="new_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" data-password-rules-input />
-        <ul class="password-rule-list" data-password-rule-list aria-live="polite">
-          <li data-password-rule="length">8+ characters</li>
-          <li data-password-rule="uppercase">Uppercase letter</li>
-          <li data-password-rule="lowercase">Lowercase letter</li>
-          <li data-password-rule="number">Number</li>
-          <li data-password-rule="special">Special character</li>
-        </ul>
-      </label>
-      <label>
-        Confirm new password
-        <input required type="password" name="confirm_password" minlength="8" pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}" title="Use at least 8 characters with uppercase, lowercase, number, and special character." autocomplete="new-password" />
-      </label>
-      <button class="button primary" type="submit">
-        <i data-lucide="mail-check"></i>
-        Send OTP
-      </button>
-    </form>
+    {% include "portals/_password_change.html" %}
   </article>
 
 </section>

@@ -154,6 +154,19 @@ statuses, all time. Empty panels explain where records appear. Message previews
 open existing conversations; dashboard loads never mark messages read.
 See `UX-CONTRACT.md` for behavior and `docs/knowledge/Role Dashboards.md` for data.
 
+Profile password changes reuse a single staged form inside each role's existing
+profile security card. Current password, email OTP, and new password stages keep
+the existing Rubik, control, rule-list, error and button styles. The Owner profile
+uses shrinkable grid tracks so the shared form stays inside its card on phones.
+No new visual tokens or OTP overlay are introduced. Behavior is documented in
+`UX-CONTRACT.md`.
+
+Owner Inventory uses two primary workspace tabs and a quieter secondary row for
+stock overview, raw materials, alerts, expired stock, replacement requests and movements. Both rows consume the
+existing Owner workspace tab styles and unread badges. Stock tables and summaries
+retain the existing density and runtime tokens; stock changes belong to Inventory
+staff, while product-price forms remain in Products & prices.
+
 ## Do's and Don'ts
 
 - Do put work the role can perform ahead of financial history.
@@ -162,3 +175,7 @@ See `UX-CONTRACT.md` for behavior and `docs/knowledge/Role Dashboards.md` for da
 - Don't copy sample counts, prices, presence states or warehouse choices.
 - Don't imply stock reservation from availability or adding to a cart.
 - Don't apply dashboard composition changes to unrelated pages.
+
+Owner Stock oversight includes Expired and Replacement in the same secondary tab
+row. Replacement uses the existing table, filters and pagination styles; it shows
+request status and contextual detail links while keeping stock operations read-only.

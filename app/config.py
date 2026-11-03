@@ -53,6 +53,9 @@ LOGIN_OTP_ENABLED = os.getenv(
     "LOGIN_OTP_ENABLED",
     "true",
 ).strip().lower() in {"1", "true", "yes", "on"}
+OTP_REQUESTS_PER_HOUR = int(os.getenv("OTP_REQUESTS_PER_HOUR", "5"))
+if OTP_REQUESTS_PER_HOUR < 1:
+    raise ValueError("OTP_REQUESTS_PER_HOUR must be at least 1.")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if not DATABASE_URL:

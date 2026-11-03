@@ -8,7 +8,7 @@
     <title>Portal Login | Batangas Premium</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/login.css') }}?v=20261103-policy-activation-1"
+      href="{{ url_for('static', path='css/login.css') }}?v=20261103-otp-resend-1"
     />
   </head>
   <body class="login-page login-signin-page">
@@ -77,6 +77,17 @@
           <p class="login-subtitle">Sent to {{ pending_login_email }}. The OTP expires in 10 minutes.</p>
           <button class="login-btn" type="submit">Verify OTP</button>
         </form>
+        <form action="/login/otp/resend" method="post" class="login-resend-form">
+          <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
+          <p class="login-subtitle" data-otp-resend-status aria-live="polite">
+            {% if otp_resend_after_seconds %}
+            Resend available in <span data-otp-resend-countdown>{{ otp_resend_after_seconds }}</span>.
+            {% else %}
+            You can request another code now.
+            {% endif %}
+          </p>
+          <button class="login-back" type="submit" data-otp-resend-button {% if otp_resend_after_seconds %}disabled{% endif %}>Resend OTP</button>
+        </form>
         <form action="/logout" method="post"><input type="hidden" name="csrf_token" value="{{ login_csrf }}"><button class="login-back" type="submit">Use another account</button></form>
         {% else %}
         <form class="login-form" action="/login" method="post" data-login-form novalidate>
@@ -133,6 +144,6 @@
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261001-frontend-modules-1"></script>
-    <script type="module" src="{{ url_for('static', path='js/login.js') }}?v=20261103-password-toggle-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/login.js') }}?v=20261103-otp-countdown-1"></script>
   </body>
 </html>

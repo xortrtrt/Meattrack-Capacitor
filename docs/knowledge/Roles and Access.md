@@ -15,7 +15,7 @@ type and a specialized team-leader role.
 | Sales team leader | Assigned reseller work, order/payment review, initial return acceptance/rejection and assigned-case tracking | Ownership affects evidence, messaging, reports |
 | Sales supervisor | Supervisor-scoped orders, reseller-to-sales-leader assignments, accepted return processing, refunds | Cannot create portal accounts; refund permission differs from sales visibility |
 | Inventory team leader | Production, stock, expiry, physical return receipt/verification, replacement release | Physical quantities and custody |
-| Owner | Broad oversight, accounts, pricing, operations, recovery and settings | Actions require authenticated capabilities and audit records |
+| Owner | Business oversight, accounts, pricing, financial decisions and settings; read-only physical stock oversight | Actions require authenticated capabilities and audit records |
 
 Return custody and financial processing are separate responsibilities. Inventory
 views focus on stock and quantities. The assigned Sales Leader accepts or rejects
@@ -47,21 +47,45 @@ separate. Checked against `app/capabilities.py`, `app/portals/owner.py`,
 `app/portals/refunds.py`, and `app/repositories/product_returns.py` on 2026-11-03.
 See [[Returns and Financials]] and [[Decisions]].
 
+In People & access, the Owner can deactivate and reactivate accounts with a
+required reason. Both status changes attempt an immediate email to the affected
+account containing that reason. Deactivation also revokes its current sessions. Failed email
+delivery remains queued for retry, and the Owner sees whether the provider
+accepted the message. Reactivation restores account access. Password reset is
+managed from the user's own portal profile, so the Owner directory no longer
+presents a reset-email action. The status change, reason, audit event, and
+deactivation email queue entry are committed together.
+Sources: `app/templates/portals/owner/users_access.html`,
+`app/portals/owner.py`, `app/repositories/superuser.py`, `app/worker.py`, and
+`app/emailer.py`. Checked 2026-11-03. See [[Owner Portal]] and
+[[Background Work and Integrations]].
+
 New reseller registration and staff account activation collect separate
-acknowledgements for the Privacy Notice and Terms. Existing accounts without
-the current versions are prompted after password and any required login OTP
-verification, before a portal session is established. Routine login only offers
-Remember me and links to the policy pages. A new `account_policy_acceptances`
-ledger stores each policy type, version, source, and timestamp independently;
-this acknowledgement ledger is separate from `user_consents`. Policy versions
-default to `CONSENT_VERSION` and can be configured independently with
-`PRIVACY_NOTICE_VERSION` and `TERMS_VERSION`. Sources: `app/config.py`,
-`app/routers/auth.py`, `app/routers/reseller_registration.py`,
-`app/repositories/accounts.py`, `app/repositories/reseller_invitations.py`,
-`app/templates/login.html`, `app/templates/activate.html`,
+acknowledgements for the Privacy Notice and Terms. Accounts that completed
+signup proceed directly to their portal after password and any required login
+OTP verification; routine login does not prompt them to accept policy versions
+again. A new `account_policy_acceptances` ledger stores each policy type,
+version, source, and timestamp independently; this acknowledgement ledger is
+separate from `user_consents`. Policy versions default to `CONSENT_VERSION` and
+can be configured independently with `PRIVACY_NOTICE_VERSION` and
+`TERMS_VERSION`. Sources: `app/config.py`, `app/routers/auth.py`,
+`app/routers/reseller_registration.py`, `app/repositories/accounts.py`,
+`app/repositories/reseller_invitations.py`, `app/templates/activate.html`,
 `app/templates/reseller_register.html`, and migration
-`database/migrations/052_account_policy_acceptances.sql`. See [[Decisions]] and
-[[Architecture]].
+`database/migrations/052_account_policy_acceptances.sql`. Checked 2026-11-03.
+See [[Decisions]] and [[Architecture]].
+
+Invited reseller registration requires a password with at least eight
+characters, uppercase and lowercase letters, a number, and a special character.
+The contact number is stored in `+63` format from a 10-digit Philippine mobile
+number beginning with 9; the business address is required and limited to 5–500
+characters. The browser validates these fields for convenience, while the
+registration repository enforces them before creating the pending account.
+Production CSRF origin checks accept the request host and the configured public
+`APP_BASE_URL` host, allowing the reverse-proxy deployment to validate the
+browser's public origin. Sources: `app/templates/reseller_register.html`,
+`app/repositories/reseller_invitations.py`, `app/security_controls.py`, and
+`app/config.py`. Checked 2026-11-03. See [[Architecture]] and [[Decisions]].
 
 Sessions are backed by PostgreSQL. Portal sessions expire after 15 minutes without
 a user action; page navigation and a heartbeat after recent keyboard, pointer,
@@ -84,6 +108,14 @@ or an expired trust record requires email OTP again. This applies only to login;
 registration, password changes, and recovery keep their own OTP rules. Sources:
 `app/routers/auth.py`, `app/repositories/accounts.py`, and migration
 `database/migrations/051_trusted_login_devices.sql`.
+
+The pending login OTP page offers **Resend OTP**. Login codes can be resent once
+every three minutes. Local Compose allows up to 50 OTP requests per account per
+hour; other environments default to five unless configured. The server enforces
+both limits even if the page is submitted early. Registration OTP retains its
+separate 60-second cooldown. Sources: `app/routers/auth.py`,
+`app/repositories/accounts.py`, `app/security_controls.py`, `app/config.py`,
+`compose.yml`, and `app/templates/login.html`.
 
 Opening `/login` with a still-valid portal session redirects to that account's
 default portal page, so a persistent session does not appear signed out simply
@@ -129,6 +161,28 @@ return/payment media access is unchanged. Sources: `app/capabilities.py`,
 `app/portals/inventory_tools.py`, `app/repositories/inventory/tools.py`.
 See [[Orders and Inventory]].
 
+## Verify email before choosing a new password (2026-11-03)
+
+Owner, Reseller, Sales Leader, Sales Supervisor and Inventory profiles use one
+shared password workflow. Confirm the current password, send a six-digit email
+OTP, verify it, then choose and confirm the new password. No new-password fields
+are rendered before verification, and the save endpoint requires the same
+session's account-bound, single-use grant. Delivery failure cancels the challenge
+and displays an error rather than unlocking password entry.
+
+Challenges expire after ten minutes, allow five incorrect attempts, and can be
+requested once per 60 seconds subject to `OTP_REQUESTS_PER_HOUR`. Verification
+leaves at most five minutes to save. A replacement request invalidates earlier
+challenges; cancellation, expiry, changed credentials, and reuse prevent saving.
+Saving enforces the existing strong-password policy, revokes all portal sessions
+and recognized-device tokens, and sends every role to sign-in. The database
+stores hashed OTPs and grants in `account_password_change_challenges` (migration
+053). Older pending-password OTP records cannot be completed through portal
+routes. Sources: `app/portals/password_change.py`,
+`app/repositories/password_changes.py`, `app/templates/portals/_password_change.html`,
+`app/portals/shared.py`, `app/emailer.py`, and `app/worker.py`.
+See [[Architecture]], [[Decisions]], and [[Background Work and Integrations]].
+
 ## Login form CSRF recovery (2026-11-02)
 
 Password, OTP, and Use another account forms render CSRF hidden fields on the
@@ -140,3 +194,20 @@ still rotates the session. Sources: `app/templates/login.html`,
 `app/routers/auth.py`, `app/application.py`, `app/security_controls.py`,
 `tests/test_login_csrf.py`. The live browser showed a token on the fresh login form;
 38 login/account-action checks passed. See [[Testing and Change Impact]].
+
+## Owner stock oversight is read-only (2026-11-04)
+
+The Owner's wildcard capability explicitly excludes `inventory.manage`,
+`inventory.override`, and `returns.receive`. Stock pages and direct HTTP actions
+therefore cannot record production, material receipts, corrections, pull-outs,
+disposal or physical return receipt/preparation/release. Alert review/closure
+routes also use the excluded inventory override capability. Stock-writer
+repositories reject Owner actors, while automated stock changes resulting from
+permitted order/financial decisions retain their business rules. Inventory team
+members retain stock management and physical custody permissions. Product prices
+remain editable through `inventory.prices`; financial returns/refunds and other
+Owner capabilities remain separate. Sources: `app/capabilities.py`,
+`app/portals/owner.py`, `app/portals/product_returns.py`,
+`app/repositories/inventory/movements.py`, `app/repositories/product_returns.py`,
+`app/repositories/superuser.py`, and `app/portal_config.py`.
+See [[Owner Portal]], [[Orders and Inventory]], and [[Decisions]].

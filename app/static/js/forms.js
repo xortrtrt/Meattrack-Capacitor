@@ -34,6 +34,18 @@
         if (first && focus) { first.scrollIntoView({block: 'center'}); first.focus(); }
         return !first;
     };
+    document.querySelectorAll('[data-password-change-form]').forEach(form => {
+        form.addEventListener('submit', event => {
+            const password = form.elements.namedItem('new_password');
+            const confirmation = form.elements.namedItem('confirm_password');
+            if (confirmation && password) confirmation.setCustomValidity(confirmation.value === password.value ? '' : 'Passwords do not match.');
+            if (!validate(form)) event.preventDefault();
+        });
+        form.addEventListener('input', event => {
+            event.target.setCustomValidity?.('');
+            clearError(event.target);
+        });
+    });
     const dirty = new Set();
     let submitted = false, discardPending = false;
     const confirmDiscard = async scope => {

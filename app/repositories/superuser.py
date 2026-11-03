@@ -246,6 +246,8 @@ def set_account_active(account_id: int, active: bool, actor_account_id: int, rea
         target = cur.fetchone()
         if not target:
             raise ValueError("Account not found.")
+        if bool(target["is_active"]) == active:
+            raise ValueError(f"Account is already {'active' if active else 'inactive'}.")
         before = {
             "is_active": bool(target["is_active"]),
             "activation_status": target["activation_status"],
@@ -281,6 +283,20 @@ def set_account_active(account_id: int, active: bool, actor_account_id: int, rea
             (active, account_id),
         )
         updated = dict(cur.fetchone())
+        event_type = "account_reactivated" if active else "account_deactivated"
+        cur.execute(
+            """
+            INSERT INTO notification_outbox (event_type, payload, dedupe_key, locked_at)
+            VALUES (%s, %s::jsonb, %s, now())
+            RETURNING outbox_id;
+            """,
+            (
+                event_type,
+                json.dumps({"to_email": updated["email"], "name": updated["name"], "reason": clean_reason}),
+                f"{event_type}-{account_id}-{secrets.token_urlsafe(12)}",
+            ),
+        )
+        status_email_outbox_id = int(cur.fetchone()["outbox_id"])
         if updated.get("reseller_id") is not None:
             cur.execute(
                 "UPDATE resellers SET reseller_status = %s WHERE reseller_id = %s;",
@@ -300,7 +316,33 @@ def set_account_active(account_id: int, active: bool, actor_account_id: int, rea
         )
     if not active:
         revoke_account_sessions(account_id)
-    return clean_row(updated)
+    result = clean_row(updated)
+    result["status_email_outbox_id"] = status_email_outbox_id
+    return result
+
+
+def finish_account_status_email(outbox_id: int, sent: bool, message: str = "") -> None:
+    with get_transaction_cursor() as cur:
+        if sent:
+            cur.execute(
+                """
+                UPDATE notification_outbox
+                SET sent_at = now(), locked_at = NULL, last_error = NULL
+                WHERE outbox_id = %s AND event_type IN ('account_deactivated', 'account_reactivated') AND sent_at IS NULL;
+                """,
+                (outbox_id,),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE notification_outbox
+                SET attempt_count = LEAST(attempt_count + 1, 8),
+                    next_attempt_at = now() + interval '1 minute',
+                    locked_at = NULL, last_error = %s
+                WHERE outbox_id = %s AND event_type IN ('account_deactivated', 'account_reactivated') AND sent_at IS NULL;
+                """,
+                (message[:1000], outbox_id),
+            )
 
 
 def revoke_managed_account_sessions(account_id: int, actor_account_id: int, reason: str) -> None:
@@ -520,6 +562,10 @@ def compensate_inventory(
     magnitude = raw[1:] if raw.startswith(("-", "+")) else raw
     delta = measurements.parse_decimal_exact(magnitude, "Correction quantity", positive=True) * sign
     with get_transaction_cursor() as cur:
+        cur.execute("SELECT account_type, team_leader_role FROM accounts WHERE account_id=%s AND is_active=true", (actor_account_id,))
+        actor = cur.fetchone()
+        if not actor or actor["account_type"] != "team_leader" or actor["team_leader_role"] != "inventory":
+            raise ValueError("Stock corrections require an active Inventory account. Owner stock oversight is read-only.")
         # Same lock order as reservations and FEFO fulfillment.
         cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0));", (f"inventory-product:{item_id}",))
         cur.execute("SELECT * FROM inventory_items WHERE item_id = %s AND is_active = true FOR UPDATE;", (item_id,))
@@ -583,7 +629,7 @@ def compensate_inventory(
               actor["name"] if actor else "Owner", clean_reason))
         movement_id = int(cur.fetchone()["movement_id"])
         _audit_cursor(
-            cur, actor_account_id=actor_account_id, actor_role="owner",
+            cur, actor_account_id=actor_account_id, actor_role="inventory",
             action="compensated_inventory", entity_type="inventory_movements", entity_id=movement_id,
             reason=clean_reason,
             before_state={"item_id": item_id, "available": str(before), "batch_id": batch_id,
@@ -977,6 +1023,7 @@ __all__ = [
     "request_owner_step_up",
     "revoke_managed_account_sessions",
     "set_account_active",
+    "finish_account_status_email",
     "transfer_team_leader_work",
     "update_business_settings",
 ]

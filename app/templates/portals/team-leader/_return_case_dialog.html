@@ -33,7 +33,7 @@
       {% if supporting_photos %}<section class="lifecycle-box sales-return-photos"><h4>Supporting photos</h4><div class="sales-return-photo-grid">{% for photo in supporting_photos %}<a href="/portal/return-attachments/{{ photo.attachment_id }}" target="_blank" rel="noopener" class="sales-return-photo"><img src="/portal/return-attachments/{{ photo.attachment_id }}" alt="Supporting photo {{ loop.index }} for return {{ case.return_id }}" loading="lazy"><span>Open photo {{ loop.index }}<i data-lucide="external-link" aria-hidden="true"></i></span></a>{% endfor %}</div></section>{% endif %}
 </details>{% endif %}
 
-<a class="button subtle" href="/portal/team-leader/messages?reseller={{ case.reseller_account_id }}">Open Sales conversation</a>
+{% if role_key != 'owner' %}<a class="button subtle" href="/portal/team-leader/messages?reseller={{ case.reseller_account_id }}">Open Sales conversation</a>{% endif %}
 {% if case.refund %}<p class="lifecycle-box">Refund #{{ case.refund.order_refund_id }} · {{ case.refund.amount|currency }} · {{ case.refund.status|title }} {% if return_can_review %}<a href="/portal/{{ role_key }}/refunds?refund={{ case.refund.order_refund_id }}">Open refund workspace</a>{% endif %}</p>{% endif %}
       {% set payment_attachments = case.attachments|rejectattr('purpose','equalto','evidence')|list %}
       {% if payment_attachments %}<section class="lifecycle-box"><h4>Payment attachments</h4>{% for attachment in payment_attachments %}<p><a target="_blank" rel="noopener" href="/portal/return-attachments/{{ attachment.attachment_id }}">{{ attachment.purpose|title }}{% if attachment.revision %} &middot; quote {{ attachment.revision }}{% endif %}: {{ attachment.filename }}</a></p>{% endfor %}</section>{% endif %}

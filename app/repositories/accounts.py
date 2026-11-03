@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
+from app.config import OTP_REQUESTS_PER_HOUR
 from app.portal_config import team_leader_role_labels
 
 from ._shared import *
@@ -589,20 +590,26 @@ def request_login_otp(account_id: int, purpose: str = "login") -> dict:
     otp_code = f"{secrets.randbelow(1_000_000):06d}"
     otp_hash = hash_password(otp_code)
     expires_at = business_now() + timedelta(minutes=10)
+    resend_cooldown = "3 minutes" if purpose == "login" else "1 minute"
+    resend_cooldown_message = (
+        "Please wait 3 minutes before requesting another login OTP."
+        if purpose == "login"
+        else "Please wait 60 seconds before requesting another OTP."
+    )
 
     with get_transaction_cursor() as cur:
         cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s));", (f"account-otp:{account_id}:{purpose}",))
         cur.execute(
-            "SELECT count(*) AS total FROM account_login_otps WHERE account_id=%s AND purpose=%s AND created_at >= now() - interval '1 minute';",
-            (account_id, purpose),
+            "SELECT count(*) AS total FROM account_login_otps WHERE account_id=%s AND purpose=%s AND created_at >= now() - %s::interval;",
+            (account_id, purpose, resend_cooldown),
         )
         if int(cur.fetchone()["total"]) > 0:
-            raise ValueError("Please wait 60 seconds before requesting another OTP.")
+            raise ValueError(resend_cooldown_message)
         cur.execute(
             "SELECT count(*) AS total FROM account_login_otps WHERE account_id=%s AND purpose=%s AND created_at >= now() - interval '1 hour';",
             (account_id, purpose),
         )
-        if int(cur.fetchone()["total"]) >= 5:
+        if int(cur.fetchone()["total"]) >= OTP_REQUESTS_PER_HOUR:
             raise ValueError("OTP request limit reached. Try again later.")
         cur.execute(
             """
@@ -664,6 +671,23 @@ def trust_login_device(account_id: int, device_token: str) -> None:
         """,
         (account_id, token_hash),
     )
+
+
+def login_otp_resend_after_seconds(account_id: int) -> int:
+    row = fetch_one(
+        """
+        SELECT GREATEST(
+            0,
+            CEIL(EXTRACT(EPOCH FROM (created_at + interval '3 minutes' - now())))::integer
+        ) AS seconds_remaining
+        FROM account_login_otps
+        WHERE account_id = %s AND purpose = 'login'
+        ORDER BY created_at DESC
+        LIMIT 1;
+        """,
+        (account_id,),
+    )
+    return max(0, int(row["seconds_remaining"] or 0)) if row else 0
 
 
 def confirm_login_otp(account_id: int, otp_code: str, purpose: str = "login") -> dict:
@@ -1214,5 +1238,5 @@ def resend_activation(account_id: int, actor_account_id: int, account_types: tup
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="resent_activation", entity_type="accounts", entity_id=account_id)
 
 
-__all__ = ['list_owner_resellers', 'count_owner_resellers', 'list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'next_sales_supervisor', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'list_team_resellers', 'count_team_resellers', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'login_device_is_trusted', 'trust_login_device', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'queue_forced_password_reset', 'resend_activation']
+__all__ = ['list_owner_resellers', 'count_owner_resellers', 'list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'next_sales_supervisor', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'list_team_resellers', 'count_team_resellers', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'login_device_is_trusted', 'trust_login_device', 'login_otp_resend_after_seconds', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'queue_forced_password_reset', 'resend_activation']
 __all__ += ['account_has_current_policy_acceptances', 'record_policy_acceptances', 'account_activation_context']

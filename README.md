@@ -96,8 +96,7 @@ Requirements:
 - Docker Desktop or Docker Engine
 - Docker Compose v2
 
-Build and start the application, PostgreSQL, durable worker, and local
-email-capture service:
+Build and start the application, PostgreSQL, and durable worker:
 
 ```powershell
 docker compose up -d --build
@@ -116,11 +115,11 @@ existing running stack:
 docker compose exec app python tools/migrate_database.py
 ```
 
-Login and password-change OTPs are printed by the local capture service:
-
-```powershell
-docker compose logs -f mail-capture
-```
+Local transactional email, including login OTPs, is sent through Brevo. Set
+`BREVO_API_KEY` in the ignored local `.env`; the API URL defaults to Brevo's
+transactional email endpoint and the sender defaults to
+`noreply@batangaspremium.com`. If the API key is missing, email flows report a
+delivery error instead of accepting a message that was not sent.
 
 Other useful commands:
 
@@ -173,6 +172,7 @@ private `.env.production` file that must never be committed.
 | `BUSINESS_TIMEZONE` | Business timezone; defaults to `Asia/Manila` | Recommended |
 | `APP_BASE_URL` | Public HTTPS origin used in activation and registration invitation emails | Required |
 | `LOGIN_OTP_ENABLED` | Enables email OTP after password login | Defaults to `true` in every environment |
+| `OTP_REQUESTS_PER_HOUR` | Per-account OTP request cap | Defaults to 5; local Compose sets 50 |
 | `CONSENT_VERSION` | Backward-compatible default for policy versions | Optional |
 | `PRIVACY_NOTICE_VERSION` | Version acknowledged at account setup | Defaults to `CONSENT_VERSION` |
 | `TERMS_VERSION` | Terms version accepted at account setup | Defaults to `CONSENT_VERSION` |

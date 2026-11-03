@@ -194,7 +194,7 @@ def _returns_context(request: Request) -> dict:
         "return_can_review": can_review,
         "return_can_authorize": bool(can_review and selected and selected["status"] == "settlement_pending"
             and selected.get("verified_at") and selected.get("verified_by_account_id") and not selected.get("sales_authorized")),
-        "return_can_receive": role in {"owner", "team-leader:inventory"},
+        "return_can_receive": role == "team-leader:inventory",
         "legacy_lines": legacy,
         "legacy_batches": legacy_batches,
     }

@@ -6,8 +6,10 @@ from decimal import Decimal
 def _inventory_actor_name(cur, actor_account_id: int | None) -> str:
     if actor_account_id is None:
         return "MEATTRACK"
-    cur.execute("SELECT name FROM accounts WHERE account_id = %s LIMIT 1;", (actor_account_id,))
+    cur.execute("SELECT name, account_type FROM accounts WHERE account_id = %s LIMIT 1;", (actor_account_id,))
     actor = cur.fetchone()
+    if actor and actor.get("account_type") == "owner":
+        raise ValueError("Owner stock oversight is read-only. Inventory staff manage stock changes.")
     return actor["name"] if actor else "MEATTRACK"
 
 
