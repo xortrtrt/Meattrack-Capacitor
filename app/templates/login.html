@@ -8,10 +8,10 @@
     <title>Portal Login | Batangas Premium</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/login.css') }}?v=20260721-glass-login-1"
+      href="{{ url_for('static', path='css/login.css') }}?v=20261103-policy-activation-1"
     />
   </head>
-  <body class="login-page">
+  <body class="login-page login-signin-page">
     <div
       class="login-bg"
       style="background-image: url('{{ 'background.jpg'|media_url }}')"
@@ -20,14 +20,8 @@
 
     <main class="login-wrapper">
       <section class="login-story" aria-label="Batangas Premium portal overview">
-        <a href="/" class="login-brand">
-          <img
-            src="{{ 'batangas_premium.png'|media_url }}"
-            alt="Batangas Premium"
-            class="login-logo"
-          />
-        </a>
-        <h1>MEATTRACK Portal</h1>
+        <p class="login-story-kicker">Batangas Premium · Business portal</p>
+        <h1>MEATTRACK<br />Portal</h1>
         <p>
           Inventory, reseller orders, sales reports, and demand forecasts for
           Batangas Premium operations.
@@ -40,17 +34,31 @@
       </section>
 
       <div class="login-card">
-        <h2>Portal Sign In</h2>
-        <p class="login-subtitle">Access your Batangas Premium dashboard</p>
+        <a href="/" class="login-brand" aria-label="Batangas Premium home">
+          <img
+            src="{{ 'batangas_premium.png'|media_url }}"
+            alt="Batangas Premium"
+            class="login-logo"
+          />
+        </a>
+        <p class="login-card-kicker">MEATTRACK operations</p>
+        <h2>{{ 'Verify your email' if login_otp_pending else 'Welcome back' }}</h2>
+        <p class="login-subtitle">
+          {{ 'Complete your sign-in with the code we sent.' if login_otp_pending else 'Sign in to your Batangas Premium workspace.' }}
+        </p>
 
         {% if message or error %}
-        <aside class="notice {{ 'error' if error else 'success' }}">
+        <aside
+          class="notice {{ 'error' if error else 'success' }}"
+          role="{{ 'alert' if error else 'status' }}"
+          aria-live="{{ 'assertive' if error else 'polite' }}"
+        >
           {{ error or message }}
         </aside>
         {% endif %}
 
         {% if login_otp_pending %}
-        <form class="login-form" action="/login/otp" method="post">
+        <form class="login-form" action="/login/otp" method="post" data-login-form novalidate>
           <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
           <div class="login-field">
             <label for="login-otp">Email OTP</label>
@@ -71,7 +79,7 @@
         </form>
         <form action="/logout" method="post"><input type="hidden" name="csrf_token" value="{{ login_csrf }}"><button class="login-back" type="submit">Use another account</button></form>
         {% else %}
-        <form class="login-form" action="/login" method="post">
+        <form class="login-form" action="/login" method="post" data-login-form novalidate>
           <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
           <div class="login-field">
             <label for="login-email">Email</label>
@@ -86,42 +94,45 @@
           </div>
           <div class="login-field">
             <label for="login-password">Password</label>
-            <input
-              required
-              id="login-password"
-              type="password"
-              name="password"
-              minlength="4"
-              placeholder="Enter your password"
-              autocomplete="current-password"
-            />
+            <div class="login-password-control">
+              <input
+                required
+                id="login-password"
+                type="password"
+                name="password"
+                minlength="4"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+              />
+              <button
+                class="password-toggle"
+                type="button"
+                data-password-toggle
+                aria-controls="login-password"
+                aria-label="Show password"
+                aria-pressed="false"
+              >Show</button>
+            </div>
           </div>
-          <label class="consent-check">
-            <input required type="checkbox" name="consent" value="yes" />
-            <span>
-              I confirm that I have read and understood the
-              <a href="/privacy">Privacy Notice</a> and
-              <a href="/terms">Terms and Conditions</a>. I voluntarily consent
-              to Batangas Premium's collection, use, storage, and processing of
-              my personal information in MEATTRACK for account access, reseller
-              application review, order processing, delivery coordination,
-              customer support, reporting, audit logs, system security, and
-              other legitimate business purposes. I understand that I may
-              withdraw consent or exercise my privacy rights through Batangas
-              Premium management or the MEATTRACK system administrator, subject
-              to applicable laws and legitimate business requirements.
-            </span>
+          <label class="remember-check">
+            <input type="checkbox" name="remember_me" value="yes" />
+            <span>Remember me</span>
           </label>
           <button class="login-btn" type="submit">Sign In</button>
         </form>
 
         <a class="login-back" href="/">&larr; Back to website</a>
         {% endif %}
+        <nav class="login-policy-links" aria-label="Policy documents">
+          <a href="/privacy">Privacy Notice</a>
+          <a href="/terms">Terms and Conditions</a>
+        </nav>
       </div>
     </main>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/login.js') }}?v=20261103-password-toggle-1"></script>
   </body>
 </html>

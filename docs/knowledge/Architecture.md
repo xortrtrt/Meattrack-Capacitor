@@ -41,6 +41,24 @@ Migration 050 adds invitation records and purpose/attempt fields to the existing
 login OTP table. The public registration page requires a valid invitation token;
 the login OTP feature is enabled by default in all environments.
 
+Login OTP verification trusts the current browser for 30 fixed days using an
+HttpOnly device cookie and a hashed token in `trusted_login_devices`. Portal
+sessions now use a 15-minute sliding inactivity deadline. The optional Remember
+me setting preserves the browser cookie across restarts for up to 30 days, but
+does not extend the server-side inactivity deadline. Authenticated page navigation
+and the `app/static/js/core.js` activity heartbeat refresh the session; background
+polling does not. Migration 051 adds the device-trust table. See [[Roles and Access]].
+
+Policy acknowledgements are collected during reseller registration or staff
+account activation and recorded per account, policy type, and version in
+`account_policy_acceptances` (migration 052). A verified existing account
+missing either current version completes a one-time confirmation step after
+password and configured OTP verification but before a portal session is
+created. `/login` itself only contains Remember me and policy links. Sources:
+`app/routers/auth.py`, `app/routers/reseller_registration.py`,
+`app/repositories/accounts.py`, `app/repositories/reseller_invitations.py`, and
+`app/templates/account_policies.html`. See [[Roles and Access]].
+
 [[Sales Activity Reports]] use `app/repositories/activity_reports.py` for source
 selection and immutable submission, `app/portals/activity_reports.py` for scoped
 preview/document/download routes, and `app/report_documents.py` for a common HTML,

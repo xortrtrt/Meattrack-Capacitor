@@ -68,7 +68,9 @@ if not DATABASE_URL:
 DATABASE_POOL_MIN = int(os.getenv("DATABASE_POOL_MIN", "1"))
 DATABASE_POOL_MAX = int(os.getenv("DATABASE_POOL_MAX", "5"))
 
-CONSENT_VERSION = os.getenv("CONSENT_VERSION", "2026-07-22")
+CONSENT_VERSION = os.getenv("CONSENT_VERSION", "2026-11-03")
+PRIVACY_NOTICE_VERSION = os.getenv("PRIVACY_NOTICE_VERSION", CONSENT_VERSION)
+TERMS_VERSION = os.getenv("TERMS_VERSION", CONSENT_VERSION)
 
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "").strip()
 BREVO_API_URL = os.getenv("BREVO_API_URL", "https://api.brevo.com/v3/smtp/email").strip()

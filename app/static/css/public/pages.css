@@ -589,6 +589,17 @@
   color: var(--muted);
 }
 
+.policy-shell ul {
+  margin: 0 0 16px;
+  padding-left: 22px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.policy-shell li + li {
+  margin-top: 6px;
+}
+
 .policy-version,
 .policy-back {
   color: var(--gold-deep);

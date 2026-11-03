@@ -71,7 +71,9 @@ services:
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-5}
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-change-this-local-dev-secret}
       RATE_LIMIT_HASH_KEY: ${RATE_LIMIT_HASH_KEY:-change-this-local-rate-limit-secret}
-      CONSENT_VERSION: ${CONSENT_VERSION:-2026-07-22}
+      CONSENT_VERSION: ${CONSENT_VERSION:-2026-11-03}
+      PRIVACY_NOTICE_VERSION: ${PRIVACY_NOTICE_VERSION:-${CONSENT_VERSION:-2026-11-03}}
+      TERMS_VERSION: ${TERMS_VERSION:-${CONSENT_VERSION:-2026-11-03}}
       BREVO_API_KEY: local-development
       BREVO_API_URL: http://mail-capture:8025/v3/smtp/email
       BREVO_FROM_EMAIL: local@meattrack.test

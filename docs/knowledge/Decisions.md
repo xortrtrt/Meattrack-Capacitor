@@ -4,6 +4,60 @@ verified: 2026-11-03
 ---
 # Decisions
 
+## 2026-11-03 — Align public policies with current MEATTRACK flows
+
+Update the Privacy Notice and Terms to describe the invitation-only reseller
+registration, current order and return workflows, the public chatbot and its
+external answer provider, transactional email, and the retention periods the
+worker actually enforces. Keep the notice explicit that business records do not
+share one configured deletion period. Separate required Privacy Notice
+acknowledgment from Terms acceptance at sign-in, and bump the shared policy
+version so existing users see and confirm the revised text. The repository does
+not identify the registered legal entity or designated Data Protection Officer;
+confirm those publication details with the business. Sources:
+`app/templates/privacy.html`, `app/templates/terms.html`,
+`app/templates/login.html`, `app/routers/auth.py`, `app/config.py`,
+`compose.yml`, `app/chatbot/provider.py`, `app/emailer.py`, and `app/worker.py`.
+See [[Roles and Access]] and [[Background Work and Integrations]].
+
+## 2026-11-03 — Separate login policy confirmations
+
+Show distinct required checkboxes for the Privacy Notice and Terms and
+Conditions, and enforce both on the server before starting sign-in. Keep the
+existing consent ledger event scoped to Privacy Notice processing consent; the
+Terms acknowledgement is not separately persisted. This keeps the two user
+actions clear without changing the current consent schema. Sources:
+`app/templates/login.html`, `app/routers/auth.py`, `app/repositories/accounts.py`,
+and `database/schema.sql`. See [[Roles and Access]].
+
+## 2026-11-03 — Collect policy acknowledgements at account setup
+
+Supersede the sign-in checkboxes: collect distinct Privacy Notice
+acknowledgement and Terms acceptance during account creation/activation. Keep
+routine login to Remember me and links. Prompt existing accounts after their
+credentials and configured OTP have been verified when either current policy
+version is missing. Store both acknowledgements separately by policy type,
+version, source, and timestamp. Do not represent a Privacy Notice
+acknowledgement as data-processing consent in `user_consents`; specific consent
+requirements remain governed by the applicable processing purpose and basis.
+Sources: migration `database/migrations/052_account_policy_acceptances.sql`,
+`app/routers/auth.py`, `app/routers/reseller_registration.py`, and
+`app/repositories/accounts.py`. See [[Roles and Access]] and [[Architecture]].
+
+## 2026-11-03 — Trust login devices for 30 days and expire idle sessions
+
+Require email OTP on a browser's first successful sign-in and again after a
+fixed 30-day trust period. Store only a hash of the random device token and scope
+it to the account. Add an optional Remember me choice so the browser cookie
+survives a restart for up to 30 days; expire the server session after 15 minutes
+without user activity regardless of browser state. Page navigations and a
+heartbeat after recent interaction refresh it; background polling does not. This
+reduces repeat OTP prompts while bounding idle access. Registration and
+account-change OTP flows remain separate. Sources: migration
+`database/migrations/051_trusted_login_devices.sql`, `app/routers/auth.py`,
+`app/repositories/accounts.py`, `app/web_sessions.py`, and `app/static/js/core.js`.
+See [[Roles and Access]], [[Architecture]], and [[Database and Operations]].
+
 ## 2026-11-03 — Align the local database with the restored 049 application
 
 The user explicitly requested return to migration 049 after restoring commit

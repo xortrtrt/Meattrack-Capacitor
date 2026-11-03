@@ -36,6 +36,8 @@
           <form class="login-form reseller-registration-form" action="/register/reseller" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
             <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="privacy_notice_version" value="{{ privacy_notice_version }}">
+            <input type="hidden" name="terms_version" value="{{ terms_version }}">
             <label for="registration-email">Invited email</label>
             <input id="registration-email" type="email" value="{{ invitation.invited_email }}" readonly autocomplete="email">
             <label for="registration-name">Full name</label>
@@ -50,6 +52,14 @@
             <input required id="registration-password" name="password" type="password" autocomplete="new-password" minlength="8">
             <label for="registration-confirm-password">Confirm password</label>
             <input required id="registration-confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="8">
+            <label class="policy-check">
+              <input required type="checkbox" name="privacy_acknowledged" value="yes">
+              <span>I have read the <a href="/privacy" target="_blank" rel="noopener">Privacy Notice</a> and understand how my personal information is handled.</span>
+            </label>
+            <label class="policy-check">
+              <input required type="checkbox" name="terms_accepted" value="yes">
+              <span>I have read and agree to the <a href="/terms" target="_blank" rel="noopener">Terms and Conditions</a>.</span>
+            </label>
             <button class="login-btn" type="submit">Create reseller account</button>
           </form>
           {% endif %}

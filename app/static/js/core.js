@@ -28,6 +28,25 @@
             }
             return nativeFetch(input, init);
         };
+        if (document.body.classList.contains("portal-body")) {
+            let activityTimer;
+            const sendPortalActivity = (keepalive = false) => {
+                window.fetch("/api/portal/session-activity", { method: "GET", cache: "no-store", keepalive }).catch(() => {});
+            };
+            const markPortalActivity = () => {
+                window.clearTimeout(activityTimer);
+                activityTimer = window.setTimeout(() => sendPortalActivity(), 1_000);
+            };
+            ["pointerdown", "pointermove", "keydown", "input", "scroll", "touchstart"].forEach((eventName) => {
+                document.addEventListener(eventName, markPortalActivity, { passive: true });
+            });
+            window.addEventListener("pagehide", () => {
+                if (activityTimer) {
+                    window.clearTimeout(activityTimer);
+                    sendPortalActivity(true);
+                }
+            }, { once: true });
+        }
     }
     if (window.lucide) {
         window.lucide.createIcons();

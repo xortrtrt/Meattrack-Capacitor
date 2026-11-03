@@ -33,6 +33,7 @@ def login_client(monkeypatch):
     monkeypatch.setattr(auth, "enforce_password_login", lambda *args: None)
     monkeypatch.setattr(auth, "record_password_login", lambda *args: None)
     monkeypatch.setattr(auth.data, "record_user_consent", lambda *args: None)
+    monkeypatch.setattr(auth.data, "account_has_current_policy_acceptances", lambda *args: True)
     monkeypatch.setattr(auth.data, "add_log", lambda *args: None)
     return TestClient(main.app), sessions
 
@@ -48,7 +49,7 @@ def test_login_posts_server_rendered_csrf_without_javascript(login_client, monke
     assert page.headers["cache-control"] == "no-store"
     token = Forms(page.text).forms[0]["token"]
     assert token
-    response = client.post("/login", data={"csrf_token": token, "email": "test@example.com", "password": "test-only", "consent": "yes"}, follow_redirects=False)
+    response = client.post("/login", data={"csrf_token": token, "email": "test@example.com", "password": "test-only"}, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].startswith(f"/portal/{role}/")
 
@@ -59,14 +60,14 @@ def test_expired_login_token_rejects_authentication_and_renders_retry_form(login
     monkeypatch.setattr(auth.data, "authenticate_account", lambda *args: calls.append(args))
     old_token = Forms(client.get("/login").text).forms[0]["token"]
     sessions.clear()
-    response = client.post("/login", data={"csrf_token": old_token, "email": "test@example.com", "password": "test-only", "consent": "yes"})
+    response = client.post("/login", data={"csrf_token": old_token, "email": "test@example.com", "password": "test-only"})
     assert response.status_code == 403
     assert not calls
     assert "Your sign-in page expired" in response.text
     assert response.headers["cache-control"] == "no-store"
     new_token = Forms(response.text).forms[0]["token"]
     assert new_token and new_token != old_token
-    retry = client.post("/login", data={"csrf_token": new_token, "email": "test@example.com", "password": "test-only", "consent": "yes"}, follow_redirects=False)
+    retry = client.post("/login", data={"csrf_token": new_token, "email": "test@example.com", "password": "test-only"}, follow_redirects=False)
     assert retry.status_code == 303
     assert len(calls) == 1
 

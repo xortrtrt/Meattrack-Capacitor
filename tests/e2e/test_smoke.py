@@ -41,7 +41,6 @@ def test_supervisor_report_defaults_to_current_month_and_remains_editable(page: 
     page.goto(f"{BASE_URL}/login", wait_until="networkidle")
     page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
     page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
-    page.locator('input[name="consent"]').check()
     page.get_by_role("button", name="Sign In").click()
     page.wait_for_url("**/portal/sales-supervisor/dashboard")
 
@@ -63,7 +62,6 @@ def test_supervisor_reseller_orders_start_collapsed_and_open_on_request(page: Pa
     page.goto(f"{BASE_URL}/login", wait_until="networkidle")
     page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
     page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
-    page.locator('input[name="consent"]').check()
     page.get_by_role("button", name="Sign In").click()
     page.wait_for_url("**/portal/sales-supervisor/dashboard")
 
@@ -106,7 +104,6 @@ def test_supervisor_report_preview_has_accessible_sections_and_downloads(page: P
     page.goto(f"{BASE_URL}/login", wait_until="networkidle")
     page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
     page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
-    page.locator('input[name="consent"]').check()
     page.get_by_role("button", name="Sign In").click()
     page.wait_for_url("**/portal/sales-supervisor/dashboard")
     response = page.goto(f"{BASE_URL}/portal/sales-supervisor/reports", wait_until="networkidle")
@@ -187,7 +184,6 @@ def test_public_and_supervisor_profile_smoke(page: Page) -> None:
     page.goto(f"{BASE_URL}/login", wait_until="networkidle")
     page.get_by_label("Email").fill(SUPERVISOR_EMAIL)
     page.get_by_label("Password").fill(SUPERVISOR_PASSWORD)
-    page.locator('input[name="consent"]').check()
     page.get_by_role("button", name="Sign In").click()
     page.wait_for_url("**/portal/sales-supervisor/dashboard")
     expect(page.locator("body")).to_have_class(re.compile(r"\brole-sales-supervisor\b"))

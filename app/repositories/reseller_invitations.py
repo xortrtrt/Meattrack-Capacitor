@@ -130,6 +130,8 @@ def begin_invited_reseller_registration(
     contact_number: str,
     address: str,
     password: str,
+    privacy_notice_version: str,
+    terms_version: str,
 ) -> dict:
     name = " ".join(full_name.strip().split())
     business = " ".join(business_name.strip().split())
@@ -143,6 +145,8 @@ def begin_invited_reseller_registration(
         raise ValueError("Enter a valid contact number using up to 40 characters.")
     if len(location) > 500:
         raise ValueError("Keep your address under 500 characters.")
+    if not privacy_notice_version.strip() or not terms_version.strip():
+        raise ValueError("The policy versions are missing. Reload your invitation and try again.")
     password_hash = hash_password(validate_password_policy(password))
     with get_transaction_cursor() as cur:
         invitation = _invitation_by_token_cursor(cur, raw_token, for_update=True)
@@ -173,6 +177,17 @@ def begin_invited_reseller_registration(
             (reseller_id, name, invitation["invited_email"], password_hash),
         )
         account = cur.fetchone()
+        cur.executemany(
+            """
+            INSERT INTO account_policy_acceptances
+                (account_id, policy_type, policy_version, acceptance_source)
+            VALUES (%s, %s, %s, 'reseller_registration');
+            """,
+            [
+                (account["account_id"], "privacy_notice", privacy_notice_version),
+                (account["account_id"], "terms", terms_version),
+            ],
+        )
         cur.execute(
             "UPDATE reseller_registration_invitations SET registration_account_id=%s WHERE invitation_id=%s AND registration_account_id IS NULL;",
             (account["account_id"], invitation["invitation_id"]),

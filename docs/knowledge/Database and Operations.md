@@ -4,6 +4,27 @@ verified: 2026-11-03
 ---
 # Database and operations
 
+## Versioned account policy acknowledgements (2026-11-03)
+
+Migration `052_account_policy_acceptances.sql` adds separate versioned records
+for Privacy Notice acknowledgement and Terms acceptance. Apply it before
+starting the updated app; otherwise account activation and verified logins that
+need policy review will fail when they query the new table. The migration is
+present in source; this note does not claim it has been applied locally or in
+production. Fresh databases receive the table through `database/schema.sql`.
+See [[Roles and Access]] and [[Decisions]].
+
+## Trusted login devices (2026-11-03)
+
+Migration `051_trusted_login_devices.sql` adds account-scoped SHA-256 hashes for
+browser device tokens and their fixed trust expiry. Apply it before running the
+updated login flow; adding the migration file does not mean it has been applied.
+Portal sessions are persisted in `web_sessions` with a 15-minute sliding
+inactivity expiry refreshed by navigations or recent user activity, not by
+background polling. Remember me changes browser-cookie persistence (up to 30
+days), not the server-side inactivity policy. Source: `app/web_sessions.py`,
+`app/routers/auth.py`, `app/repositories/accounts.py`, and `app/static/js/core.js`.
+
 ## Reseller invitation schema (2026-11-03)
 
 Migration `050_reseller_registration_invitations.sql` adds hashed Owner-issued

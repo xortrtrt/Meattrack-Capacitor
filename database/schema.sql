@@ -29,6 +29,15 @@ CREATE TABLE accounts (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE trusted_login_devices (
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    device_token_hash char(64) NOT NULL,
+    trusted_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL,
+    PRIMARY KEY (account_id, device_token_hash),
+    CHECK (length(device_token_hash) = 64)
+);
+
 CREATE TABLE activity_logs (
     activity_log_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     account_id bigint REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE SET NULL,
@@ -471,6 +480,15 @@ CREATE TABLE user_consents (
     accepted_at timestamptz NOT NULL DEFAULT now(),
     CHECK (btrim(policy_version) <> ''),
     CHECK (btrim(consent_source) <> '')
+);
+
+CREATE TABLE account_policy_acceptances (
+    account_id bigint NOT NULL REFERENCES accounts(account_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    policy_type text NOT NULL CHECK (policy_type IN ('privacy_notice', 'terms')),
+    policy_version text NOT NULL CHECK (btrim(policy_version) <> ''),
+    acceptance_source text NOT NULL CHECK (btrim(acceptance_source) <> ''),
+    accepted_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_id, policy_type, policy_version)
 );
 
 CREATE TABLE account_password_otps (
@@ -1035,6 +1053,7 @@ CREATE INDEX ix_account_password_otps_pending ON account_password_otps (account_
     WHERE consumed_at IS NULL;
 CREATE INDEX ix_account_login_otps_pending ON account_login_otps (account_id, created_at DESC)
     WHERE consumed_at IS NULL;
+CREATE INDEX ix_trusted_login_devices_expiry ON trusted_login_devices (expires_at);
 CREATE INDEX ix_reseller_registration_invitations_email
     ON reseller_registration_invitations (lower(invited_email), created_at DESC);
 CREATE UNIQUE INDEX ux_reseller_registration_invitation_open_email

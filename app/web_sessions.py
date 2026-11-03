@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import secrets
+import time
 from http.cookies import SimpleCookie
 
 from starlette.datastructures import MutableHeaders
@@ -13,7 +14,8 @@ from app.database import get_transaction_cursor
 
 
 PUBLIC_SESSION_SECONDS = 24 * 60 * 60
-PORTAL_SESSION_SECONDS = 2 * 60 * 60
+PORTAL_SESSION_SECONDS = 15 * 60
+REMEMBER_ME_COOKIE_SECONDS = 30 * 24 * 60 * 60
 
 
 def _hash_token(token: str) -> str:
@@ -107,6 +109,15 @@ class DatabaseSessionMiddleware:
         original = dict(loaded)
         scope["session"] = loaded
         scope["meattrack.session_token"] = incoming_token
+        request_headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        fetch_dest = request_headers.get(b"sec-fetch-dest", b"").lower()
+        is_activity_request = (
+            not fetch_dest
+            or fetch_dest == b"document"
+            or scope.get("path") == "/api/portal/session-activity"
+        )
+        if loaded.get("account_id") and is_activity_request:
+            loaded["portal_expires_at"] = int(time.time()) + PORTAL_SESSION_SECONDS
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
@@ -122,17 +133,22 @@ class DatabaseSessionMiddleware:
                             "set-cookie",
                             f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
                         )
-                elif session != original or rotate:
+                elif session != original or rotate or (session.get("account_id") and is_activity_request):
                     if rotate and token:
                         await run_in_threadpool(_delete_session, token)
                         token = None
                     token = token or _new_token()
                     seconds = PORTAL_SESSION_SECONDS if session.get("account_id") else PUBLIC_SESSION_SECONDS
                     await run_in_threadpool(_persist_session, token, session, seconds)
-                    cookie = (
-                        f"{SESSION_COOKIE_NAME}={token}; Path=/; Max-Age={seconds}; "
-                        "HttpOnly; SameSite=Lax"
+                    max_age = (
+                        REMEMBER_ME_COOKIE_SECONDS
+                        if session.get("account_id") and session.get("remember_me")
+                        else None if session.get("account_id")
+                        else seconds
                     )
+                    cookie = f"{SESSION_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax"
+                    if max_age is not None:
+                        cookie += f"; Max-Age={max_age}"
                     if APP_ENV == "production":
                         cookie += "; Secure"
                     headers.append("set-cookie", cookie)

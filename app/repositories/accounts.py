@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from app.portal_config import team_leader_role_labels
 
 from ._shared import *
@@ -643,6 +645,27 @@ def cancel_login_otp(account_id: int, otp_id: int | None = None) -> None:
     execute_write(f"UPDATE account_login_otps SET consumed_at = now() WHERE {where};", tuple(params))
 
 
+def login_device_is_trusted(account_id: int, device_token: str) -> bool:
+    token_hash = hashlib.sha256(device_token.encode("utf-8")).hexdigest()
+    return bool(fetch_one(
+        "SELECT 1 FROM trusted_login_devices WHERE account_id = %s AND device_token_hash = %s AND expires_at > now() LIMIT 1;",
+        (account_id, token_hash),
+    ))
+
+
+def trust_login_device(account_id: int, device_token: str) -> None:
+    token_hash = hashlib.sha256(device_token.encode("utf-8")).hexdigest()
+    execute_write(
+        """
+        INSERT INTO trusted_login_devices (account_id, device_token_hash, expires_at)
+        VALUES (%s, %s, now() + interval '30 days')
+        ON CONFLICT (account_id, device_token_hash)
+        DO UPDATE SET trusted_at = now(), expires_at = EXCLUDED.expires_at;
+        """,
+        (account_id, token_hash),
+    )
+
+
 def confirm_login_otp(account_id: int, otp_code: str, purpose: str = "login") -> dict:
     if purpose not in {"login", "reseller_registration"}:
         raise ValueError("Invalid OTP purpose.")
@@ -853,6 +876,76 @@ def record_user_consent(account_id: int, policy_version: str, consent_source: st
     )
 
 
+def account_has_current_policy_acceptances(
+    account_id: int,
+    privacy_notice_version: str,
+    terms_version: str,
+) -> bool:
+    rows = fetch_all(
+        """
+        SELECT policy_type, policy_version
+        FROM account_policy_acceptances
+        WHERE account_id = %s
+          AND ((policy_type = 'privacy_notice' AND policy_version = %s)
+            OR (policy_type = 'terms' AND policy_version = %s));
+        """,
+        (account_id, privacy_notice_version, terms_version),
+    )
+    accepted = {row["policy_type"] for row in rows}
+    return accepted == {"privacy_notice", "terms"}
+
+
+def _record_policy_acceptances_cursor(
+    cur,
+    account_id: int,
+    privacy_notice_version: str,
+    terms_version: str,
+    acceptance_source: str,
+) -> None:
+    cur.executemany(
+        """
+        INSERT INTO account_policy_acceptances
+            (account_id, policy_type, policy_version, acceptance_source)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (account_id, policy_type, policy_version) DO NOTHING;
+        """,
+        [
+            (account_id, "privacy_notice", privacy_notice_version, acceptance_source),
+            (account_id, "terms", terms_version, acceptance_source),
+        ],
+    )
+
+
+def record_policy_acceptances(
+    account_id: int,
+    privacy_notice_version: str,
+    terms_version: str,
+    acceptance_source: str,
+) -> None:
+    with get_transaction_cursor() as cur:
+        _record_policy_acceptances_cursor(
+            cur,
+            account_id,
+            privacy_notice_version,
+            terms_version,
+            acceptance_source,
+        )
+
+
+def account_activation_context(raw_token: str) -> dict | None:
+    token_hash = hashlib.sha256(raw_token.strip().encode("utf-8")).hexdigest()
+    return clean_row(fetch_one(
+        """
+        SELECT t.purpose, a.account_type
+        FROM account_activation_tokens t
+        JOIN accounts a ON a.account_id = t.account_id
+        WHERE t.token_hash = %s AND t.consumed_at IS NULL AND t.expires_at >= now()
+        LIMIT 1;
+        """,
+        (token_hash,),
+    ))
+
+
 def _create_activation_token_cursor(cur, account_id: int, purpose: str = "activation") -> str:
     if purpose not in {"activation", "password_reset"}:
         raise ValueError("Invalid account token purpose.")
@@ -988,7 +1081,15 @@ def add_account(
     return clean
 
 
-def activate_account(raw_token: str, new_password: str) -> dict:
+def activate_account(
+    raw_token: str,
+    new_password: str,
+    *,
+    privacy_notice_version: str = "",
+    terms_version: str = "",
+    privacy_acknowledged: bool = False,
+    terms_accepted: bool = False,
+) -> dict:
     token = raw_token.strip()
     if not token:
         raise ValueError("Activation link is invalid or expired.")
@@ -1014,8 +1115,19 @@ def activate_account(raw_token: str, new_password: str) -> dict:
         if not account:
             raise ValueError("Activation link is invalid or expired.")
         if account["purpose"] == "activation":
+            if not privacy_acknowledged or not terms_accepted:
+                raise ValueError("Please review and acknowledge the Privacy Notice and Terms and Conditions.")
+            if not privacy_notice_version.strip() or not terms_version.strip():
+                raise ValueError("The policy versions are missing. Reload the activation page and try again.")
             if account["account_type"] == "reseller":
                 raise ValueError("Reseller registration requires an Owner-issued invitation and email OTP.")
+            _record_policy_acceptances_cursor(
+                cur,
+                int(account["account_id"]),
+                privacy_notice_version,
+                terms_version,
+                "account_activation",
+            )
             cur.execute(
                 """
                 UPDATE accounts SET password_hash = %s, is_active = true,
@@ -1102,4 +1214,5 @@ def resend_activation(account_id: int, actor_account_id: int, account_types: tup
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="resent_activation", entity_type="accounts", entity_id=account_id)
 
 
-__all__ = ['list_owner_resellers', 'count_owner_resellers', 'list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'next_sales_supervisor', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'list_team_resellers', 'count_team_resellers', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'queue_forced_password_reset', 'resend_activation']
+__all__ = ['list_owner_resellers', 'count_owner_resellers', 'list_accounts', 'count_accounts', 'list_team_leader_accounts', 'next_sales_team_leader', 'next_sales_supervisor', 'list_all_team_leader_accounts', 'list_reseller_assignments', 'list_team_resellers', 'count_team_resellers', 'set_reseller_team_leader', 'update_team_leader_account_role', 'role_key_for_account_type', 'authenticate_account', 'change_account_password', 'request_account_password_change', 'request_reseller_password_change', 'cancel_reseller_password_change', 'cancel_account_password_change', 'confirm_account_password_change', 'confirm_reseller_password_change', 'request_login_otp', 'cancel_login_otp', 'confirm_login_otp', 'login_device_is_trusted', 'trust_login_device', 'update_reseller_profile', 'account_portal_profile', 'update_account_profile_image', 'active_session_account', 'record_user_consent', '_create_activation_token_cursor', 'reseller_account_profile', 'require_reseller_team_leader', 'add_account', 'activate_account', 'queue_forced_password_reset', 'resend_activation']
+__all__ += ['account_has_current_policy_acceptances', 'record_policy_acceptances', 'account_activation_context']

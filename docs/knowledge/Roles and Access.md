@@ -3,7 +3,6 @@ tags: [meattrack, permissions]
 verified: 2026-11-03
 ---
 # Roles and access
-
 Portal navigation describes available screens; server-side capabilities and
 ownership-scoped queries enforce access. A hidden button is not an authorization
 boundary. Sales supervisor is a portal role backed by the team-leader account
@@ -48,10 +47,47 @@ separate. Checked against `app/capabilities.py`, `app/portals/owner.py`,
 `app/portals/refunds.py`, and `app/repositories/product_returns.py` on 2026-11-03.
 See [[Returns and Financials]] and [[Decisions]].
 
-Sessions are backed by PostgreSQL. Login/activation/password-change handling,
-session rotation, CSRF enforcement, and rate controls connect authorization to
-[[Architecture]]. Check configuration and implementation when changing defaults;
-see the documented drift in [[Questions and Contradictions]].
+New reseller registration and staff account activation collect separate
+acknowledgements for the Privacy Notice and Terms. Existing accounts without
+the current versions are prompted after password and any required login OTP
+verification, before a portal session is established. Routine login only offers
+Remember me and links to the policy pages. A new `account_policy_acceptances`
+ledger stores each policy type, version, source, and timestamp independently;
+this acknowledgement ledger is separate from `user_consents`. Policy versions
+default to `CONSENT_VERSION` and can be configured independently with
+`PRIVACY_NOTICE_VERSION` and `TERMS_VERSION`. Sources: `app/config.py`,
+`app/routers/auth.py`, `app/routers/reseller_registration.py`,
+`app/repositories/accounts.py`, `app/repositories/reseller_invitations.py`,
+`app/templates/login.html`, `app/templates/activate.html`,
+`app/templates/reseller_register.html`, and migration
+`database/migrations/052_account_policy_acceptances.sql`. See [[Decisions]] and
+[[Architecture]].
+
+Sessions are backed by PostgreSQL. Portal sessions expire after 15 minutes without
+a user action; page navigation and a heartbeat after recent keyboard, pointer,
+scroll, or touch activity refresh the deadline. Background message polling alone
+does not. This works while the browser is open or closed. The login form's
+optional Remember me choice keeps the browser cookie across restarts for up to
+30 days, while the server-side inactivity deadline remains 15 minutes. Without
+it, the cookie ends when the browser closes. Session rotation, CSRF enforcement,
+and rate controls connect authorization to [[Architecture]]. Check configuration
+and implementation when changing defaults; see the documented drift in
+[[Questions and Contradictions]].
+
+### Login OTP on recognized devices
+
+After successful login OTP verification, the browser receives a random, HttpOnly
+device cookie and PostgreSQL stores only its SHA-256 hash for that account. The
+device is trusted for a fixed 30 days from verification; signing in during that
+period does not extend the window. A first sign-in, a different browser/device,
+or an expired trust record requires email OTP again. This applies only to login;
+registration, password changes, and recovery keep their own OTP rules. Sources:
+`app/routers/auth.py`, `app/repositories/accounts.py`, and migration
+`database/migrations/051_trusted_login_devices.sql`.
+
+Opening `/login` with a still-valid portal session redirects to that account's
+default portal page, so a persistent session does not appear signed out simply
+because the browser reopened the login URL. Source: `app/routers/auth.py`.
 
 Sources: [capabilities](../../app/capabilities.py),
 [portal dependencies](../../app/portal_dependencies.py), [navigation](../../app/portal_config.py),

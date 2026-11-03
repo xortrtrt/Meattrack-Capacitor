@@ -32,6 +32,22 @@ Sources: `app/chatbot/lead_flow.py`, `app/chatbot/configuration.py`,
 `app/security_controls.py`, migration
 `database/migrations/050_reseller_registration_invitations.sql`.
 
+## Privacy notice service disclosures (2026-11-03)
+
+The public chatbot keeps the six most recent chat messages, each limited to 300
+characters, in the MEATTRACK session; when the hosted answer path is used, the
+current message and that history are sent to the configured OpenRouter-compatible
+model endpoint.
+Transactional account email is sent through the configured Brevo API. Messages in
+historical visitor live-chat conversations are deleted by the retention job after
+the configured `CHAT_TRANSCRIPT_RETENTION_DAYS` period (30 days by default) when
+the conversation is closed or cancelled; this does not define retention for
+business orders, return evidence, or authenticated reseller conversations. These
+service and retention statements are reflected in the public privacy notice
+(`app/templates/privacy.html`). Sources checked 2026-11-03:
+`app/chatbot/provider.py`, `app/chatbot/lead_flow.py`, `app/emailer.py`,
+`app/live_chat.py`, and `app/config.py`.
+
 ## Reseller unified inbox (2026-11-02)
 
 ### Participant grouping refinement

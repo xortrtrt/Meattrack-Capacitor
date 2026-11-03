@@ -173,7 +173,9 @@ private `.env.production` file that must never be committed.
 | `BUSINESS_TIMEZONE` | Business timezone; defaults to `Asia/Manila` | Recommended |
 | `APP_BASE_URL` | Public HTTPS origin used in activation and registration invitation emails | Required |
 | `LOGIN_OTP_ENABLED` | Enables email OTP after password login | Defaults to `true` in every environment |
-| `CONSENT_VERSION` | Version recorded with accepted login consent | Optional |
+| `CONSENT_VERSION` | Backward-compatible default for policy versions | Optional |
+| `PRIVACY_NOTICE_VERSION` | Version acknowledged at account setup | Defaults to `CONSENT_VERSION` |
+| `TERMS_VERSION` | Terms version accepted at account setup | Defaults to `CONSENT_VERSION` |
 | `BREVO_API_KEY` | Brevo transactional-email API key | Required for live email |
 | `BREVO_FROM_EMAIL` | Verified sender address | Required for live email |
 | `BREVO_FROM_NAME` | Sender display name | Optional |

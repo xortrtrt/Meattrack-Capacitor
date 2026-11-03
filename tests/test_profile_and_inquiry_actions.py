@@ -8,7 +8,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main, portal_dependencies, repositories
-from app.config import CONSENT_VERSION
 from app.routers import auth as auth_routes
 from app.portals import shared as shared_portal
 from app.repositories import accounts as account_repository
@@ -308,19 +307,20 @@ def test_development_login_establishes_portal_session_without_otp(monkeypatch):
     }
     consent_calls = []
     monkeypatch.setattr(auth_routes, "LOGIN_OTP_ENABLED", False)
+    monkeypatch.setattr(auth_routes.data, "account_has_current_policy_acceptances", lambda *args: True)
     monkeypatch.setattr(repositories, "authenticate_account", lambda email, password: account)
     monkeypatch.setattr(repositories, "record_user_consent", lambda *args: consent_calls.append(args))
     monkeypatch.setattr(repositories, "add_log", lambda *args, **kwargs: None)
 
     response = TestClient(main.app).post(
         "/login",
-        data={"email": "owner@example.test", "password": "demo1234", "consent": "yes"},
+        data={"email": "owner@example.test", "password": "demo1234"},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
     assert response.headers["location"] == "/portal/owner/dashboard"
-    assert consent_calls == [(7, CONSENT_VERSION, "password_login")]
+    assert consent_calls == []
 
 
 def test_login_uses_email_otp_when_enabled(monkeypatch):
@@ -333,13 +333,14 @@ def test_login_uses_email_otp_when_enabled(monkeypatch):
         "email": "owner@example.test",
     }
     monkeypatch.setattr(auth_routes, "LOGIN_OTP_ENABLED", True)
+    monkeypatch.setattr(auth_routes.data, "account_has_current_policy_acceptances", lambda *args: True)
     monkeypatch.setattr(repositories, "authenticate_account", lambda email, password: account)
     monkeypatch.setattr(repositories, "request_login_otp", lambda account_id: {"otp_id": 4, "otp_code": "123456", "account": account})
     monkeypatch.setattr(auth_routes, "send_login_otp", lambda **kwargs: calls.append(kwargs) or (True, "sent"))
 
     response = TestClient(main.app).post(
         "/login",
-        data={"email": "owner@example.test", "password": "demo1234", "consent": "yes"},
+        data={"email": "owner@example.test", "password": "demo1234"},
         follow_redirects=False,
     )
 
@@ -358,6 +359,7 @@ def test_login_otp_confirmation_establishes_portal_session(monkeypatch):
     }
     consent_calls = []
     monkeypatch.setattr(auth_routes, "LOGIN_OTP_ENABLED", True)
+    monkeypatch.setattr(auth_routes.data, "account_has_current_policy_acceptances", lambda *args: True)
     monkeypatch.setattr(repositories, "confirm_login_otp", lambda account_id, otp_code: account)
     monkeypatch.setattr(repositories, "record_user_consent", lambda *args: consent_calls.append(args))
     monkeypatch.setattr(repositories, "add_log", lambda *args, **kwargs: None)
@@ -365,8 +367,6 @@ def test_login_otp_confirmation_establishes_portal_session(monkeypatch):
     request = RequestStub({
         "pending_login_account_id": 7,
         "pending_login_email": "owner@example.test",
-        "pending_login_consent_version": "v1",
-        "pending_login_consent_source": "password_otp",
     })
     response = asyncio.run(auth_routes.submit_login_otp(request, "123456"))
 
@@ -374,7 +374,7 @@ def test_login_otp_confirmation_establishes_portal_session(monkeypatch):
     assert response.headers["location"] == "/portal/owner/dashboard"
     assert request.session["role_key"] == "owner"
     assert "portal_expires_at" in request.session
-    assert consent_calls == [(7, "v1", "password_otp")]
+    assert consent_calls == []
 
 
 def test_portal_session_expires_after_timestamp():

@@ -1,0 +1,44 @@
+{% set policy_csrf = csrf_token(request) %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="csrf-token" content="{{ policy_csrf }}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Review policies | Batangas Premium</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/login.css') }}?v=20261103-policy-activation-1" />
+  </head>
+  <body class="login-page login-signin-page policy-acceptance-page">
+    <div class="login-bg" style="background-image: url('{{ 'background.jpg'|media_url }}')"></div>
+    <div class="login-overlay"></div>
+    <main class="login-wrapper">
+      <section class="login-card" aria-labelledby="policy-title">
+        <a href="/" class="login-brand" aria-label="Batangas Premium home">
+          <img src="{{ 'batangas_premium.png'|media_url }}" alt="Batangas Premium" class="login-logo" />
+        </a>
+        <p class="login-card-kicker">Account policies</p>
+        <h1 id="policy-title">Please review these documents</h1>
+        <p class="login-subtitle">Before we open your workspace, review the current Privacy Notice and Terms and Conditions.</p>
+        {% if error %}<aside class="notice error" role="alert">{{ error }}</aside>{% endif %}
+        <form class="login-form" action="/account/policies" method="post">
+          <input type="hidden" name="csrf_token" value="{{ policy_csrf }}" />
+          <input type="hidden" name="privacy_notice_version" value="{{ privacy_notice_version }}" />
+          <input type="hidden" name="terms_version" value="{{ terms_version }}" />
+          <label class="policy-check">
+            <input required type="checkbox" name="privacy_acknowledged" value="yes" />
+            <span>I have read the <a href="/privacy" target="_blank" rel="noopener">Privacy Notice</a> and understand how my personal information is handled.</span>
+          </label>
+          <label class="policy-check">
+            <input required type="checkbox" name="terms_accepted" value="yes" />
+            <span>I have read and agree to the <a href="/terms" target="_blank" rel="noopener">Terms and Conditions</a>.</span>
+          </label>
+          <button class="login-btn" type="submit">Accept and continue</button>
+        </form>
+        <form action="/logout" method="post">
+          <input type="hidden" name="csrf_token" value="{{ policy_csrf }}" />
+          <button class="login-back" type="submit">Sign out</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

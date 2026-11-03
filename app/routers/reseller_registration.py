@@ -6,6 +6,7 @@ from fastapi import APIRouter, Form, Request
 
 from app import repositories as data
 from app import web
+from app.config import PRIVACY_NOTICE_VERSION, TERMS_VERSION
 from app.emailer import send_login_otp
 from app.security_controls import enforce_otp_attempt, record_event
 
@@ -31,6 +32,8 @@ def _render(request: Request, *, token: str = "", invitation: dict | None = None
             "registration_started": started,
             "error": error,
             "message": message,
+            "privacy_notice_version": PRIVACY_NOTICE_VERSION,
+            "terms_version": TERMS_VERSION,
         },
         status_code=404 if not invitation else 200,
         headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
@@ -74,8 +77,16 @@ async def submit_reseller_registration(
     address: str = Form(""),
     password: str = Form(...),
     confirm_password: str = Form(...),
+    privacy_acknowledged: str = Form(""),
+    terms_accepted: str = Form(""),
+    privacy_notice_version: str = Form(""),
+    terms_version: str = Form(""),
 ):
     try:
+        if privacy_acknowledged != "yes" or terms_accepted != "yes":
+            raise ValueError("Please review and acknowledge the Privacy Notice and Terms and Conditions.")
+        if privacy_notice_version != PRIVACY_NOTICE_VERSION or terms_version != TERMS_VERSION:
+            raise ValueError("The policy documents changed. Reload your invitation and review the current versions.")
         if password != confirm_password:
             raise ValueError("Password and confirmation do not match.")
         account = data.begin_invited_reseller_registration(
@@ -85,6 +96,8 @@ async def submit_reseller_registration(
             contact_number=contact_number,
             address=address,
             password=password,
+            privacy_notice_version=PRIVACY_NOTICE_VERSION,
+            terms_version=TERMS_VERSION,
         )
         request.session[PENDING_ACCOUNT_SESSION_KEY] = int(account["account_id"])
         sent, mail_message = await _send_registration_otp(int(account["account_id"]))
@@ -116,7 +129,7 @@ async def verify_reseller_registration(request: Request, otp_code: str = Form(..
     try:
         account_id = int(account_id)
         enforce_otp_attempt(account_id, purpose="reseller_registration")
-        account = data.confirm_login_otp(account_id, otp_code, purpose="reseller_registration")
+        data.confirm_login_otp(account_id, otp_code, purpose="reseller_registration")
     except (TypeError, ValueError) as exc:
         if str(exc) not in {"Too many incorrect OTP attempts. Request a new code."}:
             record_event("otp_verify", f"account:{account_id}:reseller_registration")
