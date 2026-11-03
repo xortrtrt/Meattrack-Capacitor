@@ -247,36 +247,6 @@ def reports_page(
     return paged(items, total, filters["page"], page_size, q=filters["q"], sort=filters["sort"])
 
 
-def inquiries_page(
-    request: Request,
-    page_size: int = 10,
-    assigned_team_leader_account_id: int | None = None,
-    include_unassigned: bool = False,
-    missing_coverage: bool = False,
-) -> dict:
-    filters = portal_filters(request)
-    coverage = {"missing_coverage": True} if missing_coverage else {}
-    total = data.count_inquiries(
-        **coverage,
-        q=filters["q"],
-        status=filters["status"],
-        assigned_team_leader_account_id=assigned_team_leader_account_id,
-        include_unassigned=include_unassigned,
-    )
-    filters["page"] = clamp_page(total, filters["page"], page_size)
-    items = data.list_inquiries(
-        **coverage,
-        q=filters["q"],
-        status=filters["status"],
-        assigned_team_leader_account_id=assigned_team_leader_account_id,
-        include_unassigned=include_unassigned,
-        page=filters["page"],
-        page_size=page_size,
-        sort=filters["sort"],
-    )
-    return paged(items, total, filters["page"], page_size, q=filters["q"], status=filters["status"], sort=filters["sort"])
-
-
 def notifications_context(request: Request, page_size: int = 15) -> dict:
     account_id = session_account_id(request)
     role_key = str(request.path_params.get("role_key") or request.session.get("role_key") or "")

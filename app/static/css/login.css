@@ -260,6 +260,72 @@ button {
   color: var(--white);
 }
 
+/* Invitation registration uses the same brand palette with a readable paper form. */
+.reseller-registration-page {
+  background:
+    radial-gradient(ellipse at 50% 8%, rgba(215, 182, 33, 0.16), transparent 42%),
+    linear-gradient(145deg, #171512, #0d0c0b 58%, #211c12);
+  color: var(--ink);
+}
+
+.reseller-registration-page .login-wrapper {
+  grid-template-columns: minmax(0, 560px);
+  justify-items: center;
+  gap: 0;
+  padding: 48px 24px;
+}
+
+.reseller-registration-page .login-card {
+  width: min(100%, 560px);
+  gap: 18px;
+  padding: clamp(24px, 5vw, 42px);
+  border: 1px solid rgba(215, 182, 33, 0.42);
+  border-radius: 20px;
+  background: #fffdf7;
+  color: var(--ink);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38), inset 0 1px 0 #fff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.reseller-registration-page .login-brand { margin-bottom: 2px; }
+.reseller-registration-page .login-panel { display: grid; gap: 15px; }
+.reseller-registration-page .login-logo { width: 112px; }
+.reseller-registration-kicker { color: var(--gold-deep); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.11em; }
+.reseller-registration-page .login-card h1 { margin: -8px 0 0; color: var(--ink); font-size: clamp(1.8rem, 4vw, 2.25rem); line-height: 1.12; }
+.reseller-registration-page .login-card > .login-panel > p { margin: 0; color: var(--muted); font-size: 0.96rem; line-height: 1.55; }
+.reseller-registration-page .login-subtitle { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+.reseller-registration-page .login-form { gap: 12px; }
+.reseller-registration-page .login-form > label:not([class]) { display: block; margin: 2px 0 -8px; color: #494238; font-size: 0.84rem; font-weight: 700; }
+.reseller-registration-page .login-form > input:not([type="hidden"]) { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #c9c0ab; border-radius: 8px; background: #fff; color: var(--ink); }
+.reseller-registration-page .login-form > input[readonly] { background: #f2eee3; color: #574f42; }
+.reseller-registration-page .login-form > input:focus-visible { border-color: var(--gold-deep); outline: 3px solid rgba(170, 134, 22, 0.22); outline-offset: 1px; }
+.reseller-registration-form > label:not([class]) { display: block; margin: 3px 0 -9px; color: #494238; font-size: 0.84rem; font-weight: 700; }
+.reseller-registration-form > input:not([type="hidden"]),
+.reseller-registration-form > textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid #c9c0ab;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+.reseller-registration-form > textarea { min-height: 76px; resize: vertical; }
+.reseller-registration-form > input[readonly] { background: #f2eee3; color: #574f42; }
+.reseller-registration-form > :is(input, textarea):focus-visible { border-color: var(--gold-deep); outline: 3px solid rgba(170, 134, 22, 0.22); outline-offset: 1px; }
+.reseller-registration-page .login-btn { min-height: 50px; margin-top: 4px; border-radius: 9px; }
+.reseller-registration-page .login-back { color: #6b5320; }
+.reseller-registration-page .login-back:hover { color: var(--black); }
+.reseller-registration-page .notice { margin: 0; }
+
+@media (max-width: 560px) {
+  .reseller-registration-page .login-wrapper { padding: 20px 14px calc(28px + env(safe-area-inset-bottom)); }
+  .reseller-registration-page .login-card { width: 100%; max-width: 480px; margin: auto; padding: 22px 18px; border-radius: 16px; }
+  .reseller-registration-page .login-logo { width: 96px; }
+}
+
 .notice {
   padding: 14px 16px;
   border-radius: 6px;

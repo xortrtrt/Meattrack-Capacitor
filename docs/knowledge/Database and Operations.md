@@ -4,6 +4,31 @@ verified: 2026-11-03
 ---
 # Database and operations
 
+## Reseller invitation schema (2026-11-03)
+
+Migration `050_reseller_registration_invitations.sql` adds hashed Owner-issued
+invitation records and extends `account_login_otps` with a purpose and per-code
+attempt count. Apply the migration before starting code that issues invitations
+or verifies registration OTPs. The migration has been added to source; this note
+does not claim it has been applied to a database or deployed.
+
+## Local rollback to 049 (2026-11-03)
+
+After the user restored application code to commit `dd21778`, the local database
+was explicitly downgraded from 050 to 049 to remove the incompatible GCash refund
+guard. A fresh private backup was restored and the exact rollback rehearsed on a
+disposable database before application. The six GCash tables were unused apart
+from two empty Owner slots, and all new references were null. Only 050's objects
+and migration record were removed, without cascading drops. Hash comparisons
+preserved all 78 pre-existing public tables (including migration history through
+049) and all 52 existing sequences. No transaction reset or production change
+occurred. The normal migration runner passed; app/worker restarted and `/health`
+returned HTTP 200. No regression suite was restarted. See [[Decisions]].
+Sources: `database/migrations/049_scope_replacement_policy_trigger.sql`,
+`tools/migrate_database.py`; local operational evidence is in ignored
+`outputs/gcash/local-rollback-049.json`. GCash implementation remains stashed,
+not active application policy.
+
 ## Replacement-first local maintenance completed (2026-11-03)
 
 Migrations 048 and 049 are applied to the verified loopback local development
@@ -36,6 +61,22 @@ Sources: migrations 048–049, `tools/transaction_reset.py`,
 `tools/verified_database_backup.py`, `tools/reset_operational_data.py`,
 `tests/test_replacement_first_migration_reset.py`.
 See [[Decisions]], [[Replacement Workflow]], [[Testing and Change Impact]].
+
+## Transaction history cleared again (2026-11-03)
+
+At the user's request, the transaction-only reset was rehearsed and committed on
+the loopback local database using a fresh private backup and the required stopped
+app/worker maintenance window. It cleared the three local orders and three
+return/replacement cases, including linked proofs, quotes, events, releases,
+conversations, and derived transaction artifacts; there were no refund rows.
+Accounts, products, settings, physical batches/quantities, inventory and expired
+custody movements, unrelated conversations, and migration history were preserved.
+Order and return attribution was detached from preserved physical movements and
+holdings; no stock was restored. Post-reset order, return, refund, proof, and quote
+counts were zero; `/health` returned HTTP 200 and app/worker resumed. No production
+database was changed. The private backup remains outside this vault.
+Sources: `tools/reset_operational_data.py`, `tools/transaction_reset.py`,
+`tools/verified_database_backup.py`. See [[Decisions]] and [[Returns and Financials]].
 
 Migration `047_message_order_context.sql` adds nullable `reseller_messages.order_id`
 with an orders foreign key. It does not rewrite historical messages or change

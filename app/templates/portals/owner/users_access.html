@@ -1,6 +1,6 @@
 <div class="owner-page owner-accounts-page owner-directory-page">
   <section class="panel owner-workspace-surface">
-    <header class="panel-heading"><div><span class="eyebrow">People & access</span><h2>Users & access</h2><p class="hint">Review identities and manage portal access without leaving the directory.</p></div><div class="owner-directory-filter-actions"><form action="/portal/owner/exports/accounts.csv" method="post"><button class="button subtle" type="submit">Export all records</button></form><button class="button primary" type="button" data-owner-modal-open="owner-create-account" aria-haspopup="dialog">Create account</button></div></header>
+    <header class="panel-heading"><div><span class="eyebrow">People & access</span><h2>Users & access</h2><p class="hint">Review identities and manage portal access without leaving the directory.</p></div><div class="owner-directory-filter-actions"><form action="/portal/owner/exports/accounts.csv" method="post"><button class="button subtle" type="submit">Export all records</button></form><button class="button subtle owner-create-account-trigger" type="button" data-owner-modal-open="owner-create-account" aria-haspopup="dialog">Create account</button><button class="button primary" type="button" data-owner-modal-open="owner-create-reseller" aria-haspopup="dialog"><i data-lucide="user-plus"></i> Create Reseller Account</button></div></header>
     <form class="filter-bar owner-directory-filters" method="get">
       <label>Search accounts<input name="q" value="{{ accounts_page.filters.q }}" placeholder="Name or email"></label>
       <label>Account type<select name="type"><option value="">All types</option>{% for option in accounts_page.type_options %}<option value="{{ option.value }}" {{ 'selected' if accounts_page.filters.type == option.value else '' }}>{{ option.label }}</option>{% endfor %}</select></label>
@@ -108,8 +108,18 @@
         </select>
       </label>
       <button class="button primary" type="submit"><i data-lucide="user-plus"></i> Create account</button>
-      <p class="hint">Reseller accounts are created through application approval by a Sales Supervisor or Owner.</p>
+      <p class="hint">Reseller access requires a personal invitation from the Business Owner.</p>
     </form>
+    </div>
+  </dialog>
+  <dialog class="owner-detail-modal" id="owner-create-reseller" data-owner-modal aria-labelledby="owner-create-reseller-title">
+    <header class="owner-detail-modal-heading"><div><span class="eyebrow">PERSONAL INVITATION</span><h2 id="owner-create-reseller-title">Create Reseller Account</h2><p>Send a private registration link to someone you have approved outside MEATTRACK.</p></div><button class="icon-button" type="button" data-owner-modal-close aria-label="Close reseller invitation"><i data-lucide="x" aria-hidden="true"></i></button></header>
+    <div class="owner-detail-modal-body">
+      <form class="owner-reseller-invite-form" action="/portal/owner/accounts/reseller-invitations" method="post">
+        <label>Recipient email<input required type="email" name="email" autocomplete="email" placeholder="person@example.com"></label>
+        <p class="owner-reseller-invite-note"><i data-lucide="lock-keyhole"></i><span>The invitation is bound to this email, expires in 7 days, and requires email OTP verification.</span></p>
+        <button class="button primary" type="submit"><i data-lucide="mail"></i> Send invitation</button>
+      </form>
     </div>
   </dialog>
 </div>

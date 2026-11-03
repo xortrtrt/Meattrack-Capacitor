@@ -60,6 +60,7 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
         page.route("http://handoff.test/**", bridge)
         sign_in("inventory")
         page.goto(f"http://handoff.test/portal/team-leader/returns?case={case}", wait_until="networkidle")
+        page.get_by_role("tab", name="Inventory Actions", exact=True).click()
         page.locator('.inventory-receipt-choice.is-complete > summary').click()
         page.get_by_label("I checked every approved product, quantity, batch, and supporting photo. Everything matches.").check()
         page.get_by_role("button", name="Confirm complete receipt", exact=True).click()
@@ -67,9 +68,11 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
         assert "PHP" not in page.locator("body").inner_text()
         sign_in("sales")
         page.goto(f"http://handoff.test/portal/team-leader/returns?case={case}", wait_until="networkidle")
-        expect(page.get_by_role("heading", name="Return Review and Settlement", exact=True)).to_be_visible()
+        expect(page.locator('[data-return-details]')).to_be_visible()
         expect(page.locator('form[action$="/proceed"]')).to_have_count(0)
-        expect(page.get_by_role("dialog")).to_contain_text("Returned goods checked. Resolution cleared.")
+        expect(page.locator('[data-return-dialog]')).to_have_count(0)
+        page.get_by_role("tab", name="Activity History", exact=True).click()
+        expect(page.locator('[data-workflow-step="receipt"]')).to_have_class("is-done")
         refund = fetch_one("SELECT order_refund_id FROM order_refunds WHERE return_id=%s", (case,))["order_refund_id"]
         sign_in("supervisor")
         page.goto(f"http://handoff.test/portal/sales-supervisor/refunds?refund={refund}", wait_until="networkidle")
@@ -104,9 +107,11 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
                 page.set_viewport_size({"width": width, "height": 900})
                 prefix = "reseller" if role == "reseller" else "team-leader"
                 page.goto(f"http://handoff.test/portal/{prefix}/returns?case={replacement}", wait_until="networkidle")
-                dialog = page.locator("[data-return-details]") if role == "reseller" else page.get_by_role("dialog", name=f"Return #{replacement}", exact=True)
+                dialog = page.locator("[data-return-details]")
                 if role == "reseller":
                     page.get_by_role("tab", name="Replacement & Delivery", exact=True).click()
+                elif role == "inventory":
+                    page.get_by_role("tab", name="Activity History", exact=True).click()
                 expect(dialog).to_be_visible()
                 expect(dialog).to_contain_text("TEST-2")
                 if role == "inventory":
@@ -116,8 +121,7 @@ def test_three_portals_continue_existing_refund_and_show_replacement_batches(lif
                     expect(dialog).to_contain_text("Your replacement delivery batches")
                     assert "Holding #" not in dialog.inner_text() and "Original sales" not in page.locator("body").inner_text()
                 else:
-                    expect(dialog.get_by_role("heading", name="Inventory records", exact=True)).to_be_visible()
-                    expect(dialog.locator("details")).to_have_count(0)
+                    expect(dialog.get_by_role("heading", name="Returned goods and replacement progress", exact=True)).to_be_visible()
                     expect(dialog).to_contain_text("Movement #")
                 assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
                 assert dialog.evaluate("el=>el.scrollWidth<=el.clientWidth+1")

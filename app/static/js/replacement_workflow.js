@@ -60,12 +60,16 @@
         output.replaceChildren();
         const heading = document.createElement('h4'); heading.textContent = 'Price comparison'; output.append(heading);
         const totals = document.createElement('dl'); totals.className = 'return-comparison-totals';
-        for (const [label, value] of [['Return credit',result.credit],['Replacement value',result.total],['Extra payment',result.additional_due]]) {
+        for (const [label, value] of [['Return credit',result.credit],['Replacement value',result.total]]) {
           const row = document.createElement('div');
           const name = document.createElement('dt'); name.textContent = label;
           const amount = document.createElement('dd'); amount.textContent = money(value);
           row.append(name, amount); totals.append(row);
         }
+        const noMoney = document.createElement('div');
+        const noMoneyLabel = document.createElement('dt'); noMoneyLabel.textContent = 'Payment or price adjustment';
+        const noMoneyValue = document.createElement('dd'); noMoneyValue.textContent = 'None';
+        noMoney.append(noMoneyLabel, noMoneyValue); totals.append(noMoney);
         output.append(totals);
         const list = document.createElement('ul'); list.className = 'return-selected-products';
         for (const item of result.items) {

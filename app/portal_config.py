@@ -53,13 +53,12 @@ portal_nav = {
         ("dashboard", "Dashboard", "layout-dashboard"),
         ("sales", "Walk-in Sales", "shopping-cart"),
         ("inventory", "Inventory", "boxes"),
-        ("inquiries", "Inquiries", "user-check"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("reports", "Reports", "file-text"),
     ],
     "owner": [
         ("dashboard", "Overview", "layout-dashboard"),
-        ("orders", "Orders & inquiries", "clipboard-check"),
+        ("orders", "Orders", "clipboard-check"),
         ("returns", "Returns & refunds", "package-check"),
         ("inventory", "Inventory", "boxes"),
         ("resellers", "Resellers", "users"),
@@ -80,7 +79,6 @@ owner_nav_groups = (
 # Detailed workspaces retain their URLs and authorization, without crowding the sidebar.
 owner_workspace_tabs = (
     (("dashboard", "Business overview"), ("operations", "Work queues")),
-    (("orders", "Reseller orders"), ("inquiries", "Reseller inquiries")),
     (("returns", "Product returns"), ("refunds", "Money refunds")),
     (("inventory", "Stock & production"), ("materials", "Raw materials"),
      ("batches", "Batches"), ("movements", "Movements"),
@@ -100,7 +98,6 @@ portal_secondary_sections = {
     "owner": {
         "messages": ("Replacement conversations", "messages-square"),
         "operations": ("Work queues", "activity"),
-        "inquiries": ("Reseller inquiries", "user-check"),
         "refunds": ("Money refunds", "badge-dollar-sign"),
         "materials": ("Raw materials", "beef"),
         "batches": ("Batches", "package-check"),
@@ -144,7 +141,6 @@ team_leader_nav_by_role = {
     ],
     "sales": [
         ("dashboard", "Dashboard", "layout-dashboard"),
-        ("live-chat", "Live Chat", "messages-square"),
         ("messages", "Reseller Messages", "message-circle"),
         ("resellers", "My Resellers", "users"),
         ("orders", "Reseller Orders", "clipboard-check"),
@@ -154,9 +150,7 @@ team_leader_nav_by_role = {
     ],
     "sales-supervisor": [
         ("dashboard", "Dashboard", "layout-dashboard"),
-        ("live-chat", "Live Chat", "messages-square"),
         ("messages", "Reseller Messages", "message-circle"),
-        ("inquiries", "Inquiries", "user-check"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("refunds", "Refunds", "badge-dollar-sign"),
         ("reports", "Reports", "file-text"),

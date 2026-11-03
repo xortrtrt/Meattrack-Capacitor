@@ -40,12 +40,6 @@ def _support_result(
     answer_status = answer_status or _classify_answer_status(reply)
     previous_misses = int((previous_state or {}).get("miss_count") or 0)
     miss_count = previous_misses + 1 if answer_status in {"unconfirmed", "out_of_scope"} else 0
-    handoff_offered = answer_status == "provider_unavailable" or miss_count >= 2
-    handoff_reason = (
-        "provider_unavailable" if answer_status == "provider_unavailable"
-        else "repeated_unanswered" if miss_count >= 2
-        else None
-    )
     next_history = _safe_history(history)
     next_history.extend(
         [
@@ -56,7 +50,7 @@ def _support_result(
     return {
         "reply": reply,
         "answer_status": answer_status,
-        "handoff": {"offered": handoff_offered, "reason": handoff_reason},
+        "handoff": {"offered": False, "reason": None},
         "state": {
             "mode": "support",
             "history": next_history[-MAX_HISTORY_MESSAGES:],
@@ -65,8 +59,7 @@ def _support_result(
         "suggestions": [
             "View products",
             "Delivery details",
-            "Become a reseller",
-            *(["Talk to a team leader"] if handoff_offered else []),
+            "How to Become a Reseller?",
         ],
     }
 
@@ -153,91 +146,21 @@ def process_chatbot_message(
 
     normalized_quick_reply = re.sub(r"\s+", " ", text.lower()).strip()
 
-    if state.get("mode") == "handoff":
-        if _contains_phrase(text, CANCEL_WORDS) or is_no(text):
-            return {
-                "reply": "No problem. We can continue here with the chatbot.",
-                "answer_status": "answered",
-                "handoff": {"offered": False, "reason": None},
-                "state": {},
-                "suggestions": ["View products", "Delivery details", "Become a reseller"],
-            }
-        if state.get("step") == "offer":
-            if is_yes(text) or normalized_quick_reply in {
-                "connect me",
-                "talk to a team leader",
-                "talk to an agent",
-                "continue",
-            }:
-                state["step"] = "name"
-                return {
-                    "reply": "What display name should we use for the live conversation?",
-                    "answer_status": "answered",
-                    "handoff": {"offered": True, "reason": state.get("reason")},
-                    "state": state,
-                    "suggestions": ["Cancel"],
-                }
-            return {
-                "reply": "Choose Connect me to start, or Not now to continue with the chatbot.",
-                "answer_status": "answered",
-                "handoff": {"offered": True, "reason": state.get("reason")},
-                "state": state,
-                "suggestions": ["Connect me", "Not now"],
-            }
-        if state.get("step") == "name":
-            cleaned_name = re.sub(r"\s+", " ", text).strip()
-            if not 2 <= len(cleaned_name) <= 80 or not any(character.isalpha() for character in cleaned_name):
-                return {
-                    "reply": "Please enter a display name using 2 to 80 characters, or choose Cancel.",
-                    "answer_status": "answered",
-                    "handoff": {"offered": True, "reason": state.get("reason")},
-                    "state": state,
-                    "suggestions": ["Cancel"],
-                }
-            state["display_name"] = cleaned_name
-            state["step"] = "consent"
-            return {
-                "reply": (
-                    "Before I connect you: your display name and live-chat messages will be stored for up to 30 days "
-                    "and transmitted through Ably for real-time delivery. Do you agree?"
-                ),
-                "answer_status": "answered",
-                "handoff": {"offered": True, "reason": state.get("reason")},
-                "state": state,
-                "suggestions": ["I agree", "Cancel"],
-            }
-        if state.get("step") == "consent":
-            if is_yes(text) or normalized_quick_reply in {"i agree", "agree", "consent"}:
-                state["step"] = "starting"
-                return {
-                    "reply": "Thanks. I’m looking for an available sales team leader now.",
-                    "answer_status": "answered",
-                    "handoff": {
-                        "offered": True,
-                        "start": True,
-                        "reason": state.get("reason") or "requested",
-                        "display_name": state.get("display_name"),
-                    },
-                    "state": state,
-                    "suggestions": ["Cancel"],
-                }
-            return {
-                "reply": "Please choose I agree to start live chat, or Cancel to keep using the chatbot.",
-                "answer_status": "answered",
-                "handoff": {"offered": True, "reason": state.get("reason")},
-                "state": state,
-                "suggestions": ["I agree", "Cancel"],
-            }
+    if normalized_quick_reply.rstrip("?") in {"how to become a reseller", "become a reseller"} or is_reseller_signup_intent(text):
+        reply = f"For reseller opportunities, please contact the Business Owner at {BUSINESS_EMAIL}. Please discuss the opportunity directly with the owner."
+        result = _support_result(reply, text, previous_state=state, answer_status="answered")
+        result["state"] = {}
+        result["suggestions"] = ["View products", "Delivery details"]
+        return result
+
+    # Discard older visitor lead-capture sessions; reseller discussions now
+    # happen directly with the Business Owner outside MEATTRACK.
+    if state.get("mode") in {"lead", "handoff"}:
+        state = {}
 
     if is_human_handoff_intent(text):
-        handoff_state = {"mode": "handoff", "step": "offer", "reason": "requested"}
-        return {
-            "reply": "I can connect you with an available sales team leader. Would you like to start a live conversation?",
-            "answer_status": "answered",
-            "handoff": {"offered": True, "reason": "requested"},
-            "state": handoff_state,
-            "suggestions": ["Connect me", "Not now"],
-        }
+        reply = f"For direct help, contact Batangas Premium at {BUSINESS_PHONE} or {BUSINESS_EMAIL}."
+        return _support_result(reply, text, previous_state=state, answer_status="answered")
 
     if normalized_quick_reply == "view products":
         history = state.get("history") if state.get("mode") == "support" else []
@@ -275,22 +198,7 @@ def process_chatbot_message(
             reply, text, history, previous_state=state,
             answer_status=status_sink.get("answer_status"),
         )
-    if normalized_quick_reply == "become a reseller":
-        state = _empty_lead_state()
-        return {
-            "reply": "I can help with reseller inquiries. What is your full name? You can type ‘cancel’ anytime.",
-            "state": state,
-            "suggestions": ["Cancel"],
-        }
-
     if state.get("mode") != "lead":
-        if is_reseller_signup_intent(text):
-            state = _empty_lead_state()
-            return {
-                "reply": "I can help with reseller inquiries. What is your full name? You can type ‘cancel’ anytime.",
-                "state": state,
-                "suggestions": ["Cancel"],
-            }
         history = state.get("history") if state.get("mode") == "support" else []
         status_sink = {}
         reply = ask_chatbot(text, history=history, catalog=catalog, _status_sink=status_sink)
@@ -303,7 +211,7 @@ def process_chatbot_message(
         return {
             "reply": "No problem—the reseller inquiry was cancelled. How else can I help?",
             "state": {},
-            "suggestions": ["View products", "Delivery details", "Become a reseller"],
+            "suggestions": ["View products", "Delivery details", "How to Become a Reseller?"],
         }
     if _contains_phrase(text, RESTART_WORDS):
         new_state = _empty_lead_state()
@@ -410,7 +318,7 @@ def process_chatbot_message(
             return {
                 "reply": "Understood. Your details were not submitted. You can message me again when you are ready.",
                 "state": state,
-                "suggestions": ["View products", "Become a reseller"],
+                "suggestions": ["View products", "How to Become a Reseller?"],
             }
         return {"reply": "Please answer yes if you want to talk to an available team leader, or no to cancel.", "state": state, "suggestions": ["Yes", "No"]}
 

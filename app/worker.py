@@ -152,19 +152,9 @@ def process_one_outbox() -> bool:
 def cleanup_ephemeral_security_data() -> None:
     with get_transaction_cursor() as cur:
         cur.execute("DELETE FROM security_events WHERE created_at < now() - interval '30 days'")
-        cur.execute("DELETE FROM account_login_otps WHERE consumed_at < now() - interval '30 days'")
+        cur.execute("DELETE FROM account_login_otps WHERE consumed_at < now() - interval '30 days' OR expires_at < now() - interval '30 days'")
         cur.execute("DELETE FROM account_password_otps WHERE consumed_at < now() - interval '30 days'")
         cur.execute("DELETE FROM account_activation_tokens WHERE consumed_at < now() - interval '30 days'")
-
-
-def retry_live_chat_publications() -> None:
-    if not live_chat.LIVE_CHAT_ENABLED or not live_chat.ABLY_API_KEY:
-        return
-    for message in live_chat.pending_messages():
-        try:
-            live_chat.publish_message(message, str(message["conversation_id"]))
-        except live_chat.AblyUnavailable as exc:
-            live_chat.mark_publish_failed(int(message["chat_message_id"]), str(exc))
 
 
 def process_one_forecast() -> bool:
@@ -184,13 +174,11 @@ def run_fast_once() -> None:
     while process_one_outbox():
         pass
     process_one_forecast()
-    retry_live_chat_publications()
 
 
 def run_maintenance_once() -> None:
     from app.repositories.superuser import report_system_status
 
-    enqueue_due_inquiry_followups()
     scan_batch_expiry()
     cleanup_expired_sessions()
     cleanup_ephemeral_security_data()

@@ -24,34 +24,12 @@ class ModelAnswerOpenAI:
         self.chat = type("Chat", (), {"completions": ModelAnswerCompletions()})()
 
 
-def test_chatbot_collects_and_confirms_reseller_lead():
-    state = None
-    prompts = [
-        "I want to be a reseller",
-        "Juan Dela Cruz",
-        "Juan Store",
-        "juan@example.com",
-        "09171234567",
-        "Lipa City",
-        "reseller package",
-        "yes",
-        "yes",
-    ]
+def test_chatbot_directs_reseller_interest_to_owner_email():
+    result = process_chatbot_message("I want to be a reseller")
 
-    result = {}
-    for prompt in prompts:
-        result = process_chatbot_message(prompt, state)
-        state = result["state"]
-
-    assert result["action"] == "create_lead"
-    assert result["lead"] == {
-        "name": "Juan Dela Cruz",
-        "business_name": "Juan Store",
-        "email": "juan@example.com",
-        "contact_number": "09171234567",
-        "location": "Lipa City",
-        "interest": "reseller package",
-    }
+    assert "pat.clem.inc@gmail.com" in result["reply"]
+    assert result["state"] == {}
+    assert "action" not in result
 
 
 def test_chatbot_rejects_unrelated_messages():
@@ -426,7 +404,7 @@ def test_chatbot_answers_verified_contact_and_hours(monkeypatch):
     contact = process_chatbot_message("What is your contact email?")
     hours = process_chatbot_message("What are your business hours?")
 
-    assert "batangas.premium@yahoo.com" in contact["reply"]
+    assert "pat.clem.inc@gmail.com" in contact["reply"]
     assert "Monday to Saturday" in hours["reply"]
 
 
@@ -1244,8 +1222,8 @@ def test_reseller_questions_do_not_start_lead_capture_until_customer_opts_in(mon
     signup = process_chatbot_message("I want to be a reseller", catalog=catalog)
 
     assert question["state"]["mode"] == "support"
-    assert "requirements are not listed" in question["reply"]
-    assert signup["state"]["mode"] == "lead"
+    assert "pat.clem.inc@gmail.com" in question["reply"]
+    assert signup["state"] == {}
 
 
 def test_reseller_documents_and_capital_question_does_not_start_or_reach_model(monkeypatch):
@@ -1257,7 +1235,7 @@ def test_reseller_documents_and_capital_question_does_not_start_or_reach_model(m
     )
 
     assert result["state"]["mode"] == "support"
-    assert "requirements are not listed" in result["reply"]
+    assert "pat.clem.inc@gmail.com" in result["reply"]
     assert "full name" not in result["reply"].lower()
 
 
@@ -1266,7 +1244,7 @@ def test_reseller_documents_and_capital_question_does_not_start_or_reach_model(m
     [
         ("Do you offer delivery?", "depend on location"),
         ("Do you have promos?", "Promotions and bulk pricing can change"),
-        ("Do you sell to resellers?", "Approval is not automatic"),
+        ("Do you sell to resellers?", "pat.clem.inc@gmail.com"),
     ],
 )
 def test_service_questions_are_not_misread_as_unknown_products(monkeypatch, question, expected):
@@ -1286,202 +1264,6 @@ def test_chatbot_caps_short_term_conversation_history(monkeypatch):
         state = result["state"]
 
     assert len(state["history"]) == MAX_HISTORY_MESSAGES
-
-
-def test_reseller_lead_can_go_back_edit_and_cancel():
-    state = process_chatbot_message("I want to be a reseller")["state"]
-    state = process_chatbot_message("Ana Santos", state)["state"]
-    state = process_chatbot_message("Ana Store", state)["state"]
-
-    back = process_chatbot_message("back", state)
-    assert "business name" in back["reply"].lower()
-    assert "business_name" not in back["state"]["data"]
-
-    cancelled = process_chatbot_message("cancel", back["state"])
-    assert cancelled["state"] == {}
-    assert "cancelled" in cancelled["reply"].lower()
-
-
-def test_lead_command_words_inside_business_data_are_not_executed():
-    state = process_chatbot_message("I want to be a reseller")["state"]
-    state = process_chatbot_message("Ana Back", state)["state"]
-
-    result = process_chatbot_message("Stop & Shop", state)
-
-    assert result["state"]["mode"] == "lead"
-    assert result["state"]["data"]["name"] == "Ana Back"
-    assert result["state"]["data"]["business_name"] == "Stop & Shop"
-    assert "email address" in result["reply"].lower()
-
-
-@pytest.mark.parametrize(
-    "bad_email",
-    ["a@b..com", ".ana@example.com", "ana.@example.com", "ana@-example.com", "ana@example.c"],
-)
-def test_reseller_lead_rejects_malformed_email_addresses(bad_email):
-    state = process_chatbot_message("Become a reseller")["state"]
-    state = process_chatbot_message("Ana Santos", state)["state"]
-    state = process_chatbot_message("Ana Store", state)["state"]
-
-    result = process_chatbot_message(bad_email, state)
-
-    assert "valid email address" in result["reply"].lower()
-    assert "email" not in result["state"]["data"]
-
-
-@pytest.mark.parametrize("bad_phone", ["+++++++1234567", "0917+1234567", "phone 09171234567"])
-def test_reseller_lead_rejects_malformed_phone_numbers(bad_phone):
-    state = process_chatbot_message("Become a reseller")["state"]
-    state = process_chatbot_message("Ana Santos", state)["state"]
-    state = process_chatbot_message("Ana Store", state)["state"]
-    state = process_chatbot_message("ana@example.com", state)["state"]
-
-    result = process_chatbot_message(bad_phone, state)
-
-    assert "valid contact number" in result["reply"].lower()
-    assert "contact_number" not in result["state"]["data"]
-
-
-def test_reseller_lead_rejects_a_numeric_only_name():
-    state = process_chatbot_message("Become a reseller")["state"]
-
-    result = process_chatbot_message("123456", state)
-
-    assert "valid full name" in result["reply"].lower()
-    assert "name" not in result["state"]["data"]
-
-
-def test_negative_qualifier_prevents_accidental_lead_submission():
-    state = None
-    for prompt in [
-        "I want to be a reseller",
-        "Ana Santos",
-        "Ana Store",
-        "ana@example.com",
-        "09171234567",
-        "Lipa City",
-        "reseller package",
-        "yes",
-    ]:
-        state = process_chatbot_message(prompt, state)["state"]
-
-    result = process_chatbot_message("Yes, but don't submit", state)
-
-    assert result.get("action") is None
-    assert result["state"]["step"] == "done"
-    assert "not submitted" in result["reply"].lower()
-
-
-def test_support_question_during_lead_collection_is_not_saved_as_a_field(monkeypatch):
-    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "")
-    catalog = [{"name": "Bacon", "base_price": 129, "category": "Chicken"}]
-    state = process_chatbot_message("Become a reseller", catalog=catalog)["state"]
-
-    result = process_chatbot_message("How much is Bacon?", state, catalog=catalog)
-
-    assert "Bacon is PHP 129" in result["reply"]
-    assert "What is your full name?" in result["reply"]
-    assert result["state"]["data"] == {}
-    assert result["state"]["mode"] == "lead"
-
-
-def test_unrelated_question_during_lead_collection_is_not_saved_as_a_field(monkeypatch):
-    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "")
-    state = process_chatbot_message("Become a reseller")["state"]
-
-    result = process_chatbot_message("Who won the basketball game?", state)
-
-    assert "Batangas Premium-related" in result["reply"]
-    assert "What is your full name?" in result["reply"]
-    assert result["state"]["data"] == {}
-
-
-def test_reseller_lead_can_edit_one_confirmed_field():
-    state = None
-    for prompt in [
-        "I want to be a reseller",
-        "Ana Santos",
-        "Ana Store",
-        "old@example.com",
-        "09171234567",
-        "Lipa City",
-        "reseller package",
-    ]:
-        result = process_chatbot_message(prompt, state)
-        state = result["state"]
-
-    edit = process_chatbot_message("change email", state)
-    assert "email" in edit["reply"].lower()
-    corrected = process_chatbot_message("new@example.com", edit["state"])
-    assert corrected["state"]["data"]["email"] == "new@example.com"
-    assert "Please confirm" in corrected["reply"]
-
-
-def test_field_change_request_takes_priority_over_yes_during_confirmation():
-    state = None
-    for prompt in [
-        "I want to be a reseller",
-        "Ana Santos",
-        "Ana Store",
-        "old@example.com",
-        "09171234567",
-        "Lipa City",
-        "reseller package",
-    ]:
-        state = process_chatbot_message(prompt, state)["state"]
-
-    result = process_chatbot_message("Yes, but change my email", state)
-
-    assert result["state"]["step"] == "collect"
-    assert "email" not in result["state"]["data"]
-    assert "email address" in result["reply"].lower()
-
-
-def test_field_change_request_prevents_accidental_submission_at_connect_step():
-    state = None
-    for prompt in [
-        "I want to be a reseller",
-        "Ana Santos",
-        "Ana Store",
-        "ana@example.com",
-        "09171234567",
-        "Lipa City",
-        "reseller package",
-        "yes",
-    ]:
-        state = process_chatbot_message(prompt, state)["state"]
-
-    result = process_chatbot_message("Yes, but change my phone", state)
-
-    assert "action" not in result
-    assert result["state"]["step"] == "collect"
-    assert "contact_number" not in result["state"]["data"]
-    assert "phone number" in result["reply"].lower()
-
-
-@pytest.mark.parametrize("quick_reply", ["View products", "Delivery details"])
-def test_root_quick_replies_are_never_collected_as_lead_fields(monkeypatch, quick_reply):
-    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "")
-    catalog = [{"name": "Tocino Ala Eh", "base_price": 88, "category": "Pork"}]
-    state = process_chatbot_message("Become a reseller", catalog=catalog)["state"]
-    state = process_chatbot_message("Ana Santos", state, catalog=catalog)["state"]
-    state = process_chatbot_message("Ana Store", state, catalog=catalog)["state"]
-
-    result = process_chatbot_message(quick_reply, state, catalog=catalog)
-
-    assert result["state"]["mode"] == "support"
-    assert "valid email" not in result["reply"].lower()
-    assert result["suggestions"] == ["View products", "Delivery details", "Become a reseller"]
-
-
-def test_become_reseller_quick_reply_restarts_lead_flow():
-    state = process_chatbot_message("Become a reseller")["state"]
-    state = process_chatbot_message("Ana Santos", state)["state"]
-
-    restarted = process_chatbot_message("Become a reseller", state)
-
-    assert restarted["state"]["data"] == {}
-    assert "full name" in restarted["reply"].lower()
 
 
 def test_chatbot_api_can_reset_server_side_conversation(monkeypatch):
@@ -1555,7 +1337,7 @@ def test_public_inquiry_form_is_disabled(monkeypatch):
     )
 
     assert response.status_code == 303
-    assert "Public+sign-up+is+disabled" in response.headers["location"]
+    assert "Please+contact+the+Business+Owner+directly" in response.headers["location"]
 
 
 

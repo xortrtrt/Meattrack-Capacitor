@@ -149,8 +149,8 @@ def verify_preview(token: str, order_id: int, actor_id: int, result: dict) -> No
 
 def publish_quote(cur, case: dict, result: dict, *, accepted: bool) -> None:
     from .return_policy import replacement_first
-    if replacement_first(case) and Decimal(result["total"]) < Decimal(result["credit"]):
-        raise ValueError("Replacement value must equal or exceed the approved return credit.")
+    if replacement_first(case) and Decimal(result["total"]) != Decimal(result["credit"]):
+        raise ValueError("Replacement value must equal the approved return credit; replacements do not involve money.")
     revision = case["quote_revision"] + 1
     for item in result["items"]:
         cur.execute(
@@ -237,6 +237,8 @@ def review(
             request_hash=request_hash,
         )
         return
+    if replacement_first(case) and replacements:
+        raise ValueError("The reseller's replacement selection is fixed after submission.")
     cur.execute("""SELECT l.allocation_id,oi.product_id,l.quantity,l.unit_price FROM product_return_lines l
         JOIN fulfillment_allocations a USING(allocation_id) JOIN order_items oi USING(order_item_id)
         WHERE l.return_id=%s ORDER BY l.allocation_id""", (case["return_id"],))
@@ -299,7 +301,37 @@ def review(
                 customer_message = _text(customer_message, "Explanation for the reseller")
             publish_quote(cur, case, price_selection(cur, originals, chosen,
                           allow_inactive_originals=replacement_first(case) and chosen == default_selection(originals)), accepted=False)
+    from .return_policy import require_replacement_value
+    require_replacement_value(case)
     cur.execute("DELETE FROM replacement_stock_reservations WHERE return_id=%s", (case["return_id"],))
+    cur.execute("SELECT product_id,quantity FROM replacement_quote_lines WHERE return_id=%s AND revision=%s;",
+                (case["return_id"], case["quote_revision"]))
+    approved_selection = {row["product_id"]: row["quantity"] for row in cur.fetchall()}
+    stock_shortage = None
+    try:
+        from .inventory.allocation import _plan_fefo_allocations
+        allocations = _plan_fefo_allocations(cur, approved_selection, reservation_return_id=case["return_id"])
+    except ValueError as exc:
+        stock_shortage = str(exc)
+    if stock_shortage:
+        # A shortage is a refund decision, but custody and final verification remain mandatory.
+        cur.execute("""UPDATE product_returns SET approved_by_account_id=%s, resolution='refund',
+            refund_converted_at=now(),refund_converted_by_account_id=%s,refund_conversion_reason=%s,
+            status=CASE WHEN verified_at IS NULL THEN 'awaiting_receipt' ELSE 'settlement_pending' END
+            WHERE return_id=%s""",
+            (actor_id, actor_id, "Insufficient replacement stock at Supervisor approval: " + stock_shortage,
+             case["return_id"]))
+        case["resolution"] = "refund"
+        case["approved_by_account_id"] = actor_id
+        _event(cur, case, actor_id, "replacement_stock_shortage", stock_shortage,
+               customer_message="The requested replacement is unavailable in sufficient eligible stock. Please return the approved products to the company, even if expired; after Inventory receives and verifies them, your refund will proceed.")
+        _event(cur, case, actor_id, "converted_to_refund", "Insufficient eligible replacement stock at approval; refund is pending return receipt and verification.",
+               operation_key, request_hash=request_hash,
+               customer_message="Your replacement request has moved to a refund because stock is insufficient. The approved returned products must still be given back to the company, even if expired.")
+        return
+    for allocation in allocations:
+        cur.execute("INSERT INTO replacement_stock_reservations(return_id,batch_id,quantity) VALUES(%s,%s,%s);",
+                    (case["return_id"], allocation["batch_id"], allocation["take"]))
     cur.execute(
         """UPDATE product_returns SET approved_by_account_id=%s,
         status=CASE WHEN verified_at IS NULL THEN 'awaiting_receipt' ELSE 'settlement_pending' END WHERE return_id=%s""",
@@ -396,5 +428,5 @@ def enrich_progress(case: dict) -> None:
     case["experience"]["sales"] = dict(
         title=title,
         action="review" if case["status"] in {"submitted", "discrepancy"} else "verify_payment" if payment and receipt_ready else "",
-        description="Review the request and evidence, verify any payment in the provider, and record delivery after Inventory release.",
+        description="Review the reseller's submitted replacement and evidence. No payment or price adjustment is collected; record delivery after Inventory release.",
     )

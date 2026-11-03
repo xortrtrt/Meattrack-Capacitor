@@ -1,0 +1,5 @@
+<div class="ir-product-table-wrap"><table class="ir-product-table">
+  <caption class="sr-only">Approved returned products and received quantities</caption>
+  <thead><tr><th scope="col">Product</th><th scope="col">Batch</th><th scope="col">Expires</th><th scope="col">Expected</th><th scope="col">Received</th><th scope="col">Inspection</th><th scope="col">Stock disposition</th></tr></thead>
+  <tbody>{% for line in case.lines %}<tr><th scope="row">{{ line.name }}</th><td>{{ line.batch_code or 'Not recorded' }}</td><td>{{ line.expiry_date|nice_date }}</td><td>{{ line.quantity|number }} packs</td><td>{{ line.received_quantity|number }} packs</td><td>{{ 'Mismatch reported' if case.inventory_status=='discrepancy' else 'Verified' if case.verified_at else 'Pending inspection' }}</td><td><strong class="ir-nonsellable">Non-sellable holding</strong></td></tr>{% endfor %}</tbody>
+</table></div>

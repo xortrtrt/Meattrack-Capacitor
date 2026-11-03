@@ -102,25 +102,51 @@ def send_password_change_otp(*, to_email: str, name: str, otp_code: str) -> tupl
     )
 
 
-def send_login_otp(*, to_email: str, name: str, otp_code: str) -> tuple[bool, str]:
+def send_login_otp(*, to_email: str, name: str, otp_code: str, purpose: str = "login") -> tuple[bool, str]:
+    registration = purpose == "reseller_registration"
     return _send_email(
         to_email=to_email,
-        subject="Batangas Premium portal login OTP",
+        subject="MEATTRACK reseller registration OTP" if registration else "Batangas Premium portal login OTP",
         body="\n".join(
             [
                 f"Hello {name},",
                 "",
-                "Use this one-time password to finish signing in to MEATTRACK:",
+                "Use this one-time password to verify your email and finish reseller registration:"
+                if registration else "Use this one-time password to finish signing in to MEATTRACK:",
                 "",
                 otp_code,
                 "",
-                "This OTP expires in 10 minutes. If you did not try to sign in, ignore this email.",
+                "This OTP expires in 10 minutes. If you did not request this, ignore this email."
+                if registration else "This OTP expires in 10 minutes. If you did not try to sign in, ignore this email.",
                 "",
                 "Batangas Premium",
             ]
         ),
-        failure_message="Login OTP email could not be sent.",
-        success_message="Login OTP email sent.",
+        failure_message="Verification OTP email could not be sent." if registration else "Login OTP email could not be sent.",
+        success_message="Verification OTP email sent." if registration else "Login OTP email sent.",
+    )
+
+
+def send_reseller_registration_invitation(*, to_email: str, invitation_url: str) -> tuple[bool, str]:
+    safe_url = escape(invitation_url, quote=True)
+    return _send_email(
+        to_email=to_email,
+        subject="Your MEATTRACK reseller registration invitation",
+        body="\n".join([
+            "The Batangas Premium Business Owner invited you to create an approved reseller account.",
+            "Use this single-use link within 7 days:", "", invitation_url, "",
+            "The link is bound to this email address. You will verify this inbox with an OTP before the account is activated.",
+            "If you were not expecting this invitation, ignore this email.", "", "Batangas Premium",
+        ]),
+        html_body=(
+            "<p>The Batangas Premium Business Owner invited you to create an approved reseller account.</p>"
+            f'<p><a href="{safe_url}">Create your reseller account</a></p>'
+            "<p>This single-use invitation expires in 7 days and is bound to this email address. "
+            "You will verify this inbox with an OTP before the account is activated.</p>"
+            "<p>If you were not expecting this invitation, ignore this email.</p>"
+        ),
+        failure_message="Reseller invitation email could not be sent.",
+        success_message="Reseller invitation email sent.",
     )
 
 

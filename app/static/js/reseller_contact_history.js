@@ -208,8 +208,12 @@
       if (converted) {
         if (data.context.payment_verified_at) rows.push(['Verified extra payment to return','payment_amount']);
         rows.push(['Refund amount','refund_due']);
-      } else rows.push(['Replacement value','replacement_total'],['Additional payment','additional_due'],['Difference refund','unused_credit']);
-      rows.forEach(([label,key]) => { const row = document.createElement('div'); const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = money(data.context[key]); row.append(dt,dd); totals.append(row); }); context.append(totals);
+      } else {
+        rows.push(['Replacement value','replacement_total']);
+        if (data.context.replacement_workflow_version === 2) rows.push(['Payment or price adjustment','none']);
+        else rows.push(['Additional payment','additional_due'],['Difference refund','unused_credit']);
+      }
+      rows.forEach(([label,key]) => { const row = document.createElement('div'); const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); dd.textContent = key === 'none' ? 'None' : money(data.context[key]); row.append(dt,dd); totals.append(row); }); context.append(totals);
       if (converted) {
         const note = document.createElement('p');
         note.textContent = `Replacement stopped. ${data.context.verified_at ? 'Follow the refund status in return details.' : 'Inventory must verify the complete returned goods before the refund transfer.'}`;

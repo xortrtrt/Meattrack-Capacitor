@@ -15,9 +15,8 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 
 - Product catalog, company, partnership, privacy, and terms pages
 - Batangas Premium support chatbot with a safe local FAQ fallback
-- Guided reseller lead collection through the chatbot
-- Ably-powered live chat between anonymous prospects and available sales team leaders
-- Automatic assignment of reseller inquiries to sales team leaders
+- Reseller opportunities routed by the chatbot to the Business Owner's email; discussion and approval happen outside MEATTRACK
+- Public chatbot answers product questions and directs visitors to contact details
 - Local product imagery, fonts, icons, and chart assets
 
 ### Reseller portal
@@ -30,8 +29,8 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 
 ### Sales team leader portal
 
-- Assigned reseller-inquiry review and approval
-- Reseller account creation with single-use, 24-hour activation links
+- Existing inquiry records remain available for reference; they do not provision new reseller accounts
+- Owner-issued, single-use reseller registration invitations with email OTP verification
 - Payment-proof validation and reseller-order processing
 - Sales reports and reseller purchase summaries
 - Profile and OTP-confirmed password changes
@@ -60,7 +59,7 @@ require Supabase, Render, Capacitor, or a separate frontend application.
 | Backend | Python 3.13, FastAPI, Uvicorn |
 | UI | Server-rendered Jinja2, HTML, CSS, vanilla JavaScript |
 | Database | PostgreSQL 16 through `psycopg2` connection pooling |
-| Authentication | Password login, PostgreSQL-backed opaque sessions, optional email OTP |
+| Authentication | Password login, PostgreSQL-backed opaque sessions, email OTP for login and reseller registration |
 | Forecasting | Prophet, pandas, TSB, seasonal-naive, and moving-average model selection |
 | Email | Brevo HTTPS API; local capture service during development |
 | Chatbot | Local approved FAQ fallback; optional OpenRouter model; Ably live messaging |
@@ -117,8 +116,7 @@ existing running stack:
 docker compose exec app python tools/migrate_database.py
 ```
 
-Development login OTP is disabled by default. Password-change OTPs, and login
-OTPs when `LOGIN_OTP_ENABLED=true`, are printed by the local capture service:
+Login and password-change OTPs are printed by the local capture service:
 
 ```powershell
 docker compose logs -f mail-capture
@@ -173,20 +171,15 @@ private `.env.production` file that must never be committed.
 | `AUTH_RATE_LIMIT_ENABLED` | Enables login, OTP, chatbot, and lead throttles | Must be `true` |
 | `CSRF_PROTECTION_ENABLED` | Enables token and origin checks on unsafe requests | Must be `true` |
 | `BUSINESS_TIMEZONE` | Business timezone; defaults to `Asia/Manila` | Recommended |
-| `APP_BASE_URL` | Public HTTPS origin used in activation emails | Required |
-| `LOGIN_OTP_ENABLED` | Enables email OTP after password login | Defaults to `true` in production |
+| `APP_BASE_URL` | Public HTTPS origin used in activation and registration invitation emails | Required |
+| `LOGIN_OTP_ENABLED` | Enables email OTP after password login | Defaults to `true` in every environment |
 | `CONSENT_VERSION` | Version recorded with accepted login consent | Optional |
 | `BREVO_API_KEY` | Brevo transactional-email API key | Required for live email |
 | `BREVO_FROM_EMAIL` | Verified sender address | Required for live email |
 | `BREVO_FROM_NAME` | Sender display name | Optional |
 | `OPENROUTER_API_KEY` | Enables the configured hosted chatbot model | Optional |
 | `OPENROUTER_MODEL` | OpenRouter model identifier | Optional |
-| `LIVE_CHAT_ENABLED` | Enables anonymous prospect live chat | Defaults to `true` in production |
-| `ABLY_API_KEY` | Server-only Ably REST key used to publish support events | Required when live chat is enabled |
-| `ABLY_TOKEN_SIGNING_KEY` | Optional separate key used only to sign subscribe-only browser JWTs; falls back to `ABLY_API_KEY` | Recommended |
-| `ABLY_TOKEN_TTL_SECONDS` | Browser token lifetime; defaults to 900 seconds | Optional |
-| `LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS` | Queue wait before contact fallback; defaults to 120 seconds | Optional |
-| `CHAT_TRANSCRIPT_RETENTION_DAYS` | Closed transcript retention; defaults to 30 days | Optional |
+| `CHAT_TRANSCRIPT_RETENTION_DAYS` | Historical visitor-chat transcript retention; defaults to 30 days | Optional |
 
 Generate unique production passwords and secrets. Never reuse the development
 defaults outside a disposable local environment.
@@ -217,9 +210,9 @@ notification recipients, server-side sessions, activation tokens, rate-event
 storage, transition guards, and the durable outbox. Apply it in the same write
 maintenance window, then start both the `app` and `worker` services.
 
-Migration `004_live_chat.sql` adds anonymous prospect conversations, durable
-messages, sales-team-leader presence, and atomic rate-limit buckets. Apply it
-before enabling `LIVE_CHAT_ENABLED`.
+Migration `004_live_chat.sql` created historical prospect-chat storage. Visitor
+Live Chat is now retired; keep the migration and retained records for database
+compatibility and normal transcript cleanup.
 
 Migration `012_allow_sales_supervisor_orders.sql` updates reseller-order
 ownership validation so active sales supervisors can own and review orders.
@@ -227,14 +220,6 @@ It is backward compatible and does not require a write-maintenance window, but
 it must complete before the matching application build starts. The production
 Compose dependency on the `migrate` service enforces this ordering; do not
 bypass that service during deployment.
-
-For least-privilege Ably setup, create two server-only keys. Give
-`ABLY_API_KEY` `publish` access to `support:*` and `leader:*`, and give
-`ABLY_TOKEN_SIGNING_KEY` `subscribe` access to those same namespaces. If one
-key is used for both variables, it must have both `publish` and `subscribe`
-because Ably JWT capabilities cannot exceed the signing key's capabilities.
-Browser JWTs issued by MEATTRACK still contain only exact-channel `subscribe`
-permissions and never include `publish` or `history`.
 
 See [`database/README.md`](database/README.md) for migration, backup, restore,
 and data-model details.
@@ -373,8 +358,9 @@ verified database and profile backups stored on another system.
 
 Portal authentication uses only password hashes stored in the `accounts`
 table. The application has no environment-based default or fallback account
-passwords. New accounts remain inactive until the recipient follows a one-time
-activation link and chooses a password that satisfies the password policy.
+passwords. Owner and team accounts retain their activation-link flow. New reseller
+accounts require a valid Owner-issued email-bound invitation, a password that
+satisfies policy, and successful OTP verification before activation.
 
 The destructive development seed utility follows the same rule: it creates
 pending accounts and prints short-lived activation links instead of assigning

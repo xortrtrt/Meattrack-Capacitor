@@ -109,6 +109,16 @@ mix packs and product counts or overlapping queues in a ring.
 
 ## Components
 
+The Supervisor Accounts workspace uses the supplied reseller-assignment reference:
+roster cards using the shared surface and border tokens, a cream corner accent in
+the heading, circular cream avatars using the shared `user-round` profile placeholder,
+status badges, and gold Save assignment buttons. Identity and current coverage sit
+on the left; the existing native sales-leader select and action sit on the right.
+Cards stack on phones. Scoped `--assignment-*` variables in
+`app/static/css/portals/owner-directories.css` alias the canonical portal tokens;
+the reference supplies layout while the portal supplies its muted gold, brown,
+and cream colors. This workspace contains no Team accounts directory.
+
 The return workflow extends the existing operations identity rather than the
 dashboard layout. Its request and processor confirmation use shared native dialogs,
 visible field errors, stable action labels and the existing form/confirmation
@@ -116,6 +126,13 @@ owners documented in `UX-CONTRACT.md`. Return-dialog `--rd-*` aliases consume th
 base runtime palette on standalone Owner surfaces, so dialogs do not depend on
 being nested in a dedicated detail page. The existing detail-page composition
 retains its scoped appearance.
+
+Inventory returns use a compact operational variant: full-width queue rows,
+inline stock totals, one current-step summary and quiet underline tabs. Inventory
+Actions prioritizes the current receipt/preparation/release task. Activity shows
+short event rows; audit notes, custody records and the full workflow expand on
+request. `app/static/css/portals/inventory-returns.css` consumes the existing runtime
+tokens and scopes this density to Inventory returns.
 
 Global scrollbars map `--scrollbar-thumb` to `--text-light`, track to
 `--surface-muted`, hover to `--primary`, and active to `--gold-deep` in

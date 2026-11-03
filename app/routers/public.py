@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, Request, status
+from fastapi import APIRouter, Request, status
 from fastapi.responses import RedirectResponse
 
 from app import repositories as data
@@ -9,7 +9,6 @@ from app import web
 
 router = APIRouter()
 templates = web.templates
-redirect_to = web.redirect_to
 path_with_query = web.path_with_query
 
 
@@ -66,19 +65,10 @@ async def partnerships(request: Request):
 
 
 @router.post("/inquiries")
-async def create_public_inquiry(
-    name: str = Form(...),
-    business_name: str = Form(...),
-    email: str = Form(...),
-    contact_number: str = Form(...),
-    message: str = Form(...),
-):
-    return redirect_to(
-        path_with_query(
-            "/",
-            error="Public sign-up is disabled. Please use the chatbot so a sales team leader can qualify your reseller inquiry.",
-        )
-        + "#inquiry"
+async def create_public_inquiry():
+    return RedirectResponse(
+        path_with_query("/", error="Please contact the Business Owner directly about reseller opportunities."),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 

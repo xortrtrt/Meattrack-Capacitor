@@ -1,0 +1,33 @@
+{% set status_label = 'Inventory complete' if case.inventory_status=='completed' else case.inventory_status.replace('_',' ')|title %}
+{% set workflow = case.workflow_steps if case.workflow_steps is defined else return_workflow_steps(case, true) %}
+{% set current_steps = workflow|selectattr('state','equalto','current')|list %}
+{% set requested = case.lines|sum(attribute='quantity') %}
+{% set received = case.lines|sum(attribute='received_quantity') %}
+<article class="return-details-page inventory-return-page" data-return-role="inventory" data-return-has-feedback="{{ 'true' if message or error else 'false' }}" data-return-status="{{ case.status }}" data-return-details data-return-id="{{ case.return_id }}">
+  <header class="rd-heading ir-case-heading">
+    <div><a class="rd-back" href="{{ request.url.remove_query_params(['case','message','error','tab']) }}"><i data-lucide="arrow-left" aria-hidden="true"></i>Product returns</a><h2>Return #{{ case.return_id }}</h2><p>{{ case.reseller_name }} <span>Delivery #{{ case.order_id }}</span></p></div>
+    <span class="rd-status" data-state="{{ case.inventory_status }}"><i data-lucide="{{ 'circle-check' if case.inventory_status=='completed' else 'clock-3' }}" aria-hidden="true"></i>{{ status_label }}</span>
+  </header>
+  {% if error or (message and message!='Return action recorded.') %}<div class="rd-feedback {{ 'is-error' if error else '' }}" role="{{ 'alert' if error else 'status' }}" tabindex="-1">{{ error or message }}</div>{% endif %}
+  {% if case.reconciliation_flags %}<div class="rd-feedback is-warning" role="alert"><strong>Stock records need review</strong><ul>{% for flag in case.reconciliation_flags %}<li>{{ flag }}</li>{% endfor %}</ul></div>{% endif %}
+  <ol class="ir-progress" aria-label="Return case progress">{% for step in workflow %}<li class="is-{{ step.state }}" {% if step.state=='current' %}aria-current="step"{% endif %}><span aria-hidden="true">{% if step.state=='done' %}<i data-lucide="check"></i>{% else %}{{ loop.index }}{% endif %}</span><strong>{{ step.label }}</strong></li>{% endfor %}</ol>
+  <section class="ir-current" aria-labelledby="ir-next-title">
+    <span class="ir-current-icon"><i data-lucide="{{ 'circle-check' if case.inventory_status=='completed' else 'clipboard-check' }}" aria-hidden="true"></i></span>
+    <div><h3 id="ir-next-title">Next steps</h3>{% for step in current_steps %}<p><strong>{{ step.label }}</strong><span>{{ step.owner }}{% if step.note %} · {{ step.note }}{% endif %}</span></p>{% else %}<p><strong>{{ 'Inventory work is complete' if case.inventory_status=='completed' else 'Awaiting the next workflow step' }}</strong><span>{{ 'Stock records remain available in Activity History.' if case.inventory_status=='completed' else 'Check the recorded workflow in Activity History.' }}</span></p>{% endfor %}</div>
+    <div class="ir-current-count"><strong>{{ received|number }} <span>/ {{ requested|number }}</span></strong><small>packs received</small></div>
+  </section>
+  <nav class="rd-tabs" aria-label="Return detail sections">{% for key,label,icon in [('overview','Overview','layout-dashboard'),('inventory','Inventory Actions','package-check'),('activity','Activity History','history')] %}<a id="return-tab-{{ key }}" data-return-tab="{{ key }}" href="{{ request.url.include_query_params(tab=key) }}"><i data-lucide="{{ icon }}" aria-hidden="true"></i>{{ label }}</a>{% endfor %}</nav>
+  <section class="rd-panel" id="return-panel-overview" data-return-panel="overview" aria-labelledby="return-tab-overview">
+    <div class="ir-work-grid"><div class="ir-stack"><section class="ir-card"><header><h3>Returned products</h3><span>{{ requested|number }} packs expected</span></header>{% include 'portals/lifecycle/_inventory_products.html' %}<p class="ir-stock-notice"><i data-lucide="circle-info" aria-hidden="true"></i>Returned goods are recorded in non-sellable holding and never added to available inventory.</p></section></div>
+    <aside class="ir-stack"><section class="ir-card"><header><h3>Case details</h3></header><dl class="ir-facts"><div><dt>Reseller</dt><dd>{{ case.reseller_name }}</dd></div><div><dt>Delivery reference</dt><dd>Delivery #{{ case.order_id }}</dd></div><div><dt>Submitted</dt><dd>{{ case.created_at|nice_date }}</dd></div><div><dt>Goods verified</dt><dd>{{ case.verified_at|nice_date if case.verified_at else 'Not yet verified' }}</dd></div><div><dt>Returned stock</dt><dd class="ir-nonsellable">Non-sellable holding</dd></div></dl></section>
+    {% if case.quote_lines %}<section class="ir-card"><header><h3>Replacement details</h3><span>{{ case.quote_lines|sum(attribute='quantity')|number }} packs</span></header><ul class="ir-pack-list">{% for line in case.quote_lines %}<li><strong>{{ line.name }}</strong><span>{{ line.quantity|number }} packs</span></li>{% endfor %}</ul></section>{% endif %}
+    <details class="ir-disclosure"><summary><span>Supporting photos</span><small>{{ case.attachments|length }}</small><i data-lucide="chevron-down" aria-hidden="true"></i></summary><div class="ir-disclosure-body">{% include 'portals/lifecycle/_inventory_case_photos.html' %}</div></details></aside></div>
+  </section>
+  <section class="rd-panel" id="return-panel-inventory" data-return-panel="inventory" aria-labelledby="return-tab-inventory">
+    {% include 'portals/lifecycle/_inventory_case_actions.html' %}
+  </section>
+  <section class="rd-panel" id="return-panel-activity" data-return-panel="activity" aria-labelledby="return-tab-activity">
+    <div class="ir-work-grid"><div class="ir-stack">{% include 'portals/lifecycle/_inventory_case_records.html' %}</div><aside class="ir-stack"><details class="ir-disclosure"><summary><span>Workflow stages</span><small>{{ workflow|selectattr('state','equalto','done')|list|length }} / {{ workflow|length }} done</small><i data-lucide="chevron-down" aria-hidden="true"></i></summary><div class="ir-disclosure-body">{% include 'portals/returns/_workflow_timeline.html' %}</div></details></aside></div>
+  </section>
+  <dialog class="rd-photo-dialog" data-return-photo-dialog aria-label="Supporting photo"><button class="rd-dialog-close" type="button" data-photo-close aria-label="Close photo"><i data-lucide="x" aria-hidden="true"></i></button><img alt="" data-photo-full><a target="_blank" rel="noopener" data-photo-original>Open original image</a></dialog>
+</article>

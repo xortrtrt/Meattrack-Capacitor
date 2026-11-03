@@ -51,7 +51,7 @@ if APP_ENV == "production":
         raise RuntimeError("Production startup refused: RATE_LIMIT_HASH_KEY is required.")
 LOGIN_OTP_ENABLED = os.getenv(
     "LOGIN_OTP_ENABLED",
-    "true" if APP_ENV == "production" else "false",
+    "true",
 ).strip().lower() in {"1", "true", "yes", "on"}
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
@@ -89,14 +89,10 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 ABLY_API_KEY = os.getenv("ABLY_API_KEY", "").strip()
 ABLY_TOKEN_SIGNING_KEY = os.getenv("ABLY_TOKEN_SIGNING_KEY", "").strip() or ABLY_API_KEY
 ABLY_REST_BASE_URL = os.getenv("ABLY_REST_BASE_URL", "https://rest.ably.io").strip().rstrip("/")
-LIVE_CHAT_ENABLED = env_bool("LIVE_CHAT_ENABLED", bool(ABLY_API_KEY))
+# Visitor-to-Sales live chat is retired; historical chat cleanup remains available.
+LIVE_CHAT_ENABLED = False
 ABLY_TOKEN_TTL_SECONDS = int(os.getenv("ABLY_TOKEN_TTL_SECONDS", "900"))
 LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS = int(os.getenv("LIVE_CHAT_ACCEPT_TIMEOUT_SECONDS", "120"))
 LIVE_CHAT_PRESENCE_STALE_SECONDS = int(os.getenv("LIVE_CHAT_PRESENCE_STALE_SECONDS", "45"))
 LIVE_CHAT_RECONNECT_GRACE_SECONDS = int(os.getenv("LIVE_CHAT_RECONNECT_GRACE_SECONDS", "60"))
 CHAT_TRANSCRIPT_RETENTION_DAYS = int(os.getenv("CHAT_TRANSCRIPT_RETENTION_DAYS", "30"))
-
-if APP_ENV == "production" and LIVE_CHAT_ENABLED and not ABLY_API_KEY:
-    raise RuntimeError("Production startup refused: ABLY_API_KEY is required when live chat is enabled.")
-if APP_ENV == "production" and LIVE_CHAT_ENABLED and not ABLY_TOKEN_SIGNING_KEY:
-    raise RuntimeError("Production startup refused: ABLY_TOKEN_SIGNING_KEY is required when live chat is enabled.")

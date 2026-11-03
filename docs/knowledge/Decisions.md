@@ -4,21 +4,26 @@ verified: 2026-11-03
 ---
 # Decisions
 
+## 2026-11-03 — Align the local database with the restored 049 application
+
+The user explicitly requested return to migration 049 after restoring commit
+`dd21778`. Reverse only migration 050's unused GCash schema and its migration
+record, preserving existing business data rather than restoring an older data
+snapshot. Verify a private backup restore, rehearse the reversal on a disposable
+database, and compare existing rows/sequences before committing. This was completed
+locally; GCash changes remain stashed and no production rollback occurred.
+See [[Database and Operations]].
+
 ## Replacement-first policy (2026-11-03)
 
 The user approved defaulting new returns to the same approved returned products
-and quantities at original paid prices. Supervisor/Owner may offer alternatives
-when original supply is unavailable; reseller acceptance is required, cheaper
-selections are disallowed, and any extra payment must be verified before stock
-preparation. Existing policy cases retain their recorded workflows. A separate
-return-policy version preserves version-2 receipt/payment/preparation behavior.
-
-Before warehouse release, Supervisor/Owner may authorize a refund if no acceptable
-replacement can be supplied. It returns approved credit plus verified extra
-collections, with separate components so returning a top-up does not reduce
-original sales twice. Uncertain payment evidence blocks conversion until resolved.
-Paid rejected-order refunds remain. Stock contention retains the existing paid
-order shortage/refund-review path; replacements may wait for valid restock.
+and quantities at original paid prices. New replacement offers must equal the
+approved return credit and have no payment or price-difference refund. Supervisor
+approval checks and reserves eligible stock; a shortage automatically converts
+the request to a refund and notifies the reseller. Complete receipt and Inventory
+verification remain required, including custody of expired returned products.
+Paid rejected-order refunds remain unchanged. Historical return-policy cases keep
+their recorded workflows.
 
 The authorized data reset is local transactions only. Preserve accounts, product
 definitions, settings, unrelated conversations, batch quantities and non-sellable
@@ -34,6 +39,32 @@ deployment or deployed reset occurred. Sources:
 `app/repositories/replacement_workflow.py`, `tools/transaction_reset.py`.
 Related: [[Replacement Workflow]], [[Returns and Financials]],
 [[Orders and Inventory]], [[Database and Operations]], [[Testing and Change Impact]].
+
+## Replacement stock shortage and no-money handling (2026-11-03)
+
+The user changed new replacement handling: check and reserve eligible stock at
+Supervisor approval; if insufficient, notify the reseller and convert to the
+existing return-credit refund process. Complete company receipt and Inventory
+verification remain required, including custody of returned products that have
+expired. Sufficient-stock replacements must equal the approved credit and involve
+no top-up or price-difference refund. Preserve the separate paid rejected-order
+refund path unchanged. Sources: `app/repositories/replacement_workflow.py`,
+`app/repositories/return_policy.py`, `app/repositories/product_returns.py`.
+See [[Replacement Workflow]], [[Returns and Financials]], and [[Orders and Inventory]].
+
+## Fixed replacement selection and connected review workspaces (2026-11-03)
+
+After submission, Supervisor/Owner approval records the reseller's selected
+replacement without offering an alternative or collecting approval explanation or
+internal-note fields. Keep public explanations for rejection and mismatch
+resolution. Compare returned items and the proposed replacement in Supervisor
+Overview and retain the original-order link. Remove the Supervisor Inventory &
+Replacement tab while retaining Inventory role actions and case history. A shortage
+refund is surfaced in Settlement and cannot proceed before complete company receipt
+and Inventory verification. Sources: `app/templates/portals/returns/_case_review.html`,
+`app/templates/portals/returns/_supervisor_case_page.html`,
+`app/static/js/return_details.js`, `app/repositories/replacement_workflow.py`.
+See [[Replacement Workflow]] and [[Returns and Financials]].
 
 ### Legacy deferred-trigger compatibility
 
@@ -157,6 +188,22 @@ Add new entries only when a task establishes a consequential decision. Include
 the date, rationale, source/evidence, and affected notes. Do not infer deployment
 status or business approval from the existence of a note.
 
+## 2026-11-03 — Require Owner-issued reseller registration invitations
+
+Keep external discussion and approval outside MEATTRACK. The public chatbot only
+shows the Business Owner's verified email. An active Owner issues a unique,
+email-bound, seven-day invitation; the invitee creates a pending account and must
+verify the bound email through the existing OTP mechanism before reseller access
+is activated. Store only the invitation-token hash, consume the invitation
+atomically with activation, and keep other staff account activation unchanged.
+Enable login email OTP by default in all environments. This replaces visitor
+lead capture and inquiry approval as a path to creating new reseller accounts.
+See [[Roles and Access]], [[Owner Portal]], [[Background Work and Integrations]],
+and [[Database and Operations]]. Sources: migration
+`database/migrations/050_reseller_registration_invitations.sql`,
+`app/repositories/reseller_invitations.py`, `app/repositories/accounts.py`,
+`app/routers/reseller_registration.py`, and `app/chatbot/lead_flow.py`.
+
 - 2026-11-01: Replace the initial view-only low-stock threshold with one saved
   business setting (default 10 packs), following the user's confirmed choice.
   Owners review alerts independently; Inventory team retains stock responsibility,
@@ -272,3 +319,23 @@ role projections rather than adding a separate upload or staff-style editing pat
 Show replacement pricing once within its tab; use confirmations for the existing
 revision acceptance and optional acknowledgment actions. See
 [[Sales and Reseller Returns]] and [[Replacement Workflow]].
+
+## 2026-11-03 — Retire portal inquiry review
+
+Remove the Owner and Supervisor reseller inquiry pages and their decision
+endpoints because visitor interest now goes directly to the Business Owner
+outside MEATTRACK. Keep historical rows for audit continuity; do not erase
+their database records. The Owner invitation and email OTP workflow remains
+the only account creation path for new resellers. See [[Owner Portal]] and
+[[Roles and Access]]. Sources: `app/portal_config.py`,
+`app/portals/owner.py`, `app/portals/team_leader.py`.
+
+## 2026-11-03 — Retire visitor-to-Sales Live Chat
+
+Visitors no longer need a Sales conversation inside MEATTRACK. Keep the public
+chatbot for product answers and Owner contact details, and keep authenticated
+reseller messaging for orders and returns. Remove the chatbot handoff, Sales
+Live Chat workspace, and visitor conversation APIs while retaining historical
+chat data for the existing retention job. See [[Background Work and Integrations]]
+and [[Roles and Access]]. Sources: `app/chatbot/lead_flow.py`,
+`app/routers/chatbot.py`, `app/routers/live_chat.py`, `app/portal_config.py`.

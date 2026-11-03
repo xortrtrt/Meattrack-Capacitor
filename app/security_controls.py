@@ -173,18 +173,24 @@ def record_password_login(request: Request, email: str, succeeded: bool) -> None
     record_event("password_login", f"ip:{client_ip(request)}", succeeded=succeeded)
 
 
-def enforce_otp_attempt(account_id: int) -> None:
-    enforce_limit("otp_verify", f"account:{account_id}", 5, "15 minutes", "Too many incorrect OTP attempts. Request a new code.")
+def _otp_subject(account_id: int, purpose: str = "") -> str:
+    return f"account:{account_id}" + (f":{purpose}" if purpose else "")
 
 
-def enforce_otp_resend(account_id: int) -> None:
-    enforce_limit("otp_resend_minute", f"account:{account_id}", 1, "60 seconds", "Please wait 60 seconds before requesting another OTP.")
-    enforce_limit("otp_resend_hour", f"account:{account_id}", 5, "1 hour", "OTP request limit reached. Try again later.")
+def enforce_otp_attempt(account_id: int, purpose: str = "") -> None:
+    enforce_limit("otp_verify", _otp_subject(account_id, purpose), 5, "15 minutes", "Too many incorrect OTP attempts. Request a new code.")
 
 
-def record_otp_resend(account_id: int) -> None:
-    record_event("otp_resend_minute", f"account:{account_id}")
-    record_event("otp_resend_hour", f"account:{account_id}")
+def enforce_otp_resend(account_id: int, purpose: str = "") -> None:
+    subject = _otp_subject(account_id, purpose)
+    enforce_limit("otp_resend_minute", subject, 1, "60 seconds", "Please wait 60 seconds before requesting another OTP.")
+    enforce_limit("otp_resend_hour", subject, 5, "1 hour", "OTP request limit reached. Try again later.")
+
+
+def record_otp_resend(account_id: int, purpose: str = "") -> None:
+    subject = _otp_subject(account_id, purpose)
+    record_event("otp_resend_minute", subject)
+    record_event("otp_resend_hour", subject)
 
 
 def enforce_chatbot(request: Request) -> None:

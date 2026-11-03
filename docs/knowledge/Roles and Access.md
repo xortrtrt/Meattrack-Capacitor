@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, permissions]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Roles and access
 
@@ -11,10 +11,10 @@ type and a specialized team-leader role.
 
 | Actor | Main responsibilities | Connections |
 | --- | --- | --- |
-| Public visitor | Catalog, FAQ, inquiry, live prospect chat | [[Background Work and Integrations]] |
+| Public visitor | Catalog and FAQ chatbot; direct phone/email contact for a person, and Business Owner email for reseller opportunities | [[Background Work and Integrations]] |
 | Reseller | Own cart/orders, payment proof, own return cases | [[Orders and Inventory]], [[Returns and Financials]] |
 | Sales team leader | Assigned reseller work, order/payment review, initial return acceptance/rejection and assigned-case tracking | Ownership affects evidence, messaging, reports |
-| Sales supervisor | Supervisor-scoped onboarding, orders, accepted return processing, refunds | Refund permission differs from sales visibility |
+| Sales supervisor | Supervisor-scoped orders, reseller-to-sales-leader assignments, accepted return processing, refunds | Cannot create portal accounts; refund permission differs from sales visibility |
 | Inventory team leader | Production, stock, expiry, physical return receipt/verification, replacement release | Physical quantities and custody |
 | Owner | Broad oversight, accounts, pricing, operations, recovery and settings | Actions require authenticated capabilities and audit records |
 
@@ -37,9 +37,15 @@ processing tab. Inventory's custody and release permissions remain separate.
 
 Owner portal actions no longer require a separate emailed step-up code. Existing
 sessions, capabilities, CSRF, required reasons, and audit records remain enforced.
-Activation, login verification settings, password-change, and recovery flows are
-unchanged. Checked against `app/capabilities.py`, `app/portals/owner.py`,
-`app/portals/refunds.py`, and `app/repositories/product_returns.py` on 2026-10-29.
+Login email OTP is on by default in every environment. Owner-issued reseller
+registration invitations are bound to one email, expire after seven days, and can
+create one pending account. The account becomes active only after the invitee
+verifies that email with the existing OTP mechanism. Reseller role and status are
+assigned by the server. Staff activation, password-change, and recovery flows remain
+separate. Checked against `app/capabilities.py`, `app/portals/owner.py`,
+`app/routers/reseller_registration.py`, `app/repositories/reseller_invitations.py`,
+`app/repositories/accounts.py`,
+`app/portals/refunds.py`, and `app/repositories/product_returns.py` on 2026-11-03.
 See [[Returns and Financials]] and [[Decisions]].
 
 Sessions are backed by PostgreSQL. Login/activation/password-change handling,

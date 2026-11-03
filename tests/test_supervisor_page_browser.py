@@ -10,7 +10,8 @@ from legacy_return_fixtures import create_legacy_return, legacy_preview
 from app import main
 from app.database import fetch_one
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
-from test_product_lifecycle import lifecycle, supporting_photo, substitute  # noqa: F401
+from test_product_lifecycle import lifecycle, supporting_photo  # noqa: F401
+from test_replacement_first_policy import request as new_replacement_request
 from test_return_request_options import sign_in
 
 pytestmark = [pytest.mark.postgres, pytest.mark.e2e]
@@ -47,7 +48,9 @@ def test_rejection_validation_confirmation_tabs_and_back_filters(lifecycle, monk
         page.get_by_role("link", name="Return review", exact=True).click()
         expect(page).to_have_url("http://supervisor-page.test/portal/sales-supervisor/returns?status=submitted")
         page.locator(f'[data-return-open="{case}"]').click()
-        for label in ("Review Decision", "Inventory & Replacement", "Settlement", "Activity History", "Overview"):
+        expect(page.get_by_role("tab", name="Inventory & Replacement", exact=True)).to_have_count(0)
+        expect(page.locator(".rd-product-comparison > .rd-card")).to_have_count(2)
+        for label in ("Review Decision", "Settlement", "Activity History", "Overview"):
             page.get_by_role("tab", name=label, exact=True).click()
             assert page.locator('[data-return-panel]:visible').count() == 1
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
@@ -71,35 +74,21 @@ def test_rejection_validation_confirmation_tabs_and_back_filters(lifecycle, monk
         expect(page.get_by_role("button", name="Approve return request", exact=True)).to_have_count(0)
         expect(page.locator("[data-return-details]")).to_contain_text("documented eligibility requirements")
         page.screenshot(path=str(output / "recorded-rejection.png"), full_page=True)
-        # A different offer still goes through the existing authoritative pricing path.
-        alternative = substitute(250)
-        comparison = legacy_preview(d["order"], d["reseller"], [(d["allocation"], 2)], [(d["product"], 2)])
-        revised = create_legacy_return(d["order"], d["reseller"], "replace", [(d["allocation"], 2)],
-            "Synthetic request with an alternative selection", attachments=[supporting_photo()],
-            replacement_items=[(d["product"], 2)], comparison_token=comparison["token"])
+        # New-policy approval records the reseller's submitted selection as-is.
+        revised = new_replacement_request(d)
         page.goto(f"http://supervisor-page.test/portal/sales-supervisor/returns?case={revised}", wait_until="networkidle")
         page.get_by_role("tab", name="Review Decision", exact=True).click()
-        page.locator('.sales-return-substitutions > summary').click()
-        page.get_by_label("Replacement product 1", exact=True).select_option(str(alternative))
-        page.locator('[name="replacement_quantity"]').first.fill("1")
-        page.get_by_label("Internal review notes", exact=True).fill("Synthetic approval of alternative product")
+        approve = page.locator('form[action$="/approve"]')
+        expect(approve.locator('.sales-return-substitutions')).to_have_count(0)
+        expect(approve.locator('[name="product_id"]')).to_have_count(0)
+        expect(approve.locator('[name="customer_message"]')).to_have_count(0)
+        expect(approve.get_by_label("Internal review notes", exact=True)).to_have_count(0)
         page.get_by_role("button", name="Approve return request", exact=True).click()
         approval = page.get_by_role("dialog", name="Approve return request?", exact=True)
-        expect(approval.locator('[data-confirm-current-offer]')).not_to_be_visible()
-        expect(approval.locator('[data-confirm-revised-offer]')).to_be_visible()
         approval.get_by_role("button", name="Confirm approval", exact=True).click()
         page.wait_for_load_state("networkidle")
         stored = fetch_one("SELECT credit,replacement_total,quote_revision,accepted_revision FROM product_returns WHERE return_id=%s", (revised,))
-        assert stored["credit"] == 200 and stored["replacement_total"] == 250
-        assert stored["quote_revision"] == 2 and stored["accepted_revision"] != 2
-        expect(page.get_by_role("heading", name="Recorded decision", exact=True)).to_be_visible()
-        expect(page.get_by_role("button", name="Revise replacement offer", exact=True)).to_be_visible()
-        page.get_by_role("button", name="Revise replacement offer", exact=True).click()
-        page.get_by_label("Internal review notes", exact=True).fill("Synthetic follow-up revision review")
-        page.get_by_role("button", name="Save revised request", exact=True).click()
-        revision = page.get_by_role("dialog", name="Save revised request?", exact=True)
-        expect(revision).to_be_visible()
-        revision.get_by_role("button", name="Cancel", exact=True).click()
-        assert fetch_one("SELECT quote_revision FROM product_returns WHERE return_id=%s", (revised,))["quote_revision"] == 2
+        assert stored["credit"] == stored["replacement_total"] == 200
+        assert stored["quote_revision"] == stored["accepted_revision"] == 1
         assert not errors, errors
         browser.close()

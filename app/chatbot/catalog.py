@@ -735,9 +735,9 @@ def fallback_reply(
 
     if _asks_reseller_requirements(message):
         return (
-            "Hindi nakalista sa approved information ko ang confirmed reseller requirements. Maaaring i-confirm ng Batangas Premium team ang requirements; maaari rin kitang tulungang magsimula ng reseller inquiry kapag handa ka na."
+            f"Para sa reseller opportunities, direktang makipag-ugnayan sa Business Owner sa {BUSINESS_EMAIL}."
             if filipino
-            else "Confirmed reseller requirements are not listed in my approved information. A Batangas Premium team member can confirm them, and I can help start a reseller inquiry when you are ready."
+            else f"For reseller opportunities, contact the Business Owner directly at {BUSINESS_EMAIL}."
         )
 
     if matched_entries:
@@ -759,9 +759,9 @@ def fallback_reply(
 
     if is_reseller_intent(lower) or "inquiry" in lower:
         return (
-            "Maaari kong kunin ang reseller details ninyo at ipasa ang inquiry sa available sales team leader. Hindi awtomatiko ang approval."
+            f"Para sa reseller opportunities, direktang makipag-ugnayan sa Business Owner sa {BUSINESS_EMAIL}. Sa labas ng MEATTRACK pag-usapan ang oportunidad."
             if filipino
-            else "I can collect your reseller details and send the inquiry to an available sales team leader. Approval is not automatic."
+            else f"For reseller opportunities, contact the Business Owner directly at {BUSINESS_EMAIL}. Please discuss the opportunity directly with the owner."
         )
 
     return (

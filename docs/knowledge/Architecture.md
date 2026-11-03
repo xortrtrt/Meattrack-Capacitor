@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, architecture]
-verified: 2026-10-28
+verified: 2026-11-03
 ---
 # Architecture
 
@@ -33,6 +33,13 @@ definition before editing a facade or shared helper.
 Changes crossing a portal, repository, and migration need coordinated
 verification; use [[Testing and Change Impact]]. Schema/deployment ordering is
 covered by [[Database and Operations]].
+
+The invitation-only reseller registration flow joins the Owner accounts portal,
+`app/repositories/reseller_invitations.py`, existing login OTP persistence in
+`app/repositories/accounts.py`, and `app/routers/reseller_registration.py`.
+Migration 050 adds invitation records and purpose/attempt fields to the existing
+login OTP table. The public registration page requires a valid invitation token;
+the login OTP feature is enabled by default in all environments.
 
 [[Sales Activity Reports]] use `app/repositories/activity_reports.py` for source
 selection and immutable submission, `app/portals/activity_reports.py` for scoped

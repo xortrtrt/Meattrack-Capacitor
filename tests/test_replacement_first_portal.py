@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import re
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,9 +14,8 @@ from app.repositories import product_returns as returns
 from test_inventory_postgres import strict_inventory_database  # noqa: F401
 from test_product_lifecycle import lifecycle, supporting_photo  # noqa: F401
 from test_return_request_options import sign_in
-from test_replacement_first_policy import request, data, convert, offer
-from test_replacement_workflow import approve_receive, pay
-from test_product_lifecycle import substitute
+from test_replacement_first_policy import request, data, convert
+from test_replacement_workflow import approve_receive
 from test_sales_case_cards import render
 
 
@@ -208,14 +208,12 @@ def test_conversion_controls_and_http_action_are_processor_only(lifecycle, monke
 
 @pytest.mark.postgres
 @pytest.mark.parametrize("role,width", [("supervisor", 375), ("supervisor", 1440), ("owner", 375), ("owner", 1440)])
-def test_processor_conversion_confirmation_retry_and_topup_total(lifecycle, monkeypatch, role, width):  # noqa: F811
+def test_processor_conversion_confirmation_retry_refunds_return_credit(lifecycle, monkeypatch, role, width):  # noqa: F811
     from playwright.sync_api import expect, sync_playwright
     d = lifecycle
     case = request(d)
-    offer(d, case, substitute(300))
-    returns.accept_replacement_quote(case, d["reseller"], 2)
-    approve_receive(d, case)
-    pay(d, case, 100)
+    returns.review_product_return(case, d['supervisor'], True, 'Approve the reseller submitted replacement')
+    returns.inspect_product_return(case, d["inventory"], "complete", "All approved quantities and proof match", str(uuid4()))
     prefix = "sales-supervisor" if role == "supervisor" else "owner"
     sign_in(monkeypatch, d[role], prefix, prefix)
     output = Path("outputs/replacement-policy")
@@ -249,14 +247,14 @@ def test_processor_conversion_confirmation_retry_and_topup_total(lifecycle, monk
         expect(form.locator('[name="remarks"]')).to_be_focused()
         expect(form.locator('[name="remarks"]')).to_have_attribute('aria-invalid', 'true')
         form.locator('[name="remarks"]').fill("Supplier cannot supply any acceptable replacement")
-        form.locator('[name="customer_message"]').fill("We cannot supply a suitable replacement. We will refund your return credit and verified extra payment.")
-        expect(form).to_contain_text("PHP 300.00")
+        form.locator('[name="customer_message"]').fill("We cannot supply a suitable replacement. We will refund your approved return credit.")
+        expect(form).to_contain_text("PHP 200.00")
         key = form.locator('[name="operation_key"]').input_value()
         form.get_by_role("button", name="Convert to refund", exact=True).click()
         confirmation = page.get_by_role("dialog", name="Convert replacement to refund?", exact=True)
         expect(confirmation).to_be_visible()
         expect(confirmation.get_by_role("button", name="Cancel", exact=True)).to_be_focused()
-        expect(confirmation).to_contain_text("PHP 300.00")
+        expect(confirmation).to_contain_text("PHP 200.00")
         assert confirmation.evaluate("el => getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)'")
         assert confirmation.evaluate("el => {const r=el.getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;}")
         confirmation.get_by_role("button", name="Cancel", exact=True).click()
@@ -274,7 +272,7 @@ def test_processor_conversion_confirmation_retry_and_topup_total(lifecycle, monk
         expect(page.locator('[data-refund-conversion]')).to_have_count(0)
         expect(page.locator('form[action$="/verify-payment"]')).to_have_count(0)
         result = data(d, case)
-        assert result["resolution"] == "refund" and result["refund"]["amount"] == 300
+        assert result["resolution"] == "refund" and result["refund"]["amount"] == 200
         assert not errors, errors
         assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
         browser.close()
@@ -317,15 +315,10 @@ def test_request_discard_preserves_draft_until_confirmed_and_clears_dirty_state(
 
 @pytest.mark.postgres
 @pytest.mark.parametrize("role,width", [("supervisor", 375), ("owner", 1440)])
-def test_conversion_stale_payment_proof_requires_reload_and_explicit_resolution(lifecycle, monkeypatch, role, width):  # noqa: F811
-    from uuid import uuid4
+def test_equal_value_replacement_has_no_payment_action(lifecycle, monkeypatch, role, width):  # noqa: F811
     from playwright.sync_api import expect, sync_playwright
-    from app.business_time import business_today
-    from test_product_lifecycle import refund_proof
     d = lifecycle
     case = request(d)
-    offer(d, case, substitute(300))
-    returns.accept_replacement_quote(case, d['reseller'], 2)
     approve_receive(d, case)
     prefix = 'sales-supervisor' if role == 'supervisor' else 'owner'
     sign_in(monkeypatch, d[role], prefix, prefix)
@@ -336,39 +329,13 @@ def test_conversion_stale_payment_proof_requires_reload_and_explicit_resolution(
         page.on('pageerror', lambda error: errors.append(str(error)))
         bridge_client(page, client, 'http://stale.test')
         page.goto(f'http://stale.test/portal/{prefix}/returns?case={case}', wait_until='networkidle')
-        if role == 'supervisor':
-            page.get_by_role('tab', name='Settlement', exact=True).click()
-        form = page.locator('[data-refund-conversion]')
-        returns.record_return_payment(case, d['reseller'], [refund_proof()], dict(
-            transaction_number='UNRECEIVED' + uuid4().hex[:10], payment_amount='100',
-            payment_date=business_today().isoformat(), payment_time='10:00'))
-        form.locator('[name="remarks"]').fill('Supplier cannot provide an acceptable replacement')
-        form.locator('[name="customer_message"]').fill('No suitable replacement is available. We will refund the approved credit.')
-        form.get_by_role('button', name='Convert to refund', exact=True).click()
-        page.get_by_role('button', name='Confirm refund conversion', exact=True).click()
-        expect(form.locator('[data-conversion-feedback]')).to_contain_text('case changed')
-        assert data(d, case)['resolution'] == 'replace'
-        page.once('dialog', lambda dialog: dialog.accept())
-        page.reload(wait_until='networkidle')
-        form = page.locator('[data-refund-conversion]')
-        if role == 'supervisor':
-            page.get_by_role('tab', name='Settlement', exact=True).click()
-        form.locator('[name="remarks"]').fill('Provider records confirm the submitted funds were not received')
-        form.locator('[name="customer_message"]').fill('We will refund the approved return credit. The submitted extra payment was not received.')
-        form.get_by_role('button', name='Convert to refund', exact=True).click()
-        checkbox = form.locator('[name="unreceived_payment"]')
-        expect(checkbox).to_be_focused()
-        expect(checkbox).to_have_attribute('aria-invalid', 'true')
-        checkbox.check()
-        form.get_by_role('button', name='Convert to refund', exact=True).click()
-        page.get_by_role('button', name='Confirm refund conversion', exact=True).click()
-        expect(page.locator('[data-refund-conversion]')).to_have_count(0)
-        result = data(d, case)
-        assert result['resolution'] == 'refund' and result['refund']['amount'] == 200
         expect(page.locator('form[action$="/verify-payment"]')).to_have_count(0)
-        assert not result['payment_verified_at'] and result['has_payment_proof']
-        assert 'converted_to_refund' in [event['action'] for event in result['events']]
-        page.screenshot(path=f'outputs/replacement-policy/converted-{role}-{width}.png', full_page=True)
         assert not errors, errors
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         browser.close()
+    from test_product_lifecycle import refund_proof
+    with pytest.raises(ValueError):
+        returns.record_return_payment(case, d['reseller'], [refund_proof()], {
+            'transaction_number': 'UNEXPECTED', 'payment_amount': '100',
+            'payment_date': '2026-11-03', 'payment_time': '10:00',
+        })

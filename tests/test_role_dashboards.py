@@ -179,7 +179,7 @@ def test_owner_exception_counts_match_missing_active_coverage_filters(lifecycle,
     session_for(monkeypatch, d, 'owner')
     with TestClient(main.app) as client:
         response = client.get('/portal/owner/inquiries?coverage=missing')
-        assert response.status_code == 200 and 'Clear coverage filter' in response.text
+        assert response.status_code == 404
         response = client.get('/portal/owner/refunds?owner_only=1')
         assert response.status_code == 200 and 'name="owner_only" value="1"' in response.text
     with pytest.raises(ValueError, match='Only an Owner'):
@@ -279,6 +279,6 @@ def test_supervisor_inquiry_summary_includes_all_unresolved_statuses(lifecycle):
             cur.execute("""INSERT INTO inquiries(name,business_name,email,contact_number,message,status,assigned_team_leader_account_id)
                 VALUES('Preview prospect','Preview store',%s,'09123456789','Dashboard inquiry',%s,%s)""",
                 (f'preview-{index}@dashboard.test',status,assigned))
-    counts = leader_work_summary(d['supervisor'], 'sales-supervisor')['counts']
-    assert counts['inquiries'] == repositories.count_inquiries(status='open',assigned_team_leader_account_id=d['supervisor'],include_unassigned=True) == 3
-    assert len(repositories.list_inquiries(status='open',assigned_team_leader_account_id=d['supervisor'],include_unassigned=True)) == 3
+    summary = leader_work_summary(d['supervisor'], 'sales-supervisor')
+    assert 'inquiries' not in summary['counts']
+    assert all('inquiries' not in row['path'] for row in summary['queue'])

@@ -157,7 +157,7 @@ def test_owner_workspace_navigation_chart_and_responsive_pages(lifecycle, monkey
 
         page.route('http://owner.test/**', bridge)
         sections = [s for s, _label, _icon in portal_config.portal_nav['owner']]
-        sections += ['operations','inquiries','refunds','materials','batches','movements','expired-stock','alerts','products','profile']
+        sections += ['operations','refunds','materials','batches','movements','expired-stock','alerts','products','profile']
         for width in (1440, 768, 390):
             page.set_viewport_size({'width':width,'height':1000})
             for section in sections:

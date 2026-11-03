@@ -7076,3 +7076,19 @@
 @media(max-width:640px){.operations-dashboard .dashboard-table{min-width:400px}}
 
 @media(max-width:760px){body .operations-dashboard table.dashboard-table thead{display:table-header-group}body .operations-dashboard table.dashboard-table tbody{display:table-row-group}body .operations-dashboard table.dashboard-table tr{display:table-row}body .operations-dashboard table.dashboard-table th,body .operations-dashboard table.dashboard-table td{display:table-cell}body .operations-dashboard table.dashboard-table td::before{display:none}}
+
+/* Supervisor return queue: one scannable case ledger with separate process states. */
+.sales-returns-page .sales-return-table-wrap { width:100%; max-width:100%; overflow-x:auto; }
+.sales-returns-page .sales-return-table { width:100%; min-width:1260px; border-collapse:collapse; text-align:left; }
+.sales-returns-page .sales-return-table th,.sales-returns-page .sales-return-table td { padding:13px 12px; border-top:1px solid var(--border); vertical-align:middle; font-size:.78rem; }
+.sales-returns-page .sales-return-table thead th { border-top:0; border-bottom:1px solid var(--border); background:var(--surface-muted); color:var(--text-light); font-size:.69rem; font-weight:500; white-space:nowrap; }
+.sales-returns-page .sales-return-table tbody th { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.sales-returns-page .sales-return-table td:last-child { text-align:right; white-space:nowrap; }
+.sales-returns-page .sales-return-table .button { min-height:36px; padding:7px 10px; font-size:.74rem; }
+.sales-returns-page .sales-return-empty { display:grid; gap:5px; padding:28px 16px; color:var(--text-light); text-align:center; }
+.sales-returns-page .sales-return-empty strong { color:var(--text); }
+.sales-returns-page .sales-return-table [data-state="completed"] { color:var(--success); }
+.sales-returns-page .sales-return-table [data-state="rejected"] { color:var(--error); }
+.sales-returns-page .sales-return-table [data-state="discrepancy"] { color:var(--error); }
+.sales-returns-page .sales-return-table [data-state="submitted"],.sales-returns-page .sales-return-table [data-state="awaiting_receipt"],.sales-returns-page .sales-return-table [data-state="awaiting_inventory_verification"] { color:var(--warning); }
+.sales-returns-page .sales-return-table :is(a,button):focus-visible { outline:3px solid var(--gold-deep); outline-offset:2px; }

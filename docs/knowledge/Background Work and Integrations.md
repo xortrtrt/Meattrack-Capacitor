@@ -1,8 +1,36 @@
 ---
 tags: [meattrack, worker, integrations]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Background work and integrations
+
+## Reseller opportunities and invitation email (2026-11-03)
+
+The landing chatbot's **How to Become a Reseller?** option displays the designated
+Business Owner email (`BUSINESS_EMAIL`) and collects no application details.
+Negotiation and approval happen externally. An active Owner can issue a unique
+seven-day registration invitation from People & access; the recipient email is
+sent through the existing Brevo emailer. The raw token is sent directly and is
+not written to the database; PostgreSQL stores only its SHA-256 hash. Registration
+uses the existing email OTP sender and `account_login_otps` table with a distinct
+`reseller_registration` purpose, ten-minute expiry, 60-second resend cooldown,
+five sends per hour, and at most five attempts per code. See [[Owner Portal]] and
+[[Roles and Access]].
+
+Public visitor-to-Sales Live Chat was retired on 2026-11-03. The chatbot still
+answers product and delivery questions and gives the public phone/email when a
+visitor asks for a person; it no longer offers or starts a Sales handoff. The
+Sales and Supervisor Live Chat page and its visitor conversation APIs are gone.
+Existing internal reseller messages remain available to signed-in accounts,
+and historical prospect-chat rows keep their normal retention cleanup. Sources:
+`app/chatbot/lead_flow.py`, `app/routers/chatbot.py`,
+`app/routers/live_chat.py`, `app/portal_config.py`, and `app/worker.py`.
+
+Sources: `app/chatbot/lead_flow.py`, `app/chatbot/configuration.py`,
+`app/routers/chatbot.py`, `app/routers/live_chat.py`, `app/emailer.py`,
+`app/repositories/reseller_invitations.py`, `app/repositories/accounts.py`,
+`app/security_controls.py`, migration
+`database/migrations/050_reseller_registration_invitations.sql`.
 
 ## Reseller unified inbox (2026-11-02)
 
@@ -76,9 +104,9 @@ Sources checked: `app/templates/portals/reseller/inbox.html`,
 `app/static/js/replacement_workflow.js`, `app/static/css/reseller_inbox_workspace.css`.
 
 `app/worker.py` runs separately from HTTP requests. Its fast cycle expires unpaid
-orders, drains the notification outbox, processes a forecast run, and retries
-live-chat publication. Maintenance handles inquiry follow-ups, batch expiry,
-session/security cleanup, chat maintenance, and stale forecast recovery.
+orders, drains the notification outbox, and processes a forecast run. It no
+longer retries visitor chat publications. Maintenance handles batch expiry,
+session/security cleanup, historical chat retention, and stale forecast recovery.
 
 Batch-expiry maintenance creates one durable Pending pull-out record per batch.
 Inventory Logs reads that same record as a status event without changing stock;
@@ -90,14 +118,12 @@ only the confirmed physical pull-out deducts warehouse quantities. See
 | --- | --- | --- |
 | Notifications/email | Database outbox and worker delivery | Brevo; local mail capture in development |
 | Demand forecasts | Durable runs, per-product summaries, daily results | Local Prophet/pandas and baseline models |
-| FAQ chatbot | Approved local FAQ and guided lead collection | Optional OpenRouter provider |
-| Live prospect chat | Conversations, messages, presence and retry state | Ably publishes browser events |
+| FAQ chatbot | Approved local FAQ and Owner contact details | Optional OpenRouter provider |
+| Historical prospect chat | Retained records and cleanup only | No new Ably publication |
 | Reseller messaging | Order/reseller-scoped persisted conversations | Realtime behavior must preserve ownership |
 
-The optional hosted chatbot and the live support workflow have different failure
-paths. The FAQ has a local fallback. Chat publication failures use persistent retry
-state; do not assume successful external publication merely because a message is
-stored. Inspect feature configuration before diagnosing a missing integration.
+The optional hosted chatbot has a local fallback. Visitor-to-Sales live support
+is retired; internal reseller messaging remains a separate authenticated workflow.
 
 Forecast request and forecast computation are separate operations. An owner-facing
 run/status action connects to a worker claim and processing step. Sales history
@@ -119,8 +145,9 @@ JPG/PNG/WebP images up to 5 MB, MP4/WebM videos up to 25 MB, and 30 MB combined.
 The server checks content, stores bytes with the message, and serves authenticated
 participant-only media with video range requests. Deleted-thread visibility and
 assignment checks also apply to downloads. Message UUID retries must match text,
-return context, and attachment identities. Public Live Chat is unchanged; the
-legacy `/api/portal/live-chat/resellers/...` paths serve internal conversations.
+return context, and attachment identities. The legacy
+`/api/portal/live-chat/resellers/...` paths serve authenticated internal
+conversations; the public visitor Live Chat routes are removed.
 
 Navigation badges count unread conversations; rows show incoming unread messages.
 The reseller count folds system updates and refund replies into one thread per

@@ -7,7 +7,7 @@
     const accepted = new WeakSet();
     let pending = null, sending = false, returnFocus = null;
     const labels = {
-      approve: ['Approve return request?', 'Confirm approval', 'Record this approval using the reviewed products and notes.'],
+      approve: ['Approve return request?', 'Confirm approval', 'Record the reviewed return request.'],
       reject: ['Reject return request?', 'Confirm rejection', 'The reseller will receive the required rejection reason.'],
       delivery: ['Confirm replacement delivered?', 'Confirm delivery', 'Record delivery of the released replacement products.'],
       proceed: ['Confirm approved resolution?', 'Confirm next step', 'Clear the existing approved resolution for the next permitted step.'],
@@ -71,6 +71,9 @@
         pending = form; returnFocus = event.submitter || document.activeElement;
         let [title, label, description] = form.dataset.returnIntent === 'approve' && root.dataset.returnStatus !== 'submitted'
           ? ['Save revised request?', 'Confirm revised request', 'Record the revised products and review notes.'] : labels[form.dataset.returnIntent];
+        if (form.hasAttribute('data-fixed-replacement')) {
+          description = 'Approve the reseller’s submitted replacement as requested. The approved returned goods must still be received and verified before the next step.';
+        }
         if (form.dataset.returnIntent === 'convert-to-refund') {
           description = `${description} Total refund: ${form.dataset.refundLabel}. Returned goods must be verified before settlement.`;
         }
@@ -152,8 +155,12 @@
   panels.forEach(panel => panel.setAttribute('role', 'tabpanel'));
   page.querySelectorAll('[data-return-switch]').forEach(button => button.addEventListener('click', () => showTab(button.dataset.returnSwitch, true)));
   const initialQuery = new URL(location.href).searchParams;
-  showTab(initialQuery.get('tab') || (initialQuery.has('message') || initialQuery.has('error') || page.querySelector('.rd-feedback') ? remembered() : null) || 'overview');
+  const suggestedTab = page.dataset.refundConverted === 'true' ? 'settlement' : null;
+  showTab(initialQuery.get('tab') || suggestedTab || (initialQuery.has('message') || initialQuery.has('error') || page.dataset.returnHasFeedback === 'true' || page.querySelector('.rd-feedback') ? remembered() : null) || 'overview');
 
+  page.querySelectorAll('form[method="post"]').forEach(form => {
+    form.addEventListener('submit', () => remember(form.closest('[data-return-panel]')?.dataset.returnPanel || 'overview'));
+  });
   bindConfirmation(page, {
     remember,
     reveal: form => {

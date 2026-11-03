@@ -6,25 +6,23 @@ flowchart TD
     C -->|Originals unavailable| D[Offer alternative with explanation]
     D -->|No acceptable alternative| RA[Approve returned-goods eligibility]
     RA --> R[Authorized refund conversion]
-    D --> E{Value versus approved return credit}
-    E -->|Lower| D
-    E -->|Equal or higher| F
-    F --> H[Inventory verifies complete returned-goods receipt into non-sellable custody]
+    D --> E{Value equals approved return credit?}
+    E -->|No| D
+    E -->|Yes| F
+    F --> S{Enough eligible stock at approval?}
+    S -->|No| N[Notify reseller and convert to refund]
+    N --> HX[Inventory receives and verifies all returned goods, even if expired]
+    HX --> RF[Proceed through existing refund settlement]
+    S -->|Yes| RS[Reserve eligible FEFO stock]
+    RS --> H[Inventory verifies complete returned-goods receipt into non-sellable custody]
     F --> G[Keep default acceptance or obtain reseller acceptance of changed offer]
     H --> RG{Complete receipt and current offer accepted?}
     G --> RG
     RG -->|No| W[Wait for remaining receipt or acceptance]
     W --> RG
-    RG -->|Yes| I{Extra payment due?}
-    I -->|Yes| J[Reseller submits exact difference; processor verifies received funds]
-    I -->|No| K[Inventory reserves shared FEFO stock and marks ready]
-    J --> K
-    K --> L{Eligible stock available?}
-    L -->|No| M[Wait for valid restock; keep accepted offer and verified payment]
-    M --> K
-    L -->|Yes| N[Inventory revalidates and releases; deduct physical stock once]
-    N --> O[Supervisor or Owner confirms delivery]
-    O --> P([Complete replacement])
+    RG -->|Yes| K[Inventory prepares reserved stock and marks ready]
+    K --> L[Inventory revalidates and releases; deduct physical stock once]
+    L --> O[Supervisor or Owner confirms delivery]
+    O --> P([Complete replacement with no money involved])
     F -. No acceptable supply before release .-> R[Authorized refund conversion]
-    M -. No acceptable supply before release .-> R
-    R --> S[Follow refund-conversion diagram]
+    R --> T[Follow refund-conversion diagram]

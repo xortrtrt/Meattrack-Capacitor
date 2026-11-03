@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -274,12 +275,6 @@ def operations_context(request: Request) -> dict:
     }
 
 
-def inquiries_context(request: Request) -> dict:
-    coverage = {"missing_coverage": True} if request.query_params.get('coverage') == 'missing' else {}
-    page = shared.inquiries_page(request, **coverage)
-    return {"inquiries_page": page, "inquiries": page["items"]}
-
-
 def orders_context(request: Request) -> dict:
     page = shared.orders_page(request, "reseller", page_size=6)
     return {"orders_page": page, "orders": page["items"]}
@@ -382,7 +377,6 @@ SECTION_LOADERS = {
     ("owner", "messages"): lambda request: {},
     ("owner", "dashboard"): dashboard_context,
     ("owner", "operations"): operations_context,
-    ("owner", "inquiries"): inquiries_context,
     ("owner", "orders"): orders_context,
     ("owner", "inventory"): inventory_context,
     ("owner", "materials"): materials_context,
@@ -478,6 +472,40 @@ async def owner_resend_activation(request: Request, account_id: int):
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("owner", "accounts", error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path("owner", "accounts", message="A new activation link was queued."))
+
+
+@router.post("/portal/owner/accounts/reseller-invitations")
+async def owner_reseller_invitation(request: Request, email: str = Form(...)):
+    guard = shared.require_portal_session(request, "owner")
+    if guard:
+        return guard
+    require_capability(request, "accounts.manage_all", "owner")
+    step_up = require_owner_step_up(request, "accounts")
+    if step_up:
+        return step_up
+    try:
+        recipient = shared.require_email(email)
+        owner_id = shared.session_account_id(request) or 0
+        invitation = data.create_reseller_registration_invitation(
+            recipient, owner_id,
+        )
+        from app.config import APP_BASE_URL
+        from app.emailer import send_reseller_registration_invitation
+
+        sent, delivery_message = await asyncio.to_thread(
+            send_reseller_registration_invitation,
+            to_email=invitation["email"],
+            invitation_url=f"{APP_BASE_URL}/register/reseller?token={invitation['token']}",
+        )
+        if not sent:
+            data.cancel_reseller_registration_invitation(invitation["invitation_id"], owner_id)
+            raise ValueError(delivery_message)
+    except ValueError as exc:
+        return shared.redirect_to(shared.safe_portal_path("owner", "accounts", error=str(exc)))
+    return shared.redirect_to(shared.safe_portal_path(
+        "owner", "accounts",
+        message=f"A 7-day reseller registration invitation was emailed to {invitation['email']}.",
+    ))
 
 
 @router.post("/portal/owner/accounts/{account_id}/role")
@@ -864,54 +892,6 @@ def owner_order_override(
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("owner", "orders", error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path("owner", "orders", message=f"Order {decision} override recorded."))
-
-
-@router.post("/portal/owner/inquiries/{inquiry_id}/{decision}")
-def owner_inquiry_override(
-    request: Request,
-    inquiry_id: int,
-    decision: str,
-    reason: Annotated[str, Form()],
-    rejection_reason: Annotated[str, Form()] = "",
-):
-    guard = shared.require_portal_session(request, "owner")
-    if guard:
-        return guard
-    require_capability(request, "inquiries.override", "owner")
-    step_up = require_owner_step_up(request, "inquiries")
-    if step_up:
-        return step_up
-    clean_reason = " ".join(reason.strip().split())
-    if len(clean_reason) < 5:
-        return shared.redirect_to(shared.safe_portal_path("owner", "inquiries", error="Enter an override reason."))
-    try:
-        actor_id = shared.session_account_id(request) or 0
-        if decision == "approve":
-            changed = data.add_reseller_from_inquiry(
-                inquiry_id,
-                decision_actor_account_id=actor_id,
-            )
-        elif decision == "reject":
-            changed = data.reject_inquiry(
-                inquiry_id,
-                rejection_reason,
-                decision_actor_account_id=actor_id,
-            )
-        else:
-            raise HTTPException(status_code=404)
-        if not changed:
-            raise ValueError("Inquiry not found or the requested decision is unavailable.")
-        data.record_owner_audit(
-            actor_id,
-            f"owner_{decision}_inquiry_override",
-            "inquiries",
-            inquiry_id,
-            reason=clean_reason,
-            after_state={"decision": decision},
-        )
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("owner", "inquiries", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("owner", "inquiries", message="Inquiry override recorded."))
 
 
 @router.post("/portal/owner/accounts/{account_id}/transfer")

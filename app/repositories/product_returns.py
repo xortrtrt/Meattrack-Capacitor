@@ -666,13 +666,14 @@ def _receive_product_return(cur, return_id, actor_id, receipts, location, remark
             raise ValueError(
                 "Receipt must match a Sales-approved original batch and outstanding quantity. Flag discrepancies separately."
             )
+        returned_location = EXPIRED_HOLDING_LOCATION if line["expiry_date"] <= business_today() else location
         holding_id = _holding(
             cur,
             product_id=line["item_id"],
             batch_code=line["batch_code"],
             expiry_date=line["expiry_date"],
             quantity=quantity,
-            location=location,
+            location=returned_location,
             actor_id=actor_id,
             source="return",
             batch_id=line["batch_id"],
@@ -1257,7 +1258,7 @@ def sync_expired_custody(cur) -> None:
 
 def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reconciliation_only: bool = False,
                          queue: str | None = None, order_id: int | None = None, owner_only: bool = False,
-                         dashboard_queue: str = "") -> list[dict]:
+                         dashboard_queue: str = "", search: str = "", updated_from=None, updated_to=None) -> list[dict]:
     from app.return_experience import PAYMENT_PROOF_SQL, FOLLOWUP_SQL, VALID_RESERVATION_SQL, experience, normalize_queue
     with get_transaction_cursor() as cur:
         role = _actor(cur, actor_id, {"reseller", "sales", "sales-supervisor", "inventory"})
@@ -1281,6 +1282,17 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
         if order_id:
             scope += " AND r.order_id=%s"
             params.append(order_id)
+        if role == "inventory":
+            term = (search or "").strip()[:100]
+            if term:
+                scope += " AND (CAST(r.return_id AS text) ILIKE %s OR a.name ILIKE %s OR CAST(o.order_id AS text) ILIKE %s)"
+                params.extend([f"%{term}%"] * 3)
+            if updated_from:
+                scope += " AND (r.updated_at AT TIME ZONE 'Asia/Manila')::date >= %s"
+                params.append(updated_from)
+            if updated_to:
+                scope += " AND (r.updated_at AT TIME ZONE 'Asia/Manila')::date <= %s"
+                params.append(updated_to)
         if queue is not None and role != "inventory":
             if normalize_queue(queue) != "all":
                 predicate, bound = review_predicate(role, normalize_queue(queue), actor_id)
@@ -1300,7 +1312,7 @@ def list_product_returns(actor_id: int, status: str = "", *, page: int = 1, reco
                 params.append(sorted(INVENTORY_FLAGS))
             else:
                 scope += " AND cardinality(checks.flags)>0"
-        cur.execute("SELECT COUNT(*) total FROM product_returns r JOIN orders o USING(order_id) JOIN product_return_review_reconciliation checks USING(return_id) WHERE true" + scope,tuple(params))
+        cur.execute("SELECT COUNT(*) total FROM product_returns r JOIN orders o USING(order_id) JOIN accounts a ON a.account_id=o.created_by_account_id JOIN product_return_review_reconciliation checks USING(return_id) WHERE true" + scope,tuple(params))
         total = cur.fetchone()["total"]
         pagination = pagination_meta(total,page,12)
         cur.execute(

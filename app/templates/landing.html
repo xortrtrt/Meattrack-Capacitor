@@ -70,8 +70,8 @@
             </p>
           </div>
           <div class="landing-hero-actions" data-hero-item>
-            <button type="button" class="btn landing-btn-primary" data-open-chatbot>
-              Start reseller inquiry
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot data-chatbot-prompt="How to Become a Reseller?">
+              How to Become a Reseller?
             </button>
             <a href="#store" class="btn landing-btn-secondary">Browse products</a>
           </div>
@@ -146,7 +146,7 @@
             <p class="landing-kicker">Catalog update in progress</p>
             <h3>Ask us what is available today.</h3>
             <p>Our team can share the current product list, reseller rates, and package options through chat.</p>
-            <button type="button" class="btn landing-btn-primary" data-open-chatbot>Open reseller chat</button>
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot data-chatbot-prompt="View products">Ask about products</button>
           </div>
           {% endif %}
         </div>
@@ -187,9 +187,9 @@
           </div>
 
           <div class="landing-partner-action">
-            <p>Not sure which path fits? Tell us about your location and selling experience.</p>
-            <button type="button" class="btn landing-btn-primary" data-open-chatbot>
-              Start reseller inquiry
+            <p>For reseller opportunities, contact the Business Owner directly. The chatbot can show the designated email address.</p>
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot data-chatbot-prompt="How to Become a Reseller?">
+              How to Become a Reseller?
             </button>
           </div>
         </div>
@@ -234,11 +234,11 @@
           <div class="landing-contact-main">
             <p class="landing-kicker">Let&rsquo;s grow locally</p>
             <h2 id="contact-title">Bring Batangas Premium to your market.</h2>
-            <p>Start in chat. We will confirm your details and connect you with an available sales team leader.</p>
-            <button type="button" class="btn landing-btn-primary" data-open-chatbot>
-              Open reseller chat
+            <p>For reseller opportunities, contact the Business Owner directly by email. All discussions and approval happen outside MEATTRACK.</p>
+            <button type="button" class="btn landing-btn-primary" data-open-chatbot data-chatbot-prompt="How to Become a Reseller?">
+              How to Become a Reseller?
             </button>
-            <small>Portal accounts are created by Batangas Premium team leaders after inquiry review.</small>
+            <small>Only a personal invitation from the Business Owner opens reseller registration.</small>
           </div>
           <address class="landing-contact-details">
             <div>
@@ -247,7 +247,7 @@
             </div>
             <div>
               <span>Email</span>
-              <a href="mailto:batangas.premium@yahoo.com">batangas.premium@yahoo.com</a>
+              <a href="mailto:pat.clem.inc@gmail.com">pat.clem.inc@gmail.com</a>
             </div>
             <div>
               <span>Visit</span>
@@ -368,7 +368,6 @@
     </footer>
 
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
-    <script src="{{ url_for('static', path='vendor/ably-2.17.0.min.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261001-frontend-modules-1"></script>
     <script type="module" src="{{ url_for('static', path='js/public-site.js') }}?v=20261016-product-preview-1"></script>

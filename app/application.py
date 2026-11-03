@@ -20,7 +20,7 @@ from app.portals import shared as shared_portal
 from app.portals import inventory_tools
 from app.portals import team_leader as team_leader_portal
 from app.portals import activity_reports as activity_reports_portal
-from app.routers import auth, chatbot, live_chat, public, system
+from app.routers import auth, chatbot, live_chat, public, system, reseller_registration
 from app.security_controls import csrf_token, enforce_csrf
 from app.web_sessions import DatabaseSessionMiddleware
 
@@ -157,7 +157,7 @@ def create_app() -> FastAPI:
         }
     )
 
-    for route_module in (system, public, chatbot, live_chat, auth):
+    for route_module in (system, public, chatbot, live_chat, auth, reseller_registration):
         application.include_router(route_module.router)
     for portal_router in (
         owner_portal.router,

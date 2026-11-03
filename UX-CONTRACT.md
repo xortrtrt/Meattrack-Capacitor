@@ -29,8 +29,9 @@ Dashboards change read-only projections, not financial or inventory transitions.
 
 ### Return-workflow extension (2026-11-03)
 
-This extension covers the return request, Reseller/processor detail pages and
-Owner dialog. Business authority: `docs/knowledge/Decisions.md` (replacement-first
+This extension covers return requests, detail pages for Reseller, Sales,
+Supervisor/Owner and stock-only Inventory, and the Owner dialog. Business authority:
+`docs/knowledge/Decisions.md` (replacement-first
 policy), `app/repositories/return_policy.py`, and transactional repository guards.
 Historical cases retain their recorded policy; a client cannot choose one.
 
@@ -42,6 +43,13 @@ Historical cases retain their recorded policy; a client cannot choose one.
 | Toast | Existing server-rendered notice/status regions | Confirmed server response | Persistent actionable errors and polite success/status messages | Browser failure and stale-state tests |
 | CRUD | Existing return actions and shared `return_details.js` confirmation | Capabilities, assignment and case fingerprint | Return to current case/tab; preserve originating list filter | Full replacement/conversion journeys |
 | Scrollbar | Global `portal_base.css` tokens | Existing runtime CSS, mirrored by DESIGN.md | Document scrolling and bounded native dialogs | Computed styles, narrow/short viewport and forced-colors checks |
+
+Inventory return details retain their tabs and originating queue state after actions.
+Show current responsibility once. History defaults to short event rows with native
+note/record disclosures; full milestone and custody records remain available on demand.
+The generic success toast is not repeated in an inline card. Scoped presentation
+uses `inventory-returns.css`; filters, forms, messages and stock permissions retain
+their canonical owners above.
 
 Requests show the same returned products as the default replacement; Supervisor
 offers alternatives. A comparison is a price review, never a stock reservation.

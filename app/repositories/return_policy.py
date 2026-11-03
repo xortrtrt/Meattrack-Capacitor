@@ -7,8 +7,8 @@ def replacement_first(case: dict) -> bool:
 
 
 def require_replacement_value(case: dict) -> None:
-    if replacement_first(case) and case["resolution"] == "replace" and case["replacement_total"] < case["credit"]:
-        raise ValueError("Replacement value must equal or exceed the approved return credit.")
+    if replacement_first(case) and case["resolution"] == "replace" and case["replacement_total"] != case["credit"]:
+        raise ValueError("Replacement value must equal the approved return credit; replacements do not involve money.")
 
 
 def refund_components(case: dict) -> tuple[Decimal, Decimal]:

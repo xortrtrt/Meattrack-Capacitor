@@ -8,10 +8,8 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from app.uploads import parse_product_image
-from app import live_chat
 from app import reseller_messaging
 from app import repositories as data
-from app.config import LIVE_CHAT_ENABLED
 from app.business_time import business_today
 from app.repositories.portal_dashboard import leader_work_summary
 from app.portals import owner as owner_portal
@@ -194,15 +192,6 @@ def dashboard_context(request: Request) -> dict:
         "metrics": data.current_metrics(team_leader_account_id=account_id),
         "settlement_summary": data.settlement_summary(account_id),
         "work_summary":work_summary,"dashboard_date":business_today(),
-        "inquiries": (
-            data.list_inquiries(
-                limit=4,
-                assigned_team_leader_account_id=account_id,
-                include_unassigned=True,
-            )
-            if leader_role == "sales-supervisor"
-            else []
-        ),
         "orders": data.list_orders(order_type="reseller", limit=5, team_leader_account_id=account_id,exclude_to_pay=True),
     }
 
@@ -266,15 +255,6 @@ def logs_context(request: Request) -> dict:
     }
 
 
-def inquiries_context(request: Request) -> dict:
-    page = shared.inquiries_page(
-        request,
-        assigned_team_leader_account_id=shared.session_account_id(request),
-        include_unassigned=True,
-    )
-    return {"inquiries_page": page, "inquiries": page["items"]}
-
-
 def resellers_context(request: Request) -> dict:
     filters = shared.portal_filters(request)
     status = filters["status"] if filters["status"] in {"pending", "active", "suspended", "inactive"} else ""
@@ -305,13 +285,6 @@ def resellers_context(request: Request) -> dict:
     return {"team_resellers_page": page, "team_resellers": page["items"]}
 
 
-def live_chat_context(request: Request) -> dict:
-    return {
-        "live_chat_workspace": live_chat.workspace(shared.session_account_id(request)),
-        "live_chat_enabled": LIVE_CHAT_ENABLED,
-    }
-
-
 def reseller_messages_context(request: Request) -> dict:
     account_id = shared.session_account_id(request)
     return {
@@ -330,6 +303,13 @@ def reports_context(request: Request) -> dict:
     return {"sales_reports_page": page, "sales_reports": page["items"], **workspace_context(request)}
 
 
+def supervisor_accounts_context(request: Request) -> dict:
+    return {
+        "team_leaders": data.list_team_leader_accounts(),
+        "reseller_assignments": data.list_reseller_assignments(),
+    }
+
+
 SECTION_LOADERS = {
     ("team-leader", "dashboard"): dashboard_context,
     ("team-leader", "sales"): sales_context,
@@ -339,19 +319,16 @@ SECTION_LOADERS = {
     ("team-leader", "batches"): batches_context,
     ("team-leader", "alerts"): alerts_context,
     ("team-leader", "logs"): logs_context,
-    ("team-leader", "live-chat"): live_chat_context,
     ("team-leader", "messages"): reseller_messages_context,
     ("team-leader", "resellers"): resellers_context,
     ("team-leader", "orders"): orders_context,
     ("team-leader", "reports"): reports_context,
     ("team-leader", "profile"): profile_context,
     ("sales-supervisor", "dashboard"): dashboard_context,
-    ("sales-supervisor", "live-chat"): live_chat_context,
     ("sales-supervisor", "messages"): reseller_messages_context,
-    ("sales-supervisor", "inquiries"): inquiries_context,
     ("sales-supervisor", "orders"): orders_context,
     ("sales-supervisor", "reports"): reports_context,
-    ("sales-supervisor", "accounts"): owner_portal.accounts_context,
+    ("sales-supervisor", "accounts"): supervisor_accounts_context,
     ("sales-supervisor", "profile"): profile_context,
 }
 
@@ -609,42 +586,6 @@ async def team_product_pack_content(
     return shared.redirect_to(shared.safe_portal_path("team-leader", "inventory", message="Pack content updated."))
 
 
-@router.post("/portal/sales-supervisor/inquiries/{inquiry_id}/{decision}")
-async def team_inquiry_decision(
-    request: Request,
-    inquiry_id: int,
-    decision: str,
-    rejection_reason: str = Form(""),
-):
-    role_key = request.session.get("role_key") if request.session.get("role_key") in {"team-leader", "sales-supervisor"} else "team-leader"
-    guard = shared.require_portal_session(request, role_key)
-    if guard:
-        return guard
-    role_guard = shared.require_team_leader_role(request, "sales-supervisor")
-    if role_guard:
-        return role_guard
-    if decision == "approve":
-        try:
-            reseller = data.add_reseller_from_inquiry(inquiry_id, approving_team_leader_account_id=shared.session_account_id(request))
-            if reseller is None:
-                return shared.redirect_to(shared.safe_portal_path(role_key, "inquiries", error="Inquiry not found."))
-        except ValueError as exc:
-            return shared.redirect_to(shared.safe_portal_path(role_key, "inquiries", error=str(exc)))
-        return shared.redirect_to(shared.safe_portal_path(role_key, "inquiries", message="Inquiry approved. A single-use activation email was queued."))
-    if decision == "reject":
-        try:
-            if not data.reject_inquiry(
-                inquiry_id,
-                rejection_reason,
-                reviewing_team_leader_account_id=shared.session_account_id(request),
-            ):
-                return shared.redirect_to(shared.safe_portal_path(role_key, "inquiries", error="Inquiry not found."))
-        except ValueError as exc:
-            return shared.redirect_to(shared.safe_portal_path(role_key, "inquiries", error=str(exc)))
-        return shared.redirect_to(shared.safe_portal_path(role_key, "inquiries", message="Inquiry rejected. The applicant email was queued."))
-    raise HTTPException(status_code=404)
-
-
 @router.post("/portal/sales-supervisor/orders/{order_id}/{decision}")
 @router.post("/portal/team-leader/orders/{order_id}/{decision}")
 async def team_order_decision(
@@ -693,28 +634,11 @@ async def team_report(request: Request):
 @router.post("/portal/sales-supervisor/accounts")
 async def supervisor_account(
     request: Request,
-    account_type: str = Form("team_leader"),
-    name: str = Form(...),
-    email: str = Form(...),
-    team_leader_role: str = Form("sales"),
 ):
     guard = shared.require_portal_session(request, "sales-supervisor")
     if guard:
         return guard
-    try:
-        if account_type != "team_leader":
-            raise ValueError("Sales supervisors can create team leader accounts only.")
-        email = shared.require_email(email)
-        data.add_account(
-            "team_leader",
-            name,
-            email,
-            team_leader_role=team_leader_role,
-            actor_account_id=shared.session_account_id(request),
-        )
-    except ValueError as exc:
-        return shared.redirect_to(shared.safe_portal_path("sales-supervisor", "accounts", error=str(exc)))
-    return shared.redirect_to(shared.safe_portal_path("sales-supervisor", "accounts", message="Account created. A single-use activation email was queued."))
+    raise HTTPException(status_code=403, detail="Sales supervisors cannot create accounts.")
 
 
 @router.post("/portal/sales-supervisor/accounts/{account_id}/activation")

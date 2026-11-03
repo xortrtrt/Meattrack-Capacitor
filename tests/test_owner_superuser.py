@@ -115,7 +115,6 @@ def test_owner_migration_contains_immutable_correction_and_retry_guards():
     ("section", "context"),
     [
         ("operations", {"operations_summary": {}, "recent_orders": [], "recent_inquiries": [], "alerts": [], "team_workload": []}),
-        ("inquiries", {"inquiries_page": {"filters": {"q": "", "status": ""}}, "inquiries": []}),
         ("orders", {"orders_page": {"filters": {"q": "", "status": ""}}, "orders": [{"order_id": 1, "reseller": "Test reseller", "status": "pending", "total_amount": 250, "items": [{"name": "Longganisa", "quantity": 2}], "payment_proofs": []}]}),
         ("inventory", {"products": [], "raw_materials": [], "product_recipes": [], "alerts": []}),
         ("materials", {"materials_page": {"filters": {"q": ""}}, "materials": []}),

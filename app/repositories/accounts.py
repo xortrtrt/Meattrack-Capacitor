@@ -513,7 +513,7 @@ def confirm_account_password_change(
     allowed_account_types: tuple[str, ...] = ("owner", "reseller", "team_leader"),
 ) -> None:
     enforce_otp_attempt(account_id)
-    cleaned_otp = "".join(ch for ch in otp_code.strip() if ch.isdigit())
+    cleaned_otp = otp_code.strip()
     if len(cleaned_otp) != 6:
         raise ValueError("Enter the 6-digit OTP sent to your email.")
 
@@ -560,8 +560,10 @@ def confirm_reseller_password_change(account_id: int, otp_code: str) -> None:
     confirm_account_password_change(account_id, otp_code, ("reseller",))
 
 
-def request_login_otp(account_id: int) -> dict:
-    enforce_otp_resend(account_id)
+def request_login_otp(account_id: int, purpose: str = "login") -> dict:
+    if purpose not in {"login", "reseller_registration"}:
+        raise ValueError("Invalid OTP purpose.")
+    enforce_otp_resend(account_id, purpose=purpose)
     account = fetch_one(
         """
         SELECT account_id, account_type, team_leader_role, name, email,
@@ -573,7 +575,13 @@ def request_login_otp(account_id: int) -> dict:
         """,
         (account_id,),
     )
-    if not account or not account["is_active"] or account["activation_status"] != "active":
+    account_ready = bool(account and account["is_active"] and account["activation_status"] == "active")
+    registration_ready = bool(
+        account and account["account_type"] == "reseller"
+        and not account["is_active"] and account["activation_status"] == "pending"
+        and fetch_one("SELECT 1 FROM reseller_registration_invitations WHERE registration_account_id=%s AND consumed_at IS NULL LIMIT 1;", (account_id,))
+    )
+    if not account or not (account_ready if purpose == "login" else registration_ready):
         raise ValueError("Account was not found.")
 
     otp_code = f"{secrets.randbelow(1_000_000):06d}"
@@ -581,27 +589,41 @@ def request_login_otp(account_id: int) -> dict:
     expires_at = business_now() + timedelta(minutes=10)
 
     with get_transaction_cursor() as cur:
+        cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s));", (f"account-otp:{account_id}:{purpose}",))
+        cur.execute(
+            "SELECT count(*) AS total FROM account_login_otps WHERE account_id=%s AND purpose=%s AND created_at >= now() - interval '1 minute';",
+            (account_id, purpose),
+        )
+        if int(cur.fetchone()["total"]) > 0:
+            raise ValueError("Please wait 60 seconds before requesting another OTP.")
+        cur.execute(
+            "SELECT count(*) AS total FROM account_login_otps WHERE account_id=%s AND purpose=%s AND created_at >= now() - interval '1 hour';",
+            (account_id, purpose),
+        )
+        if int(cur.fetchone()["total"]) >= 5:
+            raise ValueError("OTP request limit reached. Try again later.")
         cur.execute(
             """
             UPDATE account_login_otps
             SET consumed_at = now()
             WHERE account_id = %s
+              AND purpose = %s
               AND consumed_at IS NULL;
             """,
-            (account_id,),
+            (account_id, purpose),
         )
         cur.execute(
             """
-            INSERT INTO account_login_otps (account_id, otp_hash, expires_at)
-            VALUES (%s, %s, %s)
+            INSERT INTO account_login_otps (account_id, otp_hash, expires_at, purpose)
+            VALUES (%s, %s, %s, %s)
             RETURNING account_login_otp_id;
             """,
-            (account_id, otp_hash, expires_at),
+            (account_id, otp_hash, expires_at, purpose),
         )
         otp = cur.fetchone()
 
-    record_otp_resend(account_id)
-    record_event("otp_verify", f"account:{account_id}", succeeded=True)
+    record_otp_resend(account_id, purpose=purpose)
+    record_event("otp_verify", f"account:{account_id}" + (f":{purpose}" if purpose != "login" else ""), succeeded=True)
 
     clean = clean_row(account)
     clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
@@ -621,40 +643,80 @@ def cancel_login_otp(account_id: int, otp_id: int | None = None) -> None:
     execute_write(f"UPDATE account_login_otps SET consumed_at = now() WHERE {where};", tuple(params))
 
 
-def confirm_login_otp(account_id: int, otp_code: str) -> dict:
+def confirm_login_otp(account_id: int, otp_code: str, purpose: str = "login") -> dict:
+    if purpose not in {"login", "reseller_registration"}:
+        raise ValueError("Invalid OTP purpose.")
     cleaned_otp = "".join(ch for ch in otp_code.strip() if ch.isdigit())
-    if len(cleaned_otp) != 6:
-        raise ValueError("Enter the 6-digit OTP sent to your email.")
 
     with get_transaction_cursor() as cur:
         cur.execute(
             """
-            SELECT p.account_login_otp_id, p.otp_hash,
+            SELECT p.account_login_otp_id, p.otp_hash, p.attempt_count,
                    a.account_id, a.account_type, a.team_leader_role, a.name, a.email,
                    a.profile_image_path, a.profile_image_position_x, a.profile_image_position_y, a.profile_image_scale,
-                   a.is_active, a.activation_status
+                   a.is_active, a.activation_status,
+                   ri.invitation_id, ri.invited_by_account_id
             FROM account_login_otps p
             JOIN accounts a ON a.account_id = p.account_id
+            LEFT JOIN reseller_registration_invitations ri
+              ON ri.registration_account_id = a.account_id AND ri.consumed_at IS NULL
             WHERE p.account_id = %s
+              AND p.purpose = %s
               AND p.consumed_at IS NULL
               AND p.expires_at >= now()
-              AND a.is_active = true
-              AND a.activation_status = 'active'
+              AND ((p.purpose = 'login' AND a.is_active = true AND a.activation_status = 'active')
+                   OR (p.purpose = 'reseller_registration' AND a.account_type = 'reseller'
+                       AND a.is_active = false AND a.activation_status = 'pending'
+                       AND ri.invitation_id IS NOT NULL))
             ORDER BY p.created_at DESC
             LIMIT 1
             FOR UPDATE OF p;
             """,
-            (account_id,),
+            (account_id, purpose),
         )
         pending = cur.fetchone()
         if not pending:
             raise ValueError("OTP expired or no login request is pending.")
-        if not verify_password(cleaned_otp, pending["otp_hash"]):
-            raise ValueError("OTP is incorrect.")
-        cur.execute(
-            "UPDATE account_login_otps SET consumed_at = now() WHERE account_login_otp_id = %s;",
-            (pending["account_login_otp_id"],),
-        )
+        if int(pending["attempt_count"]) >= 5:
+            raise ValueError("Too many incorrect OTP attempts. Request a new code.")
+        if len(cleaned_otp) != 6 or not cleaned_otp.isdigit() or not verify_password(cleaned_otp, pending["otp_hash"]):
+            cur.execute(
+                "UPDATE account_login_otps SET attempt_count = attempt_count + 1 WHERE account_login_otp_id = %s;",
+                (pending["account_login_otp_id"],),
+            )
+            invalid_otp = True
+        else:
+            invalid_otp = False
+            cur.execute(
+                "UPDATE account_login_otps SET consumed_at = now() WHERE account_login_otp_id = %s;",
+                (pending["account_login_otp_id"],),
+            )
+        if not invalid_otp and purpose == "reseller_registration":
+            cur.execute(
+                "UPDATE accounts SET is_active=true, activation_status='active', activated_at=now() WHERE account_id=%s;",
+                (account_id,),
+            )
+            cur.execute(
+                "UPDATE resellers SET reseller_status='active', approved_by_account_id=%s, approved_at=now() WHERE reseller_id=(SELECT reseller_id FROM accounts WHERE account_id=%s);",
+                (pending["invited_by_account_id"], account_id),
+            )
+            cur.execute(
+                "UPDATE reseller_registration_invitations SET consumed_at=now() WHERE invitation_id=%s AND consumed_at IS NULL;",
+                (pending["invitation_id"],),
+            )
+            if cur.rowcount != 1:
+                raise ValueError("This registration invitation is no longer valid.")
+            _add_log_cursor(
+                cur, actor_account_id=pending["invited_by_account_id"], action="registered_invited_reseller",
+                entity_type="accounts", entity_id=account_id,
+            )
+            _add_log_cursor(
+                cur, actor_account_id=account_id, action="verified_reseller_email",
+                entity_type="accounts", entity_id=account_id,
+            )
+
+    if invalid_otp:
+        raise ValueError("OTP is incorrect.")
 
     clean = clean_row(pending)
     clean["role_key"] = role_key_for_account_type(clean["account_type"], clean.get("team_leader_role"))
@@ -892,7 +954,7 @@ def add_account(
     cleaned_email = email.strip().lower()
 
     if account_type == "reseller":
-        raise ValueError("Reseller accounts are created only by approving chatbot inquiries.")
+        raise ValueError("Reseller accounts can be created only through an Owner-issued invitation.")
     if account_type == "team_leader":
         team_leader_role = team_leader_role if team_leader_role in {"inventory", "sales", "sales-supervisor"} else "sales"
     else:
@@ -952,6 +1014,8 @@ def activate_account(raw_token: str, new_password: str) -> dict:
         if not account:
             raise ValueError("Activation link is invalid or expired.")
         if account["purpose"] == "activation":
+            if account["account_type"] == "reseller":
+                raise ValueError("Reseller registration requires an Owner-issued invitation and email OTP.")
             cur.execute(
                 """
                 UPDATE accounts SET password_hash = %s, is_active = true,

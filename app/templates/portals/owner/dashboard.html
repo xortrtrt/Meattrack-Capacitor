@@ -17,7 +17,6 @@
         ('return_mismatches','Return receipt mismatches','Sales and Inventory need to agree on the corrected request.','returns?status=discrepancy','package-x'),
         ('owner_returns','Accepted returns needing an Owner','The assigned Supervisor is missing or no longer available.','returns?owner_only=1','user-round-cog'),
         ('owner_refunds','Refunds without an active Supervisor','Review assignment and current processing responsibility.','refunds?owner_only=1','wallet-cards'),
-        ('unassigned_inquiries','Inquiries without active Sales coverage','An Owner can review the application and record a decision.','inquiries?coverage=missing','user-check'),
         ('unassigned_resellers','Resellers without active Sales coverage','Restore an assignment so new work reaches the right person.','resellers?status=active&leader=unassigned','users')
       ] %}
       {% set attention = namespace(found=false) %}

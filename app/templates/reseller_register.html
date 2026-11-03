@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="csrf-token" content="{{ csrf_token(request) }}" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reseller registration | MEATTRACK</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/login.css') }}?v=20261103-reseller-registration-2" />
+  </head>
+  <body class="login-page reseller-registration-page">
+    <main class="login-wrapper">
+      <section class="login-card" aria-labelledby="reseller-registration-title">
+        <div class="login-panel">
+          <a href="/" class="login-brand"><img src="{{ 'batangas_premium.png'|media_url }}" alt="Batangas Premium" class="login-logo" /></a>
+          <span class="reseller-registration-kicker">BATANGAS PREMIUM · PARTNER PORTAL</span>
+          <h1 id="reseller-registration-title">Create your reseller account</h1>
+          {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+          {% if message %}<div class="notice success" role="status">{{ message }}</div>{% endif %}
+          {% if not invitation %}
+          <p>Reseller registration is available only through a valid invitation issued by the Business Owner.</p>
+          {% elif registration_started %}
+          <p>Verify the invited email address to activate your reseller account.</p>
+          <form class="login-form" action="/register/reseller/verify" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+            <label for="registration-otp">Email OTP</label>
+            <input required id="registration-otp" name="otp_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="Enter 6-digit code">
+            <p class="login-subtitle">Code sent to {{ invitation.invited_email }}. It expires in 10 minutes.</p>
+            <button class="login-btn" type="submit">Verify email and activate</button>
+          </form>
+          <form action="/register/reseller/resend" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+            <button class="login-back" type="submit">Send a new code</button>
+          </form>
+          {% else %}
+          <p>This invitation is for {{ invitation.invited_email }}. Your account will be activated after email verification.</p>
+          <form class="login-form reseller-registration-form" action="/register/reseller" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+            <input type="hidden" name="token" value="{{ token }}">
+            <label for="registration-email">Invited email</label>
+            <input id="registration-email" type="email" value="{{ invitation.invited_email }}" readonly autocomplete="email">
+            <label for="registration-name">Full name</label>
+            <input required id="registration-name" name="full_name" minlength="2" maxlength="120" autocomplete="name">
+            <label for="registration-business">Business name</label>
+            <input required id="registration-business" name="business_name" minlength="2" maxlength="160" autocomplete="organization">
+            <label for="registration-phone">Contact number</label>
+            <input required id="registration-phone" name="contact_number" maxlength="40" autocomplete="tel">
+            <label for="registration-address">Business address <span>(optional)</span></label>
+            <textarea id="registration-address" name="address" maxlength="500" autocomplete="street-address" rows="2"></textarea>
+            <label for="registration-password">Password</label>
+            <input required id="registration-password" name="password" type="password" autocomplete="new-password" minlength="8">
+            <label for="registration-confirm-password">Confirm password</label>
+            <input required id="registration-confirm-password" name="confirm_password" type="password" autocomplete="new-password" minlength="8">
+            <button class="login-btn" type="submit">Create reseller account</button>
+          </form>
+          {% endif %}
+          <a class="login-back" href="/login">Back to sign in</a>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261001-frontend-modules-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/forms.js') }}?v=20261001-frontend-modules-1"></script>
+  </body>
+</html>

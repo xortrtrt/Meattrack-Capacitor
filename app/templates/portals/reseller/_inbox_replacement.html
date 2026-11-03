@@ -10,7 +10,7 @@
       </div>
       {% if inbox_replacement_case|default(none) %}
       <details class="inbox-replacement-summary" open>
-        <summary>{{ 'Return' if inbox_replacement_case.refund_converted_at else 'Replacement' }} #{{ replacement_chat.return_id }} <span>{{ 'Refund summary' if inbox_replacement_case.refund_converted_at else 'Price comparison' }}</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+        <summary>{{ 'Return' if inbox_replacement_case.refund_converted_at else 'Replacement' }} #{{ replacement_chat.return_id }} <span>{{ 'Refund summary' if inbox_replacement_case.refund_converted_at else 'Replacement details' if inbox_replacement_case.replacement_workflow_version|default(1)==2 else 'Price comparison' }}</span><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
         <dl>
           <div><dt>Return credit</dt><dd>{{ inbox_replacement_case.credit|currency }}</dd></div>
           {% if inbox_replacement_case.refund_converted_at %}
@@ -18,8 +18,7 @@
           <div><dt>Refund amount</dt><dd>{{ inbox_replacement_case.refund_due|currency }}</dd></div>
           {% else %}
           <div><dt>Replacement value</dt><dd>{{ inbox_replacement_case.replacement_total|currency }}</dd></div>
-          <div><dt>Additional payment</dt><dd>{{ inbox_replacement_case.additional_due|currency }}</dd></div>
-          <div><dt>Difference refund</dt><dd>{{ inbox_replacement_case.unused_credit|currency }}</dd></div>
+          {% if inbox_replacement_case.replacement_workflow_version|default(1)==2 %}<div><dt>Payment or price adjustment</dt><dd>None</dd></div>{% else %}<div><dt>Additional payment</dt><dd>{{ inbox_replacement_case.additional_due|currency }}</dd></div><div><dt>Difference refund</dt><dd>{{ inbox_replacement_case.unused_credit|currency }}</dd></div>{% endif %}
           {% endif %}
         </dl>
         {% if inbox_replacement_case.refund_converted_at %}<p>Replacement stopped. {{ 'Follow the refund status in return details.' if inbox_replacement_case.verified_at else 'Inventory must verify the complete returned goods before the refund transfer.' }}</p>{% endif %}

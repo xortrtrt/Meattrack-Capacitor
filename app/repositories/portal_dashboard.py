@@ -91,8 +91,6 @@ def leader_work_summary(account_id: int, leader_role: str) -> dict:
     if role == 'sales-supervisor':
         from .refunds import refund_status_counts
         refunds = refund_status_counts('sales-supervisor', account_id)
-        counts.update(fetch_one("""SELECT COUNT(*) inquiries FROM inquiries WHERE status IN ('pending','assigned','contacted')
-            AND (assigned_team_leader_account_id=%s OR assigned_team_leader_account_id IS NULL)""", (account_id,)))
         rows = [
             _queue('Failed refunds', refunds.get('failed', 0), 'refunds?status=failed', 'Review the recorded failure before retrying', 'triangle-alert', urgent=True),
             _queue('Payment verification', counts['payment'], 'returns?queue=payment', 'Verify current receipt details and actual funds', 'receipt-text'),
@@ -101,7 +99,6 @@ def leader_work_summary(account_id: int, leader_role: str) -> dict:
             _queue('Open reseller follow-ups', counts['followups'], 'returns?dashboard_queue=followups', 'Resolve open issues, including completed cases', 'message-square'),
             _queue('Confirm replacement delivery', counts['delivery'], 'returns?dashboard_queue=delivery', 'Record delivery after Inventory warehouse release', 'truck'),
             _queue('Pending refunds', refunds.get('pending', 0), 'refunds?status=pending', 'Check eligibility in the existing refund workspace', 'wallet-cards'),
-            _queue('Reseller inquiries', counts['inquiries'], 'inquiries?status=open', 'Review unresolved assigned and unassigned prospects', 'user-check'),
             *rows[:2], rows[4],
             _queue('Waiting on other roles', counts['waiting'], 'returns?queue=waiting',
                    'Track cases awaiting goods, stock, or customer input', 'clock-3', waiting=True),

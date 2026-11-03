@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, returns, sales, reseller, experience]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Sales and reseller returns
 
@@ -138,7 +138,7 @@ before preparation are preserved. Sources: `app/return_timeline.py`,
 `app/static/css/return_experience.css`. See [[Replacement Workflow]],
 [[Roles and Access]], and [[Testing and Change Impact]].
 
-## Supervisor dedicated details page (checked 2026-11-02)
+## Supervisor dedicated details page (updated 2026-11-03)
 
 `/portal/sales-supervisor/returns?case=<id>` now renders a dedicated page; the
 case dashboard, its filters, summaries, and navigation remain on the route without
@@ -147,19 +147,50 @@ The five-stage overview groups existing milestone facts into Submitted, Supervis
 review, Inventory processing, Settlement, and Completed. Inventory and settlement
 can be active together; detailed steps and dates remain under Activity History.
 
-Overview, Review Decision, Inventory & Replacement, Settlement, and Activity History
-use keyboard-accessible tabs. Evidence thumbnails open the same authorized image
-URLs. Approval/rejection remain the existing forms and required fields, with a
-persistent action bar and confirmation before submission. Processed requests show
-recorded decisions; permitted revisions require explicitly choosing Revise offer.
-Payment metadata stays read-only and verification retains its reviewed-state token.
-Alternative selections still use authoritative pricing on save; confirmation does
-not present the old financial snapshot as the revised quote. Open conversation uses
-the existing case conversation and sends nothing automatically; there is no new
-clarification business status. See [[Replacement Workflow]] and [[Roles and Access]].
+Overview, Review Decision, Settlement, and Activity History use keyboard-accessible
+tabs. Overview compares the requested returned items and proposed replacement
+side by side, stacks them on narrow screens, and links to the complete original
+order. The Supervisor Inventory & Replacement tab is removed; Inventory retains
+receipt, preparation, and release actions, while delivery confirmation remains in
+the Supervisor Overview. New replacement approvals record the submitted selection
+without alternative-product, explanation, or internal-note fields. Rejection and
+mismatch explanations remain required. Stock-shortage refunds open Settlement,
+where the return-credit amount and receipt/verification gate remain visible and the
+refund workspace is linked when available. Sufficient-stock replacements involve
+no payment or price adjustment. Existing cases retain recorded selection and
+activity history; approval pages no longer offer selection changes. Evidence
+thumbnails open the same authorized image URLs. See
+[[Replacement Workflow]] and [[Roles and Access]].
 Sources: `app/templates/portals/returns/_supervisor_case_page.html`,
 `app/templates/portals/returns/_case_review.html`, `app/static/js/return_details.js`,
-`app/static/css/return_details.css`, `app/return_timeline.py`.
+`app/static/css/return_details.css`, `app/templates/portals/lifecycle/_inventory_return_dialog.html`,
+`app/return_timeline.py`, `app/repositories/replacement_workflow.py`.
+
+## Regular Sales dedicated details page (checked 2026-11-03)
+
+`/portal/team-leader/returns?case=<id>` opens the same dedicated status page as
+Supervisor returns. Sales case cards navigate to that page instead of opening a
+dialog. It shows the stage summary, milestone dates, overview, review, settlement,
+and activity history. Existing assignment and handoff checks still determine which
+actions appear; transferred cases remain tracking-only for the assigned leader.
+Back to the queue preserves its filters. Order, conversation, and refund links use
+the current portal role. Sources: `app/templates/portals/team-leader/returns.html`,
+`app/templates/portals/returns/_supervisor_case_page.html`,
+`app/templates/portals/base.html`, `app/portals/product_returns.py`.
+
+## Supervisor return case ledger (checked 2026-11-03)
+
+The Sales Supervisor Return Review and Settlement page keeps the existing refund
+workflow link and compact original-sales, verified-credit and net-collection
+summary with its formula. Its primary case table shows return credit and distinct
+Sales review, Inventory fulfillment, financial settlement and overall case states.
+View details opens the existing dedicated case page with its current decision,
+inventory, settlement, evidence and activity controls. The status and reconciliation
+filters remain server-side. Sources: `app/templates/portals/team-leader/returns.html`,
+`app/templates/portals/returns/_supervisor_case_page.html`,
+`app/portals/product_returns.py`, `app/repositories/product_returns.py`, and
+`app/static/css/portals/team-leader.css`. See [[Returns and Financials]] and
+[[Roles and Access]].
 
 
 ## Reseller dedicated details page (checked 2026-11-02)

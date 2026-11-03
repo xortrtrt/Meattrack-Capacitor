@@ -9,25 +9,26 @@ verified: 2026-11-03
 New submissions retain workflow version 2 and carry separate `return_policy_version=2`.
 Their initial replacement is derived from the approved returned allocation
 products/quantities at original paid prices, including when catalog prices change.
-New direct refund requests and reseller-selected substitutes are rejected.
-Supervisor/Owner may offer equal/higher-value alternatives with a public explanation;
-changed offers require fresh acceptance. Lower-value selections are rejected.
+New direct refund requests and reseller-selected substitutes are rejected. Once
+submitted, the replacement selection is fixed during Supervisor/Owner approval;
+approval records the submitted selection without alternative-product or approval
+notes fields. No top-up or price-difference refund is part of a policy-2 replacement.
 
-Authorized conversion before warehouse release preserves history and returns
-approved credit plus any verified top-up through one component-aware refund.
-It clears replacement holds/preparation and blocks further replacement actions.
-Unverified payment evidence must be resolved explicitly first. Complete Inventory
-receipt still gates settlement; converted cases do not require delivery.
+If stock is insufficient at Supervisor approval, the case automatically converts
+to the existing refund process and notifies the reseller. Other authorized
+pre-release conversions preserve case history and return the approved credit.
+Complete Inventory receipt still gates settlement; converted cases do not require
+replacement delivery.
 
 The following original selection/difference-refund descriptions apply to historical
 policy-1 cases. Those cases retain their recorded behavior. The current Reseller
 request form derives the replacement and supports input-preserving comparison and
 submission retry. Supervisor pages and Owner dialogs share confirmation, inline
-validation and error recovery for new-policy offers/conversion. Converted offers
-remain historical without acceptance/payment/release actions; the grouped Inbox
-shows refund components. The final 1,027-case regression, verified local restore/reset
-and eight post-maintenance smoke checks passed; all five role queues were checked
-read-only. This does not establish production deployment. Current flow diagrams are in
+validation and error recovery. Converted offers remain historical without
+acceptance/payment/release actions; the grouped Inbox shows refund components. The
+final 1,027-case regression, verified local restore/reset and eight post-maintenance
+smoke checks passed; all five role queues were checked read-only. This does not
+establish production deployment. Current flow diagrams are in
 `docs/diagrams/05-replacement-first-policy.md`.
 Sources: `app/repositories/return_policy.py`, `app/repositories/replacement_workflow.py`,
 `app/repositories/product_returns.py`, migration 048,
@@ -38,6 +39,37 @@ Sources: `app/repositories/return_policy.py`, `app/repositories/replacement_work
 Migration 049 scopes the deferred policy check to new-policy rows; legacy rows
 retain their existing reconciliation/migration behavior. See [[Database and Operations]].
 See [[Decisions]], [[Returns and Financials]], [[Testing and Change Impact]].
+
+## Approval stock decision and no-money replacements (2026-11-03)
+
+Supervisor approval now locks eligible FEFO stock and reserves the approved
+quantities. If any requested product is short, the case is converted to the
+existing refund process and the reseller is notified in the same transaction.
+Refund settlement still waits for complete return receipt and Inventory
+verification. Returned products remain non-sellable; expired products are
+recorded in **Expired holding** even when the stock shortage caused the refund.
+
+Version-2 replacements must equal the approved return credit. No top-up or
+price-difference refund is collected for a replacement. Paid-order rejection
+refunds retain their separate existing workflow. Sources:
+`app/repositories/replacement_workflow.py`, `app/repositories/return_policy.py`,
+`app/repositories/product_returns.py`, `docs/diagrams/05-replacement-first-policy.md`.
+See [[Returns and Financials]], [[Orders and Inventory]], and [[Decisions]].
+
+## Fixed selection and aligned Supervisor review (2026-11-03)
+
+Supervisor and Owner review the reseller's submitted replacement as-is. The
+Supervisor Overview compares requested return items and the proposed replacement
+side by side, with a responsive stacked layout on narrow screens and a full link to
+the original order. Supervisor actions for receipt history, replacement preparation,
+release, and delivery remain in their role workspaces; the dedicated Supervisor
+Inventory & Replacement tab is removed. A stock-shortage conversion opens Settlement
+and displays the refund amount, refund workspace link when available, and the
+mandatory company receipt/Inventory verification gate. Sources:
+`app/templates/portals/returns/_supervisor_case_page.html`,
+`app/templates/portals/returns/_case_review.html`,
+`app/static/js/return_details.js`, `app/static/css/return_details.css`,
+`app/repositories/replacement_workflow.py`.
 
 The later 2026-11-02 Inbox refinement groups eligible reseller histories by current
 processor account, including existing direct messages when that account is also
@@ -65,19 +97,16 @@ flowchart TD
     D --> E[Linked private conversation available]
     E --> F{Supervisor approves?}
     F -->|No| G[Decline with public explanation]
-    F -->|Yes| H[Notify Inventory]
-    H --> I[Confirm complete receipt into non-sellable pull-outs]
-    I --> J{Additional payment?}
-    J -->|Yes| K[Reseller submits receipt in Returns modal]
-    K --> L[Supervisor verifies actual receipt of funds]
-    J -->|No| M[Inventory prepares eligible FEFO stock]
-    L --> M
-    M --> N[Mark ready and notify Supervisor]
-    N --> O[Inventory confirms warehouse release]
-    O --> P[Supervisor confirms delivery]
-    O --> Q[Process any lower-price difference refund]
-    P --> R[Complete after delivery and settlement]
-    Q --> R
+    F -->|Yes| H{Enough eligible stock?}
+    H -->|No| RF[Notify reseller and convert to refund]
+    RF --> I[Receive all approved returned goods, including expired goods]
+    I --> V[Inventory verifies receipt; refund follows existing settlement]
+    H -->|Yes| RS[Reserve eligible FEFO stock]
+    RS --> J[Confirm complete return receipt into non-sellable custody]
+    J --> K[Inventory prepares and marks replacement ready]
+    K --> L[Inventory confirms warehouse release]
+    L --> M[Supervisor confirms delivery]
+    M --> N[Complete replacement with no money involved]
 ```
 
 ## Request and recorded comparison
@@ -119,7 +148,7 @@ Sources: `app/repositories/replacement_workflow.py`,
 `app/repositories/product_returns.py`, `app/portals/product_returns.py`,
 `app/templates/portals/reseller/_return_request_dialog.html`.
 
-## Receipt, payment, preparation, and delivery
+## Receipt, preparation, and delivery
 
 Inventory is notified after approval. The complete-match/mismatch receipt decision
 is retained, including approval revision checking. Complete receipt records goods
@@ -127,39 +156,26 @@ in the existing custody/holding ledger with source **return**, linked to origina
 allocations and the case. The **Pull-outs** workspace includes separate returned-
 goods and expired-stock records. Returns never add sellable stock or deduct the
 original sale a second time. Physical disposal remains a separate recorded action.
+Expired returned batches are recorded at **Expired holding**; the receipt header
+retains its request location while each line keeps its own traced custody location.
 
-For a higher-value replacement, payment opens only after complete receipt,
-settlement clearance, and current-comparison acceptance. The checkout is inside
-the existing Returns tracking modal. It reuses receipt recognition, with a scan
-token scoped to the reseller, replacement case, and exact proof. The reseller
-checks/corrects reference, Manila date/time, and amount and confirms those details.
-The submitted amount must equal the extra amount due.
-
-The assigned Supervisor verifies the submitted reference and exact amount and must
-explicitly confirm funds arrived in the payment provider. A screenshot alone does
-not verify collection. Existing duplicate-proof/reference rules apply. Version 2
-does not require a reservation before payment; version 1 retains that prerequisite.
-Confirmed additional collections use the existing return financial ledger and are
-not another ordinary sale.
-
-Inventory's **Prepare and mark ready** action requires complete receipt, current
-acceptance/authorization, and verified extra payment when due. It reserves eligible
-unexpired batches using existing FEFO locking and allocation. Preparation records
+Stock is checked and reserved during Supervisor approval using existing FEFO
+locking and allocation. If any requested quantity is unavailable, the request is
+converted to a refund, but complete return custody and verification remain required.
+For sufficient stock, Inventory's **Prepare and mark ready** action requires
+complete receipt and current acceptance/authorization. Preparation records
 the actor/time and notifies Supervisor/Owner; it does not deduct physical stock.
 Warehouse release remains a separate Inventory action, revalidating stock, expiry,
-reservations, quote, and payment and recording exactly one physical deduction.
+reservations and quote, then recording exactly one physical deduction.
 Expiry blocks a batch starting midnight on its printed date in Manila.
 
-If stock is unavailable or expires, preparation/release remains blocked. The paid
-selection and verified payment remain recorded while waiting for valid restock;
-the reseller is not charged again. After valid restocking, Inventory can prepare
-again. The existing expiry worker clears invalid replacement holds, while request-
-time checks remain authoritative if the worker is unavailable.
+If stock expires after approval, preparation/release remains blocked until eligible
+stock is available again. The existing expiry worker clears invalid replacement
+holds, while request-time checks remain authoritative if the worker is unavailable.
 
 Release makes delivery outstanding. The assigned Supervisor/Owner records delivery
-separately. A cheaper replacement uses the existing difference-refund process after
-release; version-2 completion waits for delivery **and** any required completed
-refund. Acknowledgement and post-release follow-ups retain their separate meanings.
+separately. Version-2 completion waits for delivery. Acknowledgement and
+post-release follow-ups retain their separate meanings.
 
 Sources: `app/repositories/product_returns.py`, `app/repositories/refund_integrity.py`,
 `app/repositories/inventory/allocation.py`, `app/receipt_ocr.py`,
@@ -304,7 +320,6 @@ Sources: `app/repositories/dashboard_queues.py`, `app/repositories/portal_dashbo
 
 ## Five-outcome live review (2026-11-03)
 
-See [[Return Workflow Gap Review]] for equal/higher alternatives, blocked cheaper
-offers and refunds before receipt/after top-up. It distinguishes live UI actions
-from staged prerequisites and synthetic payout completion. Five open control/UX
-findings and one unresolved operating-policy question are documented, not fixed.
+The [[Return Workflow Gap Review]] predates the 2026-11-03 stock-shortage and
+no-money policy change. Its control/UX findings concern separate portal operations
+and remain historical review context.

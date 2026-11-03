@@ -28,6 +28,7 @@
     </div>
 
     {% if not is_processor %}{% include 'portals/returns/_case_financial_card.html' %}{% endif %}
+    {% if return_can_review and case.refund_converted_at %}<section class="sales-case-card"><header><h4>Refund after return verification</h4></header><p>Replacement stock was insufficient. The approved returned goods, including expired items, must be received by the company and verified by Inventory before the refund can be settled.</p><p><strong>Approved return credit:</strong> {{ case.credit|currency }}</p>{% if case.refund %}<a class="button secondary" href="/portal/{{ role_key }}/refunds?refund={{ case.refund.order_refund_id }}">Open refund workspace</a>{% else %}<p class="sales-case-caption">The refund record becomes available after Inventory verifies the returned goods.</p>{% endif %}</section>{% endif %}
 
     {% set photos = case.attachments|selectattr('purpose','equalto','evidence')|list %}
     {% if photos %}<section class="sales-case-card" aria-labelledby="sales-photos-title"><header><h4 id="sales-photos-title">Supporting photos</h4><span>{{ photos|length }} attached</span></header><div class="sales-case-files">{% for photo in photos %}<a href="/portal/return-attachments/{{ photo.attachment_id }}" target="_blank" rel="noopener"><i data-lucide="image" aria-hidden="true"></i><span>Photo {{ loop.index }}<small>{{ photo.filename }}</small></span><i data-lucide="external-link" aria-hidden="true"></i></a>{% endfor %}</div></section>{% endif %}

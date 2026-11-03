@@ -26,7 +26,9 @@ def receipt_problems(cur, return_id: int) -> list[str]:
            AND s.return_line_id=l.return_line_id AND s.batch_id=a.batch_id
            AND s.product_id=oi.product_id AND s.source='return'
            AND s.expiry_date=b.expiry_date AND s.source_batch_code=b.batch_code
-           AND h.received_by_account_id=m.actor_account_id AND h.location=s.location
+           AND h.received_by_account_id=m.actor_account_id
+           AND s.location=CASE WHEN s.expiry_date<=(m.created_at AT TIME ZONE 'Asia/Manila')::date
+             THEN 'Expired holding' ELSE h.location END
            AND m.holding_id=s.holding_id AND m.action='return_receipt'
            AND x.quantity=m.quantity AND x.quantity=s.quantity_received
            AND s.quantity_remaining=s.quantity_received+COALESCE((SELECT SUM(d.quantity)

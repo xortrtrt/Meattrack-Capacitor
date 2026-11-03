@@ -109,7 +109,6 @@ EXPECTED_CALLS = {
     },
     ("team-leader", "dashboard"): {"settlement_summary", "current_metrics", "list_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "resellers"): {"list_team_resellers", "count_team_resellers", "list_notifications", "unread_notification_count"},
-    ("sales-supervisor", "inquiries"): {"list_inquiries", "count_inquiries", "list_notifications", "unread_notification_count"},
     ("sales-supervisor", "refunds"): {"list_order_refunds", "count_order_refunds", "refund_status_counts", "refund_financial_summary", "list_notifications", "unread_notification_count"},
     ("team-leader", "orders"): {"list_orders", "count_orders", "list_notifications", "unread_notification_count"},
     ("team-leader", "reports"): {
@@ -439,10 +438,7 @@ def test_section_filters_are_applied(monkeypatch):
     monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales-supervisor")
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: None)
     assert client.get("/portal/sales-supervisor/dashboard").status_code == 200
-    assert calls["list_inquiries"] == [(
-        (),
-        {"limit": 4, "assigned_team_leader_account_id": None, "include_unassigned": True},
-    )]
+    assert calls["list_inquiries"] == []
 
     calls = install_read_spies(monkeypatch)
     assert client.get("/portal/reseller/dashboard").status_code == 200
@@ -1353,7 +1349,8 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     forms_js = open("app/static/js/forms.js", encoding="utf-8").read()
     assert "function bindLandingExperience()" in app_js
     assert "function bindLandingProductModal()" in app_js
-    assert 'button.dataset.chatbotPrompt || "I want to be a reseller"' in app_js
+    assert 'const prompt = button.dataset.chatbotPrompt' in app_js
+    assert 'form.requestSubmit();' in app_js
     assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in app_js
     assert 'widget.classList.toggle("is-open", open);' in app_js
     assert 'document.addEventListener("pointerdown", (event) =>' in app_js
@@ -1365,9 +1362,9 @@ def test_landing_uses_six_featured_products_and_reseller_first_layout(monkeypatc
     assert "activeSuggestions = nextSuggestions" in app_js
     assert "suggestions.replaceChildren(fragment)" in app_js
     assert "suggestions: activeSuggestions" in app_js
-    assert "Array.isArray(stored.suggestions)" in app_js
+    assert "renderSuggestions(defaultSuggestions)" in app_js
     assert "await typeBotReply(resetMessage, newChatWelcome)" in app_js
-    assert "Your current conversation is still active; please try again." in app_js
+    assert "I couldn't start a new chat right now. Please try again." in app_js
     assert app_js.index('if (!response.ok)') < app_js.index('messages.innerHTML = "";', app_js.index('resetButton.addEventListener'))
     assert 'bubble.classList.add("is-typing")' in app_js
     assert "@keyframes chatbot-caret" in css
@@ -2051,14 +2048,13 @@ def test_team_leader_dashboard_uses_priority_led_workspace():
 def test_sales_team_leader_pages_use_workflow_specific_layouts():
     templates = {
         name: open(f"app/templates/portals/team-leader/{name}.html", encoding="utf-8").read()
-        for name in ("inquiries", "orders", "reports", "profile", "live_chat")
+        for name in ("orders", "reports", "profile")
     }
     base_template = open("app/templates/portals/base.html", encoding="utf-8").read()
     css = open("app/static/css/portals/team-leader.css", encoding="utf-8").read()
 
     assert "leader-role-{{ role.team_leader_role }}" in base_template
     assert 'role_key in ["team-leader", "sales-supervisor"]' in base_template
-    assert "sales-review-surface" in templates["inquiries"]
     assert "sales-review-surface" in templates["orders"]
     assert "ar-workspace" in templates["reports"]
     assert "ar-history" in templates["reports"]
@@ -2066,7 +2062,6 @@ def test_sales_team_leader_pages_use_workflow_specific_layouts():
     assert "Generate preview" in templates["reports"]
     assert "sales-profile-identity" in templates["profile"]
     assert "sales-profile-security" in templates["profile"]
-    assert "sales-live-chat-page" in templates["live_chat"]
     assert "Sales portal: shared materials" in css
     assert ".role-team-leader.leader-role-sales .sales-review-surface" in css
     assert ".role-team-leader.leader-role-sales .sales-page .sales-report-history" in css
@@ -2147,19 +2142,16 @@ def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
     assert "accounts" not in sales_nav
     assert "accounts" in supervisor_nav
     assert "inquiries" not in sales_nav
-    assert "inquiries" in supervisor_nav
+    assert "inquiries" not in supervisor_nav
     assert response.status_code == 200
     assert "role-team-leader role-sales-supervisor leader-role-sales" in response.text
     assert 'css/portals/team-leader.css' in response.text
-    assert 'action="/portal/sales-supervisor/accounts"' in response.text
+    assert 'action="/portal/sales-supervisor/accounts"' not in response.text
     assert '<option value="owner">Owner</option>' not in response.text
-    assert '<option value="reseller" >Reseller</option>' in response.text
-    assert '<option value="sales-supervisor">Sales supervisor</option>' in response.text
-    assert "Rina Reseller" in response.text
-    assert "owner-assignment-card" in response.text
-    assert "/portal/sales-supervisor/resellers/2/team-leader" in response.text
-    assert list_calls[0]["account_types"] == ("team_leader", "reseller")
-    assert count_calls[0]["account_types"] == ("team_leader", "reseller")
+    assert "Reseller assignments" in response.text
+    assert "Sales coverage" in response.text
+    assert not list_calls
+    assert not count_calls
 
 
 def test_regular_sales_leader_sees_read_only_team_reseller_roster(monkeypatch):
@@ -2235,12 +2227,9 @@ def test_sales_supervisor_account_post_cannot_create_owner(monkeypatch):
         follow_redirects=False,
     )
 
-    assert blocked.status_code == 303
-    assert "Sales+supervisors+can+create+team+leader+accounts+only" in blocked.headers["location"]
-    assert allowed.status_code == 303
-    assert created == [(("team_leader", "Supervisor Two", "supervisor2@example.test"), {
-        "team_leader_role": "sales-supervisor", "actor_account_id": None,
-    })]
+    assert blocked.status_code == 403
+    assert allowed.status_code == 403
+    assert created == []
 
 
 def test_sales_supervisor_activation_route_includes_reseller_accounts(monkeypatch):

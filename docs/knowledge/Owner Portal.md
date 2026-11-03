@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, owner, portals, workflows]
-verified: 2026-10-30
+verified: 2026-11-03
 ---
 # Owner portal
 
@@ -19,13 +19,13 @@ keep their parent sidebar item selected.
 | Main destination | Suffix under `/portal/owner/` | Contextual workspaces |
 | --- | --- | --- |
 | Overview | `dashboard` | Business overview; Work queues (`operations`) |
-| Orders & inquiries | `orders` | Reseller orders; Reseller inquiries (`inquiries`) |
+| Orders | `orders` | Reseller orders |
 | Returns & refunds | `returns` | Product returns; Money refunds (`refunds`) |
 | Inventory | `inventory` | Stock & production; Raw materials (`materials`); Batches (`batches`); Movements (`movements`); Pull-outs (`expired-stock`); Alerts (`alerts`); Products & prices (`products`) |
 | Resellers | `resellers` | Assignment directory |
 | Sales reports | `reports` | Submitted Sales activity and legacy reports |
 | Demand planning | `forecasts` | Forecast requests/results, progress, retry/cancellation |
-| People & access | `accounts` | Accounts, activation, roles, access controls, work transfer |
+| People & access | `accounts` | Accounts, Owner-issued reseller invitations, activation, roles, access controls, work transfer |
 | Business settings | `settings` | Payment/forecast defaults, expiry warnings, public contact information |
 
 My profile (`profile`) is linked from the sidebar account area. Notifications keep
@@ -37,6 +37,42 @@ pages remain unavailable.
 Sources: `app/portal_config.py`, `app/capabilities.py`, `app/portals/shared.py`,
 `app/templates/portals/base.html`, `app/templates/portals/owner.html`,
 `app/templates/portals/owner/_workspace_header.html`.
+
+## Reseller registration invitations (2026-11-03)
+
+Only an active Owner can issue an invitation from People & access. The recipient
+email is bound to a single-use token that expires after seven days; only its hash
+is stored in PostgreSQL. The visitor registration form is unavailable without a
+valid invitation. Submitting the form creates an inactive pending Reseller and
+sends an OTP to the invitation email. Successful OTP verification activates the
+account and reseller status and consumes the invitation in the same transaction.
+The landing chatbot only shows the Business Owner's email for reseller
+opportunities; negotiation and approval remain outside MEATTRACK. See
+[[Roles and Access]] and [[Background Work and Integrations]].
+
+The legacy reseller inquiry pages were removed from the Owner and Sales
+Supervisor portals on 2026-11-03. Their navigation, dashboard cards, work queue
+links, and decision endpoints are gone. Historical inquiry rows remain stored;
+the chatbot and public form cannot create new ones. Owner-issued invitations
+remain the sole reseller registration path. Sources: `app/portal_config.py`,
+`app/portals/owner.py`, `app/portals/team_leader.py`,
+`app/templates/portals/owner/operations.html`, and
+`app/routers/live_chat.py`.
+
+Sources: `app/portals/owner.py`, `app/repositories/reseller_invitations.py`,
+`app/repositories/accounts.py`, `app/routers/reseller_registration.py`,
+`app/templates/reseller_register.html`, migration
+`database/migrations/050_reseller_registration_invitations.sql`.
+
+## Supervisor account assignments (2026-11-03)
+
+The Sales Supervisor Accounts page shows only reseller assignments, with identity
+cards and an editable sales-leader selection; it does not load or render the Team
+accounts directory. Supervisors can change these assignments but cannot
+create portal accounts; the backend rejects direct account-creation requests.
+Owner account creation remains in People & access. Sources: `app/portals/team_leader.py`,
+`app/templates/portals/owner/accounts.html`, and
+`app/static/css/portals/owner-directories.css`.
 
 ## Overview and financial meaning
 
@@ -153,7 +189,7 @@ Sources: `app/portals/owner.py`, `app/repositories/superuser.py`,
 Version-2 [[Replacement Workflow]] adds direct Supervisor assignment on submission,
 so Owner fallback coverage can include new replacement requests as well as accepted
 ones. Its private conversation is available through the secondary `messages`
-destination; general live-chat administration remains removed. Pull-outs now names
+destination; public visitor Live Chat and its Sales handoff are retired. Pull-outs now names
 the existing expired-stock/custody destination, including segregated returned goods.
 
 ## Alerts and unread updates (2026-11-01)

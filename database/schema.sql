@@ -492,7 +492,22 @@ CREATE TABLE account_login_otps (
     expires_at timestamptz NOT NULL,
     consumed_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
+    purpose text NOT NULL DEFAULT 'login' CHECK (purpose IN ('login', 'reseller_registration')),
+    attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
     CHECK (btrim(otp_hash) <> '')
+);
+
+CREATE TABLE reseller_registration_invitations (
+    invitation_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    invited_by_account_id bigint NOT NULL REFERENCES accounts(account_id),
+    invited_email text NOT NULL,
+    token_hash char(64) NOT NULL UNIQUE,
+    expires_at timestamptz NOT NULL,
+    registration_account_id bigint UNIQUE REFERENCES accounts(account_id) ON DELETE SET NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK (btrim(invited_email) <> ''),
+    CHECK (length(token_hash) = 64)
 );
 
 CREATE TABLE notifications (
@@ -1020,6 +1035,11 @@ CREATE INDEX ix_account_password_otps_pending ON account_password_otps (account_
     WHERE consumed_at IS NULL;
 CREATE INDEX ix_account_login_otps_pending ON account_login_otps (account_id, created_at DESC)
     WHERE consumed_at IS NULL;
+CREATE INDEX ix_reseller_registration_invitations_email
+    ON reseller_registration_invitations (lower(invited_email), created_at DESC);
+CREATE UNIQUE INDEX ux_reseller_registration_invitation_open_email
+    ON reseller_registration_invitations (lower(invited_email))
+    WHERE consumed_at IS NULL AND registration_account_id IS NULL;
 CREATE INDEX ix_notifications_role_read_created ON notifications (recipient_role, read_at, created_at DESC);
 CREATE INDEX ix_notifications_account_read_created ON notifications (recipient_account_id, read_at, created_at DESC);
 CREATE INDEX ix_notification_recipients_account_unread ON notification_recipients (account_id, read_at, notification_id DESC);

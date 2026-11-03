@@ -74,6 +74,9 @@ def test_inventory_reads_stock_only_while_sales_retains_same_case_financials(lif
             page = client.get(f"/portal/team-leader/returns?case={case}")
             assert page.status_code == 200
             if role == "inventory":
+                assert 'data-return-details' in page.text
+                assert 'data-return-dialog=' not in page.text
+                assert 'Inventory Actions' in page.text and 'Next steps' in page.text
                 for label in ("PHP", "Original sales", "Net collections", "Refund #", "Original purchase credit"):
                     assert label not in page.text
                 assert "Batch and custody records" in page.text and "Stock history" in page.text
@@ -195,21 +198,61 @@ def test_inventory_and_sales_render_separate_returns_in_browser(lifecycle, monke
             sign_in(monkeypatch, d, role)
             for width in (375, 1440):
                 page.set_viewport_size({"width": width, "height": 900})
-                page.goto(f"http://separation.test/portal/team-leader/returns?case={case}", wait_until="networkidle")
-                dialog = page.get_by_role("dialog", name=f"Return #{case}", exact=True)
-                expect(dialog).to_be_visible()
-                expect(page.get_by_role("button", name="Close return details", exact=True)).to_be_focused()
+                list_query = "status=completed" if role == "inventory" else "queue=all"
+                page.goto(f"http://separation.test/portal/team-leader/returns?{list_query}", wait_until="networkidle")
                 if role == "inventory":
-                    expect(dialog).to_contain_text("Batch and custody records")
+                    page.screenshot(path=str(output / f"inventory-list-{width}.png"), full_page=True)
+                page.locator(f'.lifecycle-case[href*="case={case}"]').click()
+                detail = page.locator('[data-return-details]')
+                expect(detail).to_be_visible()
+                expect(page.locator('[data-return-dialog]')).to_have_count(0)
+                if role == "inventory":
+                    expect(detail.get_by_role("heading", name="Next steps", exact=True)).to_be_visible()
+                    detail.get_by_text("Supporting photos", exact=True).click()
+                    photo = detail.locator('[data-return-panel="overview"] [data-return-photo]').first
+                    photo.click()
+                    photo_dialog = detail.locator('[data-return-photo-dialog]')
+                    expect(photo_dialog).to_be_visible()
+                    photo_dialog.get_by_role("button", name="Close photo", exact=True).click()
+                    expect(photo_dialog).not_to_be_visible()
+                    expect(photo).to_be_focused()
+                    page.get_by_role("tab", name="Activity History", exact=True).click()
+                    expect(detail.get_by_role("heading", name="Stock history", exact=True)).to_be_visible()
+                    expect(detail.locator(".return-workflow")).not_to_be_visible()
+                    expect(detail).to_contain_text("Batch and custody records")
+                    note = detail.locator(".inventory-activity-rows details").first
+                    note.locator("summary").focus()
+                    page.keyboard.press("Enter")
+                    expect(note).to_have_attribute("open", "")
+                    page.keyboard.press("Enter")
+                    expect(note).not_to_have_attribute("open", "")
+                    page.screenshot(path=str(output / f"inventory-activity-{width}.png"), full_page=True)
                     assert "PHP" not in page.locator("body").inner_text()
-                    assert "refund" not in dialog.inner_text().lower()
+                    assert "refund" not in detail.inner_text().lower()
+                    page.get_by_role("tab", name="Overview", exact=True).click()
+                    page.get_by_role("tab", name="Overview", exact=True).focus()
+                    page.keyboard.press("ArrowRight")
+                    expect(page.get_by_role("tab", name="Inventory Actions", exact=True)).to_have_attribute("aria-selected", "true")
+                    expect(page.get_by_role("tabpanel", name="Inventory Actions", exact=True)).to_be_visible()
+                    page.get_by_role("button", name="View stock history", exact=True).click()
+                    expect(page.get_by_role("tabpanel", name="Activity History", exact=True)).to_be_visible()
                 else:
-                    expect(dialog).to_contain_text("PHP 200.00")
-                    expect(dialog).to_contain_text("Refund #")
+                    page.get_by_role("tab", name="Settlement", exact=True).click()
+                    expect(detail).to_contain_text("PHP 200.00")
+                    expect(detail).to_contain_text("Refund #")
                 assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
-                assert dialog.evaluate("el=>el.scrollWidth<=el.clientWidth+1")
+                assert detail.evaluate("el=>el.scrollWidth<=el.clientWidth+1")
                 page.screenshot(path=str(output / f"{role}-{width}.png"), full_page=True)
-                page.keyboard.press("Escape")
-                expect(dialog).not_to_be_visible()
+                if role == "inventory":
+                    page.goto(f"http://separation.test/portal/team-leader/returns?{list_query}&case={case}&message=Return+action+recorded.&tab=activity", wait_until="networkidle")
+                    expect(page.get_by_role("tabpanel", name="Activity History", exact=True)).to_be_visible()
+                    expect(page.get_by_text("Return action recorded.", exact=True)).to_have_count(1)
+                    expect(detail.locator(".rd-feedback")).to_have_count(0)
+                page.locator('.rd-back').click()
+                assert list_query in page.url and "case=" not in page.url
+        sign_in(monkeypatch, d, "inventory")
+        page.goto("http://separation.test/portal/team-leader/returns?status=submitted", wait_until="networkidle")
+        expect(page.get_by_text("No return cases", exact=True)).to_be_visible()
+        expect(page.locator(".ir-case-row")).to_have_count(0)
         assert not errors, errors
         browser.close()

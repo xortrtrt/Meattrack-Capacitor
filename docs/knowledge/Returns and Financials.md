@@ -11,8 +11,18 @@ cheaper replacement selections remain historical policy-1 behavior. Paid rejecte
 orders retain their existing refund process, including payment review when stock
 is lost during order payment submission.
 
-An authorized unreleased replacement conversion refunds approved original credit
-plus verified extra collection. `order_refunds.original_credit_amount` and
+At Supervisor approval, eligible replacement stock is checked and reserved. A
+shortage converts the replacement to a return-credit refund and notifies the
+reseller; settlement waits for complete returned-goods receipt and verification.
+Returned expired batches are accepted into **Expired holding**. Sufficient-stock
+policy-2 replacements equal the return credit and have no payment or price-
+difference refund. The submitted selection is fixed during Supervisor/Owner
+approval. In stock-shortage cases the Supervisor Settlement view directs the
+processor to the refund workspace and explains the returned-goods verification
+gate.
+
+Historical replacement cases with a verified extra collection refund approved
+original credit plus that verified collection. `order_refunds.original_credit_amount` and
 `topup_amount` sum to the outgoing amount. Original-credit obligations are capped
 by original collections; top-up refunds are bound to that case's verified funds.
 Only the original-credit component reduces retained original sales and report
@@ -57,9 +67,9 @@ return identifiers; they do not create independent financial ledgers.
 5. A mismatch must be reviewed by Supervisor/Owner before Inventory can confirm a corrected
    complete request. Received goods stay non-sellable; the fixed holding-location
    label does not itself record physical disposal.
-6. For replacement: customer acceptance and cleared Sales approval precede reservation.
-   Quote revisions revoke those approvals. Verified extra payment, when required,
-   precedes release of eligible reserved batches.
+6. For current replacements, Supervisor approval checks and reserves eligible stock.
+   A shortage converts the case to refund settlement after custody verification;
+   sufficient-stock replacements equal the approved credit and involve no money.
 7. Authorized processors settle cash owed using the existing refund attempts,
    transfer proof, reference, date/time, and remarks. Physical disposal is independent.
 
@@ -169,12 +179,12 @@ require explicit completion/failure/takeover first. Sources:
 
 ## Version-2 replacement requests
 
-New replacement submissions from 2026-10-30 follow [[Replacement Workflow]]:
-reseller-selected products and recorded comparison, direct Supervisor handoff,
-private case conversation, complete Inventory receipt, then extra payment before
-FEFO preparation, Inventory release, and Supervisor delivery confirmation. Lower-
-value selections use existing difference refunds. The earlier numbered workflow
-in this note remains applicable to existing version-1 cases and refund-only work.
+New replacement submissions follow [[Replacement Workflow]]: default products and
+quantities, direct Supervisor handoff, approval-time stock reservation, complete
+Inventory receipt, Inventory release, and Supervisor delivery. Stock shortage
+converts the case to a refund after required custody. Sufficient-stock replacements
+equal credit and involve no payment. The earlier difference and top-up rules remain
+applicable only to historical cases that already recorded those terms.
 Sources: `app/repositories/replacement_workflow.py`,
 `app/repositories/product_returns.py`, migration 044.
 
@@ -207,6 +217,37 @@ changed. Sources: `app/templates/portals/returns/_supervisor_case_summary.html`,
 `app/templates/portals/team-leader/_return_case_dialog.html`,
 `app/static/css/return_experience.css`. See [[Replacement Workflow]].
 
+
+## Inventory dedicated details page (2026-11-03)
+
+Inventory Team Leader uses the same `/portal/team-leader/returns` URL as Sales,
+but its stock-only role projection selects a separate template. The queue uses
+compact full-width table rows with status, received packs, updated date and a View
+case action; three compact cards summarize pack movement. Search covers return,
+reseller and delivery references. Manila-date, inventory-status and stock-review
+filters retain their role-scoped server query. Case pages show a compact recorded
+workflow strip and one current-step summary, responsible role and received-pack
+total above Overview, Inventory Actions and Activity History. Product rows separate
+batch, expiry, expected/received quantity and inspection, and prominently label all
+returned goods non-sellable. Receipt checks compare compact product rows with authorized photo
+thumbnails. Preparation and release keep a single task card and the existing forms,
+assignment checks, reviewed revision and operation keys.
+
+Activity uses newest-first event rows with actor/date and expandable notes. Receipt,
+custody and replacement-batch records remain in closed native disclosures. Overview
+keeps reseller and delivery references, returned product details, replacement facts,
+and supporting photo previews. Generic action success uses the shared
+toast once; errors remain visible inline. POST results retain the active tab and Back
+preserves list filters. Financial data and private case conversations remain excluded.
+Sources checked 2026-11-03: `app/templates/portals/lifecycle/inventory-returns.html`,
+`app/templates/portals/lifecycle/_inventory_case_page.html`,
+`app/templates/portals/lifecycle/_inventory_case_actions.html`,
+`app/templates/portals/lifecycle/_inventory_case_records.html`,
+`app/templates/portals/lifecycle/_inventory_products.html`,
+`app/templates/portals/lifecycle/_inventory_case_photos.html`,
+`app/templates/portals/returns/_activity_timeline.html`,
+`app/static/css/portals/inventory-returns.css`, `app/static/js/return_details.js`.
+See [[Roles and Access]] and [[Replacement Workflow]].
 
 ## Payout control review (2026-11-03)
 

@@ -4,6 +4,16 @@ verified: 2026-11-03
 ---
 # Testing and change impact
 
+## Visitor-to-reseller registration implementation (2026-11-03)
+
+The change affects the chatbot, live-chat inquiry endpoints, Owner accounts,
+account login OTP persistence, the registration router/template, email delivery,
+and migration 050. Automated behavior and browser verification has not been run for this
+change; Python syntax compilation passed. Migration 050 has not been applied. Before release, cover invalid,
+expired, reused, and concurrent invitation use; invitation email binding; OTP
+expiry, resend limits and attempt exhaustion; one-time activation; login 2FA; and
+regressions in Owner/Team Leader staff account activation.
+
 ## Replacement-first verification completed (2026-11-03)
 
 - Test-first: 34 intended policy failures were recorded before implementation; subsequent browser recovery/history gaps were reproduced before their fixes. Historical cases retain explicit legacy fixtures.

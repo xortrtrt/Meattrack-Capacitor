@@ -23,7 +23,7 @@ revision `5291e25` on 2026-10-28. It is not a production health or deployment re
 | Portal dashboards      | [[Role Dashboards]]                  | Role priorities, counter definitions, linked queues    |
 | Ordering or stock      | [[Orders and Inventory]]             | Production, FEFO, expiry, transactions                 |
 | Returns or money       | [[Returns and Financials]]           | Custody, Sales confirmation, refunds, report snapshots |
-| Replacement requests   | [[Replacement Workflow]]            | Product choice, Supervisor conversation, top-up, FEFO, delivery |
+| Replacement requests   | [[Replacement Workflow]]            | Approval stock check, return custody/refund, FEFO, delivery |
 | Sales report workspace | [[Sales Activity Reports]]           | Personal actions, snapshots, Owner delivery, exports |
 | Messaging or forecasts | [[Background Work and Integrations]] | Durable state, retries, external providers             |
 | Schema or deployment   | [[Database and Operations]]          | Baseline, ordered migrations, app and worker           |

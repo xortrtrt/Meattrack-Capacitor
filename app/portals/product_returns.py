@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
@@ -125,7 +126,17 @@ def _returns_context(request: Request) -> dict:
         case_options["owner_only"] = True
     if role == "reseller" and request.query_params.get("source_order"):
         case_options["order_id"] = shared.optional_positive_id(request.query_params.get("source_order")) or 0
-    cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""),page=shared.requested_page(request.query_params.get("page")),reconciliation_only=request.query_params.get("reconciliation")=="1", **case_options)
+    inventory_search = request.query_params.get("search", "").strip()[:100] if inventory_only else ""
+    updated_from = updated_to = None
+    if inventory_only:
+        try:
+            updated_from = date.fromisoformat(request.query_params["updated_from"]) if request.query_params.get("updated_from") else None
+            updated_to = date.fromisoformat(request.query_params["updated_to"]) if request.query_params.get("updated_to") else None
+        except ValueError as exc:
+            raise HTTPException(400, "Choose valid dates for the updated date range.") from exc
+        if updated_from and updated_to and updated_from > updated_to:
+            raise HTTPException(400, "The start date must be on or before the end date.")
+    cases = returns.list_product_returns(actor_id, request.query_params.get("status", ""),page=shared.requested_page(request.query_params.get("page")),reconciliation_only=request.query_params.get("reconciliation")=="1",search=inventory_search,updated_from=updated_from,updated_to=updated_to, **case_options)
     case_id = shared.optional_positive_id(request.query_params.get("case"))
     selected = None
     if case_id:
@@ -174,6 +185,9 @@ def _returns_context(request: Request) -> dict:
         "replacement_products": list_products(active_only=True) if can_review or role=="reseller" else [],
         "return_inventory_only": inventory_only,
         "return_inventory_summary": returns.inventory_return_totals(actor_id) if inventory_only else {},
+        "return_inventory_search": inventory_search,
+        "return_inventory_updated_from": updated_from.isoformat() if updated_from else "",
+        "return_inventory_updated_to": updated_to.isoformat() if updated_to else "",
         "return_summary": returns.return_settlement_totals(actor_id) if role in {"team-leader:sales", "sales-supervisor"} else {},
         "operation_key": lambda: str(uuid4()),
         "return_is_reseller": role == "reseller",
