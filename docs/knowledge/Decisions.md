@@ -509,3 +509,13 @@ to the existing authorized case workspace. Physical stock responsibilities remai
 with Inventory. See [[Owner Portal]] and [[Replacement Workflow]]. Sources:
 `app/portal_config.py`, `app/portals/owner.py`,
 `app/templates/portals/owner/replacements.html`.
+
+## 2026-11-04 — Preserve registration origins without exposing invitation URLs
+
+Use `strict-origin` on reseller registration responses instead of `no-referrer`.
+The latter can make a browser form POST origin opaque and fail production's
+origin validation. Sending only the origin preserves invitation-token privacy
+and leaves the existing origin/token checks intact. Source:
+`app/routers/reseller_registration.py`, `app/security_controls.py`;
+regression coverage: `tests/test_registration_origin.py`.
+See [[Roles and Access]] and [[Database and Operations]].

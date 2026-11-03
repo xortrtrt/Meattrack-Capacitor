@@ -36,7 +36,9 @@ def _render(request: Request, *, token: str = "", invitation: dict | None = None
             "terms_version": TERMS_VERSION,
         },
         status_code=404 if not invitation else 200,
-        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        # Keep invitation paths/query strings private without making browser
+        # form POST origins opaque (Origin: null), which production CSRF rejects.
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "strict-origin"},
     )
 
 

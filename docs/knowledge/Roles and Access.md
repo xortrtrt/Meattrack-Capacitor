@@ -211,3 +211,15 @@ Owner capabilities remain separate. Sources: `app/capabilities.py`,
 `app/repositories/inventory/movements.py`, `app/repositories/product_returns.py`,
 `app/repositories/superuser.py`, and `app/portal_config.py`.
 See [[Owner Portal]], [[Orders and Inventory]], and [[Decisions]].
+
+## Registration request origins (2026-11-04)
+
+Registration responses use `Referrer-Policy: strict-origin` so invitation paths
+and query tokens are omitted from referrer headers while HTTPS form submissions
+retain a usable origin. `no-referrer` can produce `Origin: null` on browser POSTs,
+which production correctly rejects before registration runs. Keep the production
+origin and CSRF token checks enabled. After deploying the correction, reopen the
+invitation page to receive the new response policy before submitting again.
+Sources checked: `app/routers/reseller_registration.py`, `app/security_controls.py`.
+See [[Database and Operations]] and [[Decisions]]. This is a source fix; deployment
+has not been performed.
