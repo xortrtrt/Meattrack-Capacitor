@@ -78,8 +78,10 @@ def price_selection(cur, originals: list[dict], replacements: list, *, allow_ina
     for product_id, value in sorted(replacements, key=lambda row: int(row[0])):
         quantity = parse_whole_packs(value)
         cur.execute(
-            "SELECT name,base_price FROM inventory_items WHERE item_id=%s AND item_type='finished_product' AND (is_active OR %s)",
-            (product_id, allow_inactive_originals and sorted((int(i), int(q)) for i, q in replacements) == default_selection(originals)),
+            "SELECT name,base_price FROM inventory_items WHERE item_id=%s AND item_type='finished_product' AND (category IS DISTINCT FROM 'Package' OR %s) AND (is_active OR %s)",
+            (product_id,
+             allow_inactive_originals and sorted((int(i), int(q)) for i, q in replacements) == default_selection(originals),
+             allow_inactive_originals and sorted((int(i), int(q)) for i, q in replacements) == default_selection(originals)),
         )
         product = cur.fetchone()
         if not product:

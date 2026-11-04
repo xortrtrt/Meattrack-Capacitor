@@ -199,39 +199,19 @@ used by Inventory Logs. Sources: `app/repositories/product_returns.py`
 `app/templates/portals/lifecycle/expired-stock.html`, and
 `tests/test_alert_pullout_connection.py`.
 
-## Inventory tools, 2026-11-01
+## Inventory tools retired, 2026-11-04
 
-Inventory tools adds raw-material deductions with a reason, exact stock-unit
-quantities, actor attribution, and submission replay protection. Removal hides a
-material while preserving its balance and ledger; recipe references block removal.
-Reactivation restores the same record. Duplicate names direct staff to reactivate.
-
-Product Details can archive a batch and deduct its remaining packs with a required
-reason and confirmation. Stale quantities and stock needed by order/replacement
-reservations are rejected. Archived batches retain receipts and movements and
-cannot receive new stock corrections. Expired warehouse goods use the existing
-Pull-outs/holding/disposal workflow instead. The removed-batches view shows the
-latest 100 removals; complete stock history remains under each product.
-
-Packages can save immutable standard contents or dispatch one-time customized
-contents. Dispatch multiplies component packs by package count and uses the shared
-FEFO allocator, preserving order and replacement reservations and blocking stock
-on its expiry date. The operation is atomic and replay-safe. Dispatch snapshots
-retain names, quantities, mode, actor, and timestamp; component deductions remain
-in Inventory Logs and Product Details. This manual stock handout creates no sale
-or order. Legacy package stock/reservations must clear before component dispatch;
-existing legacy history is preserved. Once component tools are used, production
-and direct stock receipts for that package are blocked.
-
-Optional JPG/PNG/WebP product photos (2 MB, 16 megapixels) are verified and decoded
-before database storage. Recipe creation saves its optional photo atomically;
-Product Details can add/change photos for existing products. Catalog image URLs
-serve the uploaded photo or redirect to the existing bundled fallback, including
-public, Owner, Sales, and Reseller displays. Photos are public catalog media.
-
-Checked against `app/repositories/inventory/tools.py`, `app/portals/inventory_tools.py`,
-`app/repositories/inventory/products.py`, `app/uploads.py`, and migration 046.
-See [[Roles and Access]], [[Database and Operations]], [[Testing and Change Impact]].
+The Inventory tools page and its manual raw-material deduction/removal,
+component-package setup/dispatch, and batch-archive actions are retired. Existing
+stock, package configuration, dispatch, and audit records remain stored. Legacy
+package configuration no longer blocks ordinary production or direct batch
+receipts; new component dispatches are unavailable. Pull-outs remain the workflow
+for expired warehouse goods. Product photo upload and catalog image delivery remain
+available from Product Details. Sources checked 2026-11-04:
+`app/portal_config.py`, `app/capabilities.py`, `app/portals/product_media.py`,
+`app/portals/team_leader.py`, `app/repositories/inventory/products.py`, and
+`app/templates/portals/lifecycle/product-details.html`. See [[Roles and Access]],
+[[Database and Operations]], [[Testing and Change Impact]], and [[Decisions]].
 
 ## Receipt review consistency (2026-11-02)
 
@@ -291,3 +271,101 @@ Sources: `app/capabilities.py`, `app/portals/owner.py`,
 `app/repositories/inventory/movements.py`, `app/repositories/superuser.py`,
 `app/repositories/product_returns.py`, and `app/templates/portals/owner/`.
 See [[Owner Portal]], [[Roles and Access]], and [[Decisions]].
+
+
+## Inventory manual stock actions (2026-11-04)
+
+Inventory's existing workspace now includes **Add opening balance**, **Deduct raw
+materials**, and **Deduct Stock**. Opening balances add a separately identified,
+approved batch without consuming recipe materials; the ledger movement identifies
+it as `opening_balance` while its batch retains the existing `direct_received`
+source. Expiry must be after the Manila business date. Whole-pack, capacity,
+active-product, unique-batch and duplicate-operation guards apply.
+
+Manual deductions require a reason and record the Inventory actor and immutable
+before/after balances. Finished-stock dispatch uses the shared FEFO allocator,
+protecting paid-order holds and batch-specific replacement reservations. Operation
+references make exact retries safe; changed details require a new reference.
+Failed workspace submissions retain their form values for correction.
+
+Raw Materials adds a Removed materials tab and Remove/Restore actions. Removal
+only deactivates the material and preserves its quantity/history; materials used
+by recipes cannot be removed. Product Details exposes confirmed batch removal
+with a required reason and displayed-stock check. It preserves the batch and audit
+history, rejects reservation conflicts, and sends nonempty expired stock through
+Pull-outs. Owner stock oversight remains read-only. No schema migration is added;
+the operations use the existing migration-046 ledger and batch removal columns.
+
+Sources checked: `app/portals/team_leader.py`,
+`app/repositories/inventory/manual_stock.py`, `inventory/allocation.py`,
+`inventory/queries.py` (under `app/repositories/`),
+`app/templates/portals/team-leader/inventory.html`, `raw_materials.html`,
+`app/templates/portals/lifecycle/product-details.html`, and
+`app/static/js/forms.js`. See [[Roles and Access]], [[Decisions]], and
+[[Testing and Change Impact]]. This describes local source, not deployment.
+
+
+## Editable product recipes (2026-11-04)
+
+Product recipes now edits each ingredient, required quantity per pack and input
+unit, with Add/Remove controls. A declaration of net content records the finished
+contents per pack and its unit independently of ingredient totals. One Save action
+updates both atomically. Changes apply to future production; existing batches,
+stock quantities and historical movement records are retained.
+
+Only active Inventory actors may save recipes. The repository requires 1–200
+unique active raw materials, positive supported-unit quantities, and positive
+declared contents. Ingredient quantities convert to each material's stock unit;
+incompatible conversions roll back the entire change. The shared product lock
+serializes edits against production. Failed submissions preserve their entered
+rows and contents for correction; search/pagination retains the modal destination.
+Sources checked: `app/repositories/inventory/products.py:update_product_recipe`,
+`app/portals/team_leader.py:team_update_recipe`,
+`app/templates/portals/team-leader/inventory.html`, `_recipe_editor_row.html`, and
+`app/static/js/forms.js`. See [[Decisions]] and [[Testing and Change Impact]].
+
+
+## Component packages (2026-11-04)
+
+Trial Package, Resellers Package and Area Distributor's Package are category
+`Package`, with 16, 70 and 400 individual packs respectively. Their fixed contents
+are in `app/repositories/inventory/packages.py:REFERENCE_PACKAGES`. The user
+confirmed catalog aliases: Tocino Ala Eh = Pork Tocino, Triple Spicy = Spicy Triple
+Garlic Longganisa, and Sliced Ham = Sliced Hamon. Prices remain the catalog prices.
+
+Packages do not own physical stock. `catalog_stock_availability` computes complete
+packages from the least available component after expiry, quality and all paid
+order/replacement holds. The physical-stock `finished_stock_availability` view
+excludes package entries. Package details lists actual inclusions and complete
+packages that can be assembled, rather than a single declared product net content.
+Production, recipe editing, direct receipts and opening balances accept individual
+products only. Package stock-out expands to its components and uses shared FEFO.
+
+Reseller checkout snapshots the package name, count, price and contents in immutable
+`order_packages`, and creates linked ordinary `order_items` for included products.
+Mixed-cart component quantities are combined before stock checks. Unpaid checkout
+still holds nothing. Existing payment reservation, fulfillment, batch traceability,
+cancellation and individual-product returns operate on those component lines.
+The user selected proportional allocation by individual catalog prices for return
+credit. Unit prices round down to cents, then the remaining cents are assigned
+across packs by largest fractional remainder and product ID. A component can have
+two unit-price lines differing by one cent; their totals exactly equal the package
+price. Immutable snapshots retain original component prices and rounding allocation.
+Zero-price components receive zero allocated value. Later catalog pricing cannot
+change an existing order's recorded component credit.
+
+At the user's direction, the local old standalone package balances were cleared
+with explicit immutable correction movements and retained batch/removal history.
+No component stock was added or removed by that conversion. Active standalone
+package orders/reservations block conversion. Migration 054 and
+`tools/configure_component_packages.py` provide schema and explicit catalog setup;
+configuration rejects missing products or differing locked definitions. Apply them
+separately in other environments; this is not a production deployment record.
+
+Sources checked: `database/migrations/054_component_packages.sql`,
+`app/repositories/inventory/packages.py`, `inventory/queries.py`,
+`inventory/allocation.py`, `inventory/manual_stock.py` (under `app/repositories/`),
+`app/repositories/orders.py`, `app/portals/team_leader.py`,
+`app/portals/reseller.py`, and the package detail/catalog/cart/history templates.
+See [[Decisions]], [[Returns and Financials]], [[Database and Operations]], and
+[[Testing and Change Impact]].

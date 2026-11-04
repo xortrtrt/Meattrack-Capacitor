@@ -163,7 +163,7 @@ def order_context(request: Request) -> dict:
     return {
         "products_page": page,
         "products": page["items"],
-        "product_categories": data.product_categories,
+        "product_categories": (*data.product_categories, "Package"),
     }
 
 

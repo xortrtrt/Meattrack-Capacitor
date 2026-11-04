@@ -123,6 +123,68 @@
     document.addEventListener('submit', event => {
         if (!event.defaultPrevented && event.target.matches(returnFormSelector)) allowNavigation();
     });
+    document.addEventListener('click', event => {
+        const add = event.target.closest('[data-edit-recipe-add]');
+        const remove = event.target.closest('[data-edit-recipe-remove]');
+        const form = (add || remove)?.closest('[data-recipe-editor]');
+        if (!form) return;
+        const rows = form.querySelector('[data-edit-recipe-rows]');
+        if (add && rows.children.length < 200) {
+            const fragment = form.querySelector('[data-edit-recipe-template]').content.cloneNode(true);
+            rows.append(fragment); rows.lastElementChild.querySelector('select').focus();
+        }
+        if (remove) {
+            const row = remove.closest('[data-edit-recipe-row]');
+            if (rows.children.length > 1) { row.remove(); rows.lastElementChild.querySelector('select').focus(); }
+            else { row.querySelectorAll('input').forEach(input => { input.value = ''; }); row.querySelector('select').value = ''; row.querySelector('select').focus(); }
+        }
+    });
+    document.addEventListener('input', event => {
+        if (event.target.closest('[data-recipe-editor]')) clearError(event.target);
+    });
+    document.addEventListener('submit', event => {
+        const form = event.target.closest('[data-recipe-editor]');
+        if (!form) return;
+        if (form.dataset.saving === 'true' || !validate(form)) { event.preventDefault(); return; }
+        form.dataset.saving = 'true';
+        const button = form.querySelector('[type="submit"]'); button.disabled = true; button.classList.add('is-loading');
+    }, true);
+    const stockDraft = document.getElementById('inventory-stock-draft');
+    if (stockDraft) {
+        const draft = JSON.parse(stockDraft.textContent);
+        const form = document.querySelector(`form[action="/portal/team-leader/stock-actions/${draft.action}"]`);
+        if (form) Object.entries(draft.values).forEach(([name, value]) => {
+            const input = form.elements.namedItem(name); if (input) input.value = value;
+        });
+    }
+    // Inventory mutations share field errors, accessible confirmation and duplicate prevention.
+    document.querySelectorAll('form[action*="/stock-actions/"]').forEach(form => {
+        let committing = false;
+        form.noValidate = true;
+        form.addEventListener('input', event => clearError(event.target));
+        form.addEventListener('submit', event => {
+            if (committing) { event.preventDefault(); return; }
+            if (!validate(form)) { event.preventDefault(); return; }
+            if (form.dataset.confirm && form.dataset.confirmed !== 'true') {
+                event.preventDefault();
+                const dialog = document.createElement('dialog');
+                dialog.className = 'portal-discard-dialog';
+                const title = document.createElement('h2'); title.textContent = 'Confirm stock action';
+                const copy = document.createElement('p'); copy.textContent = form.dataset.confirm;
+                const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'button subtle'; cancel.textContent = 'Cancel';
+                const accept = document.createElement('button'); accept.type = 'button'; accept.className = 'button danger'; accept.textContent = form.querySelector('[type="submit"]').textContent.trim();
+                dialog.append(title, copy, cancel, accept); document.body.append(dialog);
+                dialog.setAttribute('aria-label', 'Confirm stock action');
+                dialog.addEventListener('close', () => { dialog.remove(); form.querySelector('[type="submit"]').focus(); });
+                cancel.addEventListener('click', () => dialog.close());
+                accept.addEventListener('click', () => { form.dataset.confirmed = 'true'; dialog.close(); form.requestSubmit(); });
+                dialog.showModal(); cancel.focus();
+                return;
+            }
+            committing = true;
+            form.querySelectorAll('[type="submit"]').forEach(button => { button.disabled = true; });
+        });
+    });
     document.querySelectorAll("form").forEach((form) => {
         form.addEventListener("submit", event => {
             if (event.defaultPrevented) return;

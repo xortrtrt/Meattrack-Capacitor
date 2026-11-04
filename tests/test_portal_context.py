@@ -385,10 +385,11 @@ def test_inventory_team_leader_sections_load_only_inventory_data(monkeypatch, ro
 
     if section == "inventory":
         assert calls["list_products"] == [
-            ((), {"q": "", "category": "", "page": 1, "page_size": 8, "sort": "", "active_only": False}),
-            ((), {}),
+            ((), {"q": "", "category": "", "page": 1, "page_size": 8, "sort": "", "active_only": False, "individual_only": True}),
+            ((), {"active_only": True, "individual_only": True}),
+            ((), {"active_only": True}),
         ]
-        assert calls["count_products"] == [((), {"q": "", "category": "", "active_only": False})]
+        assert calls["count_products"] == [((), {"q": "", "category": "", "active_only": False, "individual_only": True})]
         assert calls["list_product_recipes"] == [((), {"product_ids": []})]
 
     if section == "raw-materials":

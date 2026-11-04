@@ -1,8 +1,17 @@
 ---
 tags: [meattrack, decisions]
-verified: 2026-11-03
+verified: 2026-11-04
 ---
 # Decisions
+
+## 2026-11-04 — Group Sales conversations by category
+
+Keep direct reseller messages and replacement case conversations on one Messages
+page, with separate category tabs. This removes the duplicated top replacement
+panel while keeping case links, message endpoints, and permissions intact. A
+replacement deep link selects its category on arrival. Sources:
+`app/templates/portals/team-leader/reseller_messages.html`,
+`app/static/js/sales_reseller_messages.js`.
 
 ## 2026-11-04 — Separate Owner pricing from read-only stock oversight
 
@@ -519,3 +528,66 @@ and leaves the existing origin/token checks intact. Source:
 `app/routers/reseller_registration.py`, `app/security_controls.py`;
 regression coverage: `tests/test_registration_origin.py`.
 See [[Roles and Access]] and [[Database and Operations]].
+
+## 2026-11-04 — Keep refund conversations open after settlement
+
+Completing a transfer records and notifies the refund but does not close the
+participant conversation. Resellers may ask follow-up questions; Owner and the
+assigned Supervisor retain their existing access controls. Receipt details remain
+manually correctable after OCR. Reject transfer timestamps before refund creation
+or after the current Manila time. Sources: `app/repositories/refunds.py`,
+`app/portals/refunds.py`, `app/static/js/refunds.js`,
+`app/templates/portals/refunds.html`.
+
+## 2026-11-04 — Retire Inventory tools
+
+Remove the Inventory tools page and its manual material adjustments, package
+component setup/dispatch, and batch archival actions. Keep historical database
+records for stock/audit traceability. Existing package configurations no longer
+block normal production or direct receipts; product photo updates and public
+catalog image delivery remain separate Product Details/catalog features. Sources:
+`app/portal_config.py`, `app/portals/team_leader.py`,
+`app/portals/product_media.py`, `app/repositories/inventory/products.py`.
+See [[Orders and Inventory]] and [[Roles and Access]].
+
+
+## 2026-11-04 — Inventory actions within the existing workspace
+
+The requested opening balances, manual deductions and removal controls live in
+the current Inventory workspace/materials/product detail pages. They reuse the
+existing transaction locks, FEFO allocator and migration-046 operation ledger.
+Opening balances are additive batches identified by their immutable movement,
+without recipe consumption. Materials are deactivated, and batch removal retains
+history; expired physical stock continues through Pull-outs. Only active Inventory
+staff may perform these operations; Owner oversight stays read-only. This keeps
+stock changes auditable and protects existing order/replacement commitments.
+See [[Orders and Inventory]] and `app/repositories/inventory/manual_stock.py`.
+
+
+## 2026-11-04 — Recipe editing and net content
+
+Product recipes edits the ingredient list and declared net content in one atomic
+save. Declaration is a separate finished-pack fact rather than a computed sum of
+ingredients, since production can change yield. Updates affect future production
+and do not rewrite existing batch/movement history. Existing conversion helpers,
+Inventory authorization and product locks remain authoritative. See
+[[Orders and Inventory]] and `app/repositories/inventory/products.py`.
+
+
+## 2026-11-04 — Packages consume included product stock
+
+The user confirmed that Trial, Reseller and Area Distributor packages are bundles
+of finished products and must be orderable by resellers. They requested removal
+of old standalone package balances without adding component quantities. Historical
+batch records and audited corrections preserve that transition. The supplied
+inclusions define 16/70/400 packs; confirmed catalog-name mappings are in
+[[Orders and Inventory]].
+
+Checkout expands packages into component order lines rather than changing every
+stock/reservation/return state machine. Package metadata and original pricing are
+saved separately and immutably. The user chose return-credit allocation
+proportional to individual prices; deterministic cent allocation preserves the
+exact package total and is snapshotted on each order. Packages have computed
+assembly availability, no independent physical stock, raw-material recipe or
+single-product declared net content. See [[Returns and Financials]] and
+`app/repositories/inventory/packages.py`.

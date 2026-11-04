@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from uuid import uuid4
 from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Request
@@ -64,7 +65,7 @@ def finished_inventory_products_page(request: Request, page_size: int = 8) -> di
 
 def raw_materials_inventory_page(request: Request, page_size: int = 10) -> dict:
     filters = shared.portal_filters(request)
-    material_category = filters["type"] if filters["type"] in data.raw_material_categories else ""
+    material_category = filters["type"] if filters["type"] in (*data.raw_material_categories, "removed") else ""
     category = f"raw_material:{material_category}" if material_category else "raw_material"
     total = data.count_inventory_items(q=filters["q"], category=category)
     filters["page"] = shared.clamp_page(total, filters["page"], page_size)
@@ -102,9 +103,10 @@ def raw_materials_inventory_context(request: Request) -> dict:
         "raw_materials_page": raw_materials_page,
         "raw_items": raw_items,
         "raw_material_tabs": (
-            ("", "All materials"),
+            ("", "Active materials"),
             ("meat", "Meat"),
             ("raw_material", "Other supplies"),
+            ("removed", "Removed materials"),
         ),
     }
 
@@ -201,10 +203,13 @@ def sales_context(request: Request) -> dict:
 
 
 def inventory_context(request: Request) -> dict:
-    recipe_products_page = shared.product_page(request, page_size=8)
+    recipe_products_page = shared.product_page(request, page_size=8, individual_only=True)
     recipe_product_ids = [product["product_id"] for product in recipe_products_page["items"]]
     return {
-        "products": data.list_products(),
+        "new_reference": lambda: str(uuid4()),
+        "stock_action_draft": request.session.pop("inventory_stock_draft", None),
+        "products": data.list_products(active_only=True, individual_only=True),
+        "dispatch_products": data.list_products(active_only=True),
         "recipe_products_page": recipe_products_page,
         "recipe_products": recipe_products_page["items"],
         "raw_materials": data.list_raw_materials(),
@@ -214,6 +219,7 @@ def inventory_context(request: Request) -> dict:
         "stock_units": data.stock_units,
         "content_units": data.content_units,
         "recipe_units": data.recipe_units,
+        "recipe_edit_draft": request.session.pop("recipe_edit_draft", None),
     }
 
 
@@ -482,6 +488,30 @@ async def team_product(request: Request):
     return shared.redirect_to(shared.safe_portal_path("team-leader", "inventory", message="Product recipe created."))
 
 
+@router.post("/portal/team-leader/products/{product_id}/photo")
+async def team_product_photo(request: Request, product_id: int):
+    guard = shared.require_portal_session(request, "team-leader")
+    if guard:
+        return guard
+    role_guard = shared.require_team_leader_role(request, "inventory")
+    if role_guard:
+        return role_guard
+
+    form = await request.form()
+    try:
+        upload = form.get("photo")
+        photo = await parse_product_image(upload if isinstance(upload, UploadFile) else None)
+        if photo is None:
+            raise ValueError("Choose a product photo.")
+        await run_in_threadpool(data.save_product_image, product_id, photo,
+                                actor_account_id=shared.session_account_id(request))
+    except ValueError as exc:
+        return shared.redirect_to(shared.safe_portal_path(
+            "team-leader", "product-details", error=str(exc), product_id=str(product_id)))
+    return shared.redirect_to(shared.safe_portal_path(
+        "team-leader", "product-details", message="Product photo updated.", product_id=str(product_id)))
+
+
 @router.post("/portal/team-leader/production")
 async def team_production(
     request: Request,
@@ -617,3 +647,77 @@ async def supervisor_reseller_team_leader(request: Request, reseller_id: int, te
     except ValueError as exc:
         return shared.redirect_to(shared.safe_portal_path("sales-supervisor", "accounts", error=str(exc)))
     return shared.redirect_to(shared.safe_portal_path("sales-supervisor", "accounts", message="Reseller team leader updated."))
+
+
+@router.post('/portal/team-leader/stock-actions/{action}')
+async def manual_stock_action(request: Request, action: str):
+    from app.capabilities import require_capability
+    from app.repositories.inventory import manual_stock
+    guard = shared.require_portal_session(request, 'team-leader')
+    if guard:
+        return guard
+    require_capability(request, 'inventory.manage')
+    form = await request.form()
+    actor = shared.session_account_id(request)
+    target = 'inventory'
+    extra = {}
+    try:
+        if action == 'opening-balance':
+            await run_in_threadpool(manual_stock.opening_balance, int(str(form.get('product_id', ''))),
+                form.get('batch_code', ''), form.get('quantity', ''), form.get('expiry_date', ''),
+                form.get('reason', ''), form.get('reference', ''), actor)
+        elif action == 'deduct-material':
+            await run_in_threadpool(manual_stock.adjust_raw_material, int(str(form.get('item_id', ''))),
+                form.get('quantity', ''), form.get('reason', ''), form.get('reference', ''), actor)
+        elif action == 'dispatch':
+            await run_in_threadpool(manual_stock.dispatch_stock, int(str(form.get('product_id', ''))),
+                form.get('quantity', ''), form.get('reason', ''), form.get('reference', ''), actor)
+        elif action in {'remove-material', 'restore-material'}:
+            target = 'raw-materials'
+            await run_in_threadpool(manual_stock.set_material_active, int(str(form.get('item_id', ''))),
+                action == 'restore-material', actor, form.get('confirmed') == 'yes')
+        elif action == 'remove-batch':
+            target = 'product-details'
+            product_id = int(str(form.get('product_id', '')))
+            extra = {'product_id': str(product_id)}
+            await run_in_threadpool(manual_stock.remove_batch, product_id, int(str(form.get('batch_id', ''))),
+                form.get('expected_quantity', ''), form.get('reason', ''), form.get('reference', ''), actor,
+                form.get('confirmed') == 'yes')
+        else:
+            raise HTTPException(404)
+    except ValueError as exc:
+        if target == 'inventory' and action in {'opening-balance', 'deduct-material', 'dispatch'}:
+            request.session['inventory_stock_draft'] = {'action': action, 'values': {
+                key: str(form.get(key, ''))[:500] for key in
+                ('product_id', 'item_id', 'batch_code', 'quantity', 'expiry_date', 'reason', 'reference')
+            }}
+            extra['modal'] = action
+        return shared.redirect_to(shared.safe_portal_path('team-leader', target, error=str(exc), **extra))
+    return shared.redirect_to(shared.safe_portal_path('team-leader', target, message='Stock action recorded.', **extra))
+
+
+@router.post('/portal/team-leader/products/{product_id}/recipe')
+async def team_update_recipe(request: Request, product_id: int):
+    from app.capabilities import require_capability
+    from app.repositories.inventory.products import update_product_recipe
+    guard = shared.require_portal_session(request, 'team-leader')
+    if guard:
+        return guard
+    require_capability(request, 'inventory.manage')
+    form = await request.form()
+    ids = form.getlist('material_item_id[]')
+    quantities = form.getlist('quantity_required[]')
+    units = form.getlist('quantity_required_unit[]')
+    extra = {'modal': 'product-recipes', 'q': str(form.get('q', ''))[:200], 'page': str(form.get('page', '1'))[:8]}
+    try:
+        await run_in_threadpool(update_product_recipe, product_id, ids, quantities, units,
+            form.get('pack_size', ''), form.get('pack_size_unit', ''), shared.session_account_id(request))
+    except ValueError as exc:
+        request.session['recipe_edit_draft'] = {
+            'product_id': product_id, 'error': str(exc),
+            'pack_size': str(form.get('pack_size', ''))[:40], 'pack_size_unit': str(form.get('pack_size_unit', ''))[:10],
+            'rows': [{'raw_material_id': str(i)[:20], 'quantity_required': str(q)[:40], 'unit': str(u)[:10]}
+                     for i,q,u in list(zip(ids,quantities,units))[:200]],
+        }
+        return shared.redirect_to(shared.safe_portal_path('team-leader','inventory',error=str(exc),**extra))
+    return shared.redirect_to(shared.safe_portal_path('team-leader','inventory',message='Recipe and declared net content updated.',**extra))

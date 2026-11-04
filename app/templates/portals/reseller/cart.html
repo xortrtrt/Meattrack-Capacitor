@@ -38,9 +38,9 @@
           <img class="cart-line-image" src="{{ item.name|product_photo_url }}" alt="{{ item.name }}" loading="lazy" />
           <div class="cart-line-copy">
             <span class="reseller-product-category">{{ item.category }}</span>
-            <h3>{{ item.name }}</h3>
-            <p>{{ item.base_price|currency }} per {{ item.unit }}</p>
-            <small><i data-lucide="warehouse"></i> {{ item.available|number }} packs available</small>
+            <h3>{{ item.name }}</h3>{% if item.category == "Package" %}<details><summary>{{ item.total_packs|number }} included packs</summary><p>{{ item.description }}</p></details>{% endif %}
+            <p>{{ item.base_price|currency }} per {{ 'package' if item.category == 'Package' else item.unit }}</p>
+            <small><i data-lucide="warehouse"></i> {{ item.available|number }} {{ 'packages can be assembled' if item.category == 'Package' else 'packs available' }}</small>
           </div>
           <form class="cart-line-quantity" action="/portal/reseller/cart" method="post" data-cart-update-form>
             <input type="hidden" name="product_id" value="{{ item.product_id }}" />
@@ -73,7 +73,7 @@
       <span class="order-page-kicker">Your selection</span>
       <h3 id="cart-summary-title">Order summary</h3>
       <div class="order-summary-row"><span>Selected products</span><strong data-cart-selected-items>0</strong></div>
-      <div class="order-summary-row"><span>Selected packs</span><strong data-cart-count>0</strong></div>
+      <div class="order-summary-row"><span>Selected items</span><strong data-cart-count>0</strong></div>
       <div class="order-summary-total"><span>Subtotal</span><strong data-cart-total>{{ 0|currency }}</strong></div>
       <form id="cart-confirm-form" action="/portal/reseller/checkout" method="get">
         <button class="button primary order-summary-action" type="submit" data-cart-confirm disabled>

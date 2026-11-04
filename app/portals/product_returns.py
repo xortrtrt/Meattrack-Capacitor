@@ -182,7 +182,7 @@ def _returns_context(request: Request) -> dict:
         "return_order_id": order_id,
         "return_order": return_order,
         "returnable_batches": [row for row in available_returns if row["returnable_quantity"] > 0],
-        "replacement_products": list_products(active_only=True) if can_review or role=="reseller" else [],
+        "replacement_products": list_products(active_only=True, individual_only=True) if can_review or role=="reseller" else [],
         "return_inventory_only": inventory_only,
         "return_inventory_summary": returns.inventory_return_totals(actor_id) if inventory_only else {},
         "return_inventory_search": inventory_search,
@@ -254,6 +254,12 @@ def product_details_context(request: Request) -> dict:
     )
     if not product:
         raise HTTPException(404)
+    if product.get('category') == 'Package':
+        from app.repositories.inventory.packages import package_contents
+        from app.database import fetch_one
+        product['components'] = package_contents(product_id)
+        product['total_packs'] = sum(row['quantity_per_package'] for row in product['components'])
+        product['available'] = fetch_one('SELECT available FROM catalog_stock_availability WHERE item_id=%s',(product_id,))['available']
     base_url = request.url.include_query_params(
         batch_page=product["batch_pagination"]["page"],
         movement_page=product["movement_pagination"]["page"],

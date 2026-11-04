@@ -157,9 +157,10 @@ def paged(items: list[dict], total: int, page: int, page_size: int = 10, **filte
     }
 
 
-def product_page(request: Request, page_size: int = 12, active_only: bool = False) -> dict:
+def product_page(request: Request, page_size: int = 12, active_only: bool = False, individual_only: bool = False) -> dict:
     filters = portal_filters(request)
-    total = data.count_products(q=filters["q"], category=filters["type"], active_only=active_only)
+    scope = {"individual_only": True} if individual_only else {}
+    total = data.count_products(q=filters["q"], category=filters["type"], active_only=active_only, **scope)
     filters["page"] = clamp_page(total, filters["page"], page_size)
     items = data.list_products(
         q=filters["q"],
@@ -168,6 +169,7 @@ def product_page(request: Request, page_size: int = 12, active_only: bool = Fals
         page_size=page_size,
         sort=filters["sort"],
         active_only=active_only,
+        **scope,
     )
     return paged(items, total, filters["page"], page_size, q=filters["q"], type=filters["type"], sort=filters["sort"])
 
@@ -552,7 +554,8 @@ async def portal_notification_open(request: Request, role_key: str, notification
         return guard
     notification = data.mark_notification_read(session_account_id(request), notification_id)
     if not notification:
-        raise HTTPException(status_code=404)
+        section = request.query_params.get("section") or portal_config.roles[role_key]["default_section"] if role_key in portal_config.roles else "notifications"
+        return redirect_to(f"/portal/{role_key}/notifications")
     if (
         role_key == "reseller"
         and notification.get("source_type") == "order_system_messages"

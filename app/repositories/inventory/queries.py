@@ -120,6 +120,8 @@ def inventory_item_filter(category: str) -> tuple[str, str]:
     raw = (category or "").strip()
     if ":" in raw:
         item_type, item_category = raw.split(":", 1)
+        if item_type == "raw_material" and item_category == "removed":
+            return item_type, "__removed__"
         if item_type in {"raw_material", "finished_product"}:
             return item_type, item_category.strip().replace("_", " ")
     if raw in {"raw_material", "finished_product"}:
@@ -139,7 +141,9 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
     if item_type:
         where.append("ii.item_type = %s")
         params.append(item_type)
-    if item_category:
+    if item_category == "__removed__":
+        where[1] = "ii.is_active=false"
+    elif item_category:
         where.append("LOWER(ii.category) = LOWER(%s)")
         params.append(item_category)
     paging_sql = ""
@@ -147,7 +151,7 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
     order_sql = safe_sort_sql(sort, INVENTORY_ITEM_SORTS, "CASE ii.item_type WHEN 'raw_material' THEN 1 ELSE 2 END, ii.category, ii.name")
-    return clean_row(fetch_all("""
+    items = clean_row(fetch_all("""
         SELECT ii.item_id, ii.item_type,
                CASE ii.item_type
                    WHEN 'raw_material' THEN 'Raw material'
@@ -157,10 +161,7 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
                ii.pack_size, ii.pack_size_unit, ii.pack_content_status, ii.is_active,
                CASE
                    WHEN ii.item_type = 'raw_material' THEN ii.quantity_available
-                   ELSE GREATEST(COALESCE(SUM(ib.quantity_available) FILTER (
-                       WHERE ib.quality_status = 'approved'
-                         AND ib.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date
-                   ), 0) - COALESCE((SELECT SUM(r.quantity) FROM all_stock_reservations r WHERE r.product_id=ii.item_id),0),0)
+                   ELSE COALESCE((SELECT ca.available FROM catalog_stock_availability ca WHERE ca.item_id=ii.item_id),0)
                END AS available
         FROM inventory_items ii
         LEFT JOIN inventory_batches ib ON ib.item_id = ii.item_id
@@ -171,6 +172,9 @@ def list_inventory_items(q: str = "", category: str = "", page: int | None = Non
         ORDER BY {order_sql}
         {paging_sql};
     """.format(where_sql=" AND ".join(where), order_sql=order_sql, paging_sql=paging_sql), tuple(params) or None))
+
+    from .packages import decorate_products
+    return decorate_products(items)
 
 
 def count_inventory_items(q: str = "", category: str = "") -> int:
@@ -185,7 +189,9 @@ def count_inventory_items(q: str = "", category: str = "") -> int:
     if item_type:
         where.append("ii.item_type = %s")
         params.append(item_type)
-    if item_category:
+    if item_category == "__removed__":
+        where[1] = "ii.is_active=false"
+    elif item_category:
         where.append("LOWER(ii.category) = LOWER(%s)")
         params.append(item_category)
     row = fetch_one(f"""
@@ -259,6 +265,7 @@ def list_products(
     page_size: int = 12,
     sort: str = "",
     active_only: bool = False,
+    individual_only: bool = False,
 ) -> list[dict]:
     where_extra = []
     params: list[object] = []
@@ -270,6 +277,8 @@ def list_products(
     if category:
         where_extra.append("p.category = %s")
         params.append(category)
+    if individual_only:
+        where_extra.append("p.category IS DISTINCT FROM 'Package'")
     if active_only:
         where_extra.append("p.is_active = true")
     paging_sql = ""
@@ -277,7 +286,7 @@ def list_products(
         paging_sql = " LIMIT %s OFFSET %s"
         params.extend([page_size, (page - 1) * page_size])
     order_sql = safe_sort_sql(sort, PRODUCT_SORTS, "p.item_id")
-    return clean_row(fetch_all("""
+    items = clean_row(fetch_all("""
         SELECT p.item_id AS product_id, p.name, p.description, p.unit, p.base_price, p.is_active,
                p.category, p.pack_size, p.pack_size_unit, p.pack_content_status,
                (
@@ -287,14 +296,7 @@ def list_products(
                    WHERE pr.product_item_id = p.item_id
                      AND rm.item_type = 'raw_material'
                ) AS recipe_count,
-               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
-                   WHERE pb.quality_status = 'approved'
-                     AND (pb.expiry_date IS NULL OR pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
-               ), 0) - COALESCE((
-                   SELECT SUM(osr.quantity)
-                   FROM all_stock_reservations osr
-                   WHERE osr.product_id = p.item_id
-               ), 0), 0) AS available
+               COALESCE((SELECT ca.available FROM catalog_stock_availability ca WHERE ca.item_id=p.item_id),0) AS available
         FROM inventory_items p
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_type = 'finished_product'
@@ -308,6 +310,9 @@ def list_products(
         order_sql=order_sql,
         paging_sql=paging_sql,
     ), tuple(params) or None))
+
+    from .packages import decorate_products
+    return decorate_products(items)
 
 
 def list_best_selling_products(limit: int = 3) -> list[dict]:
@@ -341,7 +346,7 @@ def list_best_selling_products(limit: int = 3) -> list[dict]:
     """, (clean_limit,)))
 
 
-def count_products(q: str = "", category: str = "", active_only: bool = False) -> int:
+def count_products(q: str = "", category: str = "", active_only: bool = False, individual_only: bool = False) -> int:
     query = """
         SELECT COUNT(*) AS total
         FROM inventory_items p
@@ -356,6 +361,8 @@ def count_products(q: str = "", category: str = "", active_only: bool = False) -
     if category:
         query += " AND p.category = %s"
         params.append(category)
+    if individual_only:
+        query += " AND p.category IS DISTINCT FROM 'Package'"
     if active_only:
         query += " AND p.is_active = true"
     row = fetch_one(query + ";", tuple(params) or None)

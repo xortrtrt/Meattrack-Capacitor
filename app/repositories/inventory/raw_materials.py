@@ -46,7 +46,7 @@ def add_raw_inventory_item(
         if matches:
             existing = matches[0]
             if not existing["is_active"]:
-                raise ValueError("This material was removed. Reactivate it in Inventory tools instead.")
+                raise ValueError("This material is inactive and cannot be re-created.")
             mismatched = next(
                 (item for item in matches if canonical_inventory_unit(item["unit"]) != canonical_inventory_unit(item_unit)),
                 None,

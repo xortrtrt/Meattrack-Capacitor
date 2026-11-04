@@ -41,7 +41,7 @@
             <header><div><span class="eyebrow">Order contents</span><h3 id="order-items-title-{{ order.order_id }}">{{ order['items']|length }} product{{ '' if order['items']|length == 1 else 's' }}</h3></div></header>
             <div class="order-product-list">
               {% for item in order['items'] %}
-              <article class="order-product-line"><img src="{{ item.name|product_photo_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong><small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
+              <article class="order-product-line"><img src="{{ item.name|product_photo_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong>{% if item.package_name %}<small>Included in {{ item.package_name }} · {{ item.package_quantity|number }} package(s)</small>{% endif %}<small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
               {% else %}<p class="hint">No items were recorded for this order.</p>{% endfor %}
             </div>
           </section>

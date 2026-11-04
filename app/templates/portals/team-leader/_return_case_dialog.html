@@ -37,7 +37,7 @@
 {% if case.refund %}<p class="lifecycle-box">Refund #{{ case.refund.order_refund_id }} · {{ case.refund.amount|currency }} · {{ case.refund.status|title }} {% if return_can_review %}<a href="/portal/{{ role_key }}/refunds?refund={{ case.refund.order_refund_id }}">Open refund workspace</a>{% endif %}</p>{% endif %}
       {% set payment_attachments = case.attachments|rejectattr('purpose','equalto','evidence')|list %}
       {% if payment_attachments %}<section class="lifecycle-box"><h4>Payment attachments</h4>{% for attachment in payment_attachments %}<p><a target="_blank" rel="noopener" href="/portal/return-attachments/{{ attachment.attachment_id }}">{{ attachment.purpose|title }}{% if attachment.revision %} &middot; quote {{ attachment.revision }}{% endif %}: {{ attachment.filename }}</a></p>{% endfor %}</section>{% endif %}
-      <details class="lifecycle-box sales-return-receipts"><summary>Inventory receipts and movements</summary>{% include 'portals/lifecycle/_receipt_trace.html' %}</details>
+      <details class="lifecycle-box sales-return-receipts"><summary>Returned products and movements</summary>{% include 'portals/lifecycle/_receipt_trace.html' %}</details>
       <details class="lifecycle-box lifecycle-history"><summary>Case history</summary>{% include 'portals/returns/_activity_timeline.html' %}</details>
     </div>
   </dialog>

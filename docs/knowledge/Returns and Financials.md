@@ -4,6 +4,15 @@ verified: 2026-11-03
 ---
 # Returns and financials
 
+Refund transfers are recorded from an automatically read screenshot; staff may
+correct extracted reference, date/time and amount before confirming. The transfer
+timestamp must be at or after the refund request time and cannot be in the future,
+validated in Asia/Manila time in both the form and repository. Completing a refund
+does not close its participant conversation: the reseller and authorized Owner or
+assigned Supervisor may continue messaging about the completed case. Sources:
+`app/portals/refunds.py`, `app/repositories/refunds.py`,
+`app/templates/portals/refunds.html`, `app/static/js/refunds.js`.
+
 ## Replacement-first policy update (2026-11-03)
 
 New policy-2 submissions use [[Replacement Workflow]]; refund-only submissions and
@@ -249,9 +258,34 @@ Sources checked 2026-11-03: `app/templates/portals/lifecycle/inventory-returns.h
 `app/static/css/portals/inventory-returns.css`, `app/static/js/return_details.js`.
 See [[Roles and Access]] and [[Replacement Workflow]].
 
+The Activity tab now groups receipt approval/verification, approved return batches,
+recorded receipts, and expandable custody history as separate labeled sections.
+Replacement traceability separates reserved planned stock from released stock taken.
+This is presentation only; receipt, custody, and release records are unchanged.
+Sources checked 2026-11-04: `app/templates/portals/lifecycle/inventory-receipt-trace.html`,
+`app/templates/portals/lifecycle/_replacement_batches.html`, and
+`app/static/css/portals/inventory-returns.css`.
+
 ## Payout control review (2026-11-03)
 
 [[Return Workflow Gap Review]] records five further outcomes and flags missing
 structured beneficiary verification and payout component visibility. Exact-amount,
 retry and reconciliation checks passed; the recommendations remain unimplemented.
 No real funds were transferred.
+
+
+## Products purchased in packages (2026-11-04)
+
+New package orders create individual-product order lines linked to an immutable
+package snapshot. Fulfillment allocations and returnable product packs retain
+those lines' allocated unit prices. At the user's choice, the package price is
+divided proportionally to component catalog prices, with deterministic cent
+rounding recorded on the order. Package totals remain exact, and later prices do
+not rewrite original return credit. Zero-priced components receive zero allocated
+value. New replacement selections use individual finished products. Unchanged historical
+package purchases retain their original recorded credit; a standalone package
+stock request reports a shortage rather than consuming legacy package batches.
+Existing return custody and policy transitions are unchanged. See
+[[Orders and Inventory]], [[Decisions]], `inventory/packages.py` (under
+`app/repositories/`), `app/repositories/orders.py`, and
+`app/repositories/product_returns.py`.

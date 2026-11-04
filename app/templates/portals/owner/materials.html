@@ -1,6 +1,6 @@
 <div class="owner-page owner-superuser-page">
   <section class="panel owner-workspace-surface">
-    <div class="panel-heading"><div><span class="eyebrow">Inventory</span><h2>Raw materials</h2><p class="hint">Read-only quantities in each material's unit. Inventory staff record receipts and adjustments.</p></div></div>
+    <div class="panel-heading"><div><span class="eyebrow">Inventory</span><h2>Raw materials</h2><p class="hint">Read-only quantities in each material's unit. Inventory staff record stock additions and adjustments.</p></div></div>
     <form class="filter-bar" method="get" novalidate><label>Search materials<input name="q" value="{{ materials_page.filters.q }}" placeholder="Material name or category"></label><button class="button primary">Find materials</button><a class="button subtle" href="/portal/owner/materials">Clear filters</a></form>
     <div class="owner-material-list">
       {% for item in materials %}

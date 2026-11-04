@@ -13,6 +13,7 @@ from .._shared import (
     content_units,
     convert_inventory_quantity,
     display_decimal,
+    fetch_one,
     get_transaction_cursor,
     normalize_inventory_name,
     normalize_inventory_text,
@@ -171,9 +172,6 @@ def update_product_pack_content(
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
-        cur.execute("SELECT 1 FROM inventory_package_settings WHERE package_item_id=%s", (product_id,))
-        if cur.fetchone():
-            raise ValueError("This package uses finished-product components. Use package dispatch instead.")
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_product_pack_content", entity_type="inventory_items", entity_id=product_id)
     return clean_row(product)
 
@@ -208,15 +206,12 @@ def produce_product(
             FROM inventory_items
             WHERE item_id = %s
               AND item_type = 'finished_product'
+              AND category IS DISTINCT FROM 'Package'
               AND is_active = true;
         """, (product_id,))
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
-        cur.execute("SELECT 1 FROM inventory_package_settings WHERE package_item_id=%s", (product_id,))
-        if cur.fetchone():
-            raise ValueError("This package uses finished-product components. Use package dispatch instead.")
-
         cur.execute("SELECT batch_id FROM inventory_batches WHERE batch_code = %s;", (clean_batch_code,))
         if cur.fetchone() is not None:
             raise ValueError("This batch code already exists.")
@@ -338,15 +333,12 @@ def add_product_batch(
         cur.execute("""
             SELECT item_id AS product_id, name, unit
             FROM inventory_items
-            WHERE item_id = %s AND item_type = 'finished_product' AND is_active = true
+            WHERE item_id = %s AND item_type = 'finished_product' AND category IS DISTINCT FROM 'Package' AND is_active = true
             FOR UPDATE;
         """, (product_id,))
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
-        cur.execute("SELECT 1 FROM inventory_package_settings WHERE package_item_id=%s", (product_id,))
-        if cur.fetchone():
-            raise ValueError("This package uses finished-product components. Use package dispatch instead.")
         actor_name = _inventory_actor_name(cur, actor_account_id)
         cur.execute("""
             INSERT INTO inventory_batches (item_id, batch_code, source_type, quantity_received, quantity_available, unit, received_date, expiry_date, quality_status)
@@ -386,3 +378,63 @@ def update_product_price(product_id: int, base_price: object, actor_account_id: 
             raise ValueError("Unknown product.")
         _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_product_price", entity_type="inventory_items", entity_id=product_id)
 
+
+def save_product_image(product_id: int, image: dict, actor_account_id: int | None = None) -> None:
+    from app.uploads import validate_product_image
+
+    validate_product_image(image["content_type"], image["content"])
+    with get_transaction_cursor() as cur:
+        _inventory_actor_name(cur, actor_account_id)
+        cur.execute("SELECT 1 FROM inventory_items WHERE item_id=%s AND item_type='finished_product' FOR UPDATE", (product_id,))
+        if not cur.fetchone():
+            raise ValueError("Product was not found.")
+        cur.execute("""INSERT INTO inventory_product_images(product_item_id,content_type,image_data) VALUES(%s,%s,%s)
+            ON CONFLICT(product_item_id) DO UPDATE SET content_type=EXCLUDED.content_type,image_data=EXCLUDED.image_data,updated_at=now()""",
+                    (product_id, image["content_type"], image["content"]))
+        _add_log_cursor(cur, actor_account_id=actor_account_id, action="updated_product_photo",
+                        entity_type="inventory_items", entity_id=product_id)
+
+
+def product_image(product_id: int) -> dict | None:
+    return fetch_one("SELECT content_type,image_data FROM inventory_product_images WHERE product_item_id=%s", (product_id,))
+
+
+
+def update_product_recipe(product_id, material_ids, quantities, units, pack_size, pack_size_unit, actor):
+    """Save future-production requirements and declared contents atomically."""
+    from .manual_stock import _actor
+    size = measurements.parse_decimal_exact(pack_size, 'Declared net content', positive=True)
+    size_unit = measurements.require_unit(pack_size_unit, measurements.CONTENT_UNITS, 'Contents unit')
+    if not material_ids or len(material_ids) > 200 or len(material_ids) != len(quantities) or len(material_ids) != len(units):
+        raise ValueError('Add between 1 and 200 complete ingredient rows.')
+    requirements = []
+    seen = set()
+    for raw_id, quantity, unit in zip(material_ids, quantities, units):
+        try:
+            material_id = int(raw_id)
+        except (TypeError, ValueError):
+            raise ValueError('Choose a valid ingredient.') from None
+        if material_id in seen:
+            raise ValueError('Each ingredient can only be selected once.')
+        seen.add(material_id)
+        requirements.append((material_id, measurements.parse_decimal_exact(quantity, 'Required per pack', positive=True),
+                             require_inventory_choice(unit, recipe_units, 'Input unit')))
+    with get_transaction_cursor() as cur:
+        _actor(cur, actor)
+        cur.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', (f'inventory-product:{product_id}',))
+        cur.execute("SELECT name FROM inventory_items WHERE item_id=%s AND item_type='finished_product' AND category IS DISTINCT FROM 'Package' AND is_active=true FOR UPDATE", (product_id,))
+        product = cur.fetchone()
+        if not product:
+            raise ValueError('Choose an active finished product.')
+        cur.execute("SELECT item_id,name,unit FROM inventory_items WHERE item_id=ANY(%s) AND item_type='raw_material' AND is_active=true ORDER BY item_id FOR UPDATE", (list(seen),))
+        materials = {row['item_id']: row for row in cur.fetchall()}
+        if len(materials) != len(seen):
+            raise ValueError('Choose active raw materials for every ingredient.')
+        converted = [(material_id, convert_inventory_quantity(quantity, unit, materials[material_id]['unit'], materials[material_id]['name']), materials[material_id]['unit'])
+                     for material_id, quantity, unit in requirements]
+        cur.execute('DELETE FROM product_recipes WHERE product_item_id=%s', (product_id,))
+        for material_id, quantity, unit in converted:
+            cur.execute('INSERT INTO product_recipes(product_item_id,material_item_id,quantity_required,unit) VALUES(%s,%s,%s,%s)', (product_id,material_id,quantity,unit))
+        cur.execute("""UPDATE inventory_items SET pack_size=%s,pack_size_unit=%s,pack_content_status='declared',description=%s WHERE item_id=%s""",
+                    (size,size_unit,f"{product['name']} - {display_decimal(size)} {size_unit} per pack.",product_id))
+        _add_log_cursor(cur, actor_account_id=actor, action='updated_product_recipe', entity_type='inventory_items', entity_id=product_id)

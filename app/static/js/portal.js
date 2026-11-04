@@ -585,6 +585,8 @@
             const unit = card.dataset.productUnit || "pack";
             const productName = card.dataset.productName || "Product";
             const productCategory = card.dataset.productCategory || "Uncategorized";
+            const stockLabel = modal.querySelector('[data-product-modal-stock-label]');
+            if (stockLabel) stockLabel.textContent = productCategory === 'Package' ? 'Complete packages available' : 'Current stock (not reserved)';
             const available = Number(card.dataset.productStock || 0);
 
             if (image) {
@@ -607,7 +609,7 @@
                 price.textContent = `${formatMoney(card.dataset.productPrice)}/${unit}`;
             }
             if (stock) {
-                stock.textContent = `${formatQuantity(card.dataset.productStock)} ${unit}`;
+                stock.textContent = `${formatQuantity(card.dataset.productStock)} ${unit === "package" && available !== 1 ? "packages" : unit}`;
             }
             if (description) {
                 description.textContent = card.dataset.productDescription || "No description available yet.";

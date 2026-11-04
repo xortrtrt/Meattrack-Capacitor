@@ -316,8 +316,10 @@ def test_refund_scan_scope_amount_and_once_only_closure(lifecycle, monkeypatch):
     summary = unread_summary(d["reseller"], "reseller")
     assert summary["unread_conversations"] == 1  # System event and refund reply share the order thread.
     mark_refund_read(fid, d["reseller"], "reseller", closing[0]["order_refund_message_id"])
-    with pytest.raises(ValueError, match="read-only"):
-        repositories.send_order_refund_message(fid, d["reseller"], "reseller", "Cannot reopen completed case")
+    reply = repositories.send_order_refund_message(
+        fid, d["reseller"], "reseller", "I have a question about this completed refund"
+    )
+    assert reply["message"] == "I have a question about this completed refund"
 
 
 @pytest.mark.parametrize("role", ["sales", "inventory", "supervisor"])

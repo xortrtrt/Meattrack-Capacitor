@@ -141,8 +141,8 @@
           {% endfor %}
         </div>
         {% if conversation.refund %}
-          <section class="reseller-refund-chat reseller-refund-chat-panel" id="refund-conversation-{{ conversation.refund.order_refund_id }}" role="tabpanel" aria-labelledby="reseller-refund-title-{{ conversation.refund.order_refund_id }}" data-refund-order-panel="conversation" data-refund-conversation data-refund-id="{{ conversation.refund.order_refund_id }}" data-refund-role="reseller" hidden>
-            <header><span class="internal-person-avatar">{% if conversation.refund.processor_profile_image_path %}<img src="{{ url_for('static',path=conversation.refund.processor_profile_image_path) }}" alt="" style="object-position:{{ conversation.refund.processor_profile_image_position_x }}% {{ conversation.refund.processor_profile_image_position_y }}%;transform:scale({{ conversation.refund.processor_profile_image_scale }})">{% else %}<i data-lucide="user-round" aria-hidden="true"></i>{% endif %}</span><div><strong id="reseller-refund-title-{{ conversation.refund.order_refund_id }}">{{ conversation.refund.processor_name or 'Refund conversation' }}</strong><small>Refund #{{ conversation.refund.order_refund_id }} · {{ 'Conversation closed' if conversation.refund.status=='completed' else 'Share where your refund should be sent' }}</small></div></header>
+          <section class="reseller-refund-chat reseller-refund-chat-panel" id="refund-conversation-{{ conversation.refund.order_refund_id }}" role="tabpanel" aria-labelledby="reseller-refund-title-{{ conversation.refund.order_refund_id }}" data-refund-order-panel="conversation" data-refund-conversation data-refund-id="{{ conversation.refund.order_refund_id }}" data-refund-role="reseller" data-refund-status="{{ conversation.refund.status }}" hidden>
+            <header><span class="internal-person-avatar">{% if conversation.refund.processor_profile_image_path %}<img src="{{ url_for('static',path=conversation.refund.processor_profile_image_path) }}" alt="" style="object-position:{{ conversation.refund.processor_profile_image_position_x }}% {{ conversation.refund.processor_profile_image_position_y }}%;transform:scale({{ conversation.refund.processor_profile_image_scale }})">{% else %}<i data-lucide="user-round" aria-hidden="true"></i>{% endif %}</span><div><strong id="reseller-refund-title-{{ conversation.refund.order_refund_id }}">{{ conversation.refund.processor_name or 'Refund conversation' }}</strong><small>Refund #{{ conversation.refund.order_refund_id }} · {{ 'Refund completed · You can still reply' if conversation.refund.status=='completed' else 'Share where your refund should be sent' }}</small></div></header>
             <div class="reseller-refund-safety"><i data-lucide="shield-alert"></i><p>Share only the account name, account number, and payment provider needed for the refund. Never share a password, PIN, or OTP.</p></div>
             <div class="reseller-refund-messages" role="log" aria-live="polite" data-refund-message-list>
               {% for message in conversation.refund.messages %}
@@ -154,16 +154,12 @@
               <p class="reseller-refund-empty">The owner or assigned supervisor can contact you here if refund details are needed.</p>
               {% endfor %}
             </div>
-            {% if conversation.refund.status != 'completed' %}
             <form class="reseller-refund-composer" action="/portal/reseller/refunds/{{ conversation.refund.order_refund_id }}/messages" method="post" data-refund-message-form data-async-form>
               <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
               <label for="reseller-refund-message-{{ conversation.refund.order_refund_id }}">Reply about this refund</label>
               <div><textarea id="reseller-refund-message-{{ conversation.refund.order_refund_id }}" name="message" maxlength="1000" rows="3" placeholder="Enter your preferred refund method and account details" required></textarea><button class="button primary" type="submit"><i data-lucide="send"></i> Send reply</button></div>
               <p class="reseller-refund-status" data-refund-message-status aria-live="polite"></p>
             </form>
-            {% else %}
-            <p class="reseller-refund-closed" data-conversation-closed><i data-lucide="circle-check-big"></i> Refund completed · Conversation closed</p>
-            {% endif %}
           </section>
         {% endif %}
         <footer class="reseller-order-thread-foot"><span><i data-lucide="shield-check"></i> Updates are grouped by order to keep its history together.</span></footer>

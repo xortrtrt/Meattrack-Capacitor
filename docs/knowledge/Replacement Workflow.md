@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, replacement, returns, payments, inventory]
-verified: 2026-11-03
+verified: 2026-11-04
 ---
 # Replacement workflow
 
@@ -201,7 +201,15 @@ while the mobile list hides the thread. A compact strip identifies the original 
 to **Open return details**. The reseller Inbox integrates these rows with direct
 and order/refund conversations in one searchable list. Selecting a case retains
 the unified workspace and shows a collapsible comparison from the authorized
-return read. Staff views retain their existing case list. Checked 2026-11-02 against
+return read. Staff views retain their existing case list. The Sales Supervisor
+Messages page places direct reseller and replacement threads in one workspace
+with separate category tabs and the same conversation-list/reading-pane layout;
+the replacement pane prompts for case selection. A replacement deep link opens
+its category. Team
+Leader direct messaging remains unchanged because that role does not have private
+replacement case access. This does not merge message history or permissions. Checked 2026-11-04
+against `app/templates/portals/team-leader/reseller_messages.html` and
+`app/portals/shared.py`. Checked 2026-11-02 against
 `app/templates/portals/reseller/inbox.html`,
 `app/templates/portals/reseller/_inbox_replacement.html`, and
 `app/portals/reseller.py`; see [[Background Work and Integrations]].

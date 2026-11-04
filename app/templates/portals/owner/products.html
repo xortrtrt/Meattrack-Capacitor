@@ -40,7 +40,7 @@
       </div>
       <form class="owner-price-form" action="/portal/owner/products" method="post">
         <input type="hidden" name="product_id" value="{{ product.product_id }}">
-        <label>Price per {{ product.unit }} (PHP)
+        <label>Price per {{ "package" if product.category == "Package" else product.unit }} (PHP)
           <input required type="number" inputmode="decimal" step="0.01" min="0" name="base_price" value="{{ '%.2f'|format(product.base_price) }}" max="9999999999.99">
         </label>
         <label>Reason

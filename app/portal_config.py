@@ -141,7 +141,6 @@ team_leader_nav_by_role = {
         ("dashboard", "Dashboard", "layout-dashboard"),
         ("inventory", "Inventory", "boxes"),
         ("raw-materials", "Raw Materials", "beef"),
-        ("inventory-tools", "Inventory tools", "wrench"),
         ("finished-products", "Finished Products", "package-search"),
         ("batches", "Product Batches", "package-check"),
         ("alerts", "Stock alerts", "triangle-alert"),

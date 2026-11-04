@@ -246,14 +246,19 @@ by validated destination across the full history, independent of the eight-item
 preview. Sidebar parents include child destinations. Reading a notification or
 marking all read clears the corresponding counts on the next page load; visiting
 a destination alone does not mark notifications read. Counts cap visually at 99+.
-The notification popup uses the browser Popover top layer to escape the scrolling
-sidebar's clipping and stacking context, retaining outside-click and Escape dismissal.
+The shared notification popup uses the browser Popover top layer to escape the
+scrolling sidebar's clipping and stacking context, retaining outside-click and
+Escape dismissal. Shared portal CSS clears the browser's default popover inset
+and centering margin so the JavaScript-computed position beside the bell is used
+consistently across roles.
 
-Checked 2026-11-01 against `app/repositories/stock_alerts.py`,
+Stock alert behavior checked 2026-11-01 against `app/repositories/stock_alerts.py`,
 `app/repositories/owner_insights.py`,
 `app/repositories/notifications.py`, `app/portals/shared.py`, `app/portals/owner.py`,
-`app/static/js/portal.js`, `app/templates/portals/_stock_alerts.html`, and the shared
-navigation templates. See [[Orders and Inventory]] and [[Testing and Change Impact]].
+and `app/templates/portals/_stock_alerts.html`. Shared notification UI checked
+2026-11-04 against `app/static/js/portal.js`, `app/static/css/portal_base.css`,
+and the shared navigation templates. See [[Orders and Inventory]] and
+[[Testing and Change Impact]].
 
 The Alerts page presents three linked summary counts (expired batches, upcoming
 expiry batches, and low-stock products), followed by expiry/replenishment worklists.

@@ -1,9 +1,42 @@
-<section class="lifecycle-box refund-receipt-trace">
-  <h4>Batch and custody records</h4>
-  <p>Return approval: {{ 'Recorded' if case.approved_by_account_id else 'Awaiting approval' }} &middot; Inventory verification: {{ case.verified_at|nice_date if case.verified_at and case.verified_by_account_id else 'Awaiting final verification' }}{% if case.verified_by_name %} by {{ case.verified_by_name }}{% endif %}</p>
-  {% if case.verification_remarks %}<p>{{ case.verification_remarks }}</p>{% endif %}
-  {% if case.reconciliation_flags %}<div role="alert"><strong>Stock review required</strong><ul>{% for flag in case.reconciliation_flags %}<li>{{ flag }}</li>{% endfor %}</ul></div>{% endif %}
-  <div class="lifecycle-lines">{% for line in case.lines %}<article><strong>{{ line.name }} &middot; {{ line.batch_code }}</strong><span>Expiry {{ line.expiry_date|nice_date }} &middot; Allocation #{{ line.allocation_id }}</span><span>{{ line.quantity|number }} approved &middot; {{ line.received_quantity|number }} received &middot; {{ (line.quantity-line.received_quantity)|number }} outstanding</span></article>{% endfor %}</div>
-  {% for receipt in case.receipts %}<article class="lifecycle-box" id="receipt-{{ receipt.receipt_id }}"><strong>Receipt #{{ receipt.receipt_id }}</strong><p>{{ receipt.received_by_name }} &middot; {{ receipt.received_at|nice_date }} &middot; {{ receipt.location }}</p><p>{{ receipt.remarks }}</p>{% for item in case.receipt_lines if item.receipt_id==receipt.receipt_id %}<p>{{ item.name }} / {{ item.source_batch_code }}: {{ item.quantity|number }} received &middot; Holding #{{ item.holding_id }}: {{ item.quantity_remaining|number }} remaining &middot; {{ item.disposed_quantity|number }} disposed &middot; <a href="/portal/team-leader/expired-stock#holding-{{ item.holding_id }}">Open holding</a></p>{% endfor %}</article>{% endfor %}
-  {% if case.custody_movements %}<details><summary>Holding and disposal history</summary>{% for movement in case.custody_movements %}<p>Holding #{{ movement.holding_id }} &middot; {{ movement.action.replace('_',' ')|title }}: {{ movement.quantity|number }} packs &middot; {{ movement.actor_name }} &middot; {{ movement.created_at|nice_date }} &middot; {{ movement.remarks }}</p>{% endfor %}</details>{% endif %}
-</section>
+<div class="ir-record-groups">
+  <section class="ir-record-group" aria-labelledby="receipt-review-{{ case.return_id }}">
+    <header class="ir-record-group-head">
+      <div><span class="ir-record-kicker">Review</span><h4 id="receipt-review-{{ case.return_id }}">Approval and verification</h4></div>
+      <span class="ir-record-count">{{ 'Verified' if case.verified_at and case.verified_by_account_id else 'Pending' }}</span>
+    </header>
+    <dl class="ir-record-facts">
+      <div><dt>Return approval</dt><dd>{{ 'Recorded' if case.approved_by_account_id else 'Awaiting approval' }}</dd></div>
+      <div><dt>Inventory verification</dt><dd>{{ case.verified_at|nice_date if case.verified_at and case.verified_by_account_id else 'Awaiting final verification' }}{% if case.verified_by_name %}<span>by {{ case.verified_by_name }}</span>{% endif %}</dd></div>
+    </dl>
+    {% if case.verification_remarks %}<p class="ir-record-note">{{ case.verification_remarks }}</p>{% endif %}
+    {% if case.reconciliation_flags %}<div class="ir-record-alert" role="alert"><strong>Stock review required</strong><ul>{% for flag in case.reconciliation_flags %}<li>{{ flag }}</li>{% endfor %}</ul></div>{% endif %}
+  </section>
+
+  <section class="ir-record-group" aria-labelledby="returned-batches-{{ case.return_id }}">
+    <header class="ir-record-group-head"><div><span class="ir-record-kicker">Original delivery</span><h4 id="returned-batches-{{ case.return_id }}">Approved return batches</h4></div><span class="ir-record-count">{{ case.lines|length }} batch{{ '' if case.lines|length==1 else 'es' }}</span></header>
+    <div class="ir-record-list">
+      {% for line in case.lines %}<article class="ir-record-row">
+        <div class="ir-record-primary"><strong>{{ line.name }}</strong><small>{{ line.batch_code }} · Expires {{ line.expiry_date|nice_date }} · Allocation #{{ line.allocation_id }}</small></div>
+        <div class="ir-record-quantities"><span><strong>{{ line.quantity|number }}</strong><small>Approved</small></span><span><strong>{{ line.received_quantity|number }}</strong><small>Received</small></span><span><strong>{{ (line.quantity-line.received_quantity)|number }}</strong><small>Outstanding</small></span></div>
+      </article>{% endfor %}
+    </div>
+  </section>
+
+  <section class="ir-record-group" aria-labelledby="recorded-products-{{ case.return_id }}">
+    <header class="ir-record-group-head"><div><span class="ir-record-kicker">Inventory custody</span><h4 id="recorded-products-{{ case.return_id }}">Returned products</h4></div><span class="ir-record-count">{{ case.receipts|length }} product check{{ '' if case.receipts|length==1 else 's' }}</span></header>
+    {% if case.receipts %}<div class="ir-record-list">
+      {% for receipt in case.receipts %}<article class="ir-receipt-card" id="receipt-{{ receipt.receipt_id }}">
+        <header><div><strong>Product check #{{ receipt.receipt_id }}</strong><small>{{ receipt.received_by_name }} · {{ receipt.received_at|nice_date }}</small></div><span class="ir-record-count">{{ receipt.location }}</span></header>
+        {% if receipt.remarks %}<p class="ir-record-note">{{ receipt.remarks }}</p>{% endif %}
+        <ul class="ir-receipt-lines">{% for item in case.receipt_lines if item.receipt_id==receipt.receipt_id %}<li>
+          <div class="ir-record-primary"><strong>{{ item.name }}</strong><small>{{ item.source_batch_code }}</small></div>
+          <div class="ir-receipt-status"><span><strong>{{ item.quantity|number }}</strong> returned packs</span><span><strong>{{ item.quantity_remaining|number }}</strong> in holding</span><span><strong>{{ item.disposed_quantity|number }}</strong> disposed</span><a href="/portal/team-leader/expired-stock#holding-{{ item.holding_id }}">Open holding</a></div>
+        </li>{% endfor %}</ul>
+      </article>{% endfor %}
+    </div>{% else %}<p class="ir-record-empty">No returned products have been recorded.</p>{% endif %}
+  </section>
+
+  {% if case.custody_movements %}<details class="ir-record-history"><summary><span>Holding and disposal history</span><small>{{ case.custody_movements|length }} movements</small><i data-lucide="chevron-down" aria-hidden="true"></i></summary>
+    <ul>{% for movement in case.custody_movements %}<li><div><strong>{{ movement.action.replace('_',' ')|title }}</strong><small>Holding #{{ movement.holding_id }} · {{ movement.actor_name }} · {{ movement.created_at|nice_date }}</small></div><span>{{ movement.quantity|number }} packs{% if movement.disposal_method %} · {{ movement.disposal_method }}{% endif %}</span><p>{{ movement.remarks }}</p></li>{% endfor %}</ul>
+  </details>{% endif %}
+</div>

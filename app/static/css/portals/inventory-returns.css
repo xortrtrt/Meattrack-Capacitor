@@ -235,3 +235,77 @@
 @media(prefers-reduced-motion:reduce) { .portal-body .inventory-return-list .ir-case-row { transition:none; } }
 
 .inventory-return-list :is(a,button,select,.ir-check,.ir-check input),.inventory-return-page :is(a,button,summary) { cursor:pointer; }
+
+/* Keep receipt, custody, and replacement records visually distinct in Activity. */
+.inventory-return-page .ir-record-groups { display:grid; gap:12px; min-width:0; }
+.inventory-return-page .ir-record-intro { display:flex; align-items:flex-start; gap:9px; margin:0; padding:11px 13px; border:1px solid var(--ir-line); border-left:3px solid var(--ir-accent); border-radius:8px; color:var(--ir-muted); background:var(--ir-paper); font-size:.8125rem; line-height:1.55; }
+.ir-record-intro svg { flex:none; width:16px; height:16px; margin-top:1px; color:var(--ir-accent); }
+.inventory-return-page .ir-record-group { display:grid; gap:12px; min-width:0; padding:14px 16px; border:1px solid var(--ir-line); border-radius:9px; background:var(--ir-paper); }
+.inventory-return-page .ir-record-group-head { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
+.ir-record-group-head>div { display:grid; gap:3px; min-width:0; }
+.ir-record-kicker { color:var(--ir-accent); font-size:.6875rem; font-weight:650; letter-spacing:.06em; text-transform:uppercase; }
+.portal-body .inventory-return-page .ir-record-group-head h4 { margin:0; font-size:1rem; line-height:1.4; }
+.ir-record-count { flex:none; padding:4px 8px; border:1px solid var(--ir-line); border-radius:999px; color:var(--ir-muted); background:var(--ir-wash); font-size:.75rem; line-height:1.4; }
+.ir-record-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:0; }
+.ir-record-facts>div { display:grid; gap:4px; min-width:0; padding:10px 12px; border:1px solid var(--ir-line); border-radius:8px; background:var(--ir-wash); }
+.ir-record-facts dt,.ir-record-primary small,.ir-record-quantities small,.ir-record-quantity small,.ir-record-release small,.ir-receipt-card header small,.ir-record-history li small { color:var(--ir-muted); font-size:.75rem; line-height:1.5; }
+.ir-record-facts dd { display:grid; gap:2px; margin:0; font-size:.875rem; line-height:1.5; overflow-wrap:anywhere; }
+.ir-record-facts dd span { color:var(--ir-muted); font-size:.75rem; }
+.ir-record-note { margin:0; padding:9px 11px; border-left:2px solid var(--ir-line); color:var(--ir-muted); background:var(--ir-wash); font-size:.75rem; line-height:1.5; overflow-wrap:anywhere; }
+.ir-record-alert { padding:10px 12px; border:1px solid color-mix(in srgb,var(--error) 25%,var(--ir-line)); border-radius:7px; color:var(--error); background:color-mix(in srgb,var(--error) 6%,var(--ir-paper)); font-size:.75rem; }
+.ir-record-alert ul { margin:6px 0 0; padding-left:18px; }
+.ir-record-list { display:grid; gap:8px; min-width:0; container-type:inline-size; }
+.ir-record-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(150px,.8fr); align-items:center; gap:14px; min-width:0; padding:11px 12px; border:1px solid var(--ir-line); border-radius:8px; background:var(--ir-wash); }
+.ir-record-primary { display:grid; gap:4px; min-width:0; }
+.ir-record-primary strong { font-size:.875rem; line-height:1.45; overflow-wrap:anywhere; }
+.ir-record-primary small { min-width:0; overflow-wrap:break-word; word-break:normal; }
+.ir-record-release { display:grid; justify-items:end; gap:3px; min-width:0; text-align:right; }
+.ir-record-release small { overflow-wrap:break-word; word-break:normal; }
+.ir-record-quantities { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.ir-record-quantities>span { display:grid; justify-items:end; gap:2px; min-width:62px; padding:6px 8px; border-radius:6px; background:var(--ir-wash); }
+.ir-record-quantities strong,.ir-record-quantity strong { font-size:.875rem; font-variant-numeric:tabular-nums; }
+.ir-record-quantities small { font-size:.75rem; }
+.ir-record-quantity { display:grid; justify-items:end; gap:2px; text-align:right; }
+.ir-record-empty { margin:0; padding:12px; border:1px dashed var(--ir-line); border-radius:8px; color:var(--ir-muted); background:var(--ir-wash); font-size:.75rem; }
+.ir-receipt-card { display:grid; gap:10px; min-width:0; padding:12px; border:1px solid var(--ir-line); border-radius:8px; background:var(--ir-wash); }
+.ir-receipt-card>header { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
+.ir-receipt-card>header>div { display:grid; gap:3px; min-width:0; }
+.ir-receipt-card>header>div>strong { font-size:.875rem; }
+.ir-receipt-lines,.ir-record-history ul { display:grid; gap:8px; margin:0; padding:0; list-style:none; }
+.ir-receipt-lines>li { display:grid; gap:8px; padding:10px; border:1px solid var(--ir-line); border-radius:7px; background:var(--ir-paper); }
+.ir-receipt-status { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; font-size:.75rem; color:var(--ir-muted); }
+.ir-receipt-status strong { color:var(--ir-ink); font-variant-numeric:tabular-nums; }
+.ir-receipt-status a { margin-left:auto; color:var(--ir-accent); font-size:.75rem; font-weight:600; text-decoration:none; }
+.ir-receipt-status a:hover { text-decoration:underline; }
+.ir-record-history { min-width:0; padding:0 14px; border:1px solid var(--ir-line); border-radius:9px; background:var(--ir-paper); }
+.ir-record-history>summary { display:flex; align-items:center; gap:10px; min-height:44px; list-style:none; font-size:.875rem; font-weight:600; }
+.ir-record-history>summary::-webkit-details-marker { display:none; }
+.ir-record-history>summary small { margin-left:auto; color:var(--ir-muted); font-size:.75rem; font-weight:400; }
+.ir-record-history>summary svg { width:14px; height:14px; color:var(--ir-muted); }
+.ir-record-history[open]>summary { border-bottom:1px solid var(--ir-line); }
+.ir-record-history[open]>summary svg { transform:rotate(180deg); }
+.ir-record-history ul { padding:10px 0; }
+.ir-record-history li { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; padding:10px; border:1px solid var(--ir-line); border-radius:7px; background:var(--ir-wash); }
+.ir-record-history li>div { display:grid; gap:3px; min-width:0; }
+.ir-record-history li strong { font-size:.8125rem; }
+.ir-record-history li>span { color:var(--ir-muted); font-size:.75rem; text-align:right; }
+.ir-record-history li>p { grid-column:1/-1; margin:0; color:var(--ir-muted); font-size:.75rem; line-height:1.5; overflow-wrap:anywhere; }
+.ir-replacement-groups>.ir-record-group { border-left:3px solid color-mix(in srgb,var(--ir-accent) 55%,var(--ir-line)); }
+@media(max-width:600px) {
+  .inventory-return-page .ir-record-group { padding:12px; }
+  .ir-record-facts { grid-template-columns:minmax(0,1fr); }
+  .ir-record-row { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .ir-record-release { justify-items:start; text-align:left; }
+  .ir-record-quantities { justify-content:flex-start; }
+  .ir-record-quantities>span { justify-items:start; min-width:0; flex:1; }
+  .ir-record-quantity { justify-items:start; text-align:left; }
+  .ir-receipt-card>header { align-items:flex-start; flex-direction:column; }
+  .ir-receipt-status { align-items:flex-start; }
+  .ir-receipt-status a { margin-left:0; }
+  .ir-record-history li { grid-template-columns:minmax(0,1fr); }
+  .ir-record-history li>span { text-align:left; }
+}
+@container (max-width:520px) {
+  .ir-record-row { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .ir-record-release { justify-items:start; text-align:left; }
+}

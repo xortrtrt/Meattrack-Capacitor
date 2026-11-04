@@ -2,6 +2,31 @@
     const root = document.querySelector("[data-sales-reseller-messages]");
     if (!root) return;
 
+    const categoryTabs = [...root.querySelectorAll("[data-sales-category-tab]")];
+    const categoryPanels = [...root.querySelectorAll("[data-sales-category-panel]")];
+    function selectCategory(category, focus = false) {
+        categoryTabs.forEach((tab) => {
+            const selected = tab.dataset.salesCategoryTab === category;
+            tab.setAttribute("aria-selected", String(selected));
+            tab.tabIndex = selected ? 0 : -1;
+            if (selected && focus) tab.focus();
+        });
+        categoryPanels.forEach((panel) => {
+            panel.hidden = panel.dataset.salesCategoryPanel !== category;
+        });
+    }
+    categoryTabs.forEach((tab, index) => {
+        tab.addEventListener("click", () => selectCategory(tab.dataset.salesCategoryTab));
+        tab.addEventListener("keydown", (event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? 0 : event.key === "End" ? categoryTabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : categoryTabs.length - 1)) % categoryTabs.length;
+            selectCategory(categoryTabs[next].dataset.salesCategoryTab, true);
+        });
+    });
+    const initialCategory = new URLSearchParams(location.search).has("replacement") && categoryPanels.some((panel) => panel.dataset.salesCategoryPanel === "replacements") ? "replacements" : "direct";
+    selectCategory(initialCategory);
+
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
     const list = root.querySelector("[data-sales-message-list]");
     const refreshButton = root.querySelector("[data-sales-messages-refresh]");

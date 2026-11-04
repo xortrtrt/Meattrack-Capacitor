@@ -1,7 +1,3 @@
-{% if replacement_chat|default(none) %}
-{% include 'portals/_replacement_conversation.html' %}
-{% else %}
-{% include 'portals/_replacement_conversation_links.html' %}
 <section class="sales-reseller-messenger" data-sales-reseller-messages>
   <header class="reseller-inbox-hero sales-message-hero">
     <div>
@@ -15,6 +11,16 @@
     </div>
   </header>
 
+  {% if role_key == 'sales-supervisor' %}<nav class="sales-message-categories" aria-label="Conversation categories" role="tablist">
+    <button type="button" role="tab" id="sales-category-direct-tab" aria-controls="sales-category-direct" aria-selected="{{ 'false' if replacement_chat|default(none) else 'true' }}" tabindex="{{ '-1' if replacement_chat|default(none) else '0' }}" data-sales-category-tab="direct">
+      <i data-lucide="messages-square" aria-hidden="true"></i><span>Reseller messages</span><b>{{ reseller_message_threads|length }}</b>
+    </button>
+    <button type="button" role="tab" id="sales-category-replacements-tab" aria-controls="sales-category-replacements" aria-selected="{{ 'true' if replacement_chat|default(none) else 'false' }}" tabindex="{{ '0' if replacement_chat|default(none) else '-1' }}" data-sales-category-tab="replacements">
+      <i data-lucide="package-check" aria-hidden="true"></i><span>Replacement conversations</span><b>{{ replacement_threads|default([])|length }}</b>
+    </button>
+  </nav>{% endif %}
+
+  <div id="sales-category-direct" class="sales-category-panel" {% if role_key == 'sales-supervisor' %}role="tabpanel" aria-labelledby="sales-category-direct-tab" data-sales-category-panel="direct"{% endif %} {% if role_key == 'sales-supervisor' and replacement_chat|default(none) %}hidden{% endif %}>
   <div class="sales-message-layout">
     <aside class="sales-message-rail" aria-label="Reseller conversations">
       <header>
@@ -85,6 +91,14 @@
       </div>
     </section>
   </div>
-</section>
+  </div>
 
-{% endif %}
+  {% if role_key == 'sales-supervisor' %}<div id="sales-category-replacements" class="sales-category-panel" role="tabpanel" aria-labelledby="sales-category-replacements-tab" data-sales-category-panel="replacements" {% if not replacement_chat|default(none) %}hidden{% endif %}>
+    {% if replacement_chat|default(none) %}
+      {% set unified_messages_page = true %}
+      {% include 'portals/_replacement_conversation.html' %}
+    {% else %}
+      {% include 'portals/_replacement_conversation_links.html' %}
+    {% endif %}
+  </div>{% endif %}
+</section>

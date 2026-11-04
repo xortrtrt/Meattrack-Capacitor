@@ -1,7 +1,7 @@
 {% from 'portals/_replacement_thread_rows.html' import participant_avatar with context %}
 {% set other_name = replacement_chat.processor_name if role_key == 'reseller' else replacement_chat.reseller_name %}
 <section class="sales-reseller-messenger replacement-conversation" data-replacement-conversation data-role="{{ role_key }}" data-return-id="{{ replacement_chat.return_id }}" data-actor="{{ replacement_chat_actor }}" aria-label="Replacement conversation">
-  <header class="replacement-workspace-heading">
+  <header class="replacement-workspace-heading" {% if unified_messages_page|default(false) %}hidden{% endif %}>
     <div><span class="eyebrow">Messages</span><h2>Replacement conversations</h2><p>Keep your return, replacement, and delivery updates together.</p></div>
     <a class="button subtle" href="/portal/{{ role_key }}/{{ 'inbox' if role_key == 'reseller' else 'messages' }}"><i data-lucide="arrow-left" aria-hidden="true"></i>Back to messages</a>
   </header>

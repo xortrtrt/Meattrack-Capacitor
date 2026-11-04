@@ -80,11 +80,11 @@ section.refund-actions { padding: 0 1.4rem 1.4rem; }
 .refund-complete-form header { display: flex; justify-content: space-between; align-items: center; }
 .refund-complete-form h4 { margin: .15rem 0 0; font-size: 1.2rem; }
 .refund-complete-form header > span { font-size: 1.15rem; font-weight: 850; color: #286848; }
-.refund-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem .75rem; }
+.refund-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 1rem; }
 .refund-complete-form label, .refund-fail-form label { display: grid; gap: .3rem; font-size: .78rem; font-weight: 750; }
 .refund-complete-form label small { font-weight: 500; color: #738077; }
-.refund-complete-form input, .refund-complete-form textarea, .refund-fail-form textarea { width: 100%; }
-.refund-complete-form input:not([type="file"]), .refund-complete-form textarea, .refund-fail-form textarea { min-height: 2.75rem; padding: .65rem .75rem; border: 1px solid #cbd2c9; border-radius: .55rem; background: #fff; color: #24362d; }
+.refund-complete-form input:not([type="checkbox"]), .refund-complete-form textarea, .refund-fail-form textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.refund-complete-form input:not([type="file"], [type="checkbox"]), .refund-complete-form textarea, .refund-fail-form textarea { min-height: 2.75rem; padding: .65rem .75rem; border: 1px solid #cbd2c9; border-radius: .55rem; background: #fff; color: #24362d; }
 .refund-complete-form textarea, .refund-fail-form textarea { min-height: 5.5rem; resize: vertical; }
 .refund-complete-form input[type="file"] { min-height: 2.75rem; padding: .35rem; border: 1px solid #cbd2c9; border-radius: .55rem; background: #fff; }
 .refund-complete-form input:focus, .refund-complete-form textarea:focus, .refund-fail-form textarea:focus { outline: 3px solid rgba(66,111,80,.18); border-color: #426f50; }
@@ -381,3 +381,55 @@ section.refund-conversation-pane { margin: 1.3rem 1.4rem 1.5rem; }
 .role-owner .refund-status-summary { color: var(--text); }
 .role-owner .refund-workspace :is(h3, h4) { color: var(--text); }
 @media (max-width: 680px) { .role-owner .refund-workspace :is(input, select, textarea) { font-size: 1rem; } }
+
+/* Receipt corrections share the transfer form; long native controls must shrink. */
+.refund-form-grid > label { min-width: 0; align-content: start; }
+.refund-form-grid .refund-proof-field {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: .4rem .75rem;
+  min-width: 0;
+}
+.refund-proof-field > label { grid-column: 1 / -1; }
+.refund-proof-field > input[type="file"] { min-width: 0; }
+.refund-proof-actions { display: grid; justify-items: start; gap: .35rem; min-width: 0; }
+.refund-complete-form .refund-receipt-confirmation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: .75rem;
+  width: 100%;
+  max-width: 58rem;
+  min-height: 44px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.refund-workspace .refund-complete-form input[type="checkbox"] {
+  appearance: auto;
+  display: block;
+  place-self: start;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: .2rem 0 0;
+  padding: 0;
+  accent-color: var(--refund-gold-deep);
+}
+.refund-complete-form [data-refund-scan-status] { min-height: 1.5em; margin: 0; overflow-wrap: anywhere; }
+.refund-complete-form > label:not(.refund-receipt-confirmation) { min-width: 0; }
+.refund-complete-form > label:not(.refund-receipt-confirmation) textarea { width: 100%; }
+.refund-complete-form textarea, .refund-fail-form textarea { resize: none; }
+.refund-thread, .refund-transfer-workspace, .refund-transfer-head > div { min-width: 0; }
+@media (max-width: 760px) {
+  .refund-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .refund-form-grid .refund-proof-field { grid-template-columns: minmax(0, 1fr); }
+  .refund-proof-field > label { grid-column: 1; }
+  .refund-proof-actions { width: 100%; }
+  .refund-transfer-workspace .refund-complete-form { gap: 1.25rem; }
+  .refund-workspace .refund-complete-form :is(input, textarea) { font-size: 1rem; }
+  .refund-complete-form > button, .refund-fail-form > button { width: 100%; justify-content: center; white-space: normal; min-height: 44px; }
+  .refund-case-copy > span { flex-wrap: wrap; }
+  .refund-thread-head, .refund-facts { padding: 1rem; }
+}

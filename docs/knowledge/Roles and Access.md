@@ -152,14 +152,14 @@ against `app/capabilities.py`, `app/portal_config.py`, and
 [[Orders and Inventory]].
 
 
-Inventory tools (2026-11-01) is an Inventory navigation destination guarded by
-`inventory.view`; writes additionally require `inventory.manage` and an active
-Inventory actor. Stock write repositories also validate the actor. Sales,
-Supervisor, and Reseller do not gain adjustment, package-dispatch, batch-removal,
-or photo-upload permissions. Product images are public catalog media; private
-return/payment media access is unchanged. Sources: `app/capabilities.py`,
-`app/portals/inventory_tools.py`, `app/repositories/inventory/tools.py`.
-See [[Orders and Inventory]].
+Inventory tools was removed on 2026-11-04, including its manual raw-material
+adjustment/removal, package component setup/dispatch, and batch archival actions.
+Its navigation, page loader, and write endpoints are gone; historical stock and
+audit records remain. Product photo updates use the Inventory Product Details
+route, and public catalog photo delivery remains available. Sources:
+`app/portal_config.py`, `app/capabilities.py`, `app/portals/team_leader.py`,
+`app/portals/product_media.py`, and `app/repositories/inventory/products.py`.
+See [[Orders and Inventory]] and [[Decisions]].
 
 ## Verify email before choosing a new password (2026-11-03)
 

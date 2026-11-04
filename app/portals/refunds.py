@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app import repositories as data
 from app import receipt_ocr, conversation_notifications
-from app.business_time import BUSINESS_ZONE
+from app.business_time import BUSINESS_ZONE, business_now
 from app.database import fetch_one
 from app.capabilities import require_capability
 from app.portals import shared
@@ -113,6 +113,8 @@ def refunds_context(request: Request) -> dict:
         "refund_pane": pane,
         "refund_viewer_account_id": account_id,
         "refund_read_only": read_only,
+        "refund_transfer_min": (business_now() - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M"),
+        "refund_transfer_max": business_now().strftime("%Y-%m-%dT%H:%M"),
         "operation_key": lambda: str(uuid4()),
         "refund_totals": data.refund_financial_summary(role_key,account_id),
     }

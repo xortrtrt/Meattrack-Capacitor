@@ -86,7 +86,7 @@
         data-product-name="{{ product.name }}"
         data-product-category="{{ product.category }}"
         data-product-price="{{ product.base_price }}"
-        data-product-unit="{{ product.unit }}"
+        data-product-unit="{{ 'package' if product.category == 'Package' else product.unit }}"
         data-product-stock="{{ product.available }}"
         data-product-description="{{ product.description or 'No description available yet.' }}"
         data-product-image="{{ product.name|product_photo_url }}"
@@ -109,10 +109,10 @@
               >{{ product.category }}</span
             >
             <strong>{{ product.name }}</strong>
-            <span class="reseller-catalog-price">{{ product.base_price|currency }} <span>/ {{ product.unit }}</span></span>
+            <span class="reseller-catalog-price">{{ product.base_price|currency }} <span>/ {{ 'package' if product.category == 'Package' else product.unit }}</span></span>
             <span class="reseller-catalog-stock {{ 'is-unavailable' if product.available|float < 1 else '' }}">
               <i data-lucide="{{ 'circle-x' if product.available|float < 1 else 'circle-check' }}" aria-hidden="true"></i>
-              {% if product.available|float < 1 %}Out of stock · {% endif %}{{ product.available|number }} {{ 'packs' if product.unit == 'pack' and product.available|float != 1 else product.unit }}{% if product.available|float >= 1 %} available{% endif %}
+              {% if product.available|float < 1 %}Out of stock · {% endif %}{{ product.available|number }} {{ 'packages' if product.category == 'Package' else 'packs' if product.unit == 'pack' and product.available|float != 1 else product.unit }}{% if product.available|float >= 1 %} available{% endif %}
             </span>
             <span class="reseller-catalog-details">View details <i data-lucide="arrow-up-right" aria-hidden="true"></i></span>
           </span>
@@ -214,7 +214,7 @@
           <p id="reseller-catalog-dialog-description" data-product-modal-description></p>
           <div class="reseller-product-modal-meta">
             <span>
-              <small>Current stock (not reserved)</small>
+              <small data-product-modal-stock-label>Current stock (not reserved)</small>
               <strong data-product-modal-stock></strong>
             </span>
             <span>

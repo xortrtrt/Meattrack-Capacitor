@@ -157,7 +157,7 @@
       </section>
       {% endif %}
       {% elif refund_pane == 'conversation' %}
-      <section class="refund-conversation refund-conversation-pane" id="refund-conversation-{{ selected_refund.order_refund_id }}" aria-labelledby="refund-conversation-title" data-refund-conversation data-refund-id="{{ selected_refund.order_refund_id }}" data-refund-role="{{ role_key }}">
+      <section class="refund-conversation refund-conversation-pane" id="refund-conversation-{{ selected_refund.order_refund_id }}" aria-labelledby="refund-conversation-title" data-refund-conversation data-refund-id="{{ selected_refund.order_refund_id }}" data-refund-role="{{ role_key }}" data-refund-status="{{ selected_refund.status }}">
         <header>
           <div><span class="eyebrow">Refund conversation</span><h4 id="refund-conversation-title">Confirm where to send the refund</h4></div>
           <span class="refund-conversation-privacy"><i data-lucide="lock-keyhole"></i> Order participants only</span>
@@ -174,15 +174,13 @@
           <div class="refund-message-empty"><i data-lucide="messages-square"></i><p>No messages yet. Ask the reseller to confirm their preferred refund destination.</p></div>
           {% endfor %}
         </div>
-        {% if selected_refund.status != 'completed' and (role_key == 'owner' or selected_refund.assigned_supervisor_account_id == refund_viewer_account_id) %}
+        {% if role_key == 'owner' or selected_refund.assigned_supervisor_account_id == refund_viewer_account_id %}
         <form class="refund-message-composer" action="/portal/{{ role_key }}/refunds/{{ selected_refund.order_refund_id }}/messages" method="post" data-refund-message-form data-async-form>
           <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><input type="hidden" name="operation_key" value="{{ operation_key() }}">
           <label for="refund-message">Message to reseller</label>
           <div><textarea id="refund-message" name="message" maxlength="1000" rows="3" placeholder="Example: Please confirm your GCash account name and mobile number for this refund." required></textarea><button class="button primary" type="submit"><i data-lucide="send"></i> Send</button></div>
           <p class="refund-message-status" data-refund-message-status aria-live="polite"></p>
         </form>
-        {% elif selected_refund.status == 'completed' %}
-        <p class="refund-conversation-closed" data-conversation-closed><i data-lucide="circle-check-big"></i> Refund completed · Conversation closed</p>
         {% else %}
         <p class="refund-conversation-closed"><i data-lucide="user-round-check"></i> Claim this case before messaging the reseller.</p>
         {% endif %}
@@ -201,13 +199,17 @@
             <input type="hidden" name="receipt_scan_token">
             <label>Refund method<input name="refund_method" minlength="2" maxlength="100" placeholder="e.g. GCash, bank transfer" required></label>
             <label>Transaction reference<input name="transaction_reference" data-refund-extracted maxlength="100" autocomplete="off" required></label>
-            <label>Transfer date and time<input name="transferred_at" data-refund-extracted type="datetime-local" required></label>
+            <label>Transfer date and time<input name="transferred_at" data-refund-extracted type="datetime-local" min="{{ refund_transfer_min }}" max="{{ refund_transfer_max }}" required></label>
             <label>Amount transferred <small>Must equal {{ selected_refund.amount|currency }}</small><input name="transfer_amount" data-refund-extracted type="number" min="0.01" step="0.01" required></label>
-            <label>Refund screenshot <small>Required · JPG, PNG, WebP · max 5 MB</small><input required name="proof" type="file" accept="image/jpeg,image/png,image/webp"></label>
+            <div class="refund-proof-field">
+              <label for="refund-proof-{{ selected_refund.order_refund_id }}">Refund screenshot <small>Required · JPG, PNG, WebP · max 5 MB. Details are read automatically.</small></label>
+              <input id="refund-proof-{{ selected_refund.order_refund_id }}" required name="proof" type="file" accept="image/jpeg,image/png,image/webp">
+              <div class="refund-proof-actions">
+                <p class="hint" data-refund-scan-status role="status"></p>
+              </div>
+            </div>
           </div>
-          <button class="button subtle" type="button" data-refund-scan>Read refund receipt</button>
-          <p class="hint" data-refund-scan-status role="status">Choose a screenshot to read its details, then check them against the receipt.</p>
-          <label><input type="checkbox" name="payment_details_confirmed" value="yes" required> I checked the reference, date, time, and amount against the transfer receipt.</label>
+          <label class="refund-receipt-confirmation"><input type="checkbox" name="payment_details_confirmed" value="yes" required><span>I checked the reference, date, time, and amount against the transfer receipt. I corrected any reading errors.</span></label>
           <label>Settlement remarks <small>Required; visible to refund processors</small><textarea required minlength="5" name="internal_note" maxlength="1000" rows="3"></textarea></label>
           <button class="button primary" type="submit"><i data-lucide="badge-check"></i> Confirm refund completed</button>
         </form>

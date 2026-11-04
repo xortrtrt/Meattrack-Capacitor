@@ -18,7 +18,7 @@ from app.portals import product_returns as returns_portal
 from app.portals import reseller as reseller_portal
 from app.portals import shared as shared_portal
 from app.portals import password_change
-from app.portals import inventory_tools
+from app.portals import product_media
 from app.portals import team_leader as team_leader_portal
 from app.portals import activity_reports as activity_reports_portal
 from app.routers import auth, chatbot, live_chat, public, system, reseller_registration
@@ -147,7 +147,6 @@ def create_app() -> FastAPI:
         {
             **owner_portal.SECTION_LOADERS,
             **team_leader_portal.SECTION_LOADERS,
-            **inventory_tools.SECTION_LOADERS,
             **reseller_portal.SECTION_LOADERS,
             **refunds_portal.SECTION_LOADERS,
             **returns_portal.SECTION_LOADERS,
@@ -163,7 +162,7 @@ def create_app() -> FastAPI:
     for portal_router in (
         owner_portal.router,
         team_leader_portal.router,
-        inventory_tools.router,
+        product_media.router,
         reseller_portal.router,
         refunds_portal.router,
         returns_portal.router,

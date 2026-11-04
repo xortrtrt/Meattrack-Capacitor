@@ -617,14 +617,11 @@ checks passed. No production deployment was performed. See [[Owner Portal]] and
 [[Orders and Inventory]]. Source: `tests/test_inventory_alert_workspace.py`.
 
 
-Inventory tools coverage (2026-11-01): `tests/test_inventory_tools.py` verifies
-concurrent deductions/dispatch, precision, replay identity, reservation protection,
-expiry boundaries, immutable standards, multi-component rollback, batch archival,
-photo validation/storage, role guards, and baseline-to-upgrade stock preservation.
-`tests/test_inventory_tools_browser.py` uses real templates/JavaScript and an
-isolated PostgreSQL schema to exercise desktop/mobile deductions, standard package
-setup/dispatch, photo preview/upload, and batch removal. Screenshots and run logs
-are under ignored `outputs/inventory-tools/`. See [[Orders and Inventory]].
+Inventory tools coverage (2026-11-01, historical): tests covered its stock tools,
+package dispatch, batch archival, and product photo handling. On 2026-11-04 the
+page and stock-tool actions were retired; these files now retain product-photo
+validation, storage, catalog delivery, and photo-form checks only. The removal
+change was not tested in this session. See [[Orders and Inventory]] and [[Decisions]].
 
 Validation in this session: 558 non-PostgreSQL/non-e2e unit tests passed; the new
 stock-tool tests and desktop/mobile browser flow passed. Existing stock/alert
@@ -826,3 +823,78 @@ the stored case. Exact refund amounts, idempotent completion, cleared holds and
 component-aware reconciliation passed supplemental repository checks. This review
 changed documentation only; the full regression was not rerun. Screenshots and
 checks are under ignored `outputs/live-simulation/`.
+
+
+## Inventory manual stock actions (2026-11-04)
+
+Three new isolated PostgreSQL checks in `tests/test_inventory_manual_stock.py`
+passed for opening stock, duplicate replay, raw deduction rollback, Owner
+rejection, paid reservation protection, retained material quantities and batch
+removal history. The new browser check in
+`tests/test_inventory_manual_stock_browser.py` passed at 1440/390 pixels for the
+three modal triggers, invalid inputs, Escape/focus restoration, opening-balance
+save, failed-dispatch draft recovery, removed-material navigation, and cancelled
+then confirmed batch removal. Browser requests use the in-process TestClient
+bridge; redirects are followed in that bridge, with an explicit GET for retry
+modal URL restoration. This is not deployed-server verification.
+
+Existing photo/measurement checks passed (27), existing photo browser passed (1),
+and inventory log balance check passed (1). The configured replacement-workflow
+run passed 23 and failed the six already documented fixed-selection conversion
+fixtures; broader Inventory/Sales separation checks also found two existing
+returns markup/selector mismatches. These were not changed by this stock task.
+Focused Ruff, JavaScript syntax and whitespace checks passed. Full Ruff/type
+checks still report issues in unrelated existing files; the strict UI audit
+reports 305 findings including false actionless-button reports on the existing
+inventory modal attributes. No globally clean-suite claim is made. Phone
+screenshots under ignored `outputs/manual-stock-*.png` were inspected. No business
+stock records were written by these tests. See [[Orders and Inventory]].
+
+
+## Product recipe editor (2026-11-04)
+
+25 focused checks passed across `tests/test_inventory_recipe_editor.py`,
+`tests/test_inventory_recipe_editor_browser.py`, and
+`tests/test_inventory_measurements.py`. PostgreSQL checks use disposable schemas
+and cover unit conversion, atomic rollback, duplicate ingredients, Owner rejection
+and future-production consumption. The browser check covers field errors,
+Add/Remove, save/persistence and layout at 1440/390 pixels through the TestClient
+bridge. Screenshots in ignored `outputs/recipe-editor-*.png` were inspected.
+Focused Ruff and JavaScript syntax checks passed. This is focused local verification;
+known unrelated repository-wide failures remain recorded above. No deployed or
+business-stock mutations were performed. See [[Orders and Inventory]].
+
+
+## Component packages (2026-11-04)
+
+Four new PostgreSQL/browser checks passed in `tests/test_component_packages.py`
+and `tests/test_component_packages_browser.py`. They verify fixed 16/70/400-pack
+contents, audited clearing of standalone balances, component-derived availability,
+expired-component exclusion, blocked standalone intake, mixed-cart shortage
+rollback, exact package order totals, paid component reservations, fulfillment,
+returnable component credit and a rolled-back transaction maintenance rehearsal.
+The browser check exercises separate Inventory packages/details and reseller
+package details/cart at 1440/390 pixels. Package definition aliases and proportional
+pricing were explicitly confirmed by the user. Screenshots under ignored
+`outputs/component-package-*.png` were inspected.
+
+The existing inventory PostgreSQL/manual-stock/recipe suite passed 35 checks,
+including replay of every migration against the current baseline. The replacement
+policy run passed 20 checks including the four package checks (overlap must not
+be added). Portal context finished at 115 passed and four unrelated existing
+refund/inbox/OTP/cache-version expectation failures; affected Inventory/filter
+expectations were updated and all eight focused context checks passed. Targeted
+Ruff, JavaScript syntax and whitespace checks passed. Mypy retains four pre-existing
+errors in `app/routers/auth.py`; the static UI audit retains 306 findings. This
+is not a globally clean-suite claim.
+
+Migration 054 and the requested catalog conversion were applied locally. The
+conversion report in ignored `outputs/component-packages-conversion.json` confirms
+component batch balances unchanged and standalone package balances zero. No real
+reseller order/payment was created by the checks; workflow writes used disposable
+schemas. The real local app health endpoint returned 200. Production was not
+changed. See [[Orders and Inventory]] and [[Database and Operations]].
+
+Package legacy protection recheck: all three backend checks passed after adding
+coverage for historical package credit and refusal to reserve standalone package
+stock. This does not increase the distinct test count above.

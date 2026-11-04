@@ -117,7 +117,7 @@
               data-product-category="{{ product.category }}"
               data-product-price="{{ product.base_price|currency }}"
               data-product-image="{{ product.name|product_photo_url }}"
-              data-product-pack="{% if product.pack_size and product.pack_size_unit %}{{ product.pack_size|number }} {{ product.pack_size_unit }} per pack{% else %}Frozen retail pack{% endif %}"
+              data-product-pack="{% if product.category == 'Package' %}Assorted product package{% elif product.pack_size and product.pack_size_unit %}{{ product.pack_size|number }} {{ product.pack_size_unit }} per pack{% else %}Frozen retail pack{% endif %}"
             >
               <button
                 class="landing-product-media"

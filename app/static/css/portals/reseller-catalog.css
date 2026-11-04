@@ -362,3 +362,5 @@
   .role-reseller .reseller-product-card-button,
   .role-reseller .reseller-product-card { transition: none; }
 }
+
+.reseller-order-page [data-product-modal-description] { white-space: pre-line; }

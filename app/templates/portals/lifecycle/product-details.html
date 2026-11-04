@@ -1,3 +1,6 @@
+{% if lifecycle_product.category == 'Package' %}
+{% include 'portals/lifecycle/_package_details.html' %}
+{% else %}
 {% from 'portals/lifecycle/_components.html' import metric, section_heading, empty_state, pagination_controls %}
 {% set product = lifecycle_product %}
 <section class="panel lifecycle-workspace lifecycle-product-page">
@@ -18,10 +21,9 @@
       {{ metric('Reserved',product.reserved,'lock-keyhole') }}
       {{ metric('Near expiry',product.near_expiry,'calendar-clock',tone='warning') }}
     </div>
-    <div class="lifecycle-stock-footnote"><span><i data-lucide="circle-check" aria-hidden="true"></i><strong>{{ product.eligible|number }}</strong> eligible stock</span><span><i data-lucide="circle-alert" aria-hidden="true"></i><strong>{{ product.expired|number }}</strong> expired in warehouse</span><span><i data-lucide="archive" aria-hidden="true"></i><strong>{{ product.holding|number }}</strong> expired holding</span></div>
   </section>
   <section class="lifecycle-surface lifecycle-batches-surface" id="product-batches">
-    {{ section_heading('layers','Batches and expiration','Track each receipt, its remaining stock, and its expiration date.',product.batch_pagination.total) }}
+    {{ section_heading('layers','Batches and expiration','Track each product batch, its remaining stock, and expiration date.',product.batch_pagination.total) }}
     <div class="lifecycle-batch-list">
     {% for batch in product.batches %}
       {% set batch_state = 'removed' if batch.removed_at else 'expired' if batch.days_left<=0 else ('near_expiry' if batch.days_left<=product.near_expiry_days else batch.quality_status) %}
@@ -29,18 +31,16 @@
         <div class="lifecycle-batch-top"><div><span class="lifecycle-mini-label">Batch reference</span><strong>{{ batch.batch_code }}</strong></div><span class="status-badge lifecycle-status" data-state="{{ batch_state }}">{{ 'Removed' if batch.removed_at else 'Expired' if batch.days_left<=0 else ('Expires in ' ~ batch.days_left ~ ' days' if batch.days_left<=product.near_expiry_days else batch.quality_status|title) }}</span></div>
         <div class="lifecycle-batch-body">
           <div class="lifecycle-date-track"><div><i data-lucide="package-plus" aria-hidden="true"></i><span><small>Received</small><time datetime="{{ batch.received_date.isoformat() }}">{{ batch.received_date|nice_date }}</time></span></div><span class="lifecycle-date-line" aria-hidden="true"></span><div><i data-lucide="calendar-clock" aria-hidden="true"></i><span><small>Expiration</small><time datetime="{{ batch.expiry_date.isoformat() }}">{{ batch.expiry_date|nice_date }}</time></span></div></div>
-          <div class="lifecycle-batch-stock"><strong>{{ batch.quantity_available|number }} <small>/ {{ batch.quantity_received|number }} packs</small></strong><progress value="{{ batch.quantity_available }}" max="{{ batch.quantity_received if batch.quantity_received else 1 }}" aria-label="Remaining stock for batch {{ batch.batch_code }}"></progress><small>{{ batch.replacement_reserved|number }} reserved for replacements</small></div>
+          <div class="lifecycle-batch-stock"><strong>{{ batch.quantity_available|number }} <small>/ {{ batch.quantity_received|number }} packs</small></strong><progress value="{{ batch.quantity_available }}" max="{{ batch.quantity_received if batch.quantity_received else 1 }}" aria-label="Remaining stock for batch {{ batch.batch_code }}"></progress><small>{{ "Opening Balance" if batch.is_opening_balance else "Production" if batch.source_type == "production" else "Direct receipt" }}{% if batch.replacement_reserved %} · {{ batch.replacement_reserved|number }} reserved for replacements{% endif %}</small></div>
         </div>
         {% if role_key=='team-leader' and request.session.get('team_leader_role')=='inventory' and not batch.removed_at %}
         {% if batch.days_left<=0 and batch.quantity_available>0 %}
         <a class="button secondary" href="/portal/team-leader/expired-stock?batch_id={{ batch.batch_id }}&amp;from_alerts=1#pullout-{{ batch.batch_id }}">Move expired stock to Pull-outs</a>
         {% else %}
-        <details class="inventory-tool-disclosure"><summary>Remove batch</summary>
-          <form method="post" action="/portal/team-leader/inventory-tools/remove-batch" class="form-panel bare">
-            <input type="hidden" name="reference" value="{{ new_reference() }}"><input type="hidden" name="product_id" value="{{ product.item_id }}"><input type="hidden" name="batch_id" value="{{ batch.batch_id }}"><input type="hidden" name="expected_quantity" value="{{ batch.quantity_available }}">
-            <p>This archives the batch and deducts its remaining {{ batch.quantity_available|number }} packs. Recipe ingredients are not restored. For expired stock, use Pull-outs.</p>
-            <label>Reason<input required name="reason" maxlength="500"></label>
-            <label><input type="checkbox" required name="confirmed" value="yes"> I confirm this batch removal.</label><button class="button secondary" type="submit">Remove batch</button>
+        <details class="lifecycle-box"><summary class="button danger lifecycle-remove-batch"><i data-lucide="trash-2" aria-hidden="true"></i>Remove batch</summary>
+          <form class="form-panel bare" action="/portal/team-leader/stock-actions/remove-batch" method="post" novalidate data-confirm="Remove batch {{ batch.batch_code }} and its {{ batch.quantity_available|number }} remaining packs? This preserves its audit history.">
+            <input type="hidden" name="product_id" value="{{ product.item_id }}"><input type="hidden" name="batch_id" value="{{ batch.batch_id }}"><input type="hidden" name="expected_quantity" value="{{ batch.quantity_available }}"><input type="hidden" name="reference" value="{{ new_reference() }}"><input type="hidden" name="confirmed" value="yes">
+            <label>Removal reason<textarea name="reason" required maxlength="500" style="resize: none"></textarea></label><button type="submit" class="button danger">Remove batch</button>
           </form>
         </details>
         {% endif %}
@@ -51,7 +51,7 @@
     {{ pagination_controls(product.batch_pagination,'batches') }}
   </section>
   <section class="lifecycle-surface" id="product-movements">
-    {{ section_heading('arrow-left-right','Warehouse movement history','Receipts, production, releases, and stock adjustments.',product.movement_pagination.total) }}
+    {{ section_heading('arrow-left-right','Warehouse movement history','Product arrivals, production, releases, and stock adjustments.',product.movement_pagination.total) }}
     <div class="lifecycle-movement-list">
     {% for movement in product.movements %}
       <article class="lifecycle-movement-row"><span class="lifecycle-movement-icon" data-direction="{{ 'out' if movement.quantity_delta<0 else 'in' }}"><i data-lucide="{{ 'arrow-up-right' if movement.quantity_delta<0 else 'arrow-down-left' }}" aria-hidden="true"></i></span><div class="lifecycle-movement-copy"><strong>{{ movement.movement_type.replace('_',' ')|title }}</strong><p>{{ movement.note or 'Warehouse balance updated.' }}</p><small>{{ movement.actor_name }} &middot; {{ movement.created_at|nice_date }}</small></div><div class="lifecycle-movement-amount"><strong>{{ '+' if movement.quantity_delta>0 else '' }}{{ movement.quantity_delta|number }} <small>{{ movement.unit }}</small></strong><span>{{ movement.balance_before|number }} &rarr; {{ movement.balance_after|number }}</span></div></article>
@@ -62,6 +62,8 @@
 </section>
 
 {% if role_key=='team-leader' and request.session.get('team_leader_role')=='inventory' %}
-<section class="panel"><h2>Product photo</h2><form method="post" action="/portal/team-leader/inventory-tools/photo" enctype="multipart/form-data" class="form-panel bare">
+<section class="panel product-photo-panel"><h2>Product photo</h2><form method="post" action="/portal/team-leader/products/{{ product.item_id }}/photo" enctype="multipart/form-data" class="form-panel bare product-photo-form">
 <input type="hidden" name="product_id" value="{{ product.item_id }}"><label>Add or change photo (JPG, PNG or WebP, up to 2 MB)<input type="file" required name="photo" accept="image/jpeg,image/png,image/webp" data-product-photo></label><button type="submit" class="button primary">Save photo</button></form></section>
+{% endif %}
+
 {% endif %}

@@ -2289,9 +2289,9 @@
   justify-items: center;
   gap: 16px;
   width: min(460px, 100%);
-  max-height: none;
+  max-height: calc(100dvh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   padding: 28px;
-  overflow: visible;
+  overflow-y: auto;
   border-color: rgba(215, 182, 33, 0.62);
   border-radius: 18px;
   background:
@@ -2381,6 +2381,33 @@
 .role-team-leader.leader-role-sales .order-action-modal-actions .button {
   width: 100%;
   justify-content: center;
+}
+
+.order-action-modal-card > *,
+.order-action-modal-card .order-payment-received {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.order-action-modal-card .order-payment-received input[type="radio"] {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+}
+
+@media (max-width: 620px), (max-height: 600px) {
+  .role-team-leader.leader-role-sales .order-action-modal-card {
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    padding: 20px 16px;
+    gap: 12px;
+    overscroll-behavior: contain;
+  }
+  .order-action-modal-card .order-payment-received label,
+  .order-action-modal-card .button { min-height: 44px; }
+  .role-team-leader.leader-role-sales .order-rejection-field textarea { font-size: 1rem; resize: none; }
+  .role-team-leader.leader-role-sales .order-action-modal-actions { grid-template-columns: minmax(0, 1fr); }
 }
 
 .role-team-leader.leader-role-sales .sales-review-surface tbody tr {
@@ -7092,3 +7119,24 @@
 .sales-returns-page .sales-return-table [data-state="discrepancy"] { color:var(--error); }
 .sales-returns-page .sales-return-table [data-state="submitted"],.sales-returns-page .sales-return-table [data-state="awaiting_receipt"],.sales-returns-page .sales-return-table [data-state="awaiting_inventory_verification"] { color:var(--warning); }
 .sales-returns-page .sales-return-table :is(a,button):focus-visible { outline:3px solid var(--gold-deep); outline-offset:2px; }
+
+/* Material status actions retain the stock-ledger layout on all screen sizes. */
+@media (min-width: 901px) {
+  .role-team-leader .material-row { grid-template-columns: 46px minmax(120px, 1fr) minmax(100px, .45fr) minmax(120px, .75fr) auto; }
+}
+@media (max-width: 900px) {
+  .role-team-leader .material-row > form { grid-column: 2 / -1; justify-self: end; }
+}
+
+.role-team-leader .inventory-task-card--stock { --task-accent: var(--inventory-green); }
+
+.role-team-leader .inventory-recipe-editor { margin: 0; padding: 20px 12px; }
+.role-team-leader .inventory-recipe-editor .ingredient-row { grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr) minmax(0, .8fr) 36px; }
+.role-team-leader .inventory-recipe-editor .ingredient-row > label { min-width: 0; }
+.role-team-leader .inventory-recipe-editor .ingredient-row .danger { background: var(--error); color: var(--white); }
+.role-team-leader .inventory-recipe-editor > button[type="submit"] { justify-self: end; }
+@media (max-width: 600px) {
+  .role-team-leader .inventory-recipe-editor .ingredient-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
+  .role-team-leader .inventory-recipe-editor .ingredient-row > label:first-child { grid-column: 1 / -1; }
+  .role-team-leader .inventory-recipe-editor .inventory-form-section-head { align-items: start; flex-direction: column; }
+}

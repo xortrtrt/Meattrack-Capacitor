@@ -310,3 +310,23 @@ before serving the updated templates/routes. The local Docker development databa
 was migrated in this session; no production migration/deployment was performed.
 Sources: `database/migrations/046_inventory_tools.sql`, `database/schema.sql`.
 See [[Orders and Inventory]] and [[Testing and Change Impact]].
+
+
+## Component packages (2026-11-04)
+
+Migration `054_component_packages.sql` was applied to the local development
+database. It adds component-aware catalog availability, immutable order-package
+snapshots, the order-item package link and a guard against standalone package
+batch intake. The baseline includes the same objects. The user-authorized local
+catalog conversion configured the three reference packages and archived their
+standalone balances with correction movements. Component batch balances were
+compared before/after and matched. Source: `tools/configure_component_packages.py`
+and `app/repositories/inventory/packages.py`.
+
+Other environments need migration 054 followed by explicit reference catalog
+configuration using an active Inventory audit actor; missing catalog names,
+active standalone package orders/holds and conflicting locked definitions stop
+configuration. The maintenance transaction manifest in `tools/transaction_reset.py`
+now includes `order_packages`; a disposable-schema rollback check covered it.
+No operational reset or production deployment was performed. See
+[[Orders and Inventory]], [[Decisions]], and [[Testing and Change Impact]].

@@ -142,9 +142,10 @@ def list_orders(
 
     order_ids = [order["order_id"] for order in orders]
     items = clean_row(fetch_all("""
-        SELECT oi.order_id, oi.product_id, p.name, oi.quantity, oi.unit_price, oi.line_total
+        SELECT oi.order_id, oi.product_id, p.name, oi.quantity, oi.unit_price, oi.line_total, op.package_name, op.quantity package_quantity
         FROM order_items oi
         JOIN inventory_items p ON p.item_id = oi.product_id
+        LEFT JOIN order_packages op ON op.order_package_id=oi.order_package_id
         WHERE p.item_type = 'finished_product'
           AND oi.order_id = ANY(%s);
     """, (order_ids,)))
@@ -785,14 +786,7 @@ def product_by_id(product_id: int) -> dict | None:
                    WHERE pr.product_item_id = p.item_id
                      AND rm.item_type = 'raw_material'
                ) AS recipe_count,
-               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
-                   WHERE pb.quality_status = 'approved'
-                     AND (pb.expiry_date IS NULL OR pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
-               ), 0) - COALESCE((
-                   SELECT SUM(osr.quantity)
-                   FROM all_stock_reservations osr
-                   WHERE osr.product_id = p.item_id
-               ), 0), 0) AS available
+               COALESCE((SELECT ca.available FROM catalog_stock_availability ca WHERE ca.item_id=p.item_id),0) AS available
         FROM inventory_items p
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_id = %s
@@ -800,21 +794,15 @@ def product_by_id(product_id: int) -> dict | None:
         GROUP BY p.item_id, p.name, p.description, p.unit, p.base_price, p.is_active, p.category,
                  p.pack_size, p.pack_size_unit, p.pack_content_status;
     """, (product_id,))
-    return clean_row(res)
+    from .inventory.packages import decorate_products
+    return decorate_products([clean_row(res)])[0] if res else None
 
 
 def list_reseller_cart_items(account_id: int) -> list[dict]:
-    return clean_row(fetch_all("""
+    items = clean_row(fetch_all("""
         SELECT rci.cart_item_id, rci.account_id, rci.product_id,
                p.name, p.category, p.description, p.unit, p.base_price,
-               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
-                   WHERE pb.quality_status = 'approved'
-                     AND (pb.expiry_date IS NULL OR pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date)
-               ), 0) - COALESCE((
-                   SELECT SUM(osr.quantity)
-                   FROM all_stock_reservations osr
-                   WHERE osr.product_id = p.item_id
-               ), 0), 0) AS available,
+               COALESCE((SELECT ca.available FROM catalog_stock_availability ca WHERE ca.item_id=p.item_id),0) AS available,
                rci.quantity AS cart_quantity,
                round(rci.quantity * p.base_price, 2) AS line_total,
                rci.updated_at
@@ -829,6 +817,9 @@ def list_reseller_cart_items(account_id: int) -> list[dict]:
                  rci.quantity, rci.updated_at
         ORDER BY rci.updated_at DESC, rci.cart_item_id DESC;
     """, (account_id,)))
+
+    from .inventory.packages import decorate_products
+    return decorate_products(items)
 
 
 def reseller_cart_count(account_id: int) -> float:
@@ -857,15 +848,8 @@ def reseller_order_confirmation(account_id: int, order_id: int) -> dict | None:
 
 def _reseller_available_product(cur, product_id: int) -> dict | None:
     cur.execute("""
-        SELECT p.item_id AS product_id, p.name, p.is_active,
-               GREATEST(COALESCE(SUM(pb.quantity_available) FILTER (
-                   WHERE pb.quality_status = 'approved'
-                     AND pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date
-               ), 0) - COALESCE((
-                   SELECT SUM(osr.quantity)
-                   FROM all_stock_reservations osr
-                   WHERE osr.product_id = p.item_id
-               ), 0), 0) AS available
+        SELECT p.item_id AS product_id, p.name, p.is_active, p.category,
+               COALESCE((SELECT ca.available FROM catalog_stock_availability ca WHERE ca.item_id=p.item_id),0) AS available
         FROM inventory_items p
         LEFT JOIN inventory_batches pb ON pb.item_id = p.item_id
         WHERE p.item_id = %s
@@ -882,7 +866,7 @@ def _require_reseller_quantity_available(product: dict | None, quantity: Decimal
     available = Decimal(product["available"])
     if quantity > available:
         raise ValueError(
-            f"Only {display_decimal(available)} packs of {product['name']} are currently available. "
+            f"Only {display_decimal(available)} {'packages' if product.get('category') == 'Package' else 'packs'} of {product['name']} are currently available. "
             "Some stock may already be reserved by paid orders."
         )
 
@@ -1092,18 +1076,8 @@ def create_order_from_items(
             }
 
         cur.execute("""
-            SELECT p.item_id AS product_id, p.name, p.unit, p.base_price, p.is_active,
-                   GREATEST(COALESCE((
-                       SELECT SUM(pb.quantity_available)
-                       FROM inventory_batches pb
-                       WHERE pb.item_id = p.item_id
-                         AND pb.quality_status = 'approved'
-                         AND pb.expiry_date > (now() AT TIME ZONE 'Asia/Manila')::date
-                   ), 0) - COALESCE((
-                       SELECT SUM(osr.quantity)
-                       FROM all_stock_reservations osr
-                       WHERE osr.product_id = p.item_id
-                   ), 0), 0) AS available
+            SELECT p.item_id AS product_id, p.name, p.unit, p.base_price, p.is_active, p.category,
+                   COALESCE((SELECT ca.available FROM catalog_stock_availability ca WHERE ca.item_id=p.item_id),0) AS available
             FROM inventory_items p
             WHERE p.item_type = 'finished_product'
               AND p.is_active = true
@@ -1131,6 +1105,15 @@ def create_order_from_items(
             measurements.require_capacity(total, "Order total", scale=2)
             lines.append((product_id, quantity, product["unit"], product["base_price"]))
 
+        from .inventory.packages import expand_lines, save_order_packages
+        cart_product_ids = list(quantities)
+        quantities, expanded_lines, package_snapshots = expand_lines(cur, products, quantities)
+        # Combined package and individual demand must fit current component stock.
+        if role == 'reseller':
+            _plan_fefo_allocations(cur, quantities)
+        lines = expanded_lines
+        if sum((quantity*price for _,quantity,_,price,_ in lines),Decimal(0)) != total:
+            raise ValueError('Package price allocation did not match the order total.')
         cur.execute("""
             INSERT INTO orders (order_type, reseller_id, created_by_account_id, team_leader_account_id,
                                 approved_by_account_id, approved_at, status, order_date, fulfilled_at, total_amount, notes,
@@ -1151,11 +1134,12 @@ def create_order_from_items(
         ord_res = dict(cur.fetchone())
 
         order_id = ord_res["order_id"]
-        for product_id, quantity, unit, unit_price in lines:
+        package_ids = save_order_packages(cur, order_id, package_snapshots)
+        for product_id, quantity, unit, unit_price, package_index in lines:
             cur.execute("""
-                INSERT INTO order_items (order_id, product_id, quantity, unit, unit_price)
-                VALUES (%s, %s, %s, %s, %s);
-            """, (order_id, product_id, quantity, unit, unit_price))
+                INSERT INTO order_items (order_id, product_id, quantity, unit, unit_price, order_package_id)
+                VALUES (%s, %s, %s, %s, %s, %s);
+            """, (order_id, product_id, quantity, unit, unit_price, package_ids[package_index] if package_index is not None else None))
 
         if role != "reseller":
             allocations = _plan_fefo_allocations(cur, quantities)
@@ -1185,7 +1169,7 @@ def create_order_from_items(
                 WHERE account_id = %s
                   AND product_id = ANY(%s);
                 """,
-                (account_id, list(quantities.keys())),
+                (account_id, cart_product_ids),
             )
 
     return clean_row(ord_res)

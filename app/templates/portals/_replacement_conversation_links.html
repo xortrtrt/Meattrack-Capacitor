@@ -1,6 +1,34 @@
-{% if replacement_threads|default([]) %}
 <section class="sales-reseller-messenger replacement-conversation-index" aria-label="Replacement conversations">
-  <header><div><span class="eyebrow">Returns &amp; replacements</span><h3>Replacement conversations</h3><p class="hint">Follow up with your {{ 'Supervisor' if role_key == 'reseller' else 'reseller' }} about a replacement request.</p></div><span class="replacement-thread-count">{{ replacement_threads|length }}</span></header>
-  <nav class="replacement-thread-links" aria-label="Choose a replacement conversation">{% include 'portals/_replacement_thread_rows.html' %}</nav>
+  <div class="sales-message-layout replacement-index-layout">
+    <aside class="sales-message-rail replacement-index-rail" aria-label="Replacement conversations">
+      <header>
+        <div>
+          <span class="eyebrow">Conversations</span>
+          <h3>Your replacements</h3>
+        </div>
+        <span class="replacement-thread-count" aria-label="{{ replacement_threads|length }} replacement conversations">{{ replacement_threads|length }}</span>
+      </header>
+      <nav class="sales-message-list replacement-index-list" aria-label="Choose a replacement conversation">
+        {% if replacement_threads|default([]) %}
+          {% include 'portals/_replacement_thread_rows.html' %}
+        {% else %}
+          <div class="sales-message-list-empty">
+            <i data-lucide="package-check" aria-hidden="true"></i>
+            <strong>No replacement conversations</strong>
+            <p>Cases assigned to you will appear here.</p>
+          </div>
+        {% endif %}
+      </nav>
+    </aside>
+
+    <section class="sales-message-stage replacement-index-stage" aria-label="Replacement conversation details">
+      <div class="sales-message-placeholder replacement-index-placeholder">
+        <span class="sales-message-welcome-icon"><i data-lucide="messages-square" aria-hidden="true"></i></span>
+        <small class="eyebrow">Returns and replacements</small>
+        <h3>Select a replacement conversation to begin</h3>
+        <p>Choose a case from the conversation list to read messages and coordinate the replacement.</p>
+        <span class="sales-message-selection-hint"><i data-lucide="mouse-pointer-2" aria-hidden="true"></i>No conversation selected</span>
+      </div>
+    </section>
+  </div>
 </section>
-{% endif %}

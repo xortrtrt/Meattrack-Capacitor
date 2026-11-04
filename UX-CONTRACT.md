@@ -159,3 +159,42 @@ pagination URLs and aggregate unread stock updates on the Stock oversight tab.
 Reuse the shared Owner tab and table styling, native controls and server errors.
 Stock mutations are hidden and independently blocked by backend capability and
 repository guards. Product pricing retains its existing form and audit reason.
+
+
+### Inventory manual stock actions (2026-11-04)
+
+The existing inventory modal controller in `portal.js` owns the three new stock
+action dialogs, keyboard trapping, Escape and focus restoration. Native select
+and date inputs retain platform-owned popup behavior and Manila server validation.
+`forms.js` owns field errors, duplicate-submit prevention and an accessible native
+confirmation dialog for material/batch removal, initially focused on Cancel.
+Server notices own success/error feedback. Failed workspace forms preserve values
+and their operation reference in a one-use session draft. Transactional guards in
+`inventory/manual_stock.py` own authorization, replay, expiry, stock and reservation
+checks. Remove/Restore materials returns to Raw Materials; removal returns to
+Product Details; opening/deductions return to the Inventory workspace.
+
+
+### Product recipe editor
+
+Recipe library reuses the inventory modal, ingredient-row grid, native selects,
+inline field errors and server notices. The per-product form declares finished
+net content separately and saves it together with 1–200 ingredient rows. Delegated
+handlers in `forms.js` support rows replaced by asynchronous search/pagination,
+Add/Remove, validation and duplicate-submit prevention. Server failures reopen the
+edited product with preserved rows. All quantities are validated and converted by
+`inventory/products.py`; no stock change occurs on recipe save.
+
+
+### Component packages
+
+Inventory groups packages separately and package details shows product inclusions,
+packs per package and complete packages that can be assembled. Historical standalone
+batches are read-only traceability records. Reseller catalog/details/cart use package
+units and inclusion descriptions; checkout/history retain package attribution on
+component product lines. Existing native product modal, filters, notices, cart
+quantity controls and server validation remain canonical. Packages are excluded
+from recipe/production/opening-balance choices. All stock checks, aggregation,
+pricing and conversion decisions belong to the transactional repository and SQL
+availability view, not browser-calculated quantities. Definitions and local
+conversion rationale are recorded in `docs/knowledge/Orders and Inventory.md`.

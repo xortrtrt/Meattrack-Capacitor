@@ -60,8 +60,8 @@
         <div>
           <span class="order-page-kicker">Selected items</span>
           <h3 id="checkout-manifest-title">
-            {{ checkout_items|length }} products · {{ checkout_count|number }}
-            packs
+            {{ checkout_items|length }} product lines · {{ checkout_count|number }}
+            items
           </h3>
         </div>
         <a href="/portal/reseller/cart">Edit selection</a>
@@ -76,11 +76,11 @@
           />
           <div>
             <span>{{ item.category }}</span><strong>{{ item.name }}</strong
-            ><small>{{ item.base_price|currency }} / {{ item.unit }}</small>
+            ><small>{{ item.base_price|currency }} / {{ 'package' if item.category == 'Package' else item.unit }}</small>
           </div>
           <div class="checkout-line-quantity">
             <small>Quantity</small
-            ><strong>{{ item.cart_quantity|number }} packs</strong>
+            ><strong>{{ item.cart_quantity|number }} {{ 'packages' if item.category == 'Package' else 'packs' }}</strong>
           </div>
           <strong class="checkout-line-total"
             >{{ item.line_total|currency }}</strong

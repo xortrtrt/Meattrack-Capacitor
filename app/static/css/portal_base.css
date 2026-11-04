@@ -680,6 +680,14 @@ select:disabled {
   animation: notification-panel-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+/* Popovers default to inset: 0 and auto margins, which can center this panel
+   vertically even after portal.js computes its position beside the bell. */
+.notification-panel[popover] {
+  inset: auto;
+  margin: 0;
+  max-height: calc(100dvh - 24px);
+}
+
 .notification-menu.is-positioning .notification-panel {
   visibility: hidden;
 }
@@ -2937,7 +2945,7 @@ select:disabled {
   .portal-body {
     display: block;
     min-height: 100dvh;
-    padding-bottom: calc(var(--mobile-bottom-reserve) + env(safe-area-inset-bottom));
+    padding-bottom: 0;
   }
 
   .portal-body.drawer-is-open {
@@ -3050,7 +3058,7 @@ select:disabled {
 
   .portal-main {
     gap: 16px;
-    padding: 0 14px calc(var(--mobile-bottom-reserve) + 56px + env(safe-area-inset-bottom));
+    padding: 0 14px calc(24px + env(safe-area-inset-bottom));
   }
 
   .portal-topbar {

@@ -12,19 +12,21 @@
   </div>
   <div class="inventory-product-card-copy">
     <span class="reseller-product-category">{{ product.category }}</span>
-    <h3><a href="{{ '/portal/team-leader/inventory-tools?view=packages#package-' ~ product.item_id if is_package else '/portal/team-leader/product-details?product_id=' ~ product.item_id }}">{{ product.name }} <span aria-hidden="true">&rarr;</span></a></h3>
+    <h3><a href="/portal/team-leader/product-details?product_id={{ product.item_id }}">{{ product.name }} <span aria-hidden="true">&rarr;</span></a></h3>
     <div class="inventory-product-stats">
       <div class="inventory-product-stat">
-        <span><i data-lucide="boxes"></i> {{ 'Legacy batch stock' if is_package else 'Available stock' }}</span>
-        <strong>{{ product.available|number }} <small>{{ product.unit }}</small></strong>
+        <span><i data-lucide="boxes"></i> {{ 'Can be assembled' if is_package else 'Available stock' }}</span>
+        <strong>{{ product.available|number }} <small>{{ 'packages' if is_package else product.unit }}</small></strong>
       </div>
 
     </div>
     <div class="inventory-product-content">
       <i data-lucide="{{ 'package-open' if is_package else 'scale' }}"></i>
       <span>
-        <small>{{ 'Package measurement' if is_package else 'Declared net content' }}</small>
-        {% if product.pack_content_status == "declared" %}
+        <small>{{ 'Included products' if is_package else 'Declared net content' }}</small>
+        {% if is_package %}
+        <strong>{{ product.total_packs|default(0)|number }} product packs · {{ product.components|default([])|length }} product lines</strong>
+        {% elif product.pack_content_status == "declared" %}
         <strong>{{ product.pack_size|number }} {{ product.pack_size_unit }} per {{ product.unit }}</strong>
         {% else %}
         <strong class="muted">Not configured</strong>

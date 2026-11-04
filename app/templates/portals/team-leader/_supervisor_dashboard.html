@@ -7,7 +7,7 @@
 {% if c.get('failed_refunds',0) or c.get('mismatch',0) %}
 <nav class="ops-exception-strip" aria-label="Urgent exceptions">
   {% if c.get('failed_refunds',0) %}<a href="/portal/{{ role_key }}/refunds?status=failed"><i data-lucide="triangle-alert" aria-hidden="true"></i><strong>{{ c.failed_refunds|number }} failed refunds</strong><span>Review recorded failures</span><i data-lucide="arrow-right" aria-hidden="true"></i></a>{% endif %}
-  {% if c.get('mismatch',0) %}<a href="/portal/{{ role_key }}/returns?queue=mismatch"><i data-lucide="package-x" aria-hidden="true"></i><strong>{{ c.mismatch|number }} receipt mismatches</strong><span>Resolve discrepancies</span><i data-lucide="arrow-right" aria-hidden="true"></i></a>{% endif %}
+  {% if c.get('mismatch',0) %}<a href="/portal/{{ role_key }}/returns?queue=mismatch"><i data-lucide="package-x" aria-hidden="true"></i><strong>{{ c.mismatch|number }} product check mismatches</strong><span>Resolve discrepancies</span><i data-lucide="arrow-right" aria-hidden="true"></i></a>{% endif %}
 </nav>
 {% endif %}
 <div class="ops-case-grid">

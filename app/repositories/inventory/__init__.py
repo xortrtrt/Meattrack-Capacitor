@@ -6,6 +6,8 @@ from .products import (
     add_product_batch,
     create_product_with_recipe,
     produce_product,
+    product_image,
+    save_product_image,
     update_product_pack_content,
     update_product_price,
 )
@@ -49,6 +51,8 @@ __all__ = [
     "create_product_with_recipe",
     "update_product_pack_content",
     "produce_product",
+    "product_image",
+    "save_product_image",
     "add_product_batch",
     "update_product_price",
 ]

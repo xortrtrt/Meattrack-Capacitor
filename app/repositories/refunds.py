@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from psycopg2.errors import UniqueViolation
 
-from app.business_time import business_now
+from app.business_time import BUSINESS_ZONE, business_now
 
 from ._shared import *
 from .notifications import _create_notification_cursor, _create_order_system_message_cursor
@@ -14,6 +14,19 @@ from .refund_integrity import check_refund_eligibility, fingerprint, replay_refu
 
 
 REFUND_STATUSES = {"pending", "processing", "completed", "failed"}
+
+
+def validate_transfer_time(transferred_at: datetime, requested_at: datetime | None = None) -> datetime:
+    """Validate receipt timestamps in business time, at the form's minute precision."""
+    if transferred_at is None:
+        raise ValueError("Transfer date and time are required.")
+    if transferred_at.tzinfo is None:
+        transferred_at = transferred_at.replace(tzinfo=BUSINESS_ZONE)
+    if transferred_at > business_now():
+        raise ValueError("Transfer date and time cannot be in the future.")
+    if transferred_at < business_now() - timedelta(days=365):
+        raise ValueError("Transfer date and time cannot be more than one year old.")
+    return transferred_at
 
 
 def _refund_scope(role_key: str, account_id: int | None, alias: str = "r") -> tuple[str, list[object]]:
@@ -323,8 +336,6 @@ def send_order_refund_message(
         refund = _locked_refund(cur, refund_id)
         if not refund:
             raise ValueError("Refund case was not found.")
-        if refund["status"] == "completed":
-            raise ValueError("This refund is completed, so its conversation is now read-only.")
         if role_key == "reseller":
             if int(refund.get("reseller_account_id") or 0) != actor_id:
                 raise ValueError("You are not authorized to use this refund conversation.")
@@ -634,10 +645,6 @@ def complete_order_refund(
     note = " ".join(str(internal_note or "").strip().split()) or None
     if note and len(note) > 1000:
         raise ValueError("Internal note must contain no more than 1000 characters.")
-    if transferred_at is None:
-        raise ValueError("Transfer date and time are required.")
-    if transferred_at > business_now():
-        raise ValueError("Transfer date and time cannot be in the future.")
     note = _clean_text(internal_note, "Settlement remarks", 5, 1000)
     if not proof:
         raise ValueError("Attach transfer proof before completing the refund.")
@@ -662,6 +669,7 @@ def complete_order_refund(
             if replay_refund_operation(cur,operation_key,refund_id,actor_id,"complete",request_hash) is not None:
                 return
             check_refund_eligibility(cur,refund)
+            transferred_at = validate_transfer_time(transferred_at, refund["requested_at"])
             if refund["status"] != "processing" or refund["processing_by_account_id"] != actor_id:
                 raise ValueError("Only the current processor can complete this refund.")
             cur.execute(
@@ -720,7 +728,7 @@ def complete_order_refund(
             cur.execute("""INSERT INTO order_refund_messages(order_refund_id,sender_account_id,sender_role,message,message_kind,system_event_key)
                 VALUES(%s,%s,%s,%s,'system',%s) ON CONFLICT(system_event_key) DO NOTHING""",
                 (refund_id,actor_id,role_key,
-                 f"Thank you for your patience. Your refund of ₱{amount:,.2f} for Order #{refund['order_id']} has been completed. Reference: {reference}. This conversation is now closed. You can review the details anytime in your Inbox.",
+                 f"Thank you for your patience. Your refund of ₱{amount:,.2f} for Order #{refund['order_id']} has been completed. Reference: {reference}. You can reply here if you have questions about this refund.",
                  f"refund-completed-{refund_id}"))
             _publish_refund_event(
                 cur, refund, event_type="refund_completed", title="Refund completed",

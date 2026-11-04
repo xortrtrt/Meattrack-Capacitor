@@ -21,7 +21,7 @@ def _plan_fefo_allocations(
             (f"inventory-product:{product_id}",),
         )
         cur.execute("""
-            SELECT ii.name, ii.unit
+            SELECT ii.name, ii.unit, ii.category
             FROM inventory_items ii
             WHERE ii.item_id = %s
               AND ii.item_type = 'finished_product'
@@ -30,6 +30,8 @@ def _plan_fefo_allocations(
         product = cur.fetchone()
         if product is None:
             raise ValueError("Unknown product")
+        if product['category'] == 'Package':
+            raise ValueError(f"Not enough {product['name']}. Packages use included product stock.")
 
         cur.execute("""
             SELECT ib.batch_id, ib.quantity_available, ib.expiry_date,

@@ -1,7 +1,7 @@
 {% set stock = stock|default({'counts':{}}) %}
 <div class="owner-page owner-superuser-page owner-inventory-page">
   <section class="panel owner-workspace-surface">
-    <header class="panel-heading"><div><span class="eyebrow">Stock oversight</span><h2>Inventory overview</h2><p class="hint">Read-only stock balances and availability. Inventory staff record production, receipts, and adjustments.</p></div><a class="button subtle" href="/portal/owner/alerts"><i data-lucide="bell-ring" aria-hidden="true"></i> View alerts</a></header>
+    <header class="panel-heading"><div><span class="eyebrow">Stock oversight</span><h2>Inventory overview</h2><p class="hint">Read-only stock balances and availability. Inventory staff record production, stock additions, and adjustments.</p></div><a class="button subtle" href="/portal/owner/alerts"><i data-lucide="bell-ring" aria-hidden="true"></i> View alerts</a></header>
     <div class="owner-stock-summary">
       <div><span>Finished products</span><strong>{{ stock.counts.get('products',0)|number }}</strong><small>Active products across the full catalog</small></div>
       <div><span>Available packs</span><strong>{{ stock.counts.get('available',0)|number }}</strong><small>After order and replacement reservations</small></div>

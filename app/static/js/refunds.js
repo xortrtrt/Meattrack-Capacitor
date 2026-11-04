@@ -94,13 +94,7 @@
         `/api/portal/${encodeURIComponent(role)}/refunds/${encodeURIComponent(refundId)}/messages?after_id=${lastMessageId(conversation)}`,
       );
       (result.messages || []).forEach((item) => appendMessage(conversation, item));
-      if (result.status === "completed") {
-        conversation.querySelector("[data-refund-message-form]")?.remove();
-        if (!conversation.querySelector("[data-conversation-closed]")) {
-          const closed=document.createElement("p");closed.dataset.conversationClosed="";
-          closed.textContent="Refund completed · Conversation closed";closed.setAttribute("role","status");conversation.append(closed);
-        }
-      }
+      conversation.dataset.refundStatus = result.status || "";
       const through=lastMessageId(conversation);
       if (through && isVisible(conversation) && Number(conversation.dataset.readThrough||0)<through) {
         await api(`/api/portal/${role}/refunds/${refundId}/read`,{method:"POST",body:JSON.stringify({through_id:through})});
@@ -131,6 +125,10 @@
       const status = form.querySelector("[data-refund-message-status]");
       const content = input?.value.trim() || "";
       if (!conversation || !input || !button || !content) return;
+      if (conversation.dataset.refundStatus === "completed") {
+        if (status) status.textContent = "This refund is complete. You can still send a message about it.";
+        return;
+      }
       const refundId = conversation.dataset.refundId;
       const role = conversation.dataset.refundRole;
       button.disabled = true;
@@ -155,6 +153,10 @@
     document.addEventListener("submit", (event) => {
       const form = event.target;
       if (!(form instanceof HTMLFormElement) || !form.matches("[data-refund-confirm]")) return;
+      if (form.dataset.receiptScanning === "true") {
+        event.preventDefault();
+        return;
+      }
       if (!window.confirm(form.dataset.refundConfirm || "Confirm this refund action?")) {
         event.preventDefault();
         return;
@@ -169,30 +171,48 @@
     document.addEventListener("refund:conversation-visible", refreshVisibleConversations);
   }
 
+  const receiptScans = new WeakMap();
   async function scanReceipt(form) {
     const fileInput=form.querySelector('[name="proof"]');
     const file=fileInput?.files[0];
     const status=form.querySelector('[data-refund-scan-status]');
     const token=form.querySelector('[name="receipt_scan_token"]');
     const confirmed=form.querySelector('[name="payment_details_confirmed"]');
+    receiptScans.get(form)?.abort();
+    const controller=new AbortController();
+    receiptScans.set(form,controller);
     token.value="";confirmed.checked=false;
-    if (!file) {status.textContent="Choose a refund screenshot first.";return;}
-    const button=form.querySelector('[data-refund-scan]');
-    button.disabled=true;
+    if (!file) {
+      delete form.dataset.receiptScanning;
+      form.querySelector('[type="submit"]').disabled=false;
+      status.textContent="Choose a refund screenshot first.";
+      return;
+    }
+    const submit=form.querySelector('[type="submit"]');
+    const fields=["transaction_reference","transferred_at","transfer_amount"].map(name=>form.elements.namedItem(name));
+    const originalValues=fields.map(field=>field.value);
+    form.dataset.receiptScanning="true";
+    submit.disabled=true;
     status.textContent="Reading transfer receipt…";
     const body=new FormData();body.append("proof",file);
     try {
-      const response=await fetch(form.dataset.scanUrl,{method:"POST",headers:{"X-CSRF-Token":csrfToken},body});
+      const response=await fetch(form.dataset.scanUrl,{method:"POST",headers:{"X-CSRF-Token":csrfToken},body,signal:controller.signal});
       const result=await response.json();
       if (!response.ok) throw new Error(result.message||result.detail||"The receipt could not be read.");
-      if (fileInput.files[0]!==file) return;
+      if (controller.signal.aborted || fileInput.files[0]!==file) return;
       token.value=result.scan_token;
-      form.querySelector('[name="transaction_reference"]').value=result.transaction_number||"";
-      form.querySelector('[name="transferred_at"]').value=result.payment_date&&result.payment_time?`${result.payment_date}T${result.payment_time}`:"";
-      form.querySelector('[name="transfer_amount"]').value=result.payment_amount||"";
+      const values=[result.transaction_number||"", result.payment_date&&result.payment_time?`${result.payment_date}T${result.payment_time}`:"", result.payment_amount||""];
+      fields.forEach((field,index)=>{if(field.value===originalValues[index])field.value=values[index];});
+      confirmed.checked=false;
       status.textContent=(result.warnings||[]).join(" ")||"Receipt read. Check the extracted details and correct any mistakes before confirming.";
-    } catch(error) {status.textContent=error.message;}
-    finally {button.disabled=false;}
+    } catch(error) {
+      if (!controller.signal.aborted) status.textContent=error.message+" Enter the receipt details manually, then check them against the screenshot.";
+    } finally {
+      if (receiptScans.get(form)===controller) {
+        delete form.dataset.receiptScanning;
+        submit.disabled=false;
+      }
+    }
   }
   document.addEventListener("change",event=>{
     const form=event.target.closest('[data-refund-receipt-form]');
@@ -200,9 +220,9 @@
     if (event.target.name==="proof") scanReceipt(form);
     if (event.target.matches('[data-refund-extracted]')) form.querySelector('[name="payment_details_confirmed"]').checked=false;
   });
-  document.addEventListener("click",event=>{
-    const button=event.target.closest('[data-refund-scan]');
-    if(button)scanReceipt(button.closest('form'));
+  document.addEventListener("input",event=>{
+    const form=event.target.closest('[data-refund-receipt-form]');
+    if(form && event.target.matches('[data-refund-extracted]')) form.querySelector('[name="payment_details_confirmed"]').checked=false;
   });
   refreshVisibleConversations();
   const refreshTimer = window.setInterval(refreshVisibleConversations, 3000);

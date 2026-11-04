@@ -400,7 +400,7 @@ def review_product_return(
             for product_id, value in sorted(chosen):
                 quantity = parse_whole_packs(value)
                 cur.execute(
-                    "SELECT base_price FROM inventory_items WHERE item_id=%s AND item_type='finished_product' AND is_active=true;",
+                    "SELECT base_price FROM inventory_items WHERE item_id=%s AND item_type='finished_product' AND category IS DISTINCT FROM 'Package' AND is_active=true;",
                     (product_id,),
                 )
                 product = cur.fetchone()
@@ -1604,7 +1604,8 @@ def product_lifecycle_details(product_id: int, *, batch_page: int = 1, movement_
     product["batches"] = clean_row(
         fetch_all(
             """SELECT b.*,b.expiry_date-%s days_left,
-        COALESCE((SELECT SUM(r.quantity) FROM replacement_stock_reservations r WHERE r.batch_id=b.batch_id),0) replacement_reserved
+        COALESCE((SELECT SUM(r.quantity) FROM replacement_stock_reservations r WHERE r.batch_id=b.batch_id),0) replacement_reserved,
+        EXISTS(SELECT 1 FROM inventory_movements m WHERE m.affected_batch_id=b.batch_id AND m.movement_type='opening_balance') is_opening_balance
         FROM inventory_batches b WHERE item_id=%s ORDER BY expiry_date,batch_id LIMIT %s OFFSET %s;""",
             (
                 today,

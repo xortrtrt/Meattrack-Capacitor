@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, worker, integrations]
-verified: 2026-11-03
+verified: 2026-11-04
 ---
 # Background work and integrations
 
@@ -73,6 +73,23 @@ that the account holder can sign in using their existing password. Sources:
 `app/emailer.py`. Checked 2026-11-03. See [[Owner Portal]] and [[Roles and Access]].
 
 ## Reseller unified inbox (2026-11-02)
+
+### Sales workspace categories (2026-11-04)
+
+The Sales Supervisor Messages page presents direct reseller messages and
+replacement case conversations in one workspace, separated by accessible
+Reseller messages and Replacement conversations tabs. Both category views use a
+conversation rail and reading pane; the replacement pane stays in an instructional
+empty state until a case is selected. A replacement deep link opens the replacement
+category; direct messaging and case messaging retain their separate APIs,
+permissions, history, and unread behavior. Team Leader direct messaging remains
+unchanged because that role does not have private replacement case access. This is
+a presentation change only. Sources checked:
+`app/templates/portals/team-leader/reseller_messages.html`,
+`app/templates/portals/_replacement_conversation.html`,
+`app/templates/portals/_replacement_conversation_links.html`,
+`app/static/js/sales_reseller_messages.js`, and
+`app/static/js/replacement_workflow.js`. See [[Replacement Workflow]].
 
 ### Participant grouping refinement
 

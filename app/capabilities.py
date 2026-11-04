@@ -71,7 +71,6 @@ PORTAL_SECTION_CAPABILITIES = {
         "dashboard": "operations.view_team", "inventory": "inventory.view",
         "expired-stock": "inventory.view", "product-details": "inventory.view",
         "raw-materials": "inventory.view", "finished-products": "inventory.view",
-        "inventory-tools": "inventory.view",
         "batches": "inventory.view", "alerts": "inventory.view", "logs": "reports.view_inventory",
         "profile": "profile.manage_own", "notifications": "notifications.view",
     },
