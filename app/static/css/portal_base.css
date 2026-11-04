@@ -3398,3 +3398,15 @@ select:disabled {
     min-height: 44px;
   }
 }
+
+/* Shared package purchase groups in reseller and staff order ledgers. */
+.portal-body .order-package-group { border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; }
+.portal-body .order-package-group summary { cursor: pointer; padding: 10px 0; font-weight: 600; }
+.portal-body .order-package-group .order-package-component { display: flex; justify-content: space-between; gap: 12px; }
+.portal-body .order-package-component > div { min-width: 0; display: grid; gap: 4px; }
+.portal-body .order-package-component strong { overflow-wrap: anywhere; }
+
+.portal-body .order-package-group .sales-order-product-line.order-package-component { display: flex; }
+.portal-body .order-package-group .sales-order-product-line.order-package-component > div { flex: 1; }
+.portal-body .order-package-group .sales-order-product-line.order-package-component > div > strong { white-space: normal; overflow: visible; text-overflow: clip; }
+.portal-body .order-package-group .sales-order-product-line.order-package-component > strong { flex: 0 0 auto; white-space: nowrap; }

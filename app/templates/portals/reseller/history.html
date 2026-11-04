@@ -1,3 +1,4 @@
+{% from 'portals/_order_package_groups.html' import package_groups %}
 {% if orders_page.filters.view=='returns' and return_case and not return_request_open %}
 {% set case=return_case %}{% set action_base='/portal/reseller/returns/actions/' %}{% include 'portals/reseller/_return_details_page.html' %}
 {% else %}
@@ -27,22 +28,24 @@
     {% if orders %}
     <div class="order-card-list">
       {% for order in orders %}
+      {% set display_items = order.get('display_items', order['items']) %}
       {% set reseller_status = 'refunded' if order.refund_status == 'completed' and order.refunded_amount >= order.total_amount else 'completed' if order.status=='fulfilled' else order.status %}
       <details class="order-history-card" id="order-{{ order.order_id }}" {% if request.query_params.get("order")==order.order_id|string %}open{% endif %}>
         <summary class="order-card-summary">
-          <div class="order-card-identity"><span class="order-card-number">Order #{{ order.order_id }}</span><time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time><span class="status-badge {{ reseller_status }}">{{ 'To pay' if reseller_status == 'to_pay' else reseller_status }}</span></div>
-          <div class="order-card-preview" aria-label="{{ order['items']|length }} product lines">{% for item in order['items'][:3] %}<img src="{{ item.name|product_photo_url }}" alt="" loading="lazy" />{% endfor %}{% if order['items']|length > 3 %}<span>+{{ order['items']|length - 3 }}</span>{% endif %}</div>
+          <div class="order-card-identity"><span class="order-card-number">Order #{{ order.order_id }}</span>{% for package in order.get("package_orders", []) %}<small>{{ package.package_name }} · {{ package.quantity|number }} package(s)</small>{% endfor %}<time datetime="{{ order.order_date.isoformat() }}">{{ order.order_date|nice_date }}</time><span class="status-badge {{ reseller_status }}">{{ 'To pay' if reseller_status == 'to_pay' else reseller_status }}</span></div>
+          <div class="order-card-preview" aria-label="{{ display_items|length }} product lines">{% for item in display_items[:3] %}<img src="{{ item.name|product_photo_url }}" alt="" loading="lazy" />{% endfor %}{% if display_items|length > 3 %}<span>+{{ display_items|length - 3 }}</span>{% endif %}</div>
           <div class="order-card-total"><small>Total</small><strong>{{ order.total_amount|currency }}</strong></div>
           <span class="order-card-chevron" aria-hidden="true"><i data-lucide="chevron-down"></i></span>
         </summary>
 
         <div class="order-card-body">
           <section class="order-card-items" aria-labelledby="order-items-title-{{ order.order_id }}">
-            <header><div><span class="eyebrow">Order contents</span><h3 id="order-items-title-{{ order.order_id }}">{{ order['items']|length }} product{{ '' if order['items']|length == 1 else 's' }}</h3></div></header>
+            <header><div><span class="eyebrow">Order contents</span><h3 id="order-items-title-{{ order.order_id }}">{{ display_items|length }} ordered item{{ '' if display_items|length == 1 else 's' }}</h3></div></header>
             <div class="order-product-list">
-              {% for item in order['items'] %}
+              {{ package_groups(order) }}
+              {% for item in order.get('individual_items', order['items']) %}
               <article class="order-product-line"><img src="{{ item.name|product_photo_url }}" alt="{{ item.name }}" loading="lazy" /><div><strong>{{ item.name }}</strong>{% if item.package_name %}<small>Included in {{ item.package_name }} · {{ item.package_quantity|number }} package(s)</small>{% endif %}<small>{{ item.quantity|number }} pack{{ '' if item.quantity == 1 else 's' }}{% if item.unit_price is defined %} × {{ item.unit_price|currency }}{% endif %}</small></div>{% if item.line_total is defined %}<strong>{{ item.line_total|currency }}</strong>{% endif %}</article>
-              {% else %}<p class="hint">No items were recorded for this order.</p>{% endfor %}
+              {% else %}{% if not order.get('package_orders') %}<p class="hint">No items were recorded for this order.</p>{% endif %}{% endfor %}
             </div>
           </section>
 

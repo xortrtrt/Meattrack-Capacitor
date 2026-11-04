@@ -963,3 +963,31 @@ See [[Roles and Access]].
 The configured return-workflow regression command returned 23 passed / 6 failed;
 all six failures are the already documented fixed-selection fixture conflict in
 `tests/test_replacement_first_converted_history.py` (see [[Questions and Contradictions]]).
+
+
+## Reseller package tracing (2026-11-04)
+
+Before the production release, the focused login-retry, component-package backend,
+and component-package browser files passed together: 6 checks. Pytest reported
+only a local cache-write permission warning; the checks completed successfully.
+
+Four package checks passed covering stock/order invariants and browser navigation
+through Products, cart, checkout review, order confirmation and package-name search
+in history. History grouping displays saved package prices/quantities, aggregates
+cent-split component lines, and exposes inclusions. Browser requests use the
+TestClient bridge and a disposable schema, not real reseller orders. Targeted
+Ruff and whitespace checks passed. See [[Orders and Inventory]].
+
+
+## Sales order package groups (2026-11-04)
+
+The extended `tests/test_component_packages_browser.py` check passed for Reseller,
+Sales Leader and Sales Supervisor at 1440/390 pixels. It exercises actual checkout,
+payment submission in a disposable schema, package-name searches, package totals
+and expandable contents, and verifies each staff account cannot see the other's
+assigned order. The fixture assigns the reseller to a Supervisor before its second
+order; original order ownership remains immutable. Three existing package backend
+checks also passed. Screenshots `outputs/staff-package-*.png` are ignored local
+artifacts; the Supervisor phone layout was inspected. Ruff and whitespace checks
+passed. No real orders, assignments or payments were changed. See
+[[Orders and Inventory]] and [[Roles and Access]].

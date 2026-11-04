@@ -4,6 +4,18 @@ verified: 2026-11-03
 ---
 # Roles and access
 
+## Login OTP retry (2026-11-04)
+
+The login form adapter runs shared field validation in the submit capture phase,
+before `app/static/js/forms.js` applies loading feedback. Invalid input must keep
+Verify OTP clickable for correction; the resend cooldown is independent. The
+server's rejected-code redirect retains the pending login for another attempt
+subject to existing attempt/session limits. Sources: `app/static/js/login.js`,
+`app/templates/login.html`, and `app/routers/auth.py`. Desktop/phone browser
+regressions in `tests/test_login_retry_browser.py` use real templates/assets and
+simulated rejected-code responses; they do not establish deployment status.
+See [[Testing and Change Impact]].
+
 ## Assigned reseller directory (2026-11-04)
 
 Sales Leaders and Sales Supervisors both have **My Resellers**, at

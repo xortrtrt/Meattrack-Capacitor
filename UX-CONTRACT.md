@@ -198,3 +198,13 @@ from recipe/production/opening-balance choices. All stock checks, aggregation,
 pricing and conversion decisions belong to the transactional repository and SQL
 availability view, not browser-calculated quantities. Definitions and local
 conversion rationale are recorded in `docs/knowledge/Orders and Inventory.md`.
+
+Reseller package history groups component lines under immutable ordered-package
+names, quantities and prices. Native disclosures expose inclusions without
+duplicating standalone purchases. Confirmation and package-name search use the
+same saved package identity.
+
+`app/templates/portals/_order_package_groups.html` owns package group rendering
+for reseller history and the shared Sales Leader/Supervisor orders page. Staff
+uses the existing sales product-line variant. `portal_base.css` owns group and
+disclosure styles; assignment and order-action guards remain authoritative.

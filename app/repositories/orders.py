@@ -96,6 +96,8 @@ def list_orders(
         where.append("""(
             CAST(o.order_id AS text) ILIKE %s
             OR COALESCE(r.business_name, 'Retail counter') ILIKE %s
+            OR EXISTS (SELECT 1 FROM order_packages search_package WHERE search_package.order_id=o.order_id
+                       AND search_package.package_name ILIKE %s)
             OR EXISTS (
                 SELECT 1
                 FROM order_items oi_search
@@ -105,7 +107,7 @@ def list_orders(
             )
         )""")
         search = f"%{q}%"
-        params.extend([search, search, search])
+        params.extend([search, search, search, search])
     where_sql = " WHERE " + " AND ".join(where) if where else ""
     order_sql = safe_sort_sql(sort, ORDER_SORTS, ORDER_SORTS["newest"])
     orders = clean_row(fetch_all(f"""
@@ -142,7 +144,7 @@ def list_orders(
 
     order_ids = [order["order_id"] for order in orders]
     items = clean_row(fetch_all("""
-        SELECT oi.order_id, oi.product_id, p.name, oi.quantity, oi.unit_price, oi.line_total, op.package_name, op.quantity package_quantity
+        SELECT oi.order_id, oi.product_id, p.name, oi.quantity, oi.unit_price, oi.line_total, oi.order_package_id, op.package_name, op.quantity package_quantity
         FROM order_items oi
         JOIN inventory_items p ON p.item_id = oi.product_id
         LEFT JOIN order_packages op ON op.order_package_id=oi.order_package_id
@@ -155,6 +157,27 @@ def list_orders(
         items_by_order.setdefault(order_id, []).append(item)
     for order in orders:
         order["items"] = items_by_order.get(order["order_id"], [])
+
+    package_rows = clean_row(fetch_all("""SELECT * FROM order_packages WHERE order_id=ANY(%s)
+        ORDER BY order_package_id""",(order_ids,)))
+    for order in orders:
+        packages=[dict(package) for package in package_rows if package['order_id']==order['order_id']]
+        for package in packages:
+            package['name']=package['package_name']
+            package['line_total']=package['quantity']*package['unit_price']
+            components={}
+            original_names={int(row['product_id']):row['name'] for row in package['contents']}
+            for item in order['items']:
+                if item.get('order_package_id') != package['order_package_id']:
+                    continue
+                row=components.setdefault(item['product_id'],{'name':original_names.get(item['product_id'],item['name']),'quantity':0,'line_total':0})
+                row['quantity']+=item['quantity']
+                row['line_total']+=item['line_total']
+            package['component_lines']=list(components.values())
+            package['total_packs']=sum(row['quantity'] for row in components.values())
+        order['package_orders']=packages
+        order['individual_items']=[item for item in order['items'] if not item.get('order_package_id')]
+        order['display_items']=packages+order['individual_items']
 
     proofs = clean_row(fetch_all("""
         SELECT order_payment_proof_id,
@@ -759,6 +782,7 @@ def count_orders(
         where.append("""(
             CAST(o.order_id AS text) ILIKE %s
             OR COALESCE(r.business_name, 'Retail counter') ILIKE %s
+            OR EXISTS (SELECT 1 FROM order_packages search_package WHERE search_package.order_id=o.order_id AND search_package.package_name ILIKE %s)
             OR EXISTS (
                 SELECT 1
                 FROM order_items oi_search
@@ -768,7 +792,7 @@ def count_orders(
             )
         )""")
         search = f"%{q}%"
-        params.extend([search, search, search])
+        params.extend([search, search, search, search])
     if where:
         query += " WHERE " + " AND ".join(where)
     row = fetch_one(query + ";", tuple(params) or None)
@@ -832,7 +856,7 @@ def reseller_cart_count(account_id: int) -> float:
 
 
 def reseller_order_confirmation(account_id: int, order_id: int) -> dict | None:
-    return clean_row(fetch_one(
+    confirmation = clean_row(fetch_one(
         """
         SELECT o.order_id, o.status, o.total_amount, o.payment_due_at
         FROM orders o
@@ -844,6 +868,12 @@ def reseller_order_confirmation(account_id: int, order_id: int) -> dict | None:
         """,
         (account_id, order_id),
     ))
+
+
+    if confirmation:
+        confirmation['packages']=clean_row(fetch_all("""SELECT package_name,quantity,unit_price,quantity*unit_price line_total
+            FROM order_packages WHERE order_id=%s ORDER BY order_package_id""",(order_id,)))
+    return confirmation
 
 
 def _reseller_available_product(cur, product_id: int) -> dict | None:

@@ -44,7 +44,7 @@
           class="{{ 'active' if products_page.filters.type == category else '' }}"
           {% if products_page.filters.type == category %}aria-current="true"{% endif %}
           href="/portal/reseller/order?type={{ category|urlencode }}&sort={{ products_page.filters.sort|urlencode }}{% if products_page.filters.q %}&q={{ products_page.filters.q|urlencode }}{% endif %}"
-        >{{ category }}</a>
+        >{{ 'Packages' if category == 'Package' else category }}</a>
         {% endfor %}
       </nav>
       <label class="reseller-product-sort">
@@ -108,7 +108,7 @@
             <span class="reseller-product-category"
               >{{ product.category }}</span
             >
-            <strong>{{ product.name }}</strong>
+            <strong>{{ product.name }}</strong>{% if product.category == "Package" %}<small>{{ product.total_packs|number }} included packs · {{ product.components|length }} product lines</small>{% endif %}
             <span class="reseller-catalog-price">{{ product.base_price|currency }} <span>/ {{ 'package' if product.category == 'Package' else product.unit }}</span></span>
             <span class="reseller-catalog-stock {{ 'is-unavailable' if product.available|float < 1 else '' }}">
               <i data-lucide="{{ 'circle-x' if product.available|float < 1 else 'circle-check' }}" aria-hidden="true"></i>

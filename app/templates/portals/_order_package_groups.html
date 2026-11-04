@@ -1,0 +1,11 @@
+{% macro package_groups(order, line_class='order-product-line') %}
+              {% for package in order.get('package_orders', []) %}
+              <section class="order-package-group" data-order-package="{{ package.order_package_id }}">
+                <article class="{{ line_class }}"><img src="{{ package.package_name|product_photo_url }}" alt="{{ package.package_name }}" loading="lazy"><div><strong>{{ package.package_name }}</strong><small>{{ package.quantity|number }} package{{ '' if package.quantity == 1 else 's' }} × {{ package.unit_price|currency }}</small><small>{{ package.total_packs|number }} included product packs</small></div><strong>{{ package.line_total|currency }}</strong></article>
+                <details><summary>Included products · {{ package.component_lines|length }} product lines</summary>
+                {% for component in package.component_lines %}<div class="{{ line_class }} order-package-component"><div><strong>{{ component.name }}</strong><small>{{ component.quantity|number }} pack{{ '' if component.quantity == 1 else 's' }}</small></div><strong>{{ component.line_total|currency }}</strong></div>{% endfor %}
+                </details>
+              </section>
+              {% endfor %}
+
+{% endmacro %}

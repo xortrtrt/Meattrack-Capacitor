@@ -407,3 +407,31 @@ does not require an acknowledgement or change the existing payment window.
 Sources checked: `app/portals/reseller.py:checkout_context`,
 `app/templates/portals/reseller/checkout.html`, and
 `app/static/css/portals/reseller.css`. See [[Returns and Financials]].
+
+
+## Reseller package tracing (2026-11-04)
+
+Reseller order history now projects immutable `order_packages` as explicit ordered
+packages with saved name, package quantity, unit price and total. Included products
+expand inside their originating package; cent-split component rows are combined
+for presentation, while unbundled purchases remain separate. Summary previews use
+the actual purchased packages. Search and counts match saved package names.
+Checkout review shows inclusions and the placed-order confirmation repeats ordered
+packages. Product cards expose inclusion totals. No order, stock or price records
+are rewritten by this presentation projection. Sources checked:
+`app/repositories/orders.py`, `app/templates/portals/reseller/order.html`,
+`checkout.html`, `history.html`, and `tests/test_component_packages_browser.py`.
+See [[Testing and Change Impact]].
+
+
+## Staff order package tracing (2026-11-04)
+
+Sales Leader and Sales Supervisor orders share
+`app/templates/portals/team-leader/orders.html`. Both now show ordered package
+names/quantities in summaries and explicit package groups with saved unit price,
+total and expandable included product quantities. Unbundled purchases remain
+separate. The same `portals/_order_package_groups.html` macro renders package
+groups in reseller history, with shared base styling and a staff line variant.
+All three views use the existing `list_orders` package projection. Existing
+assignment filters and payment/approval/fulfillment controls are unchanged.
+See [[Roles and Access]] and [[Testing and Change Impact]].

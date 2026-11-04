@@ -12,6 +12,7 @@
       Submit proof of payment within 15 minutes. Unpaid orders expire
       automatically. Stock is secured only after sufficient payment is submitted.
     </p>
+    {% if placed_order and placed_order.packages %}<div class="order-product-list" aria-label="Ordered packages">{% for package in placed_order.packages %}<article class="order-product-line"><div><strong>{{ package.package_name }}</strong><small>{{ package.quantity|number }} package(s) × {{ package.unit_price|currency }}</small></div><strong>{{ package.line_total|currency }}</strong></article>{% endfor %}</div>{% endif %}
     {% if placed_order and placed_order.payment_due_at %}
     <div
       class="payment-deadline"
@@ -76,7 +77,7 @@
           />
           <div>
             <span>{{ item.category }}</span><strong>{{ item.name }}</strong
-            ><small>{{ item.base_price|currency }} / {{ 'package' if item.category == 'Package' else item.unit }}</small>
+            ><small>{{ item.base_price|currency }} / {{ 'package' if item.category == 'Package' else item.unit }}</small>{% if item.category == 'Package' %}<details><summary>{{ item.total_packs|number }} packs per package</summary><p class="package-inclusions">{{ item.description }}</p></details>{% endif %}
           </div>
           <div class="checkout-line-quantity">
             <small>Quantity</small

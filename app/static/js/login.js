@@ -4,9 +4,10 @@ document.querySelectorAll("[data-login-form]").forEach((form) => {
     return;
   }
 
+  // Validate before the shared submit handler applies its loading state.
   form.addEventListener("submit", (event) => {
     if (!window.PortalForms.validate(form)) event.preventDefault();
-  });
+  }, { capture: true });
 });
 
 document.querySelectorAll("[data-password-toggle]").forEach((toggle) => {

@@ -4600,3 +4600,5 @@ body.modal-is-open {
 .payment-progress-timeline li::before { content:""; position:absolute; left:-17px; top:5px; width:8px; height:8px; border-radius:50%; background:currentColor; }
 .payment-progress-timeline time { font-size:.8rem; color:var(--text-muted, #59635d); }
 .receipt-payment-form > button[type="submit"] { min-height:44px; width:100%; }
+
+.role-reseller .package-inclusions { white-space: pre-line; }

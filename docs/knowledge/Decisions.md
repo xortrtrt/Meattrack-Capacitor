@@ -625,3 +625,16 @@ empty responses and rejected claims. Retired lead capture remains disabled.
 See [[Background Work and Integrations]]. Sources: `app/chatbot/provider.py`,
 `app/chatbot/lead_flow.py`, `app/chatbot/catalog.py` and
 `tests/test_chatbot_lead_flow.py`.
+
+## 2026-11-04 — Production demo-data cleanup with no opening stock
+
+The user requested a production cleanup while preserving accounts and products,
+and explicitly included raw materials, batches, recipes, and inventory logs in
+the removal scope. Because the existing broad reset procedure seeds new opening
+batches and its table manifest did not match the live schema, the production
+cleanup was rehearsed against a restored private backup and applied with a
+reviewed transaction covering the live dependent tables. Keep the finished
+product catalog and account records while leaving stock and inventory history
+empty; do not reset identity sequences, so later records will not reuse old IDs.
+The app/worker were paused only for maintenance, then restarted and health-checked.
+See [[Database and Operations]] and [[Orders and Inventory]].

@@ -330,3 +330,23 @@ configuration. The maintenance transaction manifest in `tools/transaction_reset.
 now includes `order_packages`; a disposable-schema rollback check covered it.
 No operational reset or production deployment was performed. See
 [[Orders and Inventory]], [[Decisions]], and [[Testing and Change Impact]].
+
+## Production demo-data cleanup (2026-11-04)
+
+At the user's request, the Contabo production database was reset after the
+application and worker were stopped. A private database backup was restored to
+an isolated database and the cleanup was rehearsed successfully before applying
+the same transaction to production. The live schema included additions beyond
+the reset utility's reviewed table manifest, so that utility was not run.
+
+The cleanup retained all 8 accounts, all 18 finished-product definitions, linked
+reseller profiles, activation and policy records, invitation/device state,
+product-package configuration, product images and migration history (54
+migrations). It removed all 7 raw-material records, batches, recipes, inventory
+and expiry movements, orders and their payment/refund/return artifacts, plus
+other demo operational records. It did not create opening stock or reset identity
+sequences. The app and worker resumed; `/health` reported a connected database.
+The protected backup remains outside the database and the repository. This is a
+production maintenance result, not a code deployment. See [[Decisions]] and
+[[Orders and Inventory]]. Sources: `tools/reset_operational_data.py`,
+`tools/transaction_reset.py`, `database/schema.sql`, `compose.prod.yml`.

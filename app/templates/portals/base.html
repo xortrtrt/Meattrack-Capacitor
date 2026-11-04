@@ -11,11 +11,11 @@
     <title>{{ section_title }} | {{ role.label }} Portal | MEATTRACK</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portal_base.css') }}?v=20261104-mobile-bottom-space-1"
+      href="{{ url_for('static', path='css/portal_base.css') }}?v=20261104-staff-package-groups-1"
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261104-component-packages-1"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261104-package-tracing-1"
     />
     {% if (role_key == "reseller" and section == "inbox") or (role_key in ["owner", "team-leader", "sales-supervisor"] and section == "messages") %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/reseller_inbox.css') }}?v=20261104-unified-sales-inbox-1" />
@@ -54,7 +54,7 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/portals/role-dashboards.css') }}?v=20261102-1">
     {% endif %}
     {% if role_key == "reseller" and section == "order" %}
-    <link rel="stylesheet" href="{{ url_for('static', path='css/portals/reseller-catalog.css') }}?v=20261104-component-packages-1">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/portals/reseller-catalog.css') }}?v=20261104-package-tracing-1">
     <script src="{{ url_for('static', path='js/reseller_catalog.js') }}?v=20261102-2" defer></script>
     {% endif %}
   </head>
@@ -349,10 +349,10 @@
     <script src="{{ url_for('static', path='vendor/lucide-0.514.0.min.js') }}"></script>
     <script src="{{ url_for('static', path='vendor/chart-4.5.1.umd.js') }}"></script>
     <script type="module" src="{{ url_for('static', path='js/core.js') }}?v=20261103-idle-session-1"></script>
-    <script src="{{ url_for('static', path='js/forms.js') }}?v=20261104-component-packages-1" defer></script>
+    <script src="{{ url_for('static', path='js/forms.js') }}?v=20261104-package-tracing-1" defer></script>
     {% if role_key == 'owner' %}<script src="{{ url_for('static', path='js/owner_recovery.js') }}?v=20261020-2" defer></script>{% endif %}
     <script src="{{ url_for('static', path='js/product_photos.js') }}?v=20261101-1" defer></script>
-    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261104-component-packages-1"></script>
+    <script type="module" src="{{ url_for('static', path='js/portal.js') }}?v=20261104-package-tracing-1"></script>
     {% if role_key == "owner" and section in ["orders", "reports", "accounts"] %}
     <script src="{{ url_for('static', path='js/owner_modals.js') }}?v=20261019-modal-4" defer></script>
     {% endif %}
