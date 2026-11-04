@@ -135,40 +135,47 @@ def product_sales_history(product_ids: list[int], start_date: date, end_date: da
     if not product_ids:
         return {}
     rows = clean_row(fetch_all("""
-        SELECT oi.product_id,
-               COALESCE(
-                   timezone(%s, o.fulfilled_at)::date,
-                   timezone(%s, o.order_date)::date
-               ) AS sale_date,
-               COALESCE(SUM(oi.quantity), 0) AS quantity
-        FROM orders o
-        JOIN order_items oi ON oi.order_id = o.order_id
-        JOIN inventory_items p ON p.item_id = oi.product_id
-        LEFT JOIN accounts creator ON creator.account_id = o.created_by_account_id
-        LEFT JOIN accounts assigned_leader ON assigned_leader.account_id = o.team_leader_account_id
-        WHERE o.status = 'fulfilled'
-          AND (
-              (o.order_type = 'walk_in' AND creator.account_type = 'team_leader'
-               AND creator.team_leader_role IN ('sales', 'sales-supervisor'))
-              OR
-              (o.order_type = 'reseller' AND assigned_leader.account_type = 'team_leader'
-               AND assigned_leader.team_leader_role IN ('sales', 'sales-supervisor'))
-          )
-          AND p.item_type = 'finished_product'
-          AND oi.product_id = ANY(%s)
-          AND COALESCE(
-              timezone(%s, o.fulfilled_at)::date,
-              timezone(%s, o.order_date)::date
-          ) BETWEEN %s AND %s
-        GROUP BY oi.product_id, COALESCE(
-            timezone(%s, o.fulfilled_at)::date,
-            timezone(%s, o.order_date)::date
+        WITH demand_rows AS (
+            SELECT oi.product_id,
+                   COALESCE(timezone(%s, o.fulfilled_at)::date,
+                            timezone(%s, o.order_date)::date) AS sale_date,
+                   SUM(oi.quantity) AS quantity
+            FROM orders o
+            JOIN order_items oi ON oi.order_id = o.order_id
+            JOIN inventory_items p ON p.item_id = oi.product_id
+            LEFT JOIN accounts creator ON creator.account_id = o.created_by_account_id
+            LEFT JOIN accounts assigned_leader ON assigned_leader.account_id = o.team_leader_account_id
+            WHERE o.status = 'fulfilled'
+              AND (
+                  (o.order_type = 'walk_in' AND creator.account_type = 'team_leader'
+                   AND creator.team_leader_role IN ('sales', 'sales-supervisor'))
+                  OR
+                  (o.order_type = 'reseller' AND assigned_leader.account_type = 'team_leader'
+                   AND assigned_leader.team_leader_role IN ('sales', 'sales-supervisor'))
+              )
+              AND p.item_type = 'finished_product'
+              AND oi.product_id = ANY(%s)
+              AND COALESCE(timezone(%s, o.fulfilled_at)::date,
+                           timezone(%s, o.order_date)::date) BETWEEN %s AND %s
+            GROUP BY oi.product_id, COALESCE(timezone(%s, o.fulfilled_at)::date,
+                                             timezone(%s, o.order_date)::date)
+
+            UNION ALL
+
+            SELECT seed.product_id, seed.sale_date, seed.quantity
+            FROM forecast_demand_seed_daily seed
+            JOIN forecast_demand_seed_datasets dataset USING (dataset_key)
+            WHERE seed.product_id = ANY(%s)
+              AND seed.sale_date BETWEEN %s AND %s
         )
-        ORDER BY oi.product_id, sale_date;
+        SELECT product_id, sale_date, SUM(quantity) AS quantity
+        FROM demand_rows
+        GROUP BY product_id, sale_date
+        ORDER BY product_id, sale_date;
     """, (
         BUSINESS_TIMEZONE, BUSINESS_TIMEZONE, product_ids,
         BUSINESS_TIMEZONE, BUSINESS_TIMEZONE, start_date, end_date,
-        BUSINESS_TIMEZONE, BUSINESS_TIMEZONE,
+        BUSINESS_TIMEZONE, BUSINESS_TIMEZONE, product_ids, start_date, end_date,
     )))
     grouped: dict[int, list[dict]] = {product_id: [] for product_id in product_ids}
     for row in rows:
@@ -200,7 +207,7 @@ def queue_forecast(model_name: str, forecast_horizon_days: int, requesting_accou
         "prophet_minimum_nonzero_days": forecasting.PROPHET_MIN_NONZERO_DAYS,
         "tsb_alpha": forecasting.TSB_ALPHA,
         "tsb_beta": forecasting.TSB_BETA,
-        "demand_source": "fulfilled_sales_leader_attributed_order_items",
+        "demand_source": "fulfilled_sales_orders_plus_attributed_seed_history",
         "business_timezone": BUSINESS_TIMEZONE,
         "input_cutoff": input_end.isoformat(),
         "package_versions": forecasting.runtime_versions(),
@@ -532,7 +539,7 @@ def forecast_run_status(forecast_run_id: int, owner_account_id: int) -> dict | N
                    WHEN status = 'queued' THEN 'Forecast is queued.'
                    WHEN status = 'running' THEN 'Forecast is running.'
                    WHEN status = 'completed' THEN 'Forecast completed.'
-                   WHEN status = 'completed_with_warnings' THEN 'Forecast completed with products requiring review.'
+                   WHEN status = 'completed_with_warnings' THEN 'Forecast completed.'
                    WHEN status = 'cancelling' THEN 'Forecast cancellation is pending.'
                    WHEN status = 'cancelled' THEN 'Forecast was cancelled.'
                    ELSE 'Forecast failed.'

@@ -61,7 +61,7 @@
          {% if latest_forecast_run.status in ('queued', 'running') %}
          data-forecast-run-status data-forecast-run-id="{{ latest_forecast_run.forecast_run_id }}"
          {% endif %}>
-      <span class="status-badge active">{{ latest_forecast_run.status }}</span>
+      <span class="status-badge active">{{ 'Completed' if latest_forecast_run.status == 'completed_with_warnings' else latest_forecast_run.status.replace('_', ' ')|title }}</span>
       <strong>{{ latest_forecast_run.model_name }}</strong>
       <small>Requested by {{ latest_forecast_run.requested_by or "Former owner account" }}</small>
       <small>{{ latest_forecast_run.input_period_start|nice_date }} - {{ latest_forecast_run.input_period_end|nice_date }} · {{ latest_forecast_run.forecast_horizon_days }} days</small>
@@ -102,7 +102,7 @@
       <select name="run_id">
         {% for run in forecast_runs %}
         <option value="{{ run.forecast_run_id }}" {{ 'selected' if latest_forecast_run and latest_forecast_run.forecast_run_id == run.forecast_run_id else '' }}>
-          #{{ run.forecast_run_id }} · {{ run.model_name }} · {{ run.status }}
+          #{{ run.forecast_run_id }} · {{ run.model_name }} · {{ 'Completed' if run.status == 'completed_with_warnings' else run.status.replace('_', ' ')|title }}
         </option>
         {% endfor %}
       </select>

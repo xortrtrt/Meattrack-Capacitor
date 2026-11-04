@@ -1,8 +1,8 @@
 # Forecast dummy sales data
 
 `tools/forecast_dummy_sales.py` creates deterministic, synthetic fulfilled reseller sales that use the same `orders` and
-`order_items` path as the owner forecast. It is intended only for a local development database. The loader refuses to
-run when `APP_ENV=production` or when PostgreSQL is not on localhost.
+`order_items` path as the local owner forecast. The loader refuses to run when `APP_ENV=production` or when PostgreSQL is
+not on localhost.
 
 ## Why the data has these patterns
 
@@ -62,3 +62,25 @@ The database loader excludes `Package` catalog entries: bundles expand into
 individual product demand under the component-package workflow. It generates
 history for active individual finished products, including active demo products.
 Loading data does not queue or run a forecast.
+
+## Exporting a forecast-only seed
+
+For production demand forecasting, export only daily pack quantities from marked
+local orders; do not transfer generated order rows or synthetic payment proofs:
+
+```powershell
+.venv\Scripts\python.exe tools\export_forecast_seed.py --output tmp\forecast-seed-history.json
+```
+
+After migration 055 is deployed, the import tool first runs read-only. Apply it
+with the intended active Sales Leader's email:
+
+```bash
+python tools/import_forecast_seed.py --file /tmp/forecast-seed-history.json --team-leader-email leader@example.com
+python tools/import_forecast_seed.py --file /tmp/forecast-seed-history.json --team-leader-email leader@example.com --apply
+```
+
+The internal synthetic source marker remains in dataset metadata. Imported rows
+do not appear as orders or count toward Sales financial reports. Exact-name
+matches to active individual finished products feed forecasting; missing catalog
+names stay stored but unmapped, and package products are excluded.

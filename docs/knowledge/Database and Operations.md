@@ -1,6 +1,6 @@
 ---
 tags: [meattrack, database, operations]
-verified: 2026-11-03
+verified: 2026-11-04
 ---
 # Database and operations
 
@@ -360,3 +360,24 @@ The protected backup remains outside the database and the repository. This is a
 production maintenance result, not a code deployment. See [[Decisions]] and
 [[Orders and Inventory]]. Sources: `tools/reset_operational_data.py`,
 `tools/transaction_reset.py`, `database/schema.sql`, `compose.prod.yml`.
+
+## Forecast-only synthetic seed data (2026-11-04)
+
+Migration 055 adds a dataset-level Sales Leader attribution record and daily
+product-demand rows separate from orders. The local `DUMMY_FORECAST_V1` orders
+can be exported as aggregate quantity by product and Manila sale date, then
+imported into the seed tables without copying payment proofs or changing real
+order, report, refund, or inventory ledgers. Production forecasting combines
+seed quantities with fulfilled attributed order demand. Catalog products without
+an active exact-name individual-product match remain stored with a null product
+link and are excluded from model input until mapped; package products are never
+mapped. Local setup and import tooling is in `tools/export_forecast_seed.py` and
+`tools/import_forecast_seed.py`.
+
+The forecast status remains `completed_with_warnings` internally for retry and
+diagnostic behavior, while the Owner-facing status label and polling message say
+**Completed**. Product-level diagnostics and run notes still show review details.
+Sources checked: `app/repositories/forecasts.py`,
+`app/templates/portals/owner/forecasts.html`, migration 055, and the two forecast
+seed tools. Migration 055 was applied locally on 2026-11-04. Production migration
+and seed import remain pending server access.

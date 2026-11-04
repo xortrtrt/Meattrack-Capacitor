@@ -14,6 +14,19 @@ have a planning path. This policy applies to newly processed runs, not existing
 saved results. See [[Background Work and Integrations]]; implementation in
 `app/forecasting.py`, metadata in `app/repositories/forecasts.py`.
 
+## 2026-11-04 — Keep synthetic forecast history out of operational sales
+
+The user requested the 1,194 marked local synthetic orders for production demand
+forecasting, attributed to Sales Leader Cedrick Andor. Copying those rows into
+`orders` would create false payment evidence and inflate real sales workflows.
+Instead, retain the dataset's internal synthetic provenance and import daily
+product quantities into forecast-only seed tables. Attribute the dataset to the
+requested active Sales Leader, combine mapped quantities with real fulfilled
+sales only inside forecast history, and leave unmatched products unlinked until
+catalog setup. Existing result diagnostics remain available even though the
+Owner-facing completed-with-warnings label is simplified to **Completed**.
+See [[Background Work and Integrations]] and [[Database and Operations]].
+
 ## 2026-11-04 — Supervisor personal reseller roster
 
 Add **My Resellers** to Sales Supervisor navigation, reusing the Sales Leader
