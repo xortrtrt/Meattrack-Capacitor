@@ -610,3 +610,18 @@ exact package total and is snapshotted on each order. Packages have computed
 assembly availability, no independent physical stock, raw-material recipe or
 single-product declared net content. See [[Returns and Financials]] and
 `app/repositories/inventory/packages.py`.
+
+
+## OpenRouter interprets chatbot messages first (2026-11-04)
+
+The user requested model-first interpretation after "paano maging reseller" was
+misclassified as a product name by local rules. With a configured provider, send
+messages, recent history and the live catalog to OpenRouter before local intent
+matching. Require a structured scope classification and answer, returning the
+standard refusal for unrelated requests even when they contain catalog keywords.
+Keep catalog grounding and private-data/unsupported-detail checks after
+the response, and retain local fallback for missing credentials, provider errors,
+empty responses and rejected claims. Retired lead capture remains disabled.
+See [[Background Work and Integrations]]. Sources: `app/chatbot/provider.py`,
+`app/chatbot/lead_flow.py`, `app/chatbot/catalog.py` and
+`tests/test_chatbot_lead_flow.py`.

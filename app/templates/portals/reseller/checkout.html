@@ -114,8 +114,21 @@
         {% for product_id in selected_product_ids %}
         <input type="hidden" name="product_id" value="{{ product_id }}" />
         {% endfor %}
-{{ checkout_notes }}</textarea
-        >
+        <label for="checkout-notes">Order notes <small>Optional</small></label>
+        <textarea id="checkout-notes" name="notes" rows="3">{{ checkout_notes }}</textarea>
+
+        <section class="checkout-qr" aria-labelledby="checkout-qr-title">
+          <h3 id="checkout-qr-title">Payment QR code</h3>
+          <p>please save this qr before placing order</p>
+          {% if checkout_qr_url %}
+          <img src="{{ checkout_qr_url }}" alt="Payment QR code for your order" width="240" height="240" />
+          <a class="button subtle" href="{{ checkout_qr_url }}" download="payment-qr.png">
+            <i data-lucide="download"></i> Save QR code
+          </a>
+          {% else %}
+          <p class="checkout-qr-unavailable" role="status">Payment QR image is not available yet. Contact Sales for payment details.</p>
+          {% endif %}
+        </section>
 
         <button class="button primary checkout-submit" type="submit">
           <i data-lucide="lock-keyhole"></i>

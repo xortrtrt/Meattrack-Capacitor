@@ -64,75 +64,6 @@ def _support_result(
     }
 
 
-def _empty_lead_state() -> dict:
-    return {"mode": "lead", "step": "collect", "field_index": 0, "data": {}}
-
-
-def _next_missing_field(state: dict) -> tuple[int, str, str] | None:
-    data = state.setdefault("data", {})
-    for index, (field, prompt) in enumerate(LEAD_FIELDS):
-        if not str(data.get(field, "")).strip():
-            return index, field, prompt
-    return None
-
-
-def _lead_summary(data: dict) -> str:
-    return (
-        "Please confirm these details: "
-        f"Name: {data.get('name')}; "
-        f"Business: {data.get('business_name')}; "
-        f"Email: {data.get('email')}; "
-        f"Phone: {data.get('contact_number')}; "
-        f"Location: {data.get('location')}; "
-        f"Interest: {data.get('interest')}. "
-        "Are these correct?"
-    )
-
-
-def _field_from_message(message: str) -> str | None:
-    lower = re.sub(r"\s+", " ", message.lower()).strip()
-    matches = [
-        (len(alias), field)
-        for field, aliases in FIELD_ALIASES.items()
-        for alias in aliases
-        if alias in lower
-    ]
-    if matches:
-        return max(matches)[1]
-    return None
-
-
-def _looks_like_question(message: str) -> bool:
-    normalized = re.sub(r"\s+", " ", message.lower()).strip()
-    if "?" in normalized:
-        return True
-    question_start = bool(
-        re.match(
-            r"^(?:who|what|when|where|why|how|do|does|did|is|are|can|could|would|should|will)\b",
-            normalized,
-        )
-    )
-    return question_start and (is_related(message) or is_identity_question(message) or is_prompt_attack(message))
-
-
-def _requests_field_change(message: str, field: str | None) -> bool:
-    if not field:
-        return False
-    return bool(re.search(r"\b(?:change|edit|update|correct|wrong|incorrect|replace)\b", message.lower()))
-
-
-def _lead_back(state: dict) -> dict:
-    data = state.setdefault("data", {})
-    completed = [field for field, _ in LEAD_FIELDS if str(data.get(field, "")).strip()]
-    if not completed:
-        return {"reply": LEAD_FIELDS[0][1], "state": state}
-    field = completed[-1]
-    data.pop(field, None)
-    state["step"] = "collect"
-    prompt = dict(LEAD_FIELDS)[field]
-    return {"reply": f"Sure—let's change that. {prompt}", "state": state}
-
-
 def process_chatbot_message(
     message: str,
     state: dict | None = None,
@@ -146,21 +77,9 @@ def process_chatbot_message(
 
     normalized_quick_reply = re.sub(r"\s+", " ", text.lower()).strip()
 
-    if normalized_quick_reply.rstrip("?") in {"how to become a reseller", "become a reseller"} or is_reseller_signup_intent(text):
-        reply = f"For reseller opportunities, please contact the Business Owner at {BUSINESS_EMAIL}. Please discuss the opportunity directly with the owner."
-        result = _support_result(reply, text, previous_state=state, answer_status="answered")
-        result["state"] = {}
-        result["suggestions"] = ["View products", "Delivery details"]
-        return result
-
-    # Discard older visitor lead-capture sessions; reseller discussions now
-    # happen directly with the Business Owner outside MEATTRACK.
+    # Retired lead/handoff sessions must never resume data collection.
     if state.get("mode") in {"lead", "handoff"}:
         state = {}
-
-    if is_human_handoff_intent(text):
-        reply = f"For direct help, contact Batangas Premium at {BUSINESS_PHONE} or {BUSINESS_EMAIL}."
-        return _support_result(reply, text, previous_state=state, answer_status="answered")
 
     if normalized_quick_reply == "view products":
         history = state.get("history") if state.get("mode") == "support" else []
@@ -182,154 +101,26 @@ def process_chatbot_message(
                     "pack_size_unit": str(product.get("pack_size_unit") or "").strip()[:20],
                 }
             )
-        reply = "Here are our top 3 best-selling products." if products else "Browse our complete product catalog."
-        result = _support_result(reply, text, history, previous_state=state, answer_status="answered")
+        status_sink: dict = {}
+        reply = ask_chatbot(text, history=history, catalog=best_sellers if best_sellers is not None else catalog, _status_sink=status_sink)
+        result = _support_result(reply, text, history, previous_state=state, answer_status=status_sink.get("answer_status"))
         result["product_preview"] = {
             "title": "Top 3 best sellers",
             "products": products,
             "view_all_url": "/products",
         }
         return result
-    if normalized_quick_reply == "delivery details":
-        history = state.get("history") if state.get("mode") == "support" else []
-        status_sink: dict = {}
-        reply = ask_chatbot(text, history=history, catalog=catalog, _status_sink=status_sink)
-        return _support_result(
-            reply, text, history, previous_state=state,
-            answer_status=status_sink.get("answer_status"),
-        )
-    if state.get("mode") != "lead":
-        history = state.get("history") if state.get("mode") == "support" else []
-        status_sink = {}
-        reply = ask_chatbot(text, history=history, catalog=catalog, _status_sink=status_sink)
-        return _support_result(
-            reply, text, history, previous_state=state,
-            answer_status=status_sink.get("answer_status"),
-        )
-
-    if _contains_phrase(text, CANCEL_WORDS):
-        return {
-            "reply": "No problem—the reseller inquiry was cancelled. How else can I help?",
-            "state": {},
-            "suggestions": ["View products", "Delivery details", "How to Become a Reseller?"],
-        }
-    if _contains_phrase(text, RESTART_WORDS):
-        new_state = _empty_lead_state()
-        return {"reply": "Let's start over. What is your full name?", "state": new_state, "suggestions": ["Cancel"]}
-    if _contains_phrase(text, BACK_WORDS):
-        result = _lead_back(state)
-        result["suggestions"] = ["Cancel"]
-        return result
-
-    step = state.get("step", "collect")
-    data = state.setdefault("data", {})
-
-    if step == "collect":
-        missing = _next_missing_field(state)
-        if missing is None:
-            state["step"] = "confirm"
-            return {"reply": _lead_summary(data), "state": state, "suggestions": ["Yes", "Change email", "Cancel"]}
-
-        index, field, prompt = missing
-        if _looks_like_question(text):
-            support_reply = ask_chatbot(text, catalog=catalog)
-            return {
-                "reply": f"{support_reply} To continue the reseller inquiry: {prompt}",
-                "state": state,
-                "suggestions": ["Back", "Cancel"],
-            }
-        max_length = LEAD_FIELD_MAX_LENGTHS[field]
-        if len(text) > max_length:
-            return {
-                "reply": f"Please keep that detail under {max_length} characters.",
-                "state": state,
-                "suggestions": ["Back", "Cancel"],
-            }
-        if field == "name" and not any(character.isalpha() for character in text):
-            return {"reply": "Please enter a valid full name using letters.", "state": state, "suggestions": ["Back", "Cancel"]}
-        if field == "email" and not _is_valid_email(text):
-            return {"reply": "Please enter a valid email address, or type ‘back’ or ‘cancel’.", "state": state, "suggestions": ["Back", "Cancel"]}
-        if field == "contact_number" and not _is_valid_contact_number(text):
-            return {"reply": "Please enter a valid contact number with 7 to 15 digits.", "state": state, "suggestions": ["Back", "Cancel"]}
-        if len(text) < 2:
-            return {"reply": prompt, "state": state}
-
-        data[field] = text
-        next_field = _next_missing_field(state)
-        if next_field is None:
-            state["step"] = "confirm"
-            return {"reply": _lead_summary(data), "state": state, "suggestions": ["Yes", "Change email", "Cancel"]}
-        state["field_index"] = next_field[0]
-        return {"reply": next_field[2], "state": state, "suggestions": ["Back", "Cancel"]}
-
-    if step == "confirm":
-        edit_field = _field_from_message(text)
-        if _requests_field_change(text, edit_field):
-            assert edit_field is not None
-            data.pop(edit_field, None)
-            state["step"] = "collect"
-            return {"reply": dict(LEAD_FIELDS)[edit_field], "state": state, "suggestions": ["Cancel"]}
-        if is_yes(text):
-            state["step"] = "connect"
-            return {"reply": "Do you want me to connect you with an available sales team leader now?", "state": state, "suggestions": ["Yes", "No"]}
-        if is_no(text):
-            state["step"] = "edit"
-            return {
-                "reply": "Which detail should I change: name, business, email, phone, location, or interest?",
-                "state": state,
-                "suggestions": ["Name", "Email", "Phone", "Location", "Cancel"],
-            }
-        if edit_field:
-            data.pop(edit_field, None)
-            state["step"] = "collect"
-            return {"reply": dict(LEAD_FIELDS)[edit_field], "state": state, "suggestions": ["Cancel"]}
-        return {"reply": "Please answer yes, or tell me which detail you want to change.", "state": state, "suggestions": ["Yes", "Change email", "Cancel"]}
-
-    if step == "edit":
-        edit_field = _field_from_message(text)
-        if not edit_field:
-            return {
-                "reply": "Please choose name, business, email, phone, location, or interest.",
-                "state": state,
-                "suggestions": ["Name", "Email", "Phone", "Location", "Cancel"],
-            }
-        data.pop(edit_field, None)
-        state["step"] = "collect"
-        return {"reply": dict(LEAD_FIELDS)[edit_field], "state": state, "suggestions": ["Cancel"]}
-
-    if step == "connect":
-        edit_field = _field_from_message(text)
-        if _requests_field_change(text, edit_field):
-            assert edit_field is not None
-            data.pop(edit_field, None)
-            state["step"] = "collect"
-            return {"reply": dict(LEAD_FIELDS)[edit_field], "state": state, "suggestions": ["Cancel"]}
-        if is_yes(text):
-            state["step"] = "submitted"
-            return {
-                "reply": "Thank you. I will send your details to an available sales team leader.",
-                "state": state,
-                "action": "create_lead",
-                "lead": data,
-                "suggestions": ["View products"],
-            }
-        if is_no(text):
-            state["step"] = "done"
-            return {
-                "reply": "Understood. Your details were not submitted. You can message me again when you are ready.",
-                "state": state,
-                "suggestions": ["View products", "How to Become a Reseller?"],
-            }
-        return {"reply": "Please answer yes if you want to talk to an available team leader, or no to cancel.", "state": state, "suggestions": ["Yes", "No"]}
-
-    if step in {"submitted", "done"}:
-        status_sink = {}
-        reply = ask_chatbot(text, catalog=catalog, _status_sink=status_sink)
-        return _support_result(reply, text, answer_status=status_sink.get("answer_status"))
-
+    history = state.get("history") if state.get("mode") == "support" else []
     status_sink = {}
-    reply = ask_chatbot(text, catalog=catalog, _status_sink=status_sink)
-    return _support_result(reply, text, answer_status=status_sink.get("answer_status"))
+    reply = ask_chatbot(text, history=history, catalog=catalog, _status_sink=status_sink)
+    result = _support_result(
+        reply, text, history, previous_state=state,
+        answer_status=status_sink.get("answer_status"),
+    )
+    if is_reseller_signup_intent(text):
+        result["state"] = {}
+        result["suggestions"] = ["View products", "Delivery details"]
+    return result
+
 
 __all__ = ["process_chatbot_message"]
-

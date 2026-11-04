@@ -396,3 +396,14 @@ historical batch list. Sources checked: `app/repositories/product_returns.py`
 (`product_lifecycle_details`), `app/portals/product_returns.py`, and
 `app/templates/portals/lifecycle/product-details.html`. See
 [[Testing and Change Impact]].
+
+## Checkout payment QR (2026-11-04)
+
+Reseller final review includes a payment QR image area above Place order and the
+reminder “please save this qr before placing order”. Supply the business payment
+image at `app/static/images/payment-qr.png`; checkout displays it with a Save QR
+code link when present and a contact-Sales message when absent. The QR reminder
+does not require an acknowledgement or change the existing payment window.
+Sources checked: `app/portals/reseller.py:checkout_context`,
+`app/templates/portals/reseller/checkout.html`, and
+`app/static/css/portals/reseller.css`. See [[Returns and Financials]].

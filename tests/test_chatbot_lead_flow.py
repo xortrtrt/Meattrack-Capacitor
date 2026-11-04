@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,10 +13,15 @@ from app.routers import chatbot as chatbot_routes
 from app.security_controls import RateLimitExceeded
 
 
+@pytest.fixture(autouse=True)
+def disable_real_chatbot_provider(monkeypatch):
+    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "")
+
+
 class ModelAnswerCompletions:
     @staticmethod
     def create(**kwargs):
-        message = type("Message", (), {"content": "MODEL ANSWER"})()
+        message = type("Message", (), {"content": ""})()
         choice = type("Choice", (), {"message": message})()
         return type("Response", (), {"choices": [choice]})()
 
@@ -28,6 +35,29 @@ def test_chatbot_directs_reseller_interest_to_owner_email():
     result = process_chatbot_message("I want to be a reseller")
 
     assert "pat.clem.inc@gmail.com" in result["reply"]
+    assert result["state"] == {}
+    assert "action" not in result
+
+
+@pytest.mark.parametrize("question", [
+    "paano maging reseller",
+    "Paano po maging reseller?",
+    "Gusto ko maging reseller",
+    "Pwede po bang maging reseller?",
+    "paano mag-apply bilang reseller",
+    "paano maging distributor",
+])
+@pytest.mark.parametrize("api_key", ["", "configured"])
+def test_filipino_reseller_signup_uses_provider_or_local_fallback(monkeypatch, question, api_key):
+    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", api_key)
+
+    monkeypatch.setattr(chatbot_provider, "OpenAI", ModelAnswerOpenAI)
+    result = process_chatbot_message(question, catalog=[
+        {"name": "Reseller Package", "base_price": 4997, "category": "Package"},
+    ])
+
+    assert "pat.clem.inc@gmail.com" in result["reply"]
+    assert "Business Owner" in result["reply"]
     assert result["state"] == {}
     assert "action" not in result
 
@@ -195,7 +225,7 @@ def test_unknown_product_does_not_contaminate_follow_up_context(monkeypatch):
     assert "Hungarian Sausage availability" not in follow_up["reply"]
 
 
-def test_unknown_product_follow_up_bypasses_hosted_model(monkeypatch):
+def test_unknown_product_follow_up_has_local_fallback(monkeypatch):
     monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
     monkeypatch.setattr(chatbot_provider, "OpenAI", ModelAnswerOpenAI)
     catalog = [{"name": "Hungarian Sausage", "base_price": 109, "category": "Pork"}]
@@ -252,11 +282,11 @@ def test_chatbot_keeps_generic_price_list_for_generic_price_question(monkeypatch
 
 
 @pytest.mark.parametrize("question", ["What products do you have?", "Anong products ang meron?"])
-def test_catalog_listing_requests_are_generated_locally(monkeypatch, question):
+def test_catalog_listing_requests_have_local_fallback(monkeypatch, question):
     class FakeCompletions:
         @staticmethod
         def create(**kwargs):
-            message = type("Message", (), {"content": "MODEL ANSWER"})()
+            message = type("Message", (), {"content": ""})()
             choice = type("Choice", (), {"message": message})()
             return type("Response", (), {"choices": [choice]})()
 
@@ -287,7 +317,7 @@ def test_view_products_returns_top_three_structured_preview():
 
     result = process_chatbot_message("View products", best_sellers=best_sellers)
 
-    assert result["reply"] == "Here are our top 3 best-selling products."
+    assert "Bacon" in result["reply"]
     assert [product["name"] for product in result["product_preview"]["products"]] == [
         "Bacon",
         "Beef Tapa",
@@ -311,7 +341,7 @@ def test_common_filipino_and_taglish_product_phrasing(monkeypatch, question, exp
     class FakeCompletions:
         @staticmethod
         def create(**kwargs):
-            message = type("Message", (), {"content": "MODEL ANSWER"})()
+            message = type("Message", (), {"content": ""})()
             choice = type("Choice", (), {"message": message})()
             return type("Response", (), {"choices": [choice]})()
 
@@ -679,7 +709,7 @@ def test_chatbot_refuses_private_customer_data_requests(monkeypatch, question):
         ("I want to order 3 packs of Bacon", "correct ordering channel"),
     ],
 )
-def test_verified_service_answers_bypass_hosted_model(monkeypatch, question, expected):
+def test_verified_service_answers_have_local_fallback(monkeypatch, question, expected):
     monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
     monkeypatch.setattr(chatbot_provider, "OpenAI", ModelAnswerOpenAI)
     catalog = [{"name": "Bacon", "base_price": 129, "category": "Chicken"}]
@@ -699,7 +729,7 @@ def test_supported_natural_language_requests_reach_hosted_model(monkeypatch, que
     class FakeCompletions:
         @staticmethod
         def create(**kwargs):
-            message = type("Message", (), {"content": "MODEL ANSWER"})()
+            message = type("Message", (), {"content": ""})()
             choice = type("Choice", (), {"message": message})()
             return type("Response", (), {"choices": [choice]})()
 
@@ -716,7 +746,7 @@ def test_supported_natural_language_requests_reach_hosted_model(monkeypatch, que
 
     result = process_chatbot_message(question, catalog=catalog)
 
-    assert result["reply"] == "MODEL ANSWER"
+    assert "correct ordering channel" in result["reply"]
 
 
 def test_first_time_buyer_recommendation_asks_for_a_grounded_preference(monkeypatch):
@@ -1000,7 +1030,7 @@ def test_unsafe_hosted_model_claims_are_replaced_with_grounded_fallback(
     class FakeCompletions:
         @staticmethod
         def create(**kwargs):
-            message = type("Message", (), {"content": unsafe_answer})()
+            message = type("Message", (), {"content": json.dumps({"scope": "in_scope", "reply": unsafe_answer})})()
             choice = type("Choice", (), {"message": message})()
             return type("Response", (), {"choices": [choice]})()
 
@@ -1152,7 +1182,7 @@ def test_hosted_model_cannot_recommend_an_invented_product(monkeypatch):
     class InventedRecommendationCompletions:
         @staticmethod
         def create(**kwargs):
-            message = type("Message", (), {"content": "I recommend Unicorn Sausage."})()
+            message = type("Message", (), {"content": json.dumps({"scope": "in_scope", "reply": "I recommend Unicorn Sausage."})})()
             choice = type("Choice", (), {"message": message})()
             return type("Response", (), {"choices": [choice]})()
 
@@ -1174,7 +1204,7 @@ def test_hosted_model_cannot_recommend_an_invented_product(monkeypatch):
     assert "Unicorn Sausage" not in result["reply"]
 
 
-def test_unconfirmed_product_details_bypass_hosted_model(monkeypatch):
+def test_unconfirmed_product_details_are_checked_after_hosted_model(monkeypatch):
     monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
     monkeypatch.setattr(chatbot_provider, "OpenAI", ModelAnswerOpenAI)
     catalog = [{"name": "Bacon", "base_price": 129, "category": "Chicken"}]
@@ -1184,7 +1214,7 @@ def test_unconfirmed_product_details_bypass_hosted_model(monkeypatch):
     assert "product label" in result["reply"]
 
 
-def test_dietary_composition_question_bypasses_hosted_model(monkeypatch):
+def test_dietary_composition_question_is_checked_after_hosted_model(monkeypatch):
     monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
     monkeypatch.setattr(chatbot_provider, "OpenAI", ModelAnswerOpenAI)
     catalog = [{"name": "Bacon", "base_price": 129, "category": "Chicken"}]
@@ -1226,7 +1256,7 @@ def test_reseller_questions_do_not_start_lead_capture_until_customer_opts_in(mon
     assert signup["state"] == {}
 
 
-def test_reseller_documents_and_capital_question_does_not_start_or_reach_model(monkeypatch):
+def test_reseller_documents_and_capital_question_does_not_start_capture(monkeypatch):
     monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
     monkeypatch.setattr(chatbot_provider, "OpenAI", ModelAnswerOpenAI)
 
@@ -1341,3 +1371,86 @@ def test_public_inquiry_form_is_disabled(monkeypatch):
 
 
 
+
+
+@pytest.mark.parametrize(("question", "answer"), [
+    ("paano maging reseller", "Para maging reseller, makipag-ugnayan sa Business Owner sa pat.clem.inc@gmail.com."),
+    ("magkano po ang bacon", "Ang Bacon ay PHP 129."),
+    ("Can you deliver to Manila?", "Delivery fees depend on location. Please confirm with the team."),
+    ("Do you sell unicorn sausage?", "Unicorn Sausage is not listed in the current catalog."),
+    ("Who won the basketball game?", chatbot.UNRELATED_REPLY),
+    ("View products", "Bacon is PHP 129."),
+])
+def test_openrouter_interprets_messages_first(monkeypatch, question, answer):
+    calls = []
+
+    class Completions:
+        @staticmethod
+        def create(**kwargs):
+            calls.append(kwargs)
+            message = type("Message", (), {"content": json.dumps({"scope": "in_scope", "reply": answer})})()
+            return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+    class Client:
+        def __init__(self, **kwargs):
+            self.chat = type("Chat", (), {"completions": Completions()})()
+
+    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
+    monkeypatch.setattr(chatbot_provider, "OpenAI", Client)
+    catalog = [{"name": "Bacon", "base_price": 129, "category": "Chicken"},
+               {"name": "Reseller Package", "base_price": 4997, "category": "Package"}]
+    result = process_chatbot_message(question, catalog=catalog)
+
+    assert len(calls) == 1
+    assert calls[0]["messages"][-1] == {"role": "user", "content": question}
+    assert "Bacon: PHP 129" in calls[0]["messages"][0]["content"]
+    assert "pat.clem.inc@gmail.com" in calls[0]["messages"][0]["content"]
+    assert result["reply"] == answer
+
+
+@pytest.mark.parametrize("question", [
+    "Who won the basketball game?",
+    "Sino ang presidente ng Pilipinas?",
+    "How does a sausage factory work?",
+    "Write Python code using a Bacon class",
+    "Tell me a chicken joke",
+])
+def test_model_out_of_scope_classification_controls_public_reply(monkeypatch, question):
+    class Completions:
+        @staticmethod
+        def create(**kwargs):
+            assert kwargs["response_format"] == {"type": "json_object"}
+            content = json.dumps({"scope": "out_of_scope", "reply": "Unrelated answer must never be displayed"})
+            message = type("Message", (), {"content": content})()
+            return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+    class Client:
+        def __init__(self, **kwargs):
+            self.chat = type("Chat", (), {"completions": Completions()})()
+
+    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
+    monkeypatch.setattr(chatbot_provider, "OpenAI", Client)
+    state = {"mode": "support", "history": [{"role": "user", "content": "How much is Bacon?"}]}
+    result = process_chatbot_message(question, state, catalog=[{"name": "Bacon", "base_price": 129}])
+    assert result["reply"] == chatbot.UNRELATED_REPLY
+    assert result["answer_status"] == "out_of_scope"
+    assert result["handoff"]["offered"] is False
+
+
+@pytest.mark.parametrize("content", ["Not JSON", "[]", '{"scope":"unknown","reply":"bad"}',
+                                     '{"scope":"in_scope","reply":42}', '{"scope":[],"reply":"bad"}', '{}'])
+def test_invalid_model_classification_uses_local_fallback(monkeypatch, content):
+    class Completions:
+        @staticmethod
+        def create(**kwargs):
+            message = type("Message", (), {"content": content})()
+            return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+    class Client:
+        def __init__(self, **kwargs):
+            self.chat = type("Chat", (), {"completions": Completions()})()
+
+    monkeypatch.setattr(chatbot_provider, "OPENROUTER_API_KEY", "configured")
+    monkeypatch.setattr(chatbot_provider, "OpenAI", Client)
+    result = process_chatbot_message("Who won the basketball game?")
+    assert result["reply"] == chatbot.UNRELATED_REPLY

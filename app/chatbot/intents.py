@@ -82,6 +82,14 @@ def is_reseller_intent(message: str) -> bool:
 
 def is_reseller_signup_intent(message: str) -> bool:
     lower = re.sub(r"\s+", " ", message.lower()).strip()
+    # Resolve Filipino signup questions before the short-product matcher can
+    # mistake the whole sentence for the catalog's Reseller Package.
+    if re.search(
+        r"\b(?:maging|mag[- ]?apply(?:\s+bilang)?|mag[- ]?register(?:\s+bilang)?)"
+        r"\s+(?:(?:po|na|ng|isang|ako|sana)\s+)*(?:reseller|distributor)\b",
+        lower,
+    ):
+        return True
     if any(
         term in lower
         for term in (

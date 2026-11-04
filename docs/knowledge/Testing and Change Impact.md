@@ -31,6 +31,29 @@ workspace header views. Full mypy still reports four existing errors in
 production changes or business stock-record mutations were performed by this task.
 See [[Owner Portal]], [[Roles and Access]], [[Orders and Inventory]], and [[Decisions]].
 
+## Chatbot model-first interpretation and scope (2026-11-04)
+
+158 focused tests passed in `tests/test_chatbot_lead_flow.py` and
+`tests/test_visitor_live_chat_retirement.py`; targeted Ruff and whitespace checks
+passed. Provider mocks verify that requests reach OpenRouter before local product
+matching, scope refusals override unrelated reply text, invalid structured output
+falls back, and price/unsupported-claim checks remain active. Tests disable real
+provider calls unless explicitly mocked.
+
+Eight final live checks against the configured OpenRouter model used a sample
+catalog and a completed previous product exchange. Filipino reseller and price
+questions, English/Filipino unrelated questions, product-keyword programming,
+factory-process and joke requests, and unknown-product availability returned the
+expected kinds of answers. These spot checks do not guarantee all model outputs;
+the deployed site was not verified. A subsequent Chrome check of the local site
+(`http://127.0.0.1:8000/`) submitted five messages through the visible widget:
+"paano maging reseller", a Filipino Bacon price question, a Filipino politics
+question, a programming request using "Bacon", and an unknown-product question.
+The displayed replies respectively gave Owner contact details, PHP 129/500 g,
+the standard scope refusal for both unrelated questions, and an unlisted-product
+answer. See
+[[Background Work and Integrations]] and [[Decisions]].
+
 ## Local Owner alerts backend check (2026-11-04)
 
 All 28 checks passed in `tests/test_owner_stock_alerts.py`,

@@ -10,7 +10,9 @@ from app.chatbot.lead_flow import process_chatbot_message
 from app.portals import shared
 
 
-def test_chatbot_directs_human_request_to_contact_details():
+def test_chatbot_directs_human_request_to_contact_details(monkeypatch):
+    from app.chatbot import provider
+    monkeypatch.setattr(provider, "OPENROUTER_API_KEY", "")
     result = process_chatbot_message("I want to talk to a human", {})
 
     assert "pat.clem.inc@gmail.com" in result["reply"]

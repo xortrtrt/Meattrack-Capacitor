@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -43,6 +44,8 @@ def cart_context(request: Request) -> dict:
 
 def checkout_context(request: Request) -> dict:
     context = cart_summary_context(request)
+    qr_image = Path(__file__).resolve().parents[1] / "static" / "images" / "payment-qr.png"
+    context["checkout_qr_url"] = "/static/images/payment-qr.png" if qr_image.is_file() else None
     draft = request.session.pop("checkout_error_draft", None) if request.query_params.get("restore") == "1" else None
     placed_order_id = request.query_params.get("placed")
     context["placed_order_id"] = None

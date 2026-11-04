@@ -449,6 +449,12 @@ def fallback_reply(
         else []
     )
 
+    if is_reseller_signup_intent(message):
+        if filipino:
+            return f"Para maging reseller, makipag-ugnayan sa Business Owner sa {BUSINESS_EMAIL}. Direktang pag-usapan sa owner ang oportunidad at pag-apruba."
+        return f"For reseller opportunities, please contact the Business Owner at {BUSINESS_EMAIL}. Please discuss the opportunity directly with the owner."
+    if is_human_handoff_intent(message):
+        return f"For direct help, contact Batangas Premium at {BUSINESS_PHONE} or {BUSINESS_EMAIL}."
     if is_greeting(message):
         if filipino:
             return "Kumusta! Matutulungan kita sa mga produkto, presyo, delivery, pag-order, at reseller inquiries ng Batangas Premium."

@@ -8,6 +8,16 @@ verified: 2026-11-04
 
 The landing chatbot's **How to Become a Reseller?** option displays the designated
 Business Owner email (`BUSINESS_EMAIL`) and collects no application details.
+When configured, OpenRouter interprets every non-empty chat message before local
+intent or product matching, using the current catalog, approved business details,
+and recent history. This includes Filipino reseller questions and quick replies.
+The model returns a structured scope classification and answer; out-of-scope
+classifications always become the standard Batangas Premium-only reply. Scope is
+based on the latest request, including when history contains product questions.
+Local rules answer when the provider is absent, fails, returns empty/invalid output, or
+its answer fails validation. Product cards remain generated from catalog data.
+Sources: `app/chatbot/provider.py`, `app/chatbot/lead_flow.py`,
+`tests/test_chatbot_lead_flow.py`.
 Negotiation and approval happen externally. An active Owner can issue a unique
 seven-day registration invitation from People & access; the recipient email is
 sent through the existing Brevo emailer. The raw token is sent directly and is

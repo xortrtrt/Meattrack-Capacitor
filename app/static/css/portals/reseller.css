@@ -1503,6 +1503,35 @@
   gap: 9px;
 }
 
+.role-reseller .checkout-qr {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--order-line);
+  border-radius: 9px;
+  background: var(--order-wash);
+  text-align: center;
+}
+
+.role-reseller .checkout-qr h3,
+.role-reseller .checkout-qr p {
+  margin: 0;
+}
+
+.role-reseller .checkout-qr img {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  object-fit: contain;
+}
+
+.role-reseller .checkout-qr-unavailable {
+  color: var(--text-light);
+  font-size: 0.86rem;
+}
+
 .role-reseller .checkout-form label {
   display: flex;
   justify-content: space-between;
