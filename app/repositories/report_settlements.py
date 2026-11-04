@@ -6,9 +6,9 @@ from decimal import Decimal
 
 
 def report_order_rows(cur, start, end, actor_id, *, lock=False):
-    scope = """((o.order_type='walk_in' AND o.created_by_account_id=%s)
-        OR (o.order_type='reseller' AND o.team_leader_account_id=%s))"""
-    params = (start, end, actor_id, actor_id)
+    scope = """(o.order_type='reseller' AND EXISTS (SELECT 1 FROM resellers assigned
+        WHERE assigned.reseller_id=o.reseller_id AND assigned.team_leader_account_id=%s))"""
+    params = (start, end, actor_id)
     if actor_id is None:
         scope = "true"
         params = (start, end)

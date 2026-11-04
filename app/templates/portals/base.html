@@ -15,7 +15,7 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261104-package-tracing-1"
+      href="{{ url_for('static', path='css/portals/' ~ (portal_css_key|default(role_key)) ~ '.css') }}?v=20261104-product-card-spacing-1"
     />
     {% if (role_key == "reseller" and section == "inbox") or (role_key in ["owner", "team-leader", "sales-supervisor"] and section == "messages") %}
     <link rel="stylesheet" href="{{ url_for('static', path='css/reseller_inbox.css') }}?v=20261104-unified-sales-inbox-1" />

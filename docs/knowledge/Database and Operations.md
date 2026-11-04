@@ -333,6 +333,16 @@ No operational reset or production deployment was performed. See
 
 ## Production demo-data cleanup (2026-11-04)
 
+Production package setup was subsequently checked after release `96bf277`.
+Migration 054 was applied, but the three package products were still categorized
+as Pork and had no component configuration. Their categories were corrected to
+Package after a private backup and checks for active standalone orders, holds and
+stock. The user explicitly deferred adding missing Sliced Ham and Triple Spicy
+products until the defense. No products or stock were added (18 finished-product
+records remain); all three packages stay unavailable with zero configured
+components until the full approved contents can be configured. See
+[[Orders and Inventory]] and [[Decisions]].
+
 At the user's request, the Contabo production database was reset after the
 application and worker were stopped. A private database backup was restored to
 an isolated database and the cleanup was rehearsed successfully before applying

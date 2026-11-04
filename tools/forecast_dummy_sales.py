@@ -330,6 +330,7 @@ def _profiles_from_database(cur) -> tuple[ProductProfile, ...]:
         SELECT name, COALESCE(category, ''), base_price
         FROM inventory_items
         WHERE item_type = 'finished_product' AND is_active = true
+          AND category IS DISTINCT FROM 'Package'
         ORDER BY name, item_id;
         """
     )

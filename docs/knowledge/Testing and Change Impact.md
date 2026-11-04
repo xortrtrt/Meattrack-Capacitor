@@ -967,6 +967,17 @@ all six failures are the already documented fixed-selection fixture conflict in
 
 ## Reseller package tracing (2026-11-04)
 
+Finished Products spacing was checked with the actual product-card partial,
+stylesheets and product images in Chromium at 1920, 1440, 768 and 390 pixels.
+Individual and package cards have equal widths at each viewport; sparse package
+rows no longer stretch across the available row, and no horizontal overflow was
+found. The single stock statistic now uses the full card width. Source:
+`app/static/css/portals/team-leader.css`. Static lint, typing and premium audits
+still report existing findings outside the changed rules.
+The configured return-workflow suite again returned 23 passed / 6 failed; the
+six failures are the documented fixed-selection fixture conflict in
+`tests/test_replacement_first_converted_history.py`, before UI rendering.
+
 Before the production release, the focused login-retry, component-package backend,
 and component-package browser files passed together: 6 checks. Pytest reported
 only a local cache-write permission warning; the checks completed successfully.

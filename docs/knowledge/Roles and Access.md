@@ -259,3 +259,17 @@ invitation page to receive the new response policy before submitting again.
 Sources checked: `app/routers/reseller_registration.py`, `app/security_controls.py`.
 See [[Database and Operations]] and [[Decisions]]. This is a source fix; deployment
 has not been performed.
+
+## Sales visibility by current assignment (2026-11-04)
+
+Sales Leader and Supervisor order lists, counts, sales totals, purchase summaries,
+and newly prepared Sales sections use the reseller's current
+`resellers.team_leader_account_id`, rather than the historical leader stored on
+the order. Reassignment removes those sales from the former assignee's reads.
+Owner queries retain business-wide access. Personal action attribution remains
+required for activity reports; submitted snapshots remain immutable. Separately
+assigned return/refund processing permissions are unchanged.
+Sources checked: `app/repositories/orders.py`, `reporting.py`,
+`report_settlements.py`, `activity_reports.py`, and `portal_dashboard.py`
+(all under `app/repositories/`). See [[Roles and Access]],
+[[Sales Activity Reports]], and [[Decisions]].

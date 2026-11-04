@@ -211,6 +211,13 @@ run configuration. See [[Decisions]] and [[Owner Portal]].
 Sources checked: `app/forecasting.py`, `app/repositories/forecasts.py`,
 `tests/test_forecasting.py`.
 
+Synthetic forecast demos use `tools/forecast_dummy_sales.py` only against local
+development databases. The loader excludes `Package` entries because package
+checkout expands into individual-product lines (see [[Orders and Inventory]]).
+It can backdate local catalog creation dates to include generated history,
+inserts clearly tagged fulfilled sales without deducting current stock, and does
+not request a forecast. See `docs/forecast_dummy_sales.md` for operation details.
+
 Keep provider keys out of notes and browser code. See [[Roles and Access]] for
 scoping and [[Database and Operations]] for starting both app and worker.
 

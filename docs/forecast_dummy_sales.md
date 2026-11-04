@@ -57,3 +57,8 @@ The loader inserts fulfilled reseller orders with synthetic, unique payment meta
 deduct historical batches. This keeps present-day demo inventory usable while supplying the demand history consumed
 by the forecast and the owner portal's reseller-sales charts. Do not use the generated records for inventory
 reconciliation, payment verification, tax reporting, or business decisions.
+
+The database loader excludes `Package` catalog entries: bundles expand into
+individual product demand under the component-package workflow. It generates
+history for active individual finished products, including active demo products.
+Loading data does not queue or run a forecast.

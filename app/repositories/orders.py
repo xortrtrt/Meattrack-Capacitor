@@ -79,11 +79,11 @@ def list_orders(
             where.append("o.created_by_account_id = %s")
             params.append(team_leader_account_id)
         elif order_type == "reseller":
-            where.append("o.team_leader_account_id = %s")
+            where.append("EXISTS (SELECT 1 FROM resellers assigned WHERE assigned.reseller_id=o.reseller_id AND assigned.team_leader_account_id=%s)")
             params.append(team_leader_account_id)
         else:
-            where.append("(o.created_by_account_id = %s OR o.team_leader_account_id = %s)")
-            params.extend([team_leader_account_id, team_leader_account_id])
+            where.append("(EXISTS (SELECT 1 FROM resellers assigned WHERE assigned.reseller_id=o.reseller_id AND assigned.team_leader_account_id=%s))")
+            params.append(team_leader_account_id)
     if reseller_account_id is not None:
         where.append("""o.reseller_id = (
             SELECT a.reseller_id
@@ -764,11 +764,11 @@ def count_orders(
             where.append("o.created_by_account_id = %s")
             params.append(team_leader_account_id)
         elif order_type == "reseller":
-            where.append("o.team_leader_account_id = %s")
+            where.append("EXISTS (SELECT 1 FROM resellers assigned WHERE assigned.reseller_id=o.reseller_id AND assigned.team_leader_account_id=%s)")
             params.append(team_leader_account_id)
         else:
-            where.append("(o.created_by_account_id = %s OR o.team_leader_account_id = %s)")
-            params.extend([team_leader_account_id, team_leader_account_id])
+            where.append("(EXISTS (SELECT 1 FROM resellers assigned WHERE assigned.reseller_id=o.reseller_id AND assigned.team_leader_account_id=%s))")
+            params.append(team_leader_account_id)
     if reseller_account_id is not None:
         where.append("""o.reseller_id = (
             SELECT a.reseller_id

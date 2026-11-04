@@ -628,6 +628,13 @@ See [[Background Work and Integrations]]. Sources: `app/chatbot/provider.py`,
 
 ## 2026-11-04 — Production demo-data cleanup with no opening stock
 
+The user subsequently declined copying missing Sliced Ham and Triple Spicy
+catalog definitions into production, reserving their manual addition for the
+defense. Classify the existing three package entries as Package but leave their
+contents unconfigured and availability at zero until the complete approved
+component catalog exists. Do not substitute Hamon Ala Eh or create incomplete
+package inclusions. See [[Database and Operations]].
+
 The user requested a production cleanup while preserving accounts and products,
 and explicitly included raw materials, batches, recipes, and inventory logs in
 the removal scope. Because the existing broad reset procedure seeds new opening
@@ -638,3 +645,13 @@ product catalog and account records while leaving stock and inventory history
 empty; do not reset identity sequences, so later records will not reuse old IDs.
 The app/worker were paused only for maintenance, then restarted and health-checked.
 See [[Database and Operations]] and [[Orders and Inventory]].
+
+## 2026-11-04 — Scope sales visibility to current reseller assignments
+
+User-directed rule: Sales Leaders and Supervisors see sales from their assigned
+resellers; only Owner has a business-wide sales view. Read queries now follow
+current reseller assignment so historical order ownership does not preserve sales
+visibility after transfer. Immutable submitted reports and explicit refund/return
+processing responsibilities retain their existing meaning. See [[Roles and Access]]
+and [[Sales Activity Reports]]; implementation: `app/repositories/orders.py`,
+`reporting.py`, `report_settlements.py`, `activity_reports.py`, `portal_dashboard.py`.

@@ -3993,7 +3993,7 @@
 
 .role-team-leader .inventory-product-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 20px;
 }
 
@@ -4123,7 +4123,7 @@
 
 .role-team-leader .inventory-product-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   border-block: 1px solid rgba(215, 201, 154, 0.58);
   background: linear-gradient(180deg, rgba(251, 247, 236, 0.32), rgba(251, 247, 236, 0.78));
 }

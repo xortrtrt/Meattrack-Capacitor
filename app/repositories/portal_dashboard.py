@@ -69,7 +69,7 @@ def leader_work_summary(account_id: int, leader_role: str) -> dict:
         COUNT(*) FILTER(WHERE status='cancelled') cancelled,
         COUNT(*) FILTER(WHERE status='expired') expired,
         COUNT(*) total_orders
-        FROM orders WHERE order_type='reseller' AND team_leader_account_id=%s""", (account_id,))
+        FROM orders WHERE order_type='reseller' AND reseller_id IN (SELECT reseller_id FROM resellers WHERE team_leader_account_id=%s)""", (account_id,))
     keys = ('needs_review', 'mismatch', 'payment', 'waiting')
     if role == 'sales-supervisor':
         keys += ('delivery', 'followups')

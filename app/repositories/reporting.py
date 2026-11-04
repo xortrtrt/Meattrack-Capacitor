@@ -332,14 +332,12 @@ def current_metrics(team_leader_account_id: int | None = None, reseller_account_
         params.extend([profile["reseller_id"], profile["reseller_id"], profile["reseller_id"]])
     elif team_leader_account_id is not None:
         order_scope = """
-                AND (
-                    created_by_account_id = %s
-                    OR team_leader_account_id = %s
-                )
+                AND order_type = 'reseller'
+                AND reseller_id IN (SELECT reseller_id FROM resellers WHERE team_leader_account_id=%s)
         """
-        pending_scope = " AND team_leader_account_id = %s"
+        pending_scope = " AND reseller_id IN (SELECT reseller_id FROM resellers WHERE team_leader_account_id=%s)"
         active_reseller_scope = " AND team_leader_account_id = %s"
-        params.extend([team_leader_account_id, team_leader_account_id, team_leader_account_id, team_leader_account_id])
+        params.extend([team_leader_account_id] * 3)
 
     row = fetch_one(f"""
         SELECT
@@ -436,12 +434,9 @@ def team_sales_report_entries(team_leader_account_id: int | None = None) -> list
     params: list[object] = []
     if team_leader_account_id is not None:
         scope_sql = """
-          AND (
-              (o.order_type = 'walk_in' AND o.created_by_account_id = %s)
-              OR (o.order_type = 'reseller' AND o.team_leader_account_id = %s)
-          )
+          AND o.order_type = 'reseller' AND r.team_leader_account_id = %s
         """
-        params.extend([team_leader_account_id, team_leader_account_id])
+        params.append(team_leader_account_id)
     entries = clean_row(fetch_all(f"""
         SELECT (COALESCE(o.fulfilled_at,o.order_date) AT TIME ZONE 'Asia/Manila')::date AS sale_date,
                o.order_id,
@@ -473,8 +468,8 @@ def team_sales_refund_entries(team_leader_account_id: int) -> list[dict]:
         CASE WHEN r.resolution='replace' THEN 'Replacement refund difference' ELSE 'Returned products' END refund_type
         FROM order_refunds f JOIN orders o USING(order_id) LEFT JOIN product_returns r ON r.return_id=f.return_id
         WHERE f.status='completed' AND o.status='fulfilled'
-        AND ((o.order_type='walk_in' AND o.created_by_account_id=%s) OR (o.order_type='reseller' AND o.team_leader_account_id=%s))
-        ORDER BY f.completed_at DESC,f.order_refund_id DESC;""",(team_leader_account_id,team_leader_account_id)))
+        AND o.order_type='reseller' AND EXISTS (SELECT 1 FROM resellers assigned WHERE assigned.reseller_id=o.reseller_id AND assigned.team_leader_account_id=%s)
+        ORDER BY f.completed_at DESC,f.order_refund_id DESC;""",(team_leader_account_id,)))
     for row in rows:
         row['sale_date']=row['sale_date'].isoformat()
         row['completed_at']=row['completed_at'].isoformat()
@@ -485,7 +480,7 @@ def team_rejected_order_entries(team_leader_account_id: int | None = None) -> li
     scope_sql = ""
     params: list[object] = []
     if team_leader_account_id is not None:
-        scope_sql = "AND o.team_leader_account_id = %s"
+        scope_sql = "AND r.team_leader_account_id = %s"
         params.append(team_leader_account_id)
     return clean_row(fetch_all(f"""
         SELECT o.order_id,
@@ -516,7 +511,7 @@ def team_reseller_purchase_summary(team_leader_account_id: int | None = None) ->
     scope_sql = ""
     params: list[object] = []
     if team_leader_account_id is not None:
-        scope_sql = "AND o.team_leader_account_id = %s"
+        scope_sql = "AND r.team_leader_account_id = %s"
         params.append(team_leader_account_id)
     return clean_row(fetch_all(f"""
         SELECT r.reseller_id,
