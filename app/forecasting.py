@@ -1,3 +1,7 @@
+# Forecast engine for /portal/owner/forecasts.
+# Page -> owner.py queues a run -> worker.py processes it through
+# repositories/forecasts.py -> forecast_product() below computes each product.
+# The repository saves the returned summary/daily rows for the page to display.
 from __future__ import annotations
 
 import calendar
@@ -33,6 +37,7 @@ METHOD_LABELS = {
 
 
 def runtime_versions() -> dict[str, str]:
+    # Record installed library versions in run metadata to help diagnose results.
     versions: dict[str, str] = {}
     for package in ("pandas", "prophet"):
         try:
@@ -43,6 +48,9 @@ def runtime_versions() -> dict[str, str]:
 
 
 def business_events(start_date: date, end_date: date) -> pd.DataFrame:
+    # Build event dates for every year touched by history and the forecast.
+    # Window offsets include days before/after an event; prior_scale controls
+    # flexibility, not a fixed sales increase. Prophet learns effects from sales.
     rows: list[dict] = []
     for year in range(start_date.year, end_date.year + 1):
         for month in range(1, 13):
@@ -93,6 +101,9 @@ def business_events(start_date: date, end_date: date) -> pd.DataFrame:
 
 
 def build_daily_series(history_rows: list[dict], start_date: date, end_date: date) -> pd.DataFrame:
+    # Convert repository sales rows into Prophet's ds (date) / y (quantity) shape.
+    # Combine same-day quantities and fill missing calendar days with zero.
+    # Dates are already business-local upstream; removing timezone preserves them.
     if start_date > end_date:
         raise ValueError("Forecast history start must not be after its end.")
     index = pd.date_range(start=start_date, end=end_date, freq="D")
@@ -109,10 +120,13 @@ def build_daily_series(history_rows: list[dict], start_date: date, end_date: dat
 
 
 def _future_dates(last_date: date, periods: int) -> pd.DatetimeIndex:
+    # Predict exactly periods daily dates, starting the day after the input cutoff.
     return pd.date_range(start=last_date + timedelta(days=1), periods=periods, freq="D")
 
 
 def _eligible(method: str, frame: pd.DataFrame) -> bool:
+    # Check history length and positive-sales days before fitting a candidate.
+    # During backtesting this checks each fold's training slice, not all history.
     days = len(frame)
     nonzero = int((frame["y"] > 0).sum())
     if method == "prophet":
@@ -130,6 +144,8 @@ def _eligible(method: str, frame: pd.DataFrame) -> bool:
 
 
 def _tsb_level(values: list[float]) -> float:
+    # TSB forecasts intermittent demand as sale probability * typical sale size.
+    # Smooth probability every day (beta), but update size only on sales (alpha).
     first = next((value for value in values if value > 0), 0.0)
     if first <= 0:
         return 0.0
@@ -144,6 +160,8 @@ def _tsb_level(values: list[float]) -> float:
 
 
 def _predict_baseline(method: str, frame: pd.DataFrame, periods: int) -> list[float]:
+    # Return a constant TSB level, constant 28-day average, or repeating last week.
+    # These candidates compete with Prophet using the same prediction interface.
     values = [float(value) for value in frame["y"].tolist()]
     if method == "tsb":
         return [_tsb_level(values)] * periods
@@ -157,6 +175,10 @@ def _predict_baseline(method: str, frame: pd.DataFrame, periods: int) -> list[fl
 
 
 def _predict_prophet(frame: pd.DataFrame, periods: int) -> list[dict]:
+    # Fit a new local Prophet model and return daily points and uncertainty bounds.
+    # Prophet implements y(t) = g(t) + s(t) + h(t) + error inside its library:
+    # g = changing trend, s = repeating seasonal patterns, h = holiday effects.
+    # fit() learns those components; predict() evaluates them on future dates.
     os.environ.setdefault("MPLCONFIGDIR", tempfile.gettempdir())
     logging.getLogger("prophet").setLevel(logging.ERROR)
     logging.getLogger("cmdstanpy").setLevel(logging.WARNING)
@@ -169,6 +191,9 @@ def _predict_prophet(frame: pd.DataFrame, periods: int) -> list[dict]:
 
     last_date = frame.iloc[-1]["ds"].date()
     dates = _future_dates(last_date, periods)
+    # Daily observations need weekly patterns, not within-day seasonality.
+    # Enable yearly patterns with >=365 training days; include custom events
+    # across both past and future dates. interval_width requests 80% bounds.
     model = Prophet(
         daily_seasonality=False,
         weekly_seasonality=True,
@@ -178,10 +203,14 @@ def _predict_prophet(frame: pd.DataFrame, periods: int) -> list[dict]:
         interval_width=0.8,
     )
     model.add_country_holidays(country_name="PH")
+    # ds contains calendar dates; y contains fulfilled sales quantities in packs.
+    # Holiday dates flag possible effects; their magnitudes are learned here.
     model.fit(frame[["ds", "y"]])
     predicted = model.predict(pd.DataFrame({"ds": dates}))
     rows: list[dict] = []
     for row in predicted.to_dict("records"):
+        # yhat is the point forecast. Clip quantities/bounds at zero and ensure
+        # the upper bound is at least the lower bound before returning page data.
         point = max(0.0, float(row["yhat"]))
         lower = max(0.0, float(row.get("yhat_lower", point)))
         upper = max(lower, float(row.get("yhat_upper", point)))
@@ -190,6 +219,7 @@ def _predict_prophet(frame: pd.DataFrame, periods: int) -> list[dict]:
 
 
 def _predict(method: str, frame: pd.DataFrame, periods: int) -> list[float]:
+    # Give backtesting point predictions only, regardless of the chosen library.
     if method == "prophet":
         return [row["predicted"] for row in _predict_prophet(frame, periods)]
     return _predict_baseline(method, frame, periods)
@@ -200,6 +230,9 @@ def _backtest(
     horizon: int,
     log_context: dict | None = None,
 ) -> tuple[dict[str, float], dict[str, list[float]], dict[str, str]]:
+    # Simulate forecasting up to four historical windows, training only on dates
+    # before each window. Validation length is clamped to 7-28 days, even when
+    # the requested future horizon is longer. Return scores, errors and failures.
     validation_days = min(max(horizon, 7), 28)
     methods = ("prophet", "tsb", "seasonal_naive_7d", "moving_average_28d")
     errors: dict[str, list[float]] = {method: [] for method in methods}
@@ -235,6 +268,8 @@ def _backtest(
     for method in methods:
         if successes[method] < 3:
             continue
+        # WAPE = sum(abs(actual - predicted)) / sum(actual); lower is better.
+        # Floor the denominator at 1 to handle all-zero validation sales.
         denominator = max(sum(actuals[method]), 1.0)
         scores[method] = sum(abs(value) for value in errors[method]) / denominator
         usable_errors[method] = errors[method]
@@ -242,6 +277,10 @@ def _backtest(
 
 
 def _winner(scores: dict[str, float]) -> str | None:
+    # Prophet is primary whenever it has a usable backtest score. Compare
+    # baseline scores only when Prophet is absent; keep the 0.01 tie tolerance.
+    if "prophet" in scores:
+        return "prophet"
     if not scores:
         return None
     best_score = min(scores.values())
@@ -251,6 +290,7 @@ def _winner(scores: dict[str, float]) -> str | None:
 
 
 def _quantile(values: list[float], percentile: float) -> float:
+    # Find an empirical residual percentile for baseline planning ranges.
     return float(pd.Series(values, dtype=float).quantile(percentile))
 
 
@@ -263,6 +303,9 @@ def forecast_product(
     usable_stock: float,
     log_context: dict | None = None,
 ) -> dict:
+    # Worker entry point for one product: prepare history, backtest, select/refit,
+    # then return a summary for result cards and daily rows for the detail table.
+    # usable_stock is an upstream snapshot; it is not a model training input.
     if not 1 <= horizon <= MAX_HORIZON_DAYS:
         raise ValueError(f"Forecast horizon must be between 1 and {MAX_HORIZON_DAYS} days.")
     frame = build_daily_series(history_rows, history_start, input_end)
@@ -270,6 +313,8 @@ def forecast_product(
     future_dates = _future_dates(input_end, horizon)
 
     if len(frame) < MIN_HISTORY_DAYS or nonzero_days < MIN_NONZERO_DAYS:
+        # Preserve the requested dates with zero placeholders and an explicit
+        # insufficient-history diagnostic; these zeros are not fitted estimates.
         daily = [
             {"forecast_date": day.date(), "predicted_quantity": 0.0, "confidence_lower": None, "confidence_upper": None}
             for day in future_dates
@@ -294,10 +339,18 @@ def forecast_product(
         }
 
     scores, residuals, failures = _backtest(frame, horizon, log_context=log_context)
-    method = _winner(scores)
+    # Primary-model policy: full-history eligibility allows Prophet even when
+    # there is too little history for three eligible backtest training windows.
+    method = "prophet" if _eligible("prophet", frame) else _winner(scores)
     diagnostic_status = "ok"
-    diagnostic_message = "Selected by four-fold rolling backtest."
+    diagnostic_message = "Prophet is the primary demand forecasting model."
+    if method == "prophet" and "prophet" not in scores:
+        diagnostic_message += " No qualifying backtest score is available."
+    elif method != "prophet":
+        diagnostic_status = "fallback"
+        diagnostic_message = "Prophet needs at least 180 history days and 20 nonzero days; a backtested baseline was used."
     if method is None and _eligible("tsb", frame):
+        # Enough history for TSB can exist without three usable validation folds.
         method = "tsb"
         diagnostic_status = "fallback"
         diagnostic_message = "Backtesting was incomplete; TSB was used as the intermittent-demand fallback."
@@ -317,6 +370,8 @@ def forecast_product(
 
     ranked = sorted(scores, key=lambda name: (scores[name], ("tsb", "seasonal_naive_7d", "moving_average_28d", "prophet").index(name)))
     final_rows: list[dict] = []
+    # Refit the selected method on all available history. If fitting fails, try
+    # the remaining scored methods, with TSB as a final eligible fallback.
     while method:
         try:
             if method == "prophet":
@@ -333,6 +388,8 @@ def forecast_product(
             else:
                 predictions = _predict_baseline(method, frame, horizon)
                 method_residuals = residuals.get(method, [])
+                # Baselines use 10th/90th percentiles of historical signed errors
+                # around each point, only when at least 20 residuals are available.
                 use_bounds = len(method_residuals) >= 20
                 low_error = _quantile(method_residuals, 0.10) if use_bounds else None
                 high_error = _quantile(method_residuals, 0.90) if use_bounds else None
@@ -374,6 +431,9 @@ def forecast_product(
         }
 
     total = round(sum(row["predicted_quantity"] for row in final_rows), 3)
+    # Summed daily bounds form a planning range, not a calibrated 80% interval
+    # for total demand. Production gap = total demand - stock snapshot;
+    # repositories/forecasts.py clamps that gap at zero for suggested production.
     bounds_available = all(row["confidence_lower"] is not None and row["confidence_upper"] is not None for row in final_rows)
     lower_total = round(sum(row["confidence_lower"] for row in final_rows), 3) if bounds_available else None
     upper_total = round(sum(row["confidence_upper"] for row in final_rows), 3) if bounds_available else None

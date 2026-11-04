@@ -187,6 +187,20 @@ run/status action connects to a worker claim and processing step. Sales history
 and inventory availability connect forecasts to [[Orders and Inventory]]; model
 output is not evidence of production stock or financial settlement.
 
+### Primary forecast model (2026-11-04)
+
+Prophet is the primary demand model when the full product history contains at
+least 180 calendar days and 20 positive-sales days. Baseline backtest scores no
+longer displace eligible Prophet. Backtests remain diagnostics; Prophet can fit
+without three qualifying folds, in which case its score is unavailable. When
+Prophet lacks history or its final fit fails, baseline models provide a fallback
+with a review diagnostic. The overall 56-day/four-positive-day guard still applies.
+Existing saved results are unchanged. New requests record the selection policy in
+run configuration. See [[Decisions]] and [[Owner Portal]].
+
+Sources checked: `app/forecasting.py`, `app/repositories/forecasts.py`,
+`tests/test_forecasting.py`.
+
 Keep provider keys out of notes and browser code. See [[Roles and Access]] for
 scoping and [[Database and Operations]] for starting both app and worker.
 

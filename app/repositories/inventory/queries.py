@@ -16,7 +16,8 @@ MOVEMENT_CATEGORY_TYPES = {
     "receipts": ("raw_receipt", "direct_finished_receipt"),
     "production": ("production_consumption", "production_output"),
     "sales": ("sale_fulfillment",),
-    "corrections": ("owner_correction", "raw_deduction", "stock_dispatch"),
+    "corrections": ("owner_correction", "raw_deduction", "stock_dispatch", "batch_removed"),
+    "removals": ("batch_removed", "removed_raw_material", "reactivated_raw_material"),
     "returns": ("reseller_return",),
     "reservations": ("order_reserved", "order_released", "order_fulfilled", "order_migration_snapshot", "order_unpaid_hold_released"),
 }
@@ -34,7 +35,10 @@ _MOVEMENT_LOG_SOURCE = """WITH stock_movements AS (
            ) total_balance_after
     FROM inventory_movements im
 ), movement_log AS (
-    SELECT im.movement_id,im.movement_type,im.item_id,im.quantity_delta,im.unit,
+    SELECT im.movement_id,CASE WHEN im.movement_type='owner_correction' AND EXISTS(
+        SELECT 1 FROM inventory_batches removed WHERE removed.batch_id=im.affected_batch_id
+        AND removed.removed_at=im.created_at) THEN 'batch_removed' ELSE im.movement_type END movement_type,
+           im.item_id,im.quantity_delta,im.unit,
            im.total_balance_after balance_after,
            im.total_balance_after-im.quantity_delta balance_before,
            im.actor_name,im.note,im.affected_batch_id,
@@ -43,6 +47,33 @@ _MOVEMENT_LOG_SOURCE = """WITH stock_movements AS (
            NULL::numeric status_quantity
     FROM stock_movements im
     WHERE im.movement_type <> 'opening_balance'
+    UNION ALL
+    SELECT e.activity_log_id,e.action,i.item_id,0,i.unit,
+           COALESCE(snapshot.total_balance_after,0),COALESCE(snapshot.total_balance_after,0),
+           COALESCE(a.name,'MEATTRACK'),
+           CASE WHEN e.action='removed_raw_material' THEN 'Material removed from active inventory; physical stock retained.'
+                ELSE 'Material restored to active inventory; physical stock unchanged.' END,
+           NULL,NULL,e.created_at,'material_status',NULL,NULL,NULL,NULL,NULL
+    FROM activity_logs e JOIN inventory_items i ON i.item_id=e.entity_id
+    LEFT JOIN accounts a ON a.account_id=e.account_id
+    LEFT JOIN LATERAL (SELECT sm.total_balance_after FROM stock_movements sm
+        WHERE sm.item_id=i.item_id AND sm.created_at<=e.created_at
+        ORDER BY sm.created_at DESC,sm.movement_id DESC LIMIT 1) snapshot ON true
+    WHERE e.entity_type='inventory_items' AND i.item_type='raw_material'
+      AND e.action IN ('removed_raw_material','reactivated_raw_material')
+    UNION ALL
+    SELECT e.activity_log_id,'batch_removed',b.item_id,0,b.unit,
+           COALESCE(snapshot.total_balance_after,0),COALESCE(snapshot.total_balance_after,0),
+           COALESCE(a.name,'MEATTRACK'),b.removal_reason,b.batch_id,NULL,e.created_at,
+           'batch_status',NULL,NULL,NULL,NULL,NULL
+    FROM activity_logs e JOIN inventory_batches b ON b.batch_id=e.entity_id
+    LEFT JOIN accounts a ON a.account_id=e.account_id
+    LEFT JOIN LATERAL (SELECT sm.total_balance_after FROM stock_movements sm
+        WHERE sm.item_id=b.item_id AND sm.created_at<=e.created_at
+        ORDER BY sm.created_at DESC,sm.movement_id DESC LIMIT 1) snapshot ON true
+    WHERE e.entity_type='inventory_batches' AND e.action='removed_product_batch'
+      AND NOT EXISTS(SELECT 1 FROM inventory_movements m WHERE m.affected_batch_id=b.batch_id
+                     AND m.created_at=e.created_at AND m.movement_type='owner_correction')
     UNION ALL
     SELECT m.movement_id,'reseller_return',h.product_id,m.quantity,i.unit,
            m.quantity,0,COALESCE(a.name,'MEATTRACK'),NULL::text,h.batch_id,
@@ -108,8 +139,10 @@ def _movement_log_filter(q: str, category: str) -> tuple[str, list]:
         search = f"%{q.strip()}%"
         where.append("""(im.movement_type ILIKE %s OR ii.name ILIKE %s
             OR im.destination ILIKE %s OR im.reseller_name ILIKE %s
-            OR im.order_id::text ILIKE %s OR im.return_batch_code ILIKE %s)""")
-        params.extend([search] * 6)
+            OR im.order_id::text ILIKE %s OR im.return_batch_code ILIKE %s
+            OR im.note ILIKE %s OR EXISTS(SELECT 1 FROM inventory_batches search_batch
+                WHERE search_batch.batch_id=im.affected_batch_id AND search_batch.batch_code ILIKE %s))""")
+        params.extend([search] * 8)
     if category.strip() in MOVEMENT_CATEGORY_TYPES:
         where.append("im.movement_type = ANY(%s)")
         params.append(list(MOVEMENT_CATEGORY_TYPES[category.strip()]))

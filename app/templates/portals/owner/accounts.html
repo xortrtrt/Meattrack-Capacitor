@@ -99,8 +99,18 @@
       <article class="owner-account-card">
         <div class="owner-account-main">
           <div class="owner-account-identity">
+            <span class="portal-user-avatar owner-account-avatar" aria-hidden="true">
+              {% if account.profile_image_path %}
+              <img src="{{ url_for('static', path=account.profile_image_path) }}" alt="" loading="lazy"
+                style="--profile-x: {{ account.profile_image_position_x|default(50) }}%; --profile-y: {{ account.profile_image_position_y|default(50) }}%; --profile-scale: {{ account.profile_image_scale|default(1) }};" />
+              {% else %}
+              <i class="profile-picture-placeholder" data-lucide="user-round"></i>
+              {% endif %}
+            </span>
+            <div class="owner-account-name">
             <strong>{{ account.name }}</strong>
             <small>{{ account.email }}</small>
+            </div>
           </div>
           <div class="owner-account-badges">
             <span class="owner-chip">

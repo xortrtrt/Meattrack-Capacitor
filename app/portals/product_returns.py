@@ -246,6 +246,7 @@ def product_details_context(request: Request) -> dict:
     product = (
         returns.product_lifecycle_details(
             product_id,
+            hide_empty_batches=request.url.path.startswith("/portal/team-leader/"),
             batch_page=shared.requested_page(request.query_params.get("batch_page")),
             movement_page=shared.requested_page(request.query_params.get("movement_page")),
         )

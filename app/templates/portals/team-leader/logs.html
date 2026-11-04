@@ -52,13 +52,17 @@
       {% set is_reservation = log.log_source == 'reservation' %}
       {% set is_in = not is_return and log.quantity_delta > 0 %}
       {% set is_out = not is_return and log.quantity_delta < 0 %}
-      {% set movement_label = 'Moved to pending pull-out' if is_expiry else 'Returned from reseller order' if is_return else 'Opening balance' if log.action == 'opening_balance' else 'Raw stock received' if log.action == 'raw_receipt' else 'Finished stock received' if log.action == 'direct_finished_receipt' else 'Used in production' if log.action == 'production_consumption' else 'Production output' if log.action == 'production_output' else 'Released for sale' if log.action == 'sale_fulfillment' else log.action.replace('_', ' ') %}
+      {% set movement_label = 'Batch removed' if log.action == 'batch_removed' else 'Raw material removed' if log.action == 'removed_raw_material' else 'Raw material restored' if log.action == 'reactivated_raw_material' else 'Moved to pending pull-out' if is_expiry else 'Returned from reseller order' if is_return else 'Opening balance' if log.action == 'opening_balance' else 'Raw stock received' if log.action == 'raw_receipt' else 'Finished stock received' if log.action == 'direct_finished_receipt' else 'Used in production' if log.action == 'production_consumption' else 'Production output' if log.action == 'production_output' else 'Released for sale' if log.action == 'sale_fulfillment' else log.action.replace('_', ' ') %}
       {% set movement_icon = 'clock-alert' if is_expiry else 'undo-2' if is_return else 'arrow-down-to-line' if is_in else 'arrow-up-from-line' if is_out else 'minus' %}
     <article class="movement-row movement-row--{{ 'return' if is_return else 'in' if is_in else 'out' if is_out else 'neutral' }}" role="listitem">
       <span class="movement-row__icon" aria-hidden="true"><i data-lucide="{{ movement_icon }}"></i></span>
       <div class="movement-row__item">
         <strong>{{ log.entity }}</strong>
         <span>{{ movement_label }}</span>
+        {% if log.action in ['batch_removed', 'removed_raw_material', 'reactivated_raw_material'] %}
+        {% if log.batch_code %}<span>Batch {{ log.batch_code }}</span>{% endif %}
+        <small>{{ log.actor_name }}{% if log.note %} · {{ log.note }}{% endif %}</small>
+        {% endif %}
         {% if is_reservation %}<span>Order #{{ log.order_id }} · {{ log.reseller_name }}</span><small>{{ 'Reserved' if log.status_quantity > 0 else 'Reservation cleared' }}: {{ log.status_quantity|abs|number }} packs · physical stock unchanged by this event</small>{% endif %}
         {% if is_expiry %}<span>Unavailable for sale · Batch {{ log.batch_code }}</span>{% endif %}
         {% if is_return %}<span class="movement-row__return-source">Order #{{ log.order_id }} · <a href="/portal/team-leader/returns?case={{ log.return_id }}">Return #{{ log.return_id }}</a></span><small class="movement-row__return-detail">{{ log.reseller_name }} · Batch {{ log.batch_code }}</small>{% endif %}

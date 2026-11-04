@@ -898,3 +898,45 @@ changed. See [[Orders and Inventory]] and [[Database and Operations]].
 Package legacy protection recheck: all three backend checks passed after adding
 coverage for historical package credit and refusal to reserve standalone package
 stock. This does not increase the distinct test count above.
+
+
+## Removal log visibility (2026-11-04)
+
+Focused disposable PostgreSQL checks cover removed/restored materials with unchanged
+physical stock, nonempty and empty batch removals, duplicate prevention, actor,
+reason/batch searches, counts and pagination. Historical-stock-balance and manual
+stock regression checks run alongside `tests/test_inventory_removal_logs.py`.
+No existing stock or audit records are rewritten by this projection change.
+See [[Orders and Inventory]].
+
+All five focused removal/balance/manual-stock checks passed. A subsequent
+authenticated Inventory Logs rendering recheck also passed for all removal labels,
+batch codes and reasons. Targeted Ruff and whitespace checks passed.
+
+
+## Hide depleted Inventory batches (2026-11-04)
+
+Two focused PostgreSQL checks passed across
+`tests/test_product_details_empty_batches.py` and `tests/test_inventory_log_balances.py`.
+The enhanced visibility test also passed a separate context recheck: Inventory
+filters zero-stock rows before counting/paging, Owner retains historical rows,
+empty/stale pages clamp correctly, and stock summaries and movement history remain
+intact. Targeted Ruff passed. Tests use disposable schemas; no business stock was
+changed. See [[Orders and Inventory]].
+
+## Supervisor My Resellers (2026-11-04)
+
+The three focused roster/access checks in `tests/test_portal_context.py` passed:
+Sales Leader and Supervisor reuse the signed-in-account scope and role-correct
+message links; Inventory cannot open the Sales roster. Chromium checks using
+mocked roster data passed at 1440px and 390px for populated/empty views, message
+links, keyboard focus and horizontal overflow. Screenshots are under
+`outputs/supervisor-resellers/`. Changed Python files passed Ruff.
+The whole portal-context file returned 116 passed / 4 failed in existing
+refund-thread, inbox-message, password-modal and theme-version assertions.
+Repository-wide Ruff, mypy and the strict UI audit also report findings outside
+the roster changes. These checks do not establish production deployment.
+See [[Roles and Access]].
+The configured return-workflow regression command returned 23 passed / 6 failed;
+all six failures are the already documented fixed-selection fixture conflict in
+`tests/test_replacement_first_converted_history.py` (see [[Questions and Contradictions]]).

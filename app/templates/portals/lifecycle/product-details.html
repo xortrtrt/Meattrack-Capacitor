@@ -46,7 +46,7 @@
         {% endif %}
         {% elif batch.removed_at %}<p>Removed {{ batch.removed_at|nice_date }} · {{ batch.removal_reason }}</p>{% endif %}
       </article>
-    {% else %}{{ empty_state('layers','No batches recorded','Receive a finished-product batch to begin tracking stock and expiration.') }}{% endfor %}
+    {% else %}{{ empty_state('layers','No batches with remaining stock' if product.hide_empty_batches else 'No batches recorded','Batch and movement history is retained in Inventory Logs.' if product.hide_empty_batches else 'Receive a finished-product batch to begin tracking stock and expiration.') }}{% endfor %}
     </div>
     {{ pagination_controls(product.batch_pagination,'batches') }}
   </section>

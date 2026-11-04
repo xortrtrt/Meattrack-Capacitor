@@ -22,8 +22,9 @@
     <strong>Profile picture</strong>
     <small>Use the camera button to upload and align a JPG, PNG, or WebP image.</small>
     {% if account_profile and account_profile.profile_image_path %}
-    <form action="/portal/{{ role_key }}/profile/picture/remove" method="post">
-      <button class="button subtle" type="submit"><i data-lucide="trash-2"></i> Remove picture</button>
+    <form id="profile-picture-remove-form" action="/portal/{{ role_key }}/profile/picture/remove" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}" />
+      <button class="button subtle" type="submit"><i data-lucide="trash-2" aria-hidden="true"></i> Remove profile picture</button>
     </form>
     {% endif %}
   </div>
@@ -86,6 +87,9 @@
         <input type="hidden" value="50" name="profile_image_position_y" data-profile-picture-y />
         <input type="hidden" value="1" name="profile_image_scale" data-profile-picture-scale />
         <div class="profile-picture-modal-actions">
+          {% if account_profile and account_profile.profile_image_path %}
+          <button class="button subtle" type="submit" form="profile-picture-remove-form"><i data-lucide="trash-2" aria-hidden="true"></i> Remove profile picture</button>
+          {% endif %}
           <button class="button subtle" type="button" data-profile-picture-close>Cancel</button>
           <button class="button primary" type="submit"><i data-lucide="check"></i> Save photo</button>
         </div>

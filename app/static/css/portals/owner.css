@@ -660,8 +660,23 @@
 
 .role-owner .owner-account-identity {
   display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+
+.role-owner .owner-account-avatar {
+  margin: 0;
+  background: var(--surface-muted);
+  color: var(--text-light);
+}
+
+.role-owner .owner-account-name {
+  display: grid;
   min-width: 0;
   gap: 2px;
+  overflow-wrap: anywhere;
 }
 
 .role-owner .owner-account-badges,

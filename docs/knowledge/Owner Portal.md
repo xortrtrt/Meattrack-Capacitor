@@ -64,6 +64,15 @@ Sources: `app/portals/owner.py`, `app/repositories/reseller_invitations.py`,
 `app/templates/reseller_register.html`, migration
 `database/migrations/050_reseller_registration_invitations.sql`.
 
+## Account profile pictures (2026-11-04)
+
+The Owner accounts directory displays each account's saved profile picture beside
+its name, preserving the saved position and zoom. Accounts without a picture use
+the shared `user-round` default icon. Source checked 2026-11-04:
+`app/repositories/accounts.py:list_accounts`,
+`app/templates/portals/owner/accounts.html`, and
+`app/static/css/portals/owner.css`. See [[Roles and Access]].
+
 ## Supervisor account assignments (2026-11-03)
 
 The Sales Supervisor Accounts page shows only reseller assignments, with identity

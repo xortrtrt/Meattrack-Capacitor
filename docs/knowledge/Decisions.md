@@ -4,6 +4,25 @@ verified: 2026-11-04
 ---
 # Decisions
 
+## 2026-11-04 — Prophet is the primary demand forecast model
+
+The user requested Prophet as the default. Eligible full-history Prophet now
+takes precedence over lower-error baselines; historical backtests remain visible
+in stored diagnostics. Retain existing history thresholds and baseline fallback
+for insufficient Prophet history or fitting failures so sparse products still
+have a planning path. This policy applies to newly processed runs, not existing
+saved results. See [[Background Work and Integrations]]; implementation in
+`app/forecasting.py`, metadata in `app/repositories/forecasts.py`.
+
+## 2026-11-04 — Supervisor personal reseller roster
+
+Add **My Resellers** to Sales Supervisor navigation, reusing the Sales Leader
+roster and signed-in-account assignment filter. The user requested the same
+personal directory for supervisors; the broader Accounts assignment directory
+serves a different workflow. Reuse keeps filters, pagination and contact cards
+consistent. See [[Roles and Access]] and [[Owner Portal]];
+`app/portals/team_leader.py`, `app/portal_config.py`, `app/capabilities.py`.
+
 ## 2026-11-04 — Group Sales conversations by category
 
 Keep direct reseller messages and replacement case conversations on one Messages

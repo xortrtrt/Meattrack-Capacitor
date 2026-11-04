@@ -47,6 +47,8 @@ def list_accounts(
     order_sql = safe_sort_sql(sort, ACCOUNT_SORTS, ACCOUNT_SORTS["oldest"])
     return clean_row(fetch_all("""
         SELECT a.account_id, a.account_type, a.team_leader_role, a.reseller_id, a.name, a.email,
+               a.profile_image_path, a.profile_image_position_x,
+               a.profile_image_position_y, a.profile_image_scale,
                a.activation_status,
                (CASE WHEN a.activation_status = 'pending' THEN 'pending activation'
                      WHEN a.is_active THEN 'active' ELSE 'inactive' END) AS status,

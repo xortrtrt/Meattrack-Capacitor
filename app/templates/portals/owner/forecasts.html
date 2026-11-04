@@ -1,3 +1,6 @@
+{# Page data comes from forecasts_context() in app/portals/owner.py.
+   Model calculations live in app/forecasting.py; this template displays saved
+   results rather than fitting models during a page request. #}
 <div class="owner-page owner-forecasts-page">
 <section class="owner-forecast-layout">
   <article class="panel owner-forecast-run-panel">
@@ -8,6 +11,9 @@
       </div>
       <form action="/portal/owner/exports/forecasts.csv" method="post"><button class="button subtle" type="submit">Export all records</button></form>
     </div>
+    {# POST queues background work. bindForecastHorizonPicker() in portal.js syncs
+       the preset/custom choice into forecast_horizon_days. Run name is a label,
+       not an algorithm selector: the engine selects a method per product. #}
     <form class="form-panel bare owner-forecast-form" action="/portal/owner/forecasts" method="post" data-forecast-horizon-form>
       <label>Run name <input required minlength="3" maxlength="80" name="model_name" value="Demand forecast"></label>
       <div class="owner-horizon-picker" role="radiogroup" aria-label="Forecast horizon">
@@ -48,6 +54,8 @@
         <span class="hint">Forecast run status and method summary.</span>
       </div>
     </div>
+    {# bindForecastRunStatus() in portal.js polls the status endpoint for queued
+       or running runs. The worker persists progress after each product. #}
     {% if latest_forecast_run %}
     <div class="owner-forecast-status"
          {% if latest_forecast_run.status in ('queued', 'running') %}
@@ -86,6 +94,8 @@
       <span class="hint">Horizon demand totals ranked by demand minus usable stock.</span>
     </div>
   </div>
+  {# GET filters select a saved run. Search/sort/pagination query its summaries;
+     data-async-filter attributes let portal.js refresh results in place. #}
   {% if forecast_runs %}
   <form class="filter-bar owner-filter-bar" method="get" data-async-filter-target="[data-async-filter-results]">
     <label>Forecast run
@@ -115,6 +125,9 @@
 
   <div data-async-filter-results data-async-filter-target="[data-async-filter-results]" aria-live="polite">
   <div class="owner-forecast-card-grid">
+    {# Cards show horizon totals and the stock snapshot saved during processing.
+       Suggested production is max(demand minus stock, 0); daily rows below
+       show individual predictions and their available planning ranges. #}
     {% for forecast in forecasts %}
     <article class="owner-forecast-result-card">
       <span class="owner-chip">{{ forecast.method_label }}</span>

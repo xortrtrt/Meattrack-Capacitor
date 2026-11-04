@@ -2155,9 +2155,11 @@ def test_sales_supervisor_gets_accounts_without_owner_creation(monkeypatch):
     assert not count_calls
 
 
-def test_regular_sales_leader_sees_read_only_team_reseller_roster(monkeypatch):
+@pytest.mark.parametrize("portal_role", ["team-leader", "sales-supervisor"])
+def test_sales_roles_see_read_only_assigned_reseller_roster(monkeypatch, portal_role):
     reseller = {
         "reseller_id": 3,
+        "account_id": 8,
         "business_name": "Lipa Fresh Mart",
         "contact_person": "Carlo Mendoza",
         "email": "carlo@example.test",
@@ -2169,17 +2171,22 @@ def test_regular_sales_leader_sees_read_only_team_reseller_roster(monkeypatch):
         "last_order_at": None,
     }
     monkeypatch.setattr(shared_portal, "require_portal_session", lambda request, role: None)
-    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales")
+    monkeypatch.setattr(shared_portal, "session_team_leader_role", lambda request: "sales-supervisor" if portal_role == "sales-supervisor" else "sales")
     monkeypatch.setattr(shared_portal, "session_account_id", lambda request: 17)
     monkeypatch.setattr(repositories, "list_notifications", lambda *args, **kwargs: [])
     monkeypatch.setattr(repositories, "unread_notification_count", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(repositories, "list_team_resellers", lambda **kwargs: [reseller])
-    monkeypatch.setattr(repositories, "count_team_resellers", lambda **kwargs: 1)
+    calls = []
+    monkeypatch.setattr(repositories, "list_team_resellers", lambda **kwargs: calls.append(kwargs) or [reseller])
+    monkeypatch.setattr(repositories, "count_team_resellers", lambda **kwargs: calls.append(kwargs) or 1)
 
-    response = TestClient(main.app).get("/portal/team-leader/resellers")
+    response = TestClient(main.app).get(f"/portal/{portal_role}/resellers")
 
     assert response.status_code == 200
     assert "My Resellers" in response.text
+    assert len(calls) == 2
+    assert all(call["team_leader_account_id"] == 17 for call in calls)
+    assert f'href="/portal/{portal_role}/messages?reseller=8"' in response.text
+    assert f'href="/portal/{portal_role}/resellers"' in response.text
     assert "Lipa Fresh Mart" in response.text
     assert "Carlo Mendoza" in response.text
     assert "4 orders" in response.text

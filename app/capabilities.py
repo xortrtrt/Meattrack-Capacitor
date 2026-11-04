@@ -20,6 +20,7 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
         "refunds.manage_assigned",
         "reports.view_assigned",
         "resellers.manage",
+        "resellers.view_assigned",
     }),
     "team-leader:sales": frozenset({
         "conversations.manage",
@@ -52,6 +53,7 @@ CAPABILITIES_BY_ROLE: dict[str, frozenset[str]] = {
 
 PORTAL_SECTION_CAPABILITIES = {
     "sales-supervisor": {
+        "resellers": "resellers.view_assigned",
         "returns": "returns.view",
         "dashboard": "operations.view_team",
         "messages": "conversations.manage",

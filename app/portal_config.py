@@ -161,6 +161,7 @@ team_leader_nav_by_role = {
     "sales-supervisor": [
         ("dashboard", "Dashboard", "layout-dashboard"),
         ("messages", "Reseller Messages", "message-circle"),
+        ("resellers", "My Resellers", "users"),
         ("orders", "Reseller Orders", "clipboard-check"),
         ("refunds", "Refunds", "badge-dollar-sign"),
         ("reports", "Reports", "file-text"),

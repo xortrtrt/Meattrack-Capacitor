@@ -1577,7 +1577,7 @@ def expired_stock_workspace() -> dict:
     }
 
 
-def product_lifecycle_details(product_id: int, *, batch_page: int = 1, movement_page: int = 1) -> dict | None:
+def product_lifecycle_details(product_id: int, *, batch_page: int = 1, movement_page: int = 1, hide_empty_batches: bool = False) -> dict | None:
     product = clean_row(
         fetch_one("SELECT * FROM inventory_items WHERE item_id=%s AND item_type='finished_product';", (product_id,))
     )
@@ -1586,16 +1586,17 @@ def product_lifecycle_details(product_id: int, *, batch_page: int = 1, movement_
     from .superuser import business_setting
 
     today = business_today()
+    product["hide_empty_batches"] = hide_empty_batches
     product["near_expiry_days"] = int(business_setting("inventory.near_expiry_days"))
     totals = clean_row(
         fetch_one(
-            """SELECT COUNT(*) batch_count,
+            """SELECT COUNT(*) FILTER(WHERE NOT %s OR quantity_available>0) batch_count,
         COALESCE(SUM(quantity_available),0) warehouse,
         COALESCE(SUM(quantity_available) FILTER(WHERE quality_status='approved' AND expiry_date>%s),0) eligible,
         COALESCE(SUM(quantity_available) FILTER(WHERE quality_status='approved' AND expiry_date-%s BETWEEN 1 AND %s),0) near_expiry,
         COALESCE(SUM(quantity_available) FILTER(WHERE expiry_date<=%s),0) expired
         FROM inventory_batches WHERE item_id=%s;""",
-            (today, today, product["near_expiry_days"], today, product_id),
+            (hide_empty_batches, today, today, product["near_expiry_days"], today, product_id),
         )
     )
     product.update(totals)
@@ -1606,10 +1607,11 @@ def product_lifecycle_details(product_id: int, *, batch_page: int = 1, movement_
             """SELECT b.*,b.expiry_date-%s days_left,
         COALESCE((SELECT SUM(r.quantity) FROM replacement_stock_reservations r WHERE r.batch_id=b.batch_id),0) replacement_reserved,
         EXISTS(SELECT 1 FROM inventory_movements m WHERE m.affected_batch_id=b.batch_id AND m.movement_type='opening_balance') is_opening_balance
-        FROM inventory_batches b WHERE item_id=%s ORDER BY expiry_date,batch_id LIMIT %s OFFSET %s;""",
+        FROM inventory_batches b WHERE item_id=%s AND (NOT %s OR b.quantity_available>0) ORDER BY expiry_date,batch_id LIMIT %s OFFSET %s;""",
             (
                 today,
                 product_id,
+                hide_empty_batches,
                 batch_pagination["page_size"],
                 (batch_pagination["page"] - 1) * batch_pagination["page_size"],
             ),

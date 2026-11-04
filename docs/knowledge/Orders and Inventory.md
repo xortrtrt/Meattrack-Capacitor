@@ -369,3 +369,30 @@ Sources checked: `database/migrations/054_component_packages.sql`,
 `app/portals/reseller.py`, and the package detail/catalog/cart/history templates.
 See [[Decisions]], [[Returns and Financials]], [[Database and Operations]], and
 [[Testing and Change Impact]].
+
+
+## Removal visibility in Inventory Logs (2026-11-04)
+
+Inventory Logs projects material removal/restoration audit records as zero-delta
+status events, retaining physical quantities. Batch correction movements at the
+batch removal timestamp display as Batch removed; empty-batch removals use their
+activity audit record only when no matching stock correction exists. This avoids
+duplicate deductions and includes past records without modifying the ledger.
+The Removals & restores category, search (including batch codes/reasons), counts
+and pagination share the same projection. Removal rows display actor, batch and
+recorded reason. Sources checked: `app/repositories/inventory/queries.py`,
+`app/portals/team_leader.py`, `app/templates/portals/team-leader/logs.html`, and
+`tests/test_inventory_removal_logs.py`. See [[Testing and Change Impact]].
+
+
+## Product Details batch visibility (2026-11-04)
+
+Inventory `/portal/team-leader/product-details` shows only batches with positive
+remaining quantity. Filtering occurs before batch counts and pagination, including
+page clamping and empty states. Zero-stock batches remain stored and their
+movements remain visible in Inventory Logs and product movement history. Stock
+summaries keep their original calculations. The Owner detail view retains its
+historical batch list. Sources checked: `app/repositories/product_returns.py`
+(`product_lifecycle_details`), `app/portals/product_returns.py`, and
+`app/templates/portals/lifecycle/product-details.html`. See
+[[Testing and Change Impact]].

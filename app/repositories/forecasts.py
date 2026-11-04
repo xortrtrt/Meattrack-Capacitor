@@ -190,6 +190,7 @@ def queue_forecast(model_name: str, forecast_horizon_days: int, requesting_accou
     input_end = business_today()
     input_start = input_end - timedelta(days=forecasting.HISTORY_DAYS - 1)
     configuration = {
+        "model_selection_policy": "prophet_primary_with_baseline_fallback",
         "history_days": forecasting.HISTORY_DAYS,
         "maximum_horizon_days": forecasting.MAX_HORIZON_DAYS,
         "backtest_folds": forecasting.BACKTEST_FOLDS,

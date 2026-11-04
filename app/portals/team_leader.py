@@ -22,7 +22,7 @@ router = APIRouter()
 
 def logs_page(request: Request, page_size: int = 10, inventory_only: bool = False) -> dict:
     filters = shared.portal_filters(request)
-    movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales", "returns", "reservations"} else ""
+    movement_category = filters["type"] if filters["type"] in {"opening", "receipts", "production", "sales", "returns", "reservations", "removals", "corrections"} else ""
     if inventory_only:
         total = data.count_inventory_movements(q=filters["q"], category=movement_category)
         filters["page"] = shared.clamp_page(total, filters["page"], page_size)
@@ -252,6 +252,7 @@ def logs_context(request: Request) -> dict:
         "movement_categories": (
             ("", "All movements"),
             ("receipts", "Receipts"),
+            ("removals", "Removals & restores"),
             ("returns", "Returns"),
             ("production", "Production"),
             ("sales", "Sales"),
@@ -334,6 +335,7 @@ SECTION_LOADERS = {
     ("sales-supervisor", "orders"): orders_context,
     ("sales-supervisor", "reports"): reports_context,
     ("sales-supervisor", "accounts"): supervisor_accounts_context,
+    ("sales-supervisor", "resellers"): resellers_context,
     ("sales-supervisor", "profile"): profile_context,
 }
 

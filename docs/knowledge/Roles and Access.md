@@ -3,6 +3,19 @@ tags: [meattrack, permissions]
 verified: 2026-11-03
 ---
 # Roles and access
+
+## Assigned reseller directory (2026-11-04)
+
+Sales Leaders and Sales Supervisors both have **My Resellers**, at
+`/portal/team-leader/resellers` and `/portal/sales-supervisor/resellers` respectively.
+Both reuse the same searchable, filtered, paginated read-only roster, scoped by
+the signed-in account's `resellers.team_leader_account_id`. Message links retain
+the current portal role. The Supervisor **Accounts** page remains the separate
+assignment-management workspace described in [[Owner Portal]]. Checked against
+`app/portal_config.py`, `app/capabilities.py`, `app/portals/team_leader.py`,
+`app/repositories/accounts.py`, and
+`app/templates/portals/team-leader/resellers.html` on 2026-11-04.
+
 Portal navigation describes available screens; server-side capabilities and
 ownership-scoped queries enforce access. A hidden button is not an authorization
 boundary. Sales supervisor is a portal role backed by the team-leader account
@@ -160,6 +173,17 @@ route, and public catalog photo delivery remains available. Sources:
 `app/portal_config.py`, `app/capabilities.py`, `app/portals/team_leader.py`,
 `app/portals/product_media.py`, and `app/repositories/inventory/products.py`.
 See [[Orders and Inventory]] and [[Decisions]].
+
+## Remove a profile picture (2026-11-04)
+
+Profile pictures use the shared `app/templates/portals/_profile_picture.html`
+across portal roles. When a saved image exists, **Remove profile picture** is
+available beside the picture and inside the camera editor. Both submit the
+same authenticated removal action in `app/portals/shared.py`, clear the saved
+image and session crop, and return to the profile with a success message. The
+editor removal button submits the separate removal form so choosing an upload
+is unnecessary. Sources checked 2026-11-04: those files and
+`app/repositories/accounts.py`. See [[Architecture]].
 
 ## Verify email before choosing a new password (2026-11-03)
 

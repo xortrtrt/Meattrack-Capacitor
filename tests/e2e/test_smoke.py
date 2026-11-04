@@ -217,4 +217,11 @@ def test_public_and_supervisor_profile_smoke(page: Page) -> None:
     assert "--profile-x: 37" in preview_style
     assert "--profile-y: 62" in preview_style
     assert "--profile-scale: 1.4" in preview_style
+    page.locator("[data-profile-picture-open]").click()
+    page.get_by_role("dialog").get_by_role("button", name="Remove profile picture").click()
+    page.wait_for_url("**/portal/sales-supervisor/profile?message=*")
+    expect(page.locator(".profile-picture-preview img")).to_have_count(0)
+    expect(page.get_by_role("button", name="Remove profile picture")).to_have_count(0)
+    page.reload(wait_until="networkidle")
+    expect(page.locator(".profile-picture-preview img")).to_have_count(0)
     assert console_errors == []
